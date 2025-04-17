@@ -20,15 +20,10 @@ var (
 	// SchemeGroupVersion is group version used to register objects from the scaling recommender API.
 	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: GroupVersion}
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
-	SchemeBuilder      runtime.SchemeBuilder
-	localSchemeBuilder = &SchemeBuilder
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
-
-func init() {
-	localSchemeBuilder.Register(addKnownTypes)
-}
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
