@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // Package podutil has routines copied from k8s api server's pkg/api/pod/util.go
 package podutil
 

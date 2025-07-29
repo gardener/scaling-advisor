@@ -1,60 +1,64 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package configtmpl
 
 import (
 	"bytes"
 	"embed"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"os"
 	"text/template"
+
+	"github.com/gardener/scaling-advisor/minkapi/api"
 )
 
-//go:embed *.yaml
+//go:embed templates/*.yaml
 var content embed.FS
 
 var (
-	kubeConfigTemplate              *template.Template
-	kubeSchedulerConfigTemplate     *template.Template
-	kubeSchedulerConfigTemplatePath string = "templates/kube-scheduler-config.yaml"
+	kubeConfigTemplate          *template.Template
+	kubeSchedulerConfigTemplate *template.Template
 )
 
 func LoadKubeConfigTemplate() error {
-	var err error
-	var data []byte
-
 	if kubeConfigTemplate != nil {
 		return nil
 	}
-
-	data, err = content.ReadFile("kubeconfig.yaml")
+	var err error
+	kubeConfigTemplate, err = loadTemplateConfig("templates/kubeconfig.yaml")
 	if err != nil {
-		return fmt.Errorf("%w: cannot read kubeconfig.yaml from content FS: %w", api.ErrLoadConfigTemplate, err)
-	}
-	kubeConfigTemplate, err = template.New("kubeconfig").Parse(string(data))
-	if err != nil {
-		return fmt.Errorf("%w: cannot parse kubeconfig.yaml template: %w", api.ErrLoadConfigTemplate, err)
+		return err
 	}
 	return nil
 }
 
 func LoadKubeSchedulerConfigTemplate() error {
-	var err error
-	var data []byte
-
 	if kubeSchedulerConfigTemplate != nil {
 		return nil
 	}
-
-	data, err = content.ReadFile("kube-scheduler-config.yaml")
+	var err error
+	kubeSchedulerConfigTemplate, err = loadTemplateConfig("templates/kube-scheduler-config.yaml")
 	if err != nil {
-		return fmt.Errorf("%w: cannot read kube-scheduler-config.yaml from content FS: %w", api.ErrLoadConfigTemplate, err)
-	}
-	kubeSchedulerConfigTemplate, err = template.New("kube-scheduler-config").Parse(string(data))
-	if err != nil {
-		return fmt.Errorf("%w: cannot parse kubeconfig.yaml template: %w", api.ErrLoadConfigTemplate, err)
+		return err
 	}
 	return nil
+}
 
+func loadTemplateConfig(templateConfigPath string) (*template.Template, error) {
+	var err error
+	var data []byte
+
+	data, err = content.ReadFile(templateConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: cannot read %s from content FS: %w", api.ErrLoadConfigTemplate, templateConfigPath, err)
+	}
+	templateConfig, err := template.New(templateConfigPath).Parse(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("%w: cannot parse %s template: %w", api.ErrLoadConfigTemplate, templateConfigPath, err)
+	}
+	return templateConfig, nil
 }
 
 type KubeSchedulerTmplParams struct {
@@ -94,7 +98,7 @@ func GenKubeSchedulerConfig(params KubeSchedulerTmplParams) error {
 	var buf bytes.Buffer
 	err = kubeSchedulerConfigTemplate.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: execution of %q template failed with params %q: %w", api.ErrExecuteConfigTemplate, kubeSchedulerConfigTemplate.Name(), params, err)
+		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", api.ErrExecuteConfigTemplate, kubeSchedulerConfigTemplate.Name(), params, err)
 	}
 	err = os.WriteFile(params.KubeSchedulerConfigPath, buf.Bytes(), 0644)
 	if err != nil {

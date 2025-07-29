@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 import (
@@ -7,8 +11,8 @@ import (
 
 var (
 	ErrInitFailed    = errors.New(fmt.Sprintf("%s init failed", ProgramName))
-	ErrStartFailed   = errors.New(fmt.Sprintf("%s start failed", ProgramName))
-	ErrServiceFailed = errors.New(fmt.Sprintf("%s service faied", ProgramName))
+	ErrStartFailed   = fmt.Errorf("%s start failed", ProgramName)
+	ErrServiceFailed = fmt.Errorf("%s service failed", ProgramName)
 
 	ErrMissingOpt = errors.New("missing option")
 

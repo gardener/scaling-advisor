@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package core
 
 import (
@@ -14,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
@@ -23,6 +26,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/core/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/core/store"
 	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
+
 	"github.com/go-logr/logr"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
@@ -45,15 +49,14 @@ var _ api.MinKAPIAccess = (*InMemoryKAPI)(nil)
 
 // InMemoryKAPI holds the in-memory stores, watch channels, and version tracking for simple implementation of api.MinKAPIAccess
 type InMemoryKAPI struct {
-	cfg            api.MinKAPIConfig
-	mu             sync.RWMutex
-	stores         map[schema.GroupVersionKind]*store.InMemResourceStore
-	listenerAddr   net.Addr
-	scheme         *runtime.Scheme
-	mux            *http.ServeMux
-	kubeConfigTmpl *template.Template
-	server         *http.Server
-	log            logr.Logger
+	cfg          api.MinKAPIConfig
+	mu           sync.RWMutex
+	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
+	listenerAddr net.Addr
+	scheme       *runtime.Scheme
+	mux          *http.ServeMux
+	server       *http.Server
+	log          logr.Logger
 }
 
 func NewInMemoryMinKAPI(appCtx context.Context, cfg api.MinKAPIConfig, log logr.Logger) (api.MinKAPIAccess, error) {
@@ -248,7 +251,6 @@ func (k *InMemoryKAPI) closeStores() {
 	for _, s := range k.stores {
 		s.Shutdown()
 	}
-	return
 }
 
 func (k *InMemoryKAPI) registerRoutes() {
@@ -275,11 +277,9 @@ func (k *InMemoryKAPI) registerRoutes() {
 	for _, d := range typeinfo.SupportedDescriptors {
 		k.registerResourceRoutes(d)
 	}
-
 }
 
 func (k *InMemoryKAPI) registerAPIGroups() {
-
 	// Core API
 	k.mux.HandleFunc("GET /api/v1/", k.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
 
@@ -314,7 +314,6 @@ func (k *InMemoryKAPI) registerResourceRoutes(d typeinfo.Descriptor) {
 		k.mux.HandleFunc(fmt.Sprintf("DELETE /api/v1/%s/{name}", r), k.handleDelete(d))
 		k.mux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}", r), k.handlePut(d))        // Update
 		k.mux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}/status", r), k.handlePut(d)) // UpdateStatus
-
 	} else {
 		k.mux.HandleFunc(fmt.Sprintf("POST /apis/%s/v1/namespaces/{namespace}/%s", g, r), k.handleCreate(d))
 		k.mux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/namespaces/{namespace}/%s", g, r), k.handleListOrWatch(d))
@@ -364,10 +363,11 @@ func (k *InMemoryKAPI) handleCreate(d typeinfo.Descriptor) http.HandlerFunc {
 		if s == nil {
 			return
 		}
-		var mo metav1.Object
-		var err error
+		var (
+			mo  metav1.Object
+			err error
+		)
 		mo, err = d.CreateObject()
-
 		if err != nil {
 			err = fmt.Errorf("cannot create object from objGvk %q: %v", d.GVK, err)
 			k.handleInternalServerError(w, r, err)
@@ -378,12 +378,10 @@ func (k *InMemoryKAPI) handleCreate(d typeinfo.Descriptor) http.HandlerFunc {
 			return
 		}
 
-		namespace := r.PathValue("namespace")
+		var namespace string
 		if mo.GetNamespace() == "" {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
-		} else {
-			namespace = mo.GetNamespace()
 		}
 		name := mo.GetName()
 		namePrefix := mo.GetGenerateName()
@@ -517,6 +515,7 @@ func (k *InMemoryKAPI) handleListOrWatch(d typeinfo.Descriptor) http.HandlerFunc
 		delegate.ServeHTTP(w, r)
 	}
 }
+
 func (k *InMemoryKAPI) handleList(d typeinfo.Descriptor, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := k.getStoreOrWriteError(d.GVK, w, r)
@@ -556,7 +555,7 @@ func (k *InMemoryKAPI) handlePatch(d typeinfo.Descriptor) http.HandlerFunc {
 			writeStatusError(k.log, w, r, statusErr)
 			return
 		}
-		err = patchObject(o.(runtime.Object), key, contentType, patchData)
+		err = patchObject(o, key, contentType, patchData)
 		if err != nil {
 			err = fmt.Errorf("failed to atch o %q: %w", key, err)
 			k.handleInternalServerError(w, r, err)
@@ -575,6 +574,7 @@ func (k *InMemoryKAPI) handlePatch(d typeinfo.Descriptor) http.HandlerFunc {
 		writeJsonResponse(k.log, w, r, o)
 	}
 }
+
 func (k *InMemoryKAPI) handlePatchStatus(d typeinfo.Descriptor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := k.getStoreOrWriteError(d.GVK, w, r)
@@ -628,9 +628,11 @@ func (k *InMemoryKAPI) handleWatch(d typeinfo.Descriptor, labelSelector labels.S
 			return
 		}
 
-		var ok bool
-		var startVersion int64
-		var namespace string
+		var (
+			ok           bool
+			startVersion int64
+			namespace    string
+		)
 
 		namespace = r.PathValue("namespace")
 		startVersion, ok = getParseResourceVersion(k.log, w, r)
@@ -669,7 +671,7 @@ func (k *InMemoryKAPI) handleWatch(d typeinfo.Descriptor, labelSelector labels.S
 
 // handleCreatePodBinding is meant to handle creation for a Pod binding.
 // Ex: POST http://localhost:8080/api/v1/namespaces/default/pods/a-mc6zl/binding
-// This endpoint is invoked by the scheduler, and it is expected that the API Server sets the `pod.Spec.NodeName`
+// This endpoint is invoked by the scheduler, and it is expected that the API HostPort sets the `pod.Spec.NodeName`
 //
 // Example Payload
 // {"kind":"Binding","apiVersion":"v1","metadata":{"name":"a-p4r2l","namespace":"default","uid":"b8124ee8-a0c7-4069-930d-fc5e901675d3"},"target":{"kind":"Node","name":"a-kl827"}}
@@ -756,12 +758,14 @@ func getParseResourceVersion(log logr.Logger, w http.ResponseWriter, r *http.Req
 	ok = true
 	return
 }
+
 func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	if rvStr != "" {
 		resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
 	}
 	return
 }
+
 func getFlusher(w http.ResponseWriter) http.Flusher {
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -774,6 +778,7 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 	}
 	return flusher
 }
+
 func buildWatchEventJson(log logr.Logger, event *watch.Event) (string, error) {
 	// NOTE: Simple Json serialization does NOT work due to bug in Watch struct
 	//if err := json.NewEncoder(w).Encode(event); err != nil {
@@ -814,7 +819,6 @@ func (k *InMemoryKAPI) handleError(w http.ResponseWriter, r *http.Request, err e
 	} else {
 		k.handleInternalServerError(w, r, err)
 	}
-	return
 }
 
 func (k *InMemoryKAPI) handleStatusError(w http.ResponseWriter, r *http.Request, statusErr *apierrors.StatusError) {
@@ -848,6 +852,7 @@ func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
 	name := r.PathValue("name")
 	return cache.NewObjectName(namespace, name)
 }
+
 func GetObjectKey(r *http.Request, d typeinfo.Descriptor) string {
 	return GetObjectName(r, d).String()
 }
@@ -864,17 +869,18 @@ func patchObject(objPtr runtime.Object, key string, contentType string, patchByt
 	}
 
 	var patchedBytes []byte
-	if contentType == "application/strategic-merge-patch+json" {
+	switch contentType {
+	case "application/strategic-merge-patch+json":
 		patchedBytes, err = strategicpatch.StrategicMergePatch(originalJSON, patchBytes, objInterface)
 		if err != nil {
 			return fmt.Errorf("failed to apply strategic merge patch for object %q: %w", key, err)
 		}
-	} else if contentType == "application/merge-patch+json" {
+	case "application/merge-patch+json":
 		patchedBytes, err = jsonpatch.MergePatch(originalJSON, patchBytes)
 		if err != nil {
 			return fmt.Errorf("failed to apply merge-patch for object %q: %w", key, err)
 		}
-	} else {
+	default:
 		return fmt.Errorf("unsupported patch content type %q for object %q", contentType, key)
 	}
 	err = kjson.Unmarshal(patchedBytes, objInterface)

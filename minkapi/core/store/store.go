@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
@@ -9,6 +13,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
+
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -74,7 +79,7 @@ func (s *InMemResourceStore) Add(mo metav1.Object) error {
 	go func() {
 		err = s.broadcaster.Action(watch.Added, o)
 		if err != nil {
-			s.log.Error(err, "failed to broadcast object add", "key", key, mo.GetName())
+			s.log.Error(err, "failed to broadcast object add", "key", key)
 		}
 	}()
 	return nil
@@ -95,7 +100,7 @@ func (s *InMemResourceStore) Update(mo metav1.Object) error {
 	go func() {
 		err = s.broadcaster.Action(watch.Modified, o)
 		if err != nil {
-			s.log.Error(err, "failed to broadcast object update", "object", key, mo.GetName())
+			s.log.Error(err, "failed to broadcast object update", "key", key)
 		}
 	}()
 	return nil
@@ -322,9 +327,11 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 		}
 	}
 }
+
 func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 	return s.rvCounter.Load()
 }
+
 func (s *InMemResourceStore) Shutdown() {
 	if s.broadcaster != nil {
 		s.log.V(4).Info("shutting down broadcaster for store", "gvk", s.objGVK)
@@ -366,6 +373,7 @@ func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, n
 	}
 	return
 }
+
 func anySliceToRuntimeObjSlice(log logr.Logger, objs []any) ([]runtime.Object, error) {
 	result := make([]runtime.Object, 0, len(objs))
 	for _, item := range objs {
@@ -394,6 +402,7 @@ func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	}
 	return
 }
+
 func AsMeta(log logr.Logger, o any) (mo metav1.Object, err error) {
 	mo, err = meta.Accessor(o)
 	if err != nil {

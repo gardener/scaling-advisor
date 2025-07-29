@@ -1,6 +1,14 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package typeinfo
 
 import (
+	"maps"
+	"slices"
+	"strings"
+
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -15,9 +23,6 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"maps"
-	"slices"
-	"strings"
 )
 
 type KindName string
@@ -360,6 +365,7 @@ func (d Descriptor) CreateObject() (obj metav1.Object, err error) {
 	obj = runtimeObj.(metav1.Object)
 	return
 }
+
 func (d Descriptor) Resource() string {
 	return d.GVR.Resource
 }

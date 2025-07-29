@@ -1,0 +1,6 @@
+apiVersion: config.sa.gardener.cloud/v1alpha1
+kind: ScalingAdvisorConfiguration
+server:
+  host: localhost
+  port: 9090
+  kubeConfigPath: /tmp/kube-config.yaml

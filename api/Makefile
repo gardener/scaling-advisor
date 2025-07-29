@@ -2,13 +2,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-API_MODULE_ROOT                 := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
-REPO_ROOT                       := $(shell dirname "$(API_MODULE_ROOT)")
-HACK_DIR                        := $(API_MODULE_ROOT)/hack
-API_MODULE_TOOLS_DIR            := $(HACK_DIR)/tools
-REPO_TOOLS_DIR                  := $(REPO_ROOT)/hack/tools
+MODULE_ROOT                 := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
+MODULE_HACK_DIR             := $(MODULE_ROOT)/hack
+REPO_ROOT                   := $(shell dirname "$(MODULE_ROOT)")
+REPO_HACK_DIR               := $(REPO_ROOT)/hack
+HACK_DIR                    := $(API_MODULE_ROOT)/hack
 
-include $(HACK_DIR)/tools.mk
+include $(REPO_HACK_DIR)/tools.mk
 
 .PHONY: tidy
 tidy:
@@ -20,16 +20,20 @@ build:
 
 .PHONY: check-generate
 check-generate:
-	@$(HACK_DIR)/check-generate.sh "$(API_MODULE_ROOT)"
+	@$(MODULE_HACK_DIR)/check-generate.sh "$(API_MODULE_ROOT)"
 
 .PHONY: generate
 generate: $(CONTROLLER_GEN) tidy
-	@$(HACK_DIR)/generate.sh
+	@$(MODULE_HACK_DIR)/generate.sh
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_ROOT)/hack/format.sh ./core
+	@$(REPO_HACK_DIR)/format.sh ./core ./config ./common
 
 .PHONY: check
-check: $(GOLANGCI_LINT) $(GOIMPORTS) format
-	@$(REPO_ROOT)/hack/check.sh --golangci-lint-config=../.golangci.yaml ./...
+check: $(GOLANGCI_LINT) format
+	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
+
+.PHONY: test-unit
+test-unit:
+	go test -v -race -buildvcs ./...

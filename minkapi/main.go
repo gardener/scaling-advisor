@@ -1,19 +1,25 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/api"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/core"
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/gardener/scaling-advisor/minkapi/api"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/gardener/scaling-advisor/minkapi/core"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 )
 
 func main() {
@@ -43,7 +49,7 @@ func main() {
 			if errors.Is(err, api.ErrStartFailed) {
 				log.Error(err, "failed to start service")
 			} else {
-				log.Error(err, fmt.Sprintf("%s start failed", api.ProgramName), err)
+				log.Error(err, fmt.Sprintf("%s start failed", api.ProgramName))
 			}
 			os.Exit(commoncli.ExitErrStart)
 		}

@@ -1,18 +1,26 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package cli
 
 import (
+	"errors"
 	"flag"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"os"
 )
 
 // MainOpts is a struct that encapsulates target fields for CLI options parsing.
 type MainOpts struct {
-	commoncli.CommonOptions
 	api.MinKAPIConfig
 }
 
@@ -37,7 +45,7 @@ func setupFlagsToOpts() (*pflag.FlagSet, *MainOpts) {
 	if mainOpts.KubeConfigPath == "" {
 		mainOpts.KubeConfigPath = api.DefaultKubeConfigPath
 	}
-	commoncli.MapCommonFlags(flagSet, &mainOpts.CommonOptions)
+	commoncli.MapServerConfigFlags(flagSet, mainOpts.ServerConfig)
 	flagSet.IntVarP(&mainOpts.WatchQueueSize, "watch-queue-size", "s", api.DefaultWatchQueueSize, "max number of events to queue per watcher")
 	flagSet.DurationVarP(&mainOpts.WatchTimeout, "watch-timeout", "t", api.DefaultWatchTimeout, "watch timeout after which connection is closed and watch removed")
 
@@ -51,5 +59,10 @@ func setupFlagsToOpts() (*pflag.FlagSet, *MainOpts) {
 }
 
 func validateMainOpts(opts *MainOpts) error {
-	return opts.Validate()
+	var errs []error
+	errs = append(errs, commoncli.ValidateServerConfigFlags(opts.ServerConfig))
+	if len(strings.TrimSpace(opts.KubeConfigPath)) == 0 {
+		errs = append(errs, fmt.Errorf("%w: --kubeconfig/-k", api.ErrMissingOpt))
+	}
+	return errors.Join(errs...)
 }

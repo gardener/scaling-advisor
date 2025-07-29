@@ -6,6 +6,7 @@ package v1alpha1
 
 import (
 	"github.com/gardener/scaling-advisor/api/common/constants"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )

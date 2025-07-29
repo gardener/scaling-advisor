@@ -3,15 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 REPO_ROOT           := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
-HACK_DIR            := $(REPO_ROOT)/hack
-SUBMODULES          := minkapi api operator
+REPO_HACK_DIR       := $(REPO_ROOT)/hack
+SUBMODULES          := api common minkapi operator
 
-TOOLS_DIR := $(HACK_DIR)/tools
-include $(HACK_DIR)/tools.mk
+include $(REPO_HACK_DIR)/tools.mk
 
 .PHONY: add-license-headers
 add-license-headers: $(GO_ADD_LICENSE)
-	@$(HACK_DIR)/addlicenseheaders.sh
+	@$(REPO_HACK_DIR)/addlicenseheaders.sh
 
 .PHONY: tidy
 tidy:
@@ -23,4 +22,22 @@ tidy:
 build:
 	@for dir in $(SUBMODULES); do \
 	  $(MAKE) -C $$dir build; \
+	done
+
+.PHONY: format
+format: $(GOIMPORTS_REVISER)
+	@for dir in $(SUBMODULES); do \
+	  $(MAKE) -C $$dir format; \
+	done
+
+.PHONY: check
+check: $(GOLANGCI_LINT) format
+	@for dir in $(SUBMODULES); do \
+	  $(MAKE) -C $$dir check; \
+	done
+
+.PHONY: test-unit
+test-unit:
+	@for dir in $(SUBMODULES); do \
+	  $(MAKE) -C $$dir test-unit; \
 	done

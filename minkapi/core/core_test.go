@@ -1,12 +1,18 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package core
 
 import (
+	"os"
+	"testing"
+
 	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
+
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"os"
-	"testing"
 )
 
 //func TestCreateList(t *testing.T) {
@@ -52,6 +58,7 @@ func TestPatchPodStatus(t *testing.T) {
 		t.Errorf("Failed to set pod conditions")
 	}
 }
+
 func TestPatchEvent(t *testing.T) {
 	data := readFile(t, "testdata/event-a.json")
 	if data == nil {

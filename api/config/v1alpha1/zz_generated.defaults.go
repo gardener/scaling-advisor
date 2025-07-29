@@ -16,11 +16,14 @@ import (
 // Public to allow building arbitrary schemes.
 // All generated defaulters are covering - they call all nested defaulters.
 func RegisterDefaults(scheme *runtime.Scheme) error {
-	scheme.AddTypeDefaultingFunc(&OperatorConfiguration{}, func(obj interface{}) { SetObjectDefaults_OperatorConfiguration(obj.(*OperatorConfiguration)) })
+	scheme.AddTypeDefaultingFunc(&ScalingAdvisorConfiguration{}, func(obj interface{}) {
+		SetObjectDefaults_ScalingAdvisorConfiguration(obj.(*ScalingAdvisorConfiguration))
+	})
 	return nil
 }
 
-func SetObjectDefaults_OperatorConfiguration(in *OperatorConfiguration) {
+func SetObjectDefaults_ScalingAdvisorConfiguration(in *ScalingAdvisorConfiguration) {
 	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
 	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
+	SetDefaults_ServerConfig(&in.Server)
 }

@@ -2,8 +2,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-main_path = cmd/scalingadvisor/main.go
+MODULE_ROOT     := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
+REPO_ROOT                := $(shell dirname "$(MODULE_ROOT)")
+REPO_HACK_DIR            := $(REPO_ROOT)/hack
+
+main_path = ./cmd/scalingadvisor
 binary_name = scalingadvisor
+
+# include tools targets
+include $(REPO_HACK_DIR)/tools.mk
 
 .PHONY: tidy
 tidy:
@@ -13,3 +20,15 @@ tidy:
 build:
 	mkdir -p bin
 	go build -buildvcs -o=bin/${binary_name} ${main_path}
+
+.PHONY: format
+format: $(GOIMPORTS_REVISER)
+	@$(REPO_HACK_DIR)/format.sh ./cmd ./internal
+
+.PHONY: check
+check: $(GOLANGCI_LINT) format
+	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
+
+.PHONY: test-unit
+test-unit:
+	go test -v -race -buildvcs ./...
