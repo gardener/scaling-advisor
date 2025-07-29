@@ -2,7 +2,7 @@
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
-        "generateName": "a-",
+        "generateName": "bingo-",
         "labels": {
             "app.kubernetes.io/component": "minkapitest",
             "app.kubernetes.io/name": "a"

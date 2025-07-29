@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package server
+package core
 
 import (
 	"bufio"
@@ -21,11 +21,11 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/store"
-	minkapistore "github.com/gardener/scaling-advisor/minkapi/server/store"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
-	"github.com/gardener/scaling-advisor/minkapi/server/view"
+	"github.com/gardener/scaling-advisor/minkapi/core/configtmpl"
+	"github.com/gardener/scaling-advisor/minkapi/core/store"
+	minkapistore "github.com/gardener/scaling-advisor/minkapi/core/store"
+	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/core/view"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
