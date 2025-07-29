@@ -1,0 +1,13 @@
+{
+  "kind": "Binding",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "bingo",
+    "namespace": "default",
+    "uid": "d6d62038-d46c-4ee8-972e-a48ffa6fbc77"
+  },
+  "target": {
+    "kind": "Node",
+    "name": "bingo-node"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "apiVersion": "v1",
+  "kind": "Node",
+  "metadata": {
+    "labels": {
+      "beta.kubernetes.io/arch": "amd64",
+      "beta.kubernetes.io/instance-type": "m5.large",
+      "beta.kubernetes.io/os": "linux",
+      "failure-domain.beta.kubernetes.io/region": "eu-west-1",
+      "failure-domain.beta.kubernetes.io/zone": "eu-west-1a",
+      "kubernetes.io/arch": "amd64",
+      "kubernetes.io/hostname": "ip-10-180-5-203.eu-west-1.compute.internal",
+      "kubernetes.io/os": "linux",
+      "networking.gardener.cloud/node-local-dns-enabled": "true",
+      "node.gardener.cloud/machine-name": "shoot--i034796--awx-a-z1-85c8c-hjsp8",
+      "node.kubernetes.io/instance-type": "m5.large",
+      "node.kubernetes.io/role": "node",
+      "topology.ebs.csi.aws.com/zone": "eu-west-1a",
+      "topology.k8s.aws/zone-id": "euw1-az3",
+      "topology.kubernetes.io/region": "eu-west-1",
+      "topology.kubernetes.io/zone": "eu-west-1a",
+      "worker.garden.sapcloud.io/group": "a",
+      "worker.gardener.cloud/cri-name": "containerd",
+      "worker.gardener.cloud/kubernetes-version": "1.30.11",
+      "worker.gardener.cloud/pool": "a",
+      "worker.gardener.cloud/system-components": "true"
+    }
+  },
+  "spec": {
+    "providerID": "aws:///eu-west-1a/i-nodeaxxxxxxxxxxxx"
+  },
+  "status": {
+    "allocatable": {
+      "cpu": "1920m",
+      "ephemeral-storage": "48930544193",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "6688076Ki",
+      "pods": "110"
+    },
+    "capacity": {
+      "cpu": "2",
+      "ephemeral-storage": "50298668Ki",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "7839052Ki",
+      "pods": "110"
+    },
+    "conditions": [
+      {
+        "lastHeartbeatTime": null,
+        "lastTransitionTime": "2025-04-24T13:58:01Z",
+        "status": "True",
+        "type": "Ready"
+      },
+      {
+        "lastHeartbeatTime": null,
+        "lastTransitionTime": "2025-04-24T13:58:01Z",
+        "status": "False",
+        "type": "NetworkUnavailable"
+      },
+      {
+        "lastHeartbeatTime": null,
+        "lastTransitionTime": "2025-04-24T13:58:01Z",
+        "status": "False",
+        "type": "DiskPressure"
+      },
+      {
+        "lastHeartbeatTime": null,
+        "lastTransitionTime": "2025-04-24T13:58:01Z",
+        "status": "False",
+        "type": "MemoryPressure"
+      }
+    ],
+    "daemonEndpoints": {
+      "kubeletEndpoint": {
+        "Port": 0
+      }
+    },
+    "nodeInfo": {
+      "architecture": "amd64",
+      "containerRuntimeVersion": "containerd://1.7.23",
+      "kernelVersion": "6.4.0-150600.23.33-default",
+      "kubeProxyVersion": "v1.30.11",
+      "kubeletVersion": "v1.30.11",
+      "operatingSystem": "linux",
+      "osImage": "SUSE Linux Enterprise Server 15 SP6"
+    },
+    "phase": "Running"
+  }
+}
