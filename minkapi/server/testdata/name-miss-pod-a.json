@@ -1,0 +1,31 @@
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2025-05-08T08:30:00Z",
+        "labels": {
+            "app.kubernetes.io/component": "minkapitest",
+            "app.kubernetes.io/name": "a"
+        },
+        "resourceVersion": "1",
+        "uid": "d6d62038-d46c-4ee8-972e-a48ffa6fbc77"
+    },
+    "spec": {
+        "containers": [
+            {
+                "image": "registry.k8s.io/pause:3.5",
+                "name": "pause",
+                "resources": {
+                    "requests": {
+                        "cpu": "100m",
+                        "memory": "4Gi"
+                    }
+                }
+            }
+        ],
+        "preemptionPolicy": "PreemptLowerPriority",
+        "schedulerName": "default-scheduler",
+        "terminationGracePeriodSeconds": 0
+    },
+    "status": {}
+}
