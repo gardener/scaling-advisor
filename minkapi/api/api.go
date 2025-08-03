@@ -34,7 +34,6 @@ type MinKAPIConfig struct {
 	WatchQueueSize int
 }
 
-// MinKAPIAccess facade defines methods to
 type MinKAPIAccess interface {
 	Start() error
 	Shutdown(ctx context.Context) error

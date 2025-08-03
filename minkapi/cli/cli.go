@@ -24,6 +24,7 @@ type MainOpts struct {
 	api.MinKAPIConfig
 }
 
+// ParseProgramFlags parses the command line arguments and returns MainOpts.
 func ParseProgramFlags(args []string) (*MainOpts, error) {
 	flagSet, mainOpts := setupFlagsToOpts()
 	err := flagSet.Parse(args)
@@ -45,7 +46,7 @@ func setupFlagsToOpts() (*pflag.FlagSet, *MainOpts) {
 	if mainOpts.KubeConfigPath == "" {
 		mainOpts.KubeConfigPath = api.DefaultKubeConfigPath
 	}
-	commoncli.MapServerConfigFlags(flagSet, mainOpts.ServerConfig)
+	commoncli.MapServerConfigFlags(flagSet, &mainOpts.ServerConfig)
 	flagSet.IntVarP(&mainOpts.WatchQueueSize, "watch-queue-size", "s", api.DefaultWatchQueueSize, "max number of events to queue per watcher")
 	flagSet.DurationVarP(&mainOpts.WatchTimeout, "watch-timeout", "t", api.DefaultWatchTimeout, "watch timeout after which connection is closed and watch removed")
 

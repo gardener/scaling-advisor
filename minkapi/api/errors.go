@@ -10,17 +10,17 @@ import (
 )
 
 var (
-	ErrInitFailed    = errors.New(fmt.Sprintf("%s init failed", ProgramName))
-	ErrStartFailed   = fmt.Errorf("%s start failed", ProgramName)
+	ErrInitFailed = errors.New(fmt.Sprintf("%s init failed", ProgramName))
+	// ErrStartFailed is a sentinel error indicating that the service failed to start.
+	ErrStartFailed = fmt.Errorf("%s start failed", ProgramName)
+	// ErrServiceFailed is a sentinel error indicating that the service failed.
 	ErrServiceFailed = fmt.Errorf("%s service failed", ProgramName)
-
-	ErrMissingOpt = errors.New("missing option")
-
+	// ErrMissingOpt is a sentinel error indicating that one or more required command line options are missing.
+	ErrMissingOpt            = errors.New("missing option")
 	ErrLoadConfigTemplate    = errors.New("cannot load config template")
 	ErrExecuteConfigTemplate = errors.New("cannot execute config template")
-
-	ErrStoreNotFound = errors.New("store not found")
-	ErrCreateObject  = errors.New("cannot create object")
-	ErrDeleteObject  = errors.New("cannot delete object")
-	ErrListObjects   = errors.New("cannot list objects")
+	ErrStoreNotFound         = errors.New("store not found")
+	ErrCreateObject          = errors.New("cannot create object")
+	ErrDeleteObject          = errors.New("cannot delete object")
+	ErrListObjects           = errors.New("cannot list objects")
 )
