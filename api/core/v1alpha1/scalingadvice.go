@@ -4,7 +4,10 @@
 
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apicommon "github.com/gardener/scaling-advisor/api/common/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
@@ -35,7 +38,7 @@ type ClusterScalingAdviceList struct {
 // ClusterScalingAdviceSpec defines the desired state of ClusterScalingAdvice.
 type ClusterScalingAdviceSpec struct {
 	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
-	ConstraintRef ConstraintReference `json:"constraintRef"`
+	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 	// ScaleOutPlan is the plan for scaling out across node pools.
 	// +optional
 	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
@@ -45,16 +48,13 @@ type ClusterScalingAdviceSpec struct {
 
 // ClusterScalingAdviceStatus defines the observed state of ClusterScalingAdvice.
 type ClusterScalingAdviceStatus struct {
-	// Feedback represents the lifecycle manager's feedback on the scaling advice.
-	Feedback ClusterScalingAdviceFeedback `json:"feedback,omitempty"`
-}
-
-// ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.
-type ConstraintReference struct {
-	// Name is the name of the ClusterScalingConstraint.
-	Name string `json:"name"`
-	// Namespace is the namespace of the ClusterScalingConstraint.
-	Namespace string `json:"namespace"`
+	// Diagnostic provides diagnostics information for the scaling advice.
+	// This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
+	// set on the corresponding ClusterScalingConstraint resource.
+	// +optional
+	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
+	// Conditions represents additional information
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // ScaleOutPlan is the plan for scaling out a node pool.
@@ -85,38 +85,26 @@ type ScaleItem struct {
 	DesiredReplicas int32 `json:"desiredReplicas"`
 }
 
-// ClusterScalingAdviceFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
-// Scaling advisor can refine its future scaling advice based on this feedback.
-type ClusterScalingAdviceFeedback struct {
-	// ScaleOutErrorInfos is the list of scale-out errors for the scaling advice.
-	ScaleOutErrorInfos []ScaleOutErrorInfo `json:"scaleOutErrorInfos,omitempty"`
-	// ScaleInErrorInfo is the scale-in error information for the scaling advice.
-	ScaleInErrorInfo ScaleInErrorInfo `json:"scaleInErrorInfo,omitempty"`
+// ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
+type ScalingAdviceDiagnostic struct {
+	// SimRunResults is the list of simulation run results for the scaling advice.
+	SimRunResults []ScalingSimRunResult `json:"simRunResults"`
+	// TraceLogURL is the URL to the transient trace log for the scaling simulation run.
+	TraceLogURL string `json:"traceLogURL"`
 }
 
-// ScalingErrorType defines the type of scaling error.
-type ScalingErrorType string
-
-const (
-	// ErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.
-	ErrorTypeResourceExhausted ScalingErrorType = "ResourceExhaustedError"
-	// ErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.
-	ErrorTypeCreationTimeout ScalingErrorType = "CreationTimeoutError"
-)
-
-// ScaleOutErrorInfo is the backoff information for each instance type + zone.
-type ScaleOutErrorInfo struct {
+// ScalingSimRunResult is the result of a simulation run in the scaling advisor.
+type ScalingSimRunResult struct {
+	// NodePoolName is the name of the node pool.
+	NodePoolName string `json:"nodePoolName"`
+	// NodeTemplateName is the name of the node template.
+	NodeTemplateName string `json:"nodeTemplateName"`
 	// AvailabilityZone is the availability zone of the node pool.
 	AvailabilityZone string `json:"availabilityZone"`
-	// InstanceType is the instance type of the node pool.
-	InstanceType string `json:"instanceType"`
-	// FailCount is the number of nodes that have failed creation.
-	FailCount int32            `json:"failCount"`
-	ErrorType ScalingErrorType `json:"errorType"`
-}
-
-// ScaleInErrorInfo is the information about nodes that could not be deleted for scale-in.
-type ScaleInErrorInfo struct {
-	// NodeNames is the list of node names that could not be deleted for scaled in.
-	NodeNames []string `json:"nodeNames"`
+	// NodeScore is the score of the node in the simulation run.
+	NodeScore int64 `json:"nodeScore"`
+	// ScheduledPodNames is the list of pod names that were scheduled in this simulation run.
+	ScheduledPodNames []string `json:"scheduledPodNames"`
+	// NumUnscheduledPods is the number of pods that could not be scheduled in this simulation run.
+	NumUnscheduledPods int32 `json:"numUnscheduledPods"`
 }

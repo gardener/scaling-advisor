@@ -40,6 +40,8 @@ type ClusterScalingConstraintSpec struct {
 	// ConsumerID is the ID of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
 	// It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
 	ConsumerID string `json:"consumerID"`
+	// AdviceGenerationMode defines the mode in which scaling advice is generated.
+	AdviceGenerationMode ScalingAdviceGenerationMode `json:"adviceGenerationMode"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools"`
 	// InstancePricing is a list of instance pricing for the node pool.
@@ -57,6 +59,19 @@ type ClusterScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ClusterScalingConstraint.
 	Conditions []metav1.Condition `json:"conditions"`
 }
+
+// ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
+type ScalingAdviceGenerationMode string
+
+const (
+	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
+	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
+	ScalingAdviceGenerationModeIncremental = "Incremental"
+	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
+	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
+	// all pending pods have been scheduled or stabilised.
+	ScalingAdviceGenerationModeAllAtOnce = "AllAtOnce"
+)
 
 // NodePool defines a node pool configuration for a cluster.
 type NodePool struct {

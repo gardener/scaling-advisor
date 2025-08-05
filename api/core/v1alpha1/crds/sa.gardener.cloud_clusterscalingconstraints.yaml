@@ -42,6 +42,10 @@ spec:
           spec:
             description: Spec defines the specification of the ClusterScalingConstraint.
             properties:
+              adviceGenerationMode:
+                description: AdviceGenerationMode defines the mode in which scaling
+                  advice is generated.
+                type: string
               consumerID:
                 description: |-
                   ConsumerID is the ID of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
@@ -287,6 +291,7 @@ spec:
                   be used when scaling in a node pool.
                 type: object
             required:
+            - adviceGenerationMode
             - consumerID
             - instancePricing
             - nodePools

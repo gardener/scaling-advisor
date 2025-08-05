@@ -21,3 +21,10 @@ const (
 	// KindClusterScalingConstraint is the KIND for constraint object that is reconciled by the scaling-advisor operator in order to generate the scaling advice.
 	KindClusterScalingConstraint = "ClusterScalingConstraint"
 )
+
+const (
+	// AnnotationEnableScalingDiagnostics is the annotation key to enable scaling diagnostics for a cluster.
+	// This is applied by a user/tool on the ClusterScalingConstraint object which produces diagnostics withing
+	// the generated ClusterScalingAdvice.Status.
+	AnnotationEnableScalingDiagnostics = "sa.gardener.cloud/enable-scaling-diagnostics"
+)

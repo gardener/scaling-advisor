@@ -26,3 +26,11 @@ type HostPort struct {
 	// Port is the port on which to serve requests.
 	Port int `json:"port"`
 }
+
+// ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.
+type ConstraintReference struct {
+	// Name is the name of the ClusterScalingConstraint.
+	Name string `json:"name"`
+	// Namespace is the namespace of the ClusterScalingConstraint.
+	Namespace string `json:"namespace"`
+}

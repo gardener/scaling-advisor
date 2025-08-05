@@ -152,54 +152,118 @@ spec:
           status:
             description: Status defines the status of ClusterScalingAdvice.
             properties:
-              feedback:
-                description: Feedback represents the lifecycle manager's feedback
-                  on the scaling advice.
+              conditions:
+                description: Conditions represents additional information
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              diagnostic:
+                description: |-
+                  Diagnostic provides diagnostics information for the scaling advice.
+                  This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
+                  set on the corresponding ClusterScalingConstraint resource.
                 properties:
-                  scaleInErrorInfo:
-                    description: ScaleInErrorInfo is the scale-in error information
-                      for the scaling advice.
-                    properties:
-                      nodeNames:
-                        description: NodeNames is the list of node names that could
-                          not be deleted for scaled in.
-                        items:
-                          type: string
-                        type: array
-                    required:
-                    - nodeNames
-                    type: object
-                  scaleOutErrorInfos:
-                    description: ScaleOutErrorInfos is the list of scale-out errors
+                  simRunResults:
+                    description: SimRunResults is the list of simulation run results
                       for the scaling advice.
                     items:
-                      description: ScaleOutErrorInfo is the backoff information for
-                        each instance type + zone.
+                      description: ScalingSimRunResult is the result of a simulation
+                        run in the scaling advisor.
                       properties:
                         availabilityZone:
                           description: AvailabilityZone is the availability zone of
                             the node pool.
                           type: string
-                        errorType:
-                          description: ScalingErrorType defines the type of scaling
-                            error.
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
                           type: string
-                        failCount:
-                          description: FailCount is the number of nodes that have
-                            failed creation.
+                        nodeScore:
+                          description: NodeScore is the score of the node in the simulation
+                            run.
+                          format: int64
+                          type: integer
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
+                          type: string
+                        numUnscheduledPods:
+                          description: NumUnscheduledPods is the number of pods that
+                            could not be scheduled in this simulation run.
                           format: int32
                           type: integer
-                        instanceType:
-                          description: InstanceType is the instance type of the node
-                            pool.
-                          type: string
+                        scheduledPodNames:
+                          description: ScheduledPodNames is the list of pod names
+                            that were scheduled in this simulation run.
+                          items:
+                            type: string
+                          type: array
                       required:
                       - availabilityZone
-                      - errorType
-                      - failCount
-                      - instanceType
+                      - nodePoolName
+                      - nodeScore
+                      - nodeTemplateName
+                      - numUnscheduledPods
+                      - scheduledPodNames
                       type: object
                     type: array
+                  traceLogURL:
+                    description: TraceLogURL is the URL to the transient trace log
+                      for the scaling simulation run.
+                    type: string
+                required:
+                - simRunResults
+                - traceLogURL
                 type: object
             type: object
         required:
