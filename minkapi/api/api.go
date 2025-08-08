@@ -6,13 +6,21 @@ package api
 
 import (
 	"context"
+	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	"time"
 
 	apicommon "github.com/gardener/scaling-advisor/api/common/types"
-	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -34,14 +42,48 @@ type MinKAPIConfig struct {
 	WatchQueueSize int
 }
 
-type MinKAPIAccess interface {
-	Start() error
-	Shutdown(ctx context.Context) error
+type WatchEventCallback func(watch.Event) (err error)
+
+type ResourceStore interface {
+	Add(mo metav1.Object) error
+	Update(mo metav1.Object) error
+	Delete(key string) error
+	GetByKey(key string) (o runtime.Object, err error)
+
+	DeleteObjects(c MatchCriteria) error
+	List(namespace string, labelSelector labels.Selector) (listObj runtime.Object, err error)
+
+	ListMetaObjects(c MatchCriteria) ([]metav1.Object, error)
+
+	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
+	Shutdown()
+}
+
+type EventSink interface {
+	events.EventSink
+	List() []*eventsv1.Event
+	Reset()
+}
+
+type View interface {
+	GetClients() (kubernetes.Interface, dynamic.Interface)
+	GetInformerFactories() (informers.SharedInformerFactory, dynamicinformer.DynamicSharedInformerFactory)
+	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
+	GetEventSink() EventSink
 	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error)
 	ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error)
 	ListEvents(namespace string) ([]*eventsv1.Event, error)
+	GetKubeConfigPath() string
+	Close()
+}
+
+type Server interface {
+	Start() error
+	Shutdown(ctx context.Context) error
+	GetBaseView() View
+	GetSimulationView() (View, error)
 }
 
 type MatchCriteria struct {

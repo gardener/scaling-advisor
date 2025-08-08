@@ -9,198 +9,96 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/minkapi/core/view"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	"io"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"reflect"
 	rt "runtime"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/core/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/core/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/core/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/core/store"
 	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	kjson "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
 )
 
-var _ api.MinKAPIAccess = (*InMemoryKAPI)(nil)
+var _ api.Server = (*InMemoryKAPI)(nil)
 
-// InMemoryKAPI holds the in-memory stores, watch channels, and version tracking for simple implementation of api.MinKAPIAccess
+// InMemoryKAPI holds the in-memory stores, watch channels, and version tracking for simple implementation of api.APIServer
 type InMemoryKAPI struct {
 	cfg          api.MinKAPIConfig
-	mu           sync.RWMutex
-	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
 	listenerAddr net.Addr
 	scheme       *runtime.Scheme
 	mux          *http.ServeMux
 	server       *http.Server
+	baseView     api.View
 	log          logr.Logger
 }
 
-func NewInMemoryMinKAPI(appCtx context.Context, cfg api.MinKAPIConfig, log logr.Logger) (api.MinKAPIAccess, error) {
+func NewInMemoryMinKAPI(ctx context.Context, cfg api.MinKAPIConfig) (api.Server, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	setMinKAPIConfigDefaults(&cfg)
 	mux := http.NewServeMux()
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
 	for _, d := range typeinfo.SupportedDescriptors {
 		stores[d.GVK] = store.NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, cfg.WatchQueueSize, cfg.WatchTimeout, typeinfo.SupportedScheme, log)
 	}
+	scheme := typeinfo.SupportedScheme
+	baseView, err := view.New(log, cfg.KubeConfigPath, scheme, cfg.WatchTimeout)
+	if err != nil {
+		return nil, err
+	}
 	s := &InMemoryKAPI{
 		cfg:    cfg,
-		stores: stores,
-		scheme: typeinfo.SupportedScheme,
+		scheme: scheme,
 		mux:    mux,
 		server: &http.Server{
 			Addr:    net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 			Handler: mux,
 			BaseContext: func(_ net.Listener) context.Context {
-				return appCtx
+				return ctx
 			},
 		},
-		log: log,
+		baseView: baseView,
+		log:      log,
 	}
 	s.registerRoutes()
 	return s, nil
 }
 
-func (k *InMemoryKAPI) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (err error) {
-	s := k.getStore(gvk)
-	if s == nil {
-		return fmt.Errorf("%w: no store for GVK %q", api.ErrStoreNotFound, gvk)
+func setMinKAPIConfigDefaults(cfg *api.MinKAPIConfig) {
+	if cfg.WatchQueueSize <= 0 {
+		cfg.WatchQueueSize = api.DefaultWatchQueueSize
 	}
-
-	name := obj.GetName()
-	namePrefix := obj.GetGenerateName()
-	if name == "" {
-		if namePrefix == "" {
-			return fmt.Errorf("%w: missing both name and generateName in request for creating object of objGvk %q in %q namespace", api.ErrCreateObject, gvk, obj.GetNamespace())
-		}
-		name = typeinfo.GenerateName(namePrefix)
+	if cfg.WatchTimeout <= 0 {
+		cfg.WatchTimeout = api.DefaultWatchTimeout
 	}
-	obj.SetName(name)
-
-	createTimestamp := obj.GetCreationTimestamp()
-	if (&createTimestamp).IsZero() { // only set creationTimestamp if not already set.
-		obj.SetCreationTimestamp(metav1.Time{Time: time.Now()})
+	if cfg.KubeConfigPath == "" {
+		cfg.KubeConfigPath = api.DefaultKubeConfigPath
 	}
-
-	if obj.GetUID() == "" {
-		obj.SetUID(uuid.NewUUID())
+	if cfg.Port == 0 {
+		cfg.Port = commonconstants.DefaultMinKAPIPort
 	}
-
-	objutil.SetMetaObjectGVK(obj, gvk)
-
-	err = s.Add(obj)
-	if err != nil {
-		return fmt.Errorf("%w: %w", api.ErrCreateObject, err)
-	}
-
-	return nil
-}
-
-func (k *InMemoryKAPI) DeleteObjects(gvk schema.GroupVersionKind, c api.MatchCriteria) error {
-	s := k.getStore(gvk)
-	if s == nil {
-		return fmt.Errorf("%w: store not found for gvk %q", api.ErrDeleteObject, gvk)
-	}
-	return s.DeleteObjects(c)
-}
-
-func (k *InMemoryKAPI) ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error) {
-	if len(strings.TrimSpace(namespace)) == 0 {
-		return nil, errors.New("cannot list pods without namespace")
-	}
-	podNamesSet := sets.New(matchingPodNames...)
-	c := api.MatchCriteria{
-		Namespace: namespace,
-		Names:     podNamesSet,
-	}
-	gvk := typeinfo.PodsDescriptor.GVK
-	s := k.getStore(gvk)
-	if s == nil {
-		return nil, fmt.Errorf("%w: store not found for gvk %q", api.ErrListObjects, gvk)
-	}
-	objs, err := s.ListMetaObjects(c)
-	if err != nil {
-		return nil, err
-	}
-	pods := make([]*corev1.Pod, 0, len(objs))
-	for _, obj := range objs {
-		pods = append(pods, obj.(*corev1.Pod))
-	}
-	return pods, nil
-}
-
-func (k *InMemoryKAPI) ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error) {
-	// if len(strings.TrimSpace(namespace)) == 0 {
-	// 	return nil, errors.New("cannot list nodes without namespace")
-	// }
-	nodeNamesSet := sets.New(matchingNodeNames...)
-	c := api.MatchCriteria{
-		// Namespace: namespace,
-		Names: nodeNamesSet,
-	}
-	gvk := typeinfo.NodesDescriptor.GVK
-	s := k.getStore(gvk)
-	if s == nil {
-		return nil, fmt.Errorf("%w: store not found for gvk %q", api.ErrListObjects, gvk)
-	}
-	objs, err := s.ListMetaObjects(c)
-	if err != nil {
-		return nil, err
-	}
-	nodes := make([]*corev1.Node, 0, len(objs))
-	for _, obj := range objs {
-		nodes = append(nodes, obj.(*corev1.Node))
-	}
-	return nodes, nil
-}
-
-func (k *InMemoryKAPI) ListEvents(namespace string) ([]*eventsv1.Event, error) {
-	if len(strings.TrimSpace(namespace)) == 0 {
-		return nil, errors.New("cannot list events without namespace")
-	}
-	c := api.MatchCriteria{
-		Namespace: namespace,
-	}
-	gvk := typeinfo.EventsDescriptor.GVK
-	s := k.getStore(gvk)
-	if s == nil {
-		return nil, fmt.Errorf("%w: store not found for gvk %q", api.ErrListObjects, gvk)
-	}
-	objs, err := s.ListMetaObjects(c)
-	if err != nil {
-		return nil, err
-	}
-	events := make([]*eventsv1.Event, 0, len(objs))
-	for _, obj := range objs {
-		events = append(events, obj.(*eventsv1.Event))
-	}
-	return events, nil
-}
-
-func (k *InMemoryKAPI) GetMux() *http.ServeMux {
-	return k.mux
 }
 
 // Start begins the HTTP server
@@ -241,16 +139,21 @@ func (k *InMemoryKAPI) Start() error {
 // Shutdown shuts down the HTTP server and closes resources
 func (k *InMemoryKAPI) Shutdown(ctx context.Context) (err error) {
 	err = k.server.Shutdown(ctx) // shutdown server first to avoid accepting new requests.
-	k.closeStores()
+	k.baseView.Close()
 	return
 }
 
-func (k *InMemoryKAPI) closeStores() {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-	for _, s := range k.stores {
-		s.Shutdown()
-	}
+func (k *InMemoryKAPI) GetBaseView() api.View {
+	return k.baseView
+}
+
+func (k *InMemoryKAPI) GetSimulationView() (api.View, error) {
+	// TODO replace with SchedulerView
+	return view.New(k.log, k.cfg.KubeConfigPath, k.scheme, k.cfg.WatchTimeout)
+}
+
+func (k *InMemoryKAPI) GetMux() *http.ServeMux {
+	return k.mux
 }
 
 func (k *InMemoryKAPI) registerRoutes() {
@@ -713,22 +616,6 @@ func (k *InMemoryKAPI) handleCreatePodBinding(w http.ResponseWriter, r *http.Req
 	writeJsonResponse(k.log, w, r, statusOK)
 }
 
-func (k *InMemoryKAPI) getStore(gvk schema.GroupVersionKind) *store.InMemResourceStore {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-	return k.stores[gvk]
-}
-
-func (k *InMemoryKAPI) getStoreOrWriteError(gvk schema.GroupVersionKind, w http.ResponseWriter, r *http.Request) (s *store.InMemResourceStore) {
-	s = k.getStore(gvk)
-	if s == nil {
-		err := fmt.Errorf("no store initialized for GVK %q", gvk)
-		k.log.Error(err, "store error", "gvk", gvk)
-		k.handleInternalServerError(w, r, err)
-	}
-	return
-}
-
 func writeStatusError(log logr.Logger, w http.ResponseWriter, r *http.Request, statusError *apierrors.StatusError) {
 	w.WriteHeader(int(statusError.ErrStatus.Code))
 	writeJsonResponse(log, w, r, statusError.ErrStatus)
@@ -741,6 +628,64 @@ func writeJsonResponse(log logr.Logger, w http.ResponseWriter, r *http.Request, 
 		log.Error(err, "cannot  encode response", "method", r.Method, "requestURI", r.RequestURI, "obj", obj)
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func (k *InMemoryKAPI) getStoreOrWriteError(gvk schema.GroupVersionKind, w http.ResponseWriter, r *http.Request) (s api.ResourceStore) {
+	s, err := k.baseView.GetResourceStore(gvk)
+	if err != nil {
+		k.log.Error(err, "store error", "gvk", gvk)
+		k.handleInternalServerError(w, r, err)
+	}
+	return s
+}
+
+func (k *InMemoryKAPI) readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		handleBadRequest(k.log, w, r, err)
+		ok = false
+		return
+	}
+	if err := json.Unmarshal(data, obj); err != nil {
+		err = fmt.Errorf("cannot unmarshal JSON for request %q: %w", r.RequestURI, err)
+		handleBadRequest(k.log, w, r, err)
+		ok = false
+		return
+	}
+	ok = true
+	return
+}
+
+func (k *InMemoryKAPI) handleError(w http.ResponseWriter, r *http.Request, err error) {
+	var statusErr *apierrors.StatusError
+	if errors.As(err, &statusErr) {
+		k.handleStatusError(w, r, statusErr)
+	} else {
+		k.handleInternalServerError(w, r, err)
+	}
+}
+
+func (k *InMemoryKAPI) handleStatusError(w http.ResponseWriter, r *http.Request, statusErr *apierrors.StatusError) {
+	w.WriteHeader(int(statusErr.ErrStatus.Code))
+	w.Header().Set("Content-Type", "application/json")
+	writeJsonResponse(k.log, w, r, statusErr.ErrStatus)
+}
+
+func (k *InMemoryKAPI) handleInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	statusErr := apierrors.NewInternalError(err)
+	k.log.Error(err, "internal server error")
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "application/json")
+	writeJsonResponse(k.log, w, r, statusErr.ErrStatus)
+}
+
+func handleBadRequest(log logr.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	err = fmt.Errorf("cannot handle request %q: %w", r.Method+" "+r.RequestURI, err)
+	log.Error(err, "bad request", "method", r.Method, "requestURI", r.RequestURI)
+	statusErr := apierrors.NewBadRequest(err.Error())
+	w.WriteHeader(http.StatusBadRequest)
+	w.Header().Set("Content-Type", "application/json")
+	writeJsonResponse(log, w, r, statusErr.ErrStatus)
 }
 
 func getParseResourceVersion(log logr.Logger, w http.ResponseWriter, r *http.Request) (resourceVersion int64, ok bool) {
@@ -795,55 +740,6 @@ func buildWatchEventJson(log logr.Logger, event *watch.Event) (string, error) {
 	return payload, nil
 }
 
-func (k *InMemoryKAPI) readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		handleBadRequest(k.log, w, r, err)
-		ok = false
-		return
-	}
-	if err := json.Unmarshal(data, obj); err != nil {
-		err = fmt.Errorf("cannot unmarshal JSON for request %q: %w", r.RequestURI, err)
-		handleBadRequest(k.log, w, r, err)
-		ok = false
-		return
-	}
-	ok = true
-	return
-}
-
-func (k *InMemoryKAPI) handleError(w http.ResponseWriter, r *http.Request, err error) {
-	var statusErr *apierrors.StatusError
-	if errors.As(err, &statusErr) {
-		k.handleStatusError(w, r, statusErr)
-	} else {
-		k.handleInternalServerError(w, r, err)
-	}
-}
-
-func (k *InMemoryKAPI) handleStatusError(w http.ResponseWriter, r *http.Request, statusErr *apierrors.StatusError) {
-	w.WriteHeader(int(statusErr.ErrStatus.Code))
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(k.log, w, r, statusErr.ErrStatus)
-}
-
-func (k *InMemoryKAPI) handleInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
-	statusErr := apierrors.NewInternalError(err)
-	k.log.Error(err, "internal server error")
-	w.WriteHeader(http.StatusInternalServerError)
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(k.log, w, r, statusErr.ErrStatus)
-}
-
-func handleBadRequest(log logr.Logger, w http.ResponseWriter, r *http.Request, err error) {
-	err = fmt.Errorf("cannot handle request %q: %w", r.Method+" "+r.RequestURI, err)
-	log.Error(err, "bad request", "method", r.Method, "requestURI", r.RequestURI)
-	statusErr := apierrors.NewBadRequest(err.Error())
-	w.WriteHeader(http.StatusBadRequest)
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(log, w, r, statusErr.ErrStatus)
-}
-
 func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
 	namespace := r.PathValue("namespace")
 	if namespace == "" && d.APIResource.Namespaced {
@@ -855,6 +751,14 @@ func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
 
 func GetObjectKey(r *http.Request, d typeinfo.Descriptor) string {
 	return GetObjectName(r, d).String()
+}
+
+func parseLabelSelector(req *http.Request) (labels.Selector, error) {
+	raw := req.URL.Query().Get("labelSelector")
+	if raw == "" {
+		return labels.Everything(), nil
+	}
+	return labels.Parse(raw)
 }
 
 func patchObject(objPtr runtime.Object, key string, contentType string, patchBytes []byte) error {
@@ -927,12 +831,4 @@ func patchStatus(objPtr runtime.Object, key string, patch []byte) error {
 	}
 	statusField.Set(newStatusVal.Elem())
 	return nil
-}
-
-func parseLabelSelector(req *http.Request) (labels.Selector, error) {
-	raw := req.URL.Query().Get("labelSelector")
-	if raw == "" {
-		return labels.Everything(), nil
-	}
-	return labels.Parse(raw)
 }

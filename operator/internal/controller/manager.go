@@ -50,7 +50,7 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 		Metrics: ctrlmetricsserver.Options{
 			BindAddress: net.JoinHostPort(saCfg.Metrics.Host, strconv.Itoa(saCfg.Metrics.Port)),
 		},
-		LeaderElection:                saCfg.LeaderElection.Enabled,
+		LeaderElection:                *saCfg.LeaderElection.LeaderElect,
 		LeaderElectionID:              saCfg.LeaderElection.ResourceName,
 		LeaderElectionResourceLock:    saCfg.LeaderElection.ResourceLock,
 		LeaderElectionReleaseOnCancel: true,
@@ -70,7 +70,7 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 func getRestConfig(operatorCfg *configv1alpha1.ScalingAdvisorConfiguration) *rest.Config {
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg != nil {
-		restCfg.Burst = operatorCfg.ClientConnection.Burst
+		restCfg.Burst = int(operatorCfg.ClientConnection.Burst)
 		restCfg.QPS = operatorCfg.ClientConnection.QPS
 		restCfg.AcceptContentTypes = operatorCfg.ClientConnection.AcceptContentTypes
 		restCfg.ContentType = operatorCfg.ClientConnection.ContentType

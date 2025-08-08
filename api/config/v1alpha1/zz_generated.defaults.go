@@ -26,4 +26,5 @@ func SetObjectDefaults_ScalingAdvisorConfiguration(in *ScalingAdvisorConfigurati
 	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
 	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
 	SetDefaults_ServerConfig(&in.Server)
+	SetDefaults_ScalingConstraintsControllerConfiguration(&in.Controllers.ScalingConstraints)
 }

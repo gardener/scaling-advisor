@@ -26,6 +26,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+var _ api.ResourceStore = (*InMemResourceStore)(nil)
+
 type InMemResourceStore struct {
 	objGVK       schema.GroupVersionKind
 	objListGVK   schema.GroupVersionKind
@@ -290,7 +292,7 @@ func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespa
 
 type EventCallbackFn func(watch.Event) (err error)
 
-func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback EventCallbackFn) error {
+func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
 	events, err := s.buildPendingWatchEvents(startVersion, namespace, labelSelector)
 	if err != nil {
 		return err

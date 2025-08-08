@@ -9,6 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	componentbaseconfigv1alpha1 "k8s.io/component-base/config/v1alpha1"
 )
 
 // ValidateScalingAdvisorConfiguration validates the ScalingAdvisorConfiguration.
@@ -20,7 +21,7 @@ func ValidateScalingAdvisorConfiguration(config *configv1apha1.ScalingAdvisorCon
 	return allErrs
 }
 
-func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfiguration, fldPath *field.Path) field.ErrorList {
+func validateClientConnectionConfiguration(config componentbaseconfigv1alpha1.ClientConnectionConfiguration, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
 	if config.Burst < 0 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("burst"), config.Burst, "burst must be non-negative"))
@@ -28,9 +29,9 @@ func validateClientConnectionConfiguration(config configv1apha1.ClientConnection
 	return allErrs
 }
 
-func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfiguration, fldPath *field.Path) field.ErrorList {
+func validateLeaderElectionConfiguration(config componentbaseconfigv1alpha1.LeaderElectionConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if !config.Enabled {
+	if config.LeaderElect == nil || !*config.LeaderElect {
 		return allErrs
 	}
 	allErrs = append(allErrs, mustBeGreaterThanZeroDuration(config.LeaseDuration, fldPath.Child("leaseDuration"))...)
