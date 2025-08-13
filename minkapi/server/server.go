@@ -9,12 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/server/view"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	"io"
-	kjson "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/client-go/tools/cache"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -23,11 +18,17 @@ import (
 	"strconv"
 	"time"
 
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/server/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
@@ -404,7 +405,7 @@ func (k *InMemoryKAPI) handleListOrWatch(d typeinfo.Descriptor) http.HandlerFunc
 			return
 		}
 
-		if isWatch == "true" {
+		if isWatch == "true" || isWatch == "1" { // FIXME : should check "1" as well
 			delegate = k.handleWatch(d, labelSelector)
 		} else {
 			delegate = k.handleList(d, labelSelector)
