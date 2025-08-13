@@ -2,6 +2,10 @@ package view
 
 import (
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/core/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/core/objutil"
@@ -21,9 +25,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"strings"
-	"sync"
-	"time"
 )
 
 var _ api.View = (*baseObjectView)(nil)
@@ -41,7 +42,7 @@ type baseObjectView struct {
 	eventSink          api.EventSink
 }
 
-func New(log logr.Logger, kubeConfigPath string, scheme *runtime.Scheme, resyncPeriod time.Duration) (api.View, error) {
+func New(log logr.Logger, kubeConfigPath string, scheme *runtime.Scheme, resyncPeriod time.Duration, stores map[schema.GroupVersionKind]*store.InMemResourceStore) (api.View, error) {
 	client, dynClient, err := buildClients(kubeConfigPath)
 	if err != nil {
 		return nil, err
@@ -52,7 +53,7 @@ func New(log logr.Logger, kubeConfigPath string, scheme *runtime.Scheme, resyncP
 		log:                log,
 		kubeConfigPath:     kubeConfigPath,
 		scheme:             scheme,
-		stores:             make(map[schema.GroupVersionKind]*store.InMemResourceStore),
+		stores:             stores,
 		client:             client,
 		dynClient:          dynClient,
 		informerFactory:    informerFactory,

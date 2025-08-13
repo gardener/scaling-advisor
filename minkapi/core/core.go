@@ -9,12 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/core/view"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	"io"
-	kjson "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/client-go/tools/cache"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -22,6 +17,12 @@ import (
 	rt "runtime"
 	"strconv"
 	"time"
+
+	"github.com/gardener/scaling-advisor/minkapi/core/view"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/core/configtmpl"
@@ -64,7 +65,7 @@ func NewInMemoryMinKAPI(ctx context.Context, cfg api.MinKAPIConfig) (api.Server,
 		stores[d.GVK] = store.NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, cfg.WatchQueueSize, cfg.WatchTimeout, typeinfo.SupportedScheme, log)
 	}
 	scheme := typeinfo.SupportedScheme
-	baseView, err := view.New(log, cfg.KubeConfigPath, scheme, cfg.WatchTimeout)
+	baseView, err := view.New(log, cfg.KubeConfigPath, scheme, cfg.WatchTimeout, stores)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +150,8 @@ func (k *InMemoryKAPI) GetBaseView() api.View {
 
 func (k *InMemoryKAPI) GetSimulationView() (api.View, error) {
 	// TODO replace with SchedulerView
-	return view.New(k.log, k.cfg.KubeConfigPath, k.scheme, k.cfg.WatchTimeout)
+	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
+	return view.New(k.log, k.cfg.KubeConfigPath, k.scheme, k.cfg.WatchTimeout, stores)
 }
 
 func (k *InMemoryKAPI) GetMux() *http.ServeMux {
@@ -410,7 +412,7 @@ func (k *InMemoryKAPI) handleListOrWatch(d typeinfo.Descriptor) http.HandlerFunc
 			return
 		}
 
-		if isWatch == "true" {
+		if isWatch == "true" || isWatch == "1" { // FIXME : should check "1" as well
 			delegate = k.handleWatch(d, labelSelector)
 		} else {
 			delegate = k.handleList(d, labelSelector)
@@ -460,7 +462,7 @@ func (k *InMemoryKAPI) handlePatch(d typeinfo.Descriptor) http.HandlerFunc {
 		}
 		err = patchObject(o, key, contentType, patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to atch o %q: %w", key, err)
+			err = fmt.Errorf("failed to patch o %q: %w", key, err)
 			k.handleInternalServerError(w, r, err)
 			return
 		}
@@ -506,7 +508,7 @@ func (k *InMemoryKAPI) handlePatchStatus(d typeinfo.Descriptor) http.HandlerFunc
 		}
 		err = patchStatus(o, key, patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to atch status for o %q: %w", key, err)
+			err = fmt.Errorf("failed to patch status for o %q: %w", key, err)
 			k.handleInternalServerError(w, r, err)
 			return
 		}
