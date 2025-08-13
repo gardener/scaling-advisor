@@ -150,7 +150,8 @@ func (k *InMemoryKAPI) GetBaseView() api.View {
 
 func (k *InMemoryKAPI) GetSimulationView() (api.View, error) {
 	// TODO replace with SchedulerView
-	return view.New(k.log, k.cfg.KubeConfigPath, k.scheme, k.cfg.WatchTimeout)
+	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
+	return view.New(k.log, k.cfg.KubeConfigPath, k.scheme, k.cfg.WatchTimeout, stores)
 }
 
 func (k *InMemoryKAPI) GetMux() *http.ServeMux {
@@ -461,7 +462,7 @@ func (k *InMemoryKAPI) handlePatch(d typeinfo.Descriptor) http.HandlerFunc {
 		}
 		err = patchObject(o, key, contentType, patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to atch o %q: %w", key, err)
+			err = fmt.Errorf("failed to patch o %q: %w", key, err)
 			k.handleInternalServerError(w, r, err)
 			return
 		}
@@ -507,7 +508,7 @@ func (k *InMemoryKAPI) handlePatchStatus(d typeinfo.Descriptor) http.HandlerFunc
 		}
 		err = patchStatus(o, key, patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to atch status for o %q: %w", key, err)
+			err = fmt.Errorf("failed to patch status for o %q: %w", key, err)
 			k.handleInternalServerError(w, r, err)
 			return
 		}
