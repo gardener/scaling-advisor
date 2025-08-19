@@ -48,6 +48,56 @@ type LeastWaste struct {
 }
 
 func (l LeastWaste) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
-	//TODO implement me
-	panic("implement me")
+	//	Instead of calculating absolute wastage across the cluster, we look at relative wastage as a score.
+	//	Relative Wastage can be calculated by summing the wastage on the current simulated node
+	//	and, the "negative" waste as a result of unscheduled pods being scheduled on to existing nodes.
+	// Existing nodes include simulated winner nodes from previous runs.
+	var currWastage = make(map[v1.ResourceName]resource.Quantity)
+	for name, quantity := range args.ScaledAssignment.Node.Allocatable {
+		if value, found := currWastage[name]; found {
+			value.Add(quantity)
+			currWastage[name] = value
+		} else {
+			currWastage[name] = quantity.DeepCopy()
+		}
+	}
+	//subtract current usage to find wastage on current node
+	for _, pod := range args.ScaledAssignment.ScheduledPods {
+		for name, quantity := range pod.AggregatedRequests {
+			if value, found := currWastage[name]; found {
+				value.Sub(quantity)
+				currWastage[name] = value
+			} else {
+				return api.NodeScore{}, fmt.Errorf("scaled node does not support resource %s required by pod %s", name, pod.Name)
+			}
+		}
+	}
+	//subtract resources scheduled on existing nodes from wastage to find relative wastage
+	for _, assignment := range args.Assignments {
+		for _, pod := range assignment.ScheduledPods {
+			for name, quantity := range pod.AggregatedRequests {
+				if value, found := currWastage[name]; found {
+					value.Sub(quantity)
+					currWastage[name] = value
+				} else {
+					return api.NodeScore{}, fmt.Errorf("node %s does not support resource %s required by pod %s", assignment.Node.Name, name, pod.Name)
+				}
+			}
+		}
+	}
+	//calculate final relative wastage score using weights for resource types
+	var aggregator float64
+	for name, quantity := range currWastage {
+		if weight, found := l.weights[name]; !found {
+			return api.NodeScore{}, fmt.Errorf("no weight found for resource %s", name)
+		} else {
+			aggregator += weight * float64(quantity.Value())
+		}
+	}
+	return api.NodeScore{
+		SimulationName:  args.SimulationName,
+		Placement:       args.Placement,
+		UnscheduledPods: args.UnscheduledPods,
+		Value:           int(aggregator),
+	}, nil
 }
