@@ -5,12 +5,14 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
@@ -58,6 +61,8 @@ func TestAdd(t *testing.T) {
 			p := testPod.DeepCopy()
 			p.TypeMeta = tc.typeMeta
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Shutdown() })
+
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Add(obj1); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -113,6 +118,8 @@ func TestUpdate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create object before updating
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Shutdown() })
+
 			createdPod := testPod.DeepCopy()
 			createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 			if err := s.Add(metav1.Object(createdPod)); err != nil {
@@ -184,6 +191,7 @@ func TestDelete(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Shutdown() })
 
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
@@ -241,6 +249,7 @@ func TestGetByKey(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Shutdown() })
 
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
@@ -268,23 +277,7 @@ func TestGetByKey(t *testing.T) {
 
 func TestList(t *testing.T) {
 	s := createStoreForTesting(typeinfo.PodsDescriptor)
-
-	createdPods := make([]corev1.Pod, 3)
-	for i := range 3 {
-		createdPods[i] = *testPod.DeepCopy()
-		createdPods[i].TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-		createdPods[i].Name = fmt.Sprintf("%s-%d", testPod.Name, i)
-
-		createdPods[i].Labels = make(map[string]string)
-		for j := range i + 1 {
-			createdPods[i].Labels[fmt.Sprintf("k%d", j)] = fmt.Sprintf("v%d", j)
-		}
-
-		if err := s.Add(metav1.Object(&createdPods[i])); err != nil {
-			t.Errorf("Error adding object to store")
-			return
-		}
-	}
+	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
 		namespace               string
@@ -342,11 +335,251 @@ func TestList(t *testing.T) {
 	}
 }
 
+func TestBuildPendingWatchEvents(t *testing.T) {
+	s := createStoreForTesting(typeinfo.PodsDescriptor)
+	_, _ = createPodsForTesting(t, s)
+
+	tests := map[string]struct {
+		namespace               string
+		labelSelector           labels.Selector
+		startVersion            int64
+		retErr                  error
+		expectedNumberOfObjects int
+	}{
+		"base": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.SelectorFromSet(labels.Set{"k0": "v0"}),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 3,
+		},
+		"high resource version": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            1000,
+			expectedNumberOfObjects: 0,
+		},
+		"resource version that doesn't match all objects": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            3,
+			expectedNumberOfObjects: 1,
+		},
+		"negative resource version": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            -999,
+			expectedNumberOfObjects: 3,
+		},
+		"labels that don't match all objects": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.SelectorFromSet(labels.Set{"k1": "v1"}),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 2,
+		},
+		"empty labelSelector": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 3,
+		},
+		"non-matching namespace": {
+			namespace:               "abcd",
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 0,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			watchEvents, err := s.buildPendingWatchEvents(tc.startVersion, tc.namespace, tc.labelSelector)
+			if err != nil {
+				assertError(t, err, tc.retErr)
+			}
+			if len(watchEvents) != tc.expectedNumberOfObjects {
+				t.Errorf("Expected returned number of objects to be %d, got %d",
+					tc.expectedNumberOfObjects,
+					len(watchEvents),
+				)
+			}
+			for _, w := range watchEvents {
+				if w.Type != watch.Added {
+					t.Errorf("Expected watch event type to be ADDED, got: %s", w.Type)
+				}
+				obj := w.Object.(metav1.Object)
+				t.Logf("Event type: %s, object name: %s, resourceVersion: %s", w.Type, obj.GetName(), obj.GetResourceVersion())
+			}
+		})
+	}
+}
+
+func TestWatch(t *testing.T) {
+	tests := map[string]struct {
+		namespace               string
+		labelSelector           labels.Selector
+		startVersion            int64
+		retErr                  error
+		expectedNumberOfObjects int
+		modifyObjectAfterWatch  bool
+	}{
+		"base": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.SelectorFromSet(labels.Set{"k0": "v0"}),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 3,
+		},
+		"high resource version": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            1000,
+			expectedNumberOfObjects: 0,
+		},
+		"resource version that doesn't match all objects": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            3,
+			expectedNumberOfObjects: 1,
+		},
+		"labels that don't match all objects": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.SelectorFromSet(labels.Set{"k1": "v1"}),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 2,
+		},
+		"empty labelSelector": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 3,
+		},
+		"non-matching namespace": {
+			namespace:               "abcd",
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 0,
+		},
+		"modify object after watch starts": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 4,
+			modifyObjectAfterWatch:  true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Shutdown() })
+
+			createdPods, _ := createPodsForTesting(t, s)
+			var (
+				receivedEvents []watch.Event
+				eventsMutex    sync.Mutex
+				wg             sync.WaitGroup
+				watchErr       error
+			)
+
+			eventCallback := func(event watch.Event) error {
+				evt, err := AsMeta(s.log, event.Object)
+				if err != nil {
+					return err
+				}
+				t.Logf("Received event: %s for %s with resourceVersion %s",
+					event.Type, evt.GetName(), evt.GetResourceVersion(),
+				)
+
+				eventsMutex.Lock()
+				receivedEvents = append(receivedEvents, event)
+				eventsMutex.Unlock()
+				return nil
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			time.Sleep(100 * time.Millisecond)
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				watchErr = s.Watch(ctx, tc.startVersion, tc.namespace, tc.labelSelector, eventCallback)
+			}()
+
+			if tc.modifyObjectAfterWatch {
+				time.Sleep(100 * time.Millisecond)
+				modifiedPod := createdPods[0].DeepCopy()
+				modifiedPod.Labels["modified"] = "true"
+				if err := s.Update(metav1.Object(modifiedPod)); err != nil {
+					t.Errorf("Error updating object in store: %v", err)
+					cancel()
+					wg.Wait()
+					return
+				}
+			}
+
+			time.Sleep(100 * time.Millisecond)
+
+			cancel()
+			wg.Wait()
+
+			if watchErr != nil && watchErr != context.Canceled {
+				assertError(t, watchErr, tc.retErr)
+			}
+
+			eventsMutex.Lock()
+			count := len(receivedEvents)
+			eventsMutex.Unlock()
+
+			if count != tc.expectedNumberOfObjects {
+				t.Errorf("Expected returned number of objects to be %d, got %d",
+					tc.expectedNumberOfObjects,
+					count,
+				)
+			}
+		})
+	}
+}
+
 func createStoreForTesting(d typeinfo.Descriptor) *InMemResourceStore {
 	queueSize := 100
 	watchTimeout := time.Duration(2 * time.Second)
 	log := klog.NewKlogr().V(4)
 	return NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, queueSize, watchTimeout, typeinfo.SupportedScheme, log)
+}
+
+func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, error) {
+	t.Helper()
+	createdPods := make([]corev1.Pod, 3)
+	for i := range 3 {
+		createdPods[i] = *testPod.DeepCopy()
+		createdPods[i].TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+		createdPods[i].Name = fmt.Sprintf("%s-%d", testPod.Name, i)
+
+		createdPods[i].Labels = make(map[string]string)
+		for j := range i + 1 {
+			createdPods[i].Labels[fmt.Sprintf("k%d", j)] = fmt.Sprintf("v%d", j)
+		}
+
+		if err := s.Add(metav1.Object(&createdPods[i])); err != nil {
+			t.Errorf("Error adding object to store")
+			return nil, err
+		}
+	}
+	return createdPods, nil
 }
 
 func assertError(t *testing.T, got error, want error) {
