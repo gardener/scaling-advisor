@@ -10,7 +10,72 @@ import (
 var _ api.GetNodeScoreSelector = GetNodeScoreSelector
 
 func GetNodeScoreSelector(scoringStrategy commontypes.NodeScoringStrategy) (api.NodeScoreSelector, error) {
-	panic("implement me")
+	switch scoringStrategy {
+	case commontypes.LeastCostNodeScoringStrategy:
+		return maxAllocatable, nil
+	case commontypes.LeastWasteNodeScoringStrategy:
+		return minPrice, nil
+	default:
+		return nil, fmt.Errorf("%w: unsupported %q", api.ErrUnsupportedNodeScoringStrategy, scoringStrategy)
+	}
+}
+
+var maxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+	if len(nodeScores) == 0 {
+		return -1, nil
+	}
+	if len(nodeScores) == 1 {
+		return 0, nil
+	}
+	var winner int
+	var maxNormalizedAlloc int64
+	for resourceName, quantity := range nodeScores[0].ScaledNodeResource.Allocatable {
+		if weight, ok := weights[resourceName]; ok {
+			maxNormalizedAlloc += weight * quantity
+		} else {
+			return -1, fmt.Errorf("no weight found for resource %s", resourceName)
+		}
+	}
+	for index, candidate := range nodeScores[1:] {
+		var normalizedAlloc int64
+		for resourceName, quantity := range candidate.ScaledNodeResource.Allocatable {
+			if weight, ok := weights[resourceName]; ok {
+				normalizedAlloc += weight * quantity
+			} else {
+				return -1, fmt.Errorf("no weight found for resource %s", resourceName)
+			}
+		}
+		if maxNormalizedAlloc < normalizedAlloc {
+			winner = index
+			maxNormalizedAlloc = normalizedAlloc
+		}
+	}
+	return winner, nil
+}
+
+var minPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+	if len(nodeScores) == 0 {
+		return -1, nil
+	}
+	if len(nodeScores) == 1 {
+		return 0, nil
+	}
+	var winner int
+	leastPrice, err := pricing.GetPrice("", nodeScores[0].ScaledNodeResource.InstanceType)
+	if err != nil {
+		return -1, err
+	}
+	for index, candidate := range nodeScores[1:] {
+		price, err := pricing.GetPrice("", candidate.ScaledNodeResource.InstanceType)
+		if err != nil {
+			return -1, err
+		}
+		if leastPrice > price {
+			leastPrice = price
+			winner = index
+		}
+	}
+	return winner, nil
 }
 
 var _ api.GetNodeScorer = GetNodeScorer
@@ -79,10 +144,11 @@ func (l LeastCost) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		return api.NodeScore{}, err
 	}
 	return api.NodeScore{
-		SimulationName:  args.SimulationName,
-		Placement:       args.Placement,
-		UnscheduledPods: args.UnscheduledPods,
-		Value:           int(aggregator / price),
+		SimulationName:     args.SimulationName,
+		Placement:          args.Placement,
+		UnscheduledPods:    args.UnscheduledPods,
+		Value:              int(aggregator / price),
+		ScaledNodeResource: args.ScaledAssignment.Node,
 	}, nil
 }
 
@@ -136,9 +202,10 @@ func (l LeastWaste) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		}
 	}
 	return api.NodeScore{
-		SimulationName:  args.SimulationName,
-		Placement:       args.Placement,
-		UnscheduledPods: args.UnscheduledPods,
-		Value:           int(aggregator),
+		SimulationName:     args.SimulationName,
+		Placement:          args.Placement,
+		UnscheduledPods:    args.UnscheduledPods,
+		Value:              int(aggregator),
+		ScaledNodeResource: args.ScaledAssignment.Node,
 	}, nil
 }
