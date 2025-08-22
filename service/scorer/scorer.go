@@ -61,12 +61,12 @@ var minPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights ma
 		return 0, nil
 	}
 	var winner int
-	leastPrice, err := pricing.GetPrice("", nodeScores[0].ScaledNodeResource.InstanceType)
+	leastPrice, err := pricing.GetPrice(nodeScores[0].Placement.Region, nodeScores[0].ScaledNodeResource.InstanceType)
 	if err != nil {
 		return -1, err
 	}
 	for index, candidate := range nodeScores[1:] {
-		price, err := pricing.GetPrice("", candidate.ScaledNodeResource.InstanceType)
+		price, err := pricing.GetPrice(candidate.Placement.Region, candidate.ScaledNodeResource.InstanceType)
 		if err != nil {
 			return -1, err
 		}
@@ -96,7 +96,6 @@ var _ api.NodeScorer = (*LeastCost)(nil)
 type LeastCost struct {
 	instancePricing api.InstancePricing
 	weights         map[v1.ResourceName]float64
-	// TODO
 }
 
 func (l LeastCost) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
@@ -138,8 +137,7 @@ func (l LeastCost) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		}
 	}
 	//divide total scheduledResources by instance price to get score
-	//TODO get value for region
-	price, err := l.instancePricing.GetPrice("", args.ScaledAssignment.Node.InstanceType)
+	price, err := l.instancePricing.GetPrice(args.Placement.Region, args.ScaledAssignment.Node.InstanceType)
 	if err != nil {
 		return api.NodeScore{}, err
 	}
@@ -157,7 +155,6 @@ var _ api.NodeScorer = (*LeastWaste)(nil)
 type LeastWaste struct {
 	instancePricing api.InstancePricing
 	weights         map[v1.ResourceName]float64
-	// TODO
 }
 
 func (l LeastWaste) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
