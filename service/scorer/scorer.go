@@ -5,6 +5,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/service/api"
 	v1 "k8s.io/api/core/v1"
+	"math/rand/v2"
 )
 
 var _ api.GetNodeScoreSelector = GetNodeScoreSelector
@@ -12,22 +13,26 @@ var _ api.GetNodeScoreSelector = GetNodeScoreSelector
 func GetNodeScoreSelector(scoringStrategy commontypes.NodeScoringStrategy) (api.NodeScoreSelector, error) {
 	switch scoringStrategy {
 	case commontypes.LeastCostNodeScoringStrategy:
-		return maxAllocatable, nil
+		return SelectMaxAllocatable, nil
 	case commontypes.LeastWasteNodeScoringStrategy:
-		return minPrice, nil
+		return SelectMinPrice, nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported %q", api.ErrUnsupportedNodeScoringStrategy, scoringStrategy)
 	}
 }
 
-var maxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+// SelectMaxAllocatable returns the index of the node score for the node with the highest allocatable.
+// This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
+// Larger instance types --> less fragmentation
+// if multiple node scores have instance types with the same allocatable, an index is picked at random from them
+var SelectMaxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
 	if len(nodeScores) == 0 {
 		return -1, nil
 	}
 	if len(nodeScores) == 1 {
 		return 0, nil
 	}
-	var winner int
+	var winners []int
 	var maxNormalizedAlloc int64
 	for resourceName, quantity := range nodeScores[0].ScaledNodeResource.Allocatable {
 		if weight, ok := weights[resourceName]; ok {
@@ -36,6 +41,7 @@ var maxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weig
 			return -1, fmt.Errorf("no weight found for resource %s", resourceName)
 		}
 	}
+	winners = append(winners, 0)
 	for index, candidate := range nodeScores[1:] {
 		var normalizedAlloc int64
 		for resourceName, quantity := range candidate.ScaledNodeResource.Allocatable {
@@ -45,23 +51,31 @@ var maxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weig
 				return -1, fmt.Errorf("no weight found for resource %s", resourceName)
 			}
 		}
-		if maxNormalizedAlloc < normalizedAlloc {
-			winner = index
+		if maxNormalizedAlloc == normalizedAlloc {
+			winners = append(winners, index)
+
+		} else if maxNormalizedAlloc < normalizedAlloc {
+			winners = winners[:0]
+			winners = append(winners, index)
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
-	return winner, nil
+	//pick one winner at random from winners
+	return rand.IntN(len(winners)), nil
 }
 
-var minPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+// SelectMinPrice returns the index of the node score for the node with the lowest price.
+// if multiple node scores have instance types with the same price, an index is picked at random from them
+var SelectMinPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
 	if len(nodeScores) == 0 {
 		return -1, nil
 	}
 	if len(nodeScores) == 1 {
 		return 0, nil
 	}
-	var winner int
+	var winners []int
 	leastPrice, err := pricing.GetPrice(nodeScores[0].Placement.Region, nodeScores[0].ScaledNodeResource.InstanceType)
+	winners = append(winners, 0)
 	if err != nil {
 		return -1, err
 	}
@@ -70,12 +84,16 @@ var minPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights ma
 		if err != nil {
 			return -1, err
 		}
-		if leastPrice > price {
+		if leastPrice == price {
+			winners = append(winners, index)
+		} else if leastPrice > price {
+			winners = winners[:0]
+			winners = append(winners, index)
 			leastPrice = price
-			winner = index
 		}
 	}
-	return winner, nil
+	//pick one winner at random from winners
+	return rand.IntN(len(winners)), nil
 }
 
 var _ api.GetNodeScorer = GetNodeScorer
