@@ -21,11 +21,9 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/store"
-	minkapistore "github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
+	"github.com/go-logr/logr"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -35,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2"
 )
 
 func TestPatchPodStatus(t *testing.T) {
@@ -185,7 +182,7 @@ func TestPatchObjectUsingEvent(t *testing.T) {
 
 // ---------------------------------------------------------------------------------------------
 func TestHTTPHandlers(t *testing.T) {
-	s, err := startMinkapiService(t, true)
+	s, mux, err := startMinkapiService(t)
 	if err != nil {
 		t.Errorf("Can not start minkapi service: %v", err)
 		return
@@ -357,7 +354,7 @@ func TestHTTPHandlers(t *testing.T) {
 		},
 	}
 
-	t.Cleanup(func() { s.Shutdown(context.TODO()) })
+	t.Cleanup(func() { s.Stop(context.TODO()) })
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Cleanup(func() {
@@ -382,7 +379,7 @@ func TestHTTPHandlers(t *testing.T) {
 			req := httptest.NewRequest(tc.reqMethod, tc.reqTarget, requestData)
 			req.Header.Set("Content-Type", tc.reqContentType)
 			w := httptest.NewRecorder()
-			s.mux.ServeHTTP(w, req)
+			mux.ServeHTTP(w, req)
 			resp := w.Result()
 			defer resp.Body.Close()
 
@@ -422,7 +419,7 @@ func TestHTTPHandlers(t *testing.T) {
 }
 
 func TestAPIHandlerMethods(t *testing.T) {
-	s, err := startMinkapiService(t, true)
+	s, _, err := startMinkapiService(t)
 	if err != nil {
 		t.Errorf("Can not start minkapi service: %v", err)
 		return
@@ -483,7 +480,7 @@ func TestAPIHandlerMethods(t *testing.T) {
 			want:           typeinfo.SupportedCoreAPIResourceList,
 		},
 	}
-	t.Cleanup(func() { s.Shutdown(context.TODO()) })
+	t.Cleanup(func() { s.Stop(context.TODO()) })
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(tc.reqMethod, tc.reqTarget, nil)
@@ -530,193 +527,8 @@ func TestAPIHandlerMethods(t *testing.T) {
 	}
 }
 
-func TestNoStores(t *testing.T) {
-	s, err := startMinkapiService(t, false) // Starting with no store creation
-	if err != nil {
-		t.Errorf("Can not start minkapi service: %v", err)
-		return
-	}
-
-	tests := map[string]struct {
-		filePath                         string
-		patchData                        string
-		reqMethod                        string
-		reqTarget                        string
-		reqContentType                   string
-		expectedStatus                   int
-		createObjectBeforeRequest        bool
-		ignoredFieldsForOutputComparison cmp.Option
-	}{
-		"pod creation": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodPost,
-			reqTarget:                        "/api/v1/namespaces/default/pods",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"create corrupted pod": {
-			filePath:                  "./testdata/corrupt-pod-a.json",
-			reqMethod:                 http.MethodPost,
-			reqTarget:                 "/api/v1/namespaces/default/pods",
-			reqContentType:            "application/json",
-			expectedStatus:            http.StatusInternalServerError,
-			createObjectBeforeRequest: false,
-		},
-		"create pod without namespace specified": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodPost,
-			reqTarget:                        "/api/v1/pods",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"create pod missing name and generateName": { // TODO Patch pod-a rather than creating files
-			filePath:                         "./testdata/name-miss-pod-a.json",
-			reqMethod:                        http.MethodPost,
-			reqTarget:                        "/api/v1/namespaces/default/pods",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"create pod missing name, UID and creationTimestamp": { // TODO Patch pod-a rather than creating files
-			filePath:                         "./testdata/uid-ts-pod-a.json",
-			reqMethod:                        http.MethodPost,
-			reqTarget:                        "/api/v1/namespaces/default/pods",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion", "Name", "Namespace", "UID", "CreationTimestamp"),
-		},
-		"fetch existing pod": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodGet,
-			reqTarget:                        "/api/v1/namespaces/default/pods/bingo",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"delete existing pod": {
-			filePath:                  "./testdata/pod-a.json",
-			reqMethod:                 http.MethodDelete,
-			reqTarget:                 "/api/v1/namespaces/default/pods/bingo",
-			reqContentType:            "application/json",
-			expectedStatus:            http.StatusInternalServerError,
-			createObjectBeforeRequest: false,
-		},
-		"fetch non-existent pod": {
-			filePath:                  "./testdata/pod-a.json",
-			reqMethod:                 http.MethodGet,
-			reqTarget:                 "/api/v1/namespaces/default/pods/bingo",
-			reqContentType:            "application/json",
-			expectedStatus:            http.StatusInternalServerError,
-			createObjectBeforeRequest: false,
-		},
-		"delete non-existent pod": {
-			filePath:                  "./testdata/pod-a.json",
-			reqMethod:                 http.MethodDelete,
-			reqTarget:                 "/api/v1/namespaces/default/pods/bingo",
-			reqContentType:            "application/json",
-			expectedStatus:            http.StatusInternalServerError,
-			createObjectBeforeRequest: false,
-		},
-		"update non-existent pod": {
-			filePath:                  "./testdata/pod-a.json",
-			reqMethod:                 http.MethodPut,
-			reqTarget:                 "/api/v1/namespaces/default/pods/bingo",
-			reqContentType:            "application/json",
-			expectedStatus:            http.StatusInternalServerError,
-			createObjectBeforeRequest: false,
-		},
-		"watch all pods": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodGet,
-			reqTarget:                        "/api/v1/pods?watch=1&resourceVersion=0",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"fetch pod list": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodGet,
-			reqTarget:                        "/api/v1/namespaces/default/pods",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"matching label selector for pods": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodGet,
-			reqTarget:                        "/api/v1/pods?labelSelector=app.kubernetes.io/component=minkapitest",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"non-matching label selector for pods": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodGet,
-			reqTarget:                        "/api/v1/pods?labelSelector=app.kubernetes.io/component=abcdefgh",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-		"create pod binding": {
-			filePath:                         "./testdata/pod-a.json",
-			reqMethod:                        http.MethodPost,
-			reqTarget:                        "/api/v1/namespaces/default/pods/bingo/binding",
-			reqContentType:                   "application/json",
-			expectedStatus:                   http.StatusInternalServerError,
-			createObjectBeforeRequest:        false,
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		},
-	}
-
-	t.Cleanup(func() { s.Shutdown(context.TODO()) })
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			jsonData, err := os.ReadFile(tc.filePath)
-			if err != nil {
-				t.Logf("failed to read: %v", err)
-				return
-			}
-			requestData := bytes.NewReader(jsonData)
-			req := httptest.NewRequest(tc.reqMethod, tc.reqTarget, requestData)
-			req.Header.Set("Content-Type", tc.reqContentType)
-			w := httptest.NewRecorder()
-			s.mux.ServeHTTP(w, req)
-			resp := w.Result()
-			defer resp.Body.Close()
-
-			responseData, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Errorf("expected error to be nil got %v", err)
-				return
-			}
-			if resp.StatusCode != tc.expectedStatus {
-				t.Errorf("Unexpected status code, got: %d, expected: %d", resp.StatusCode, tc.expectedStatus)
-				t.Logf(">>> Got response: %s\n", string(responseData))
-				return
-			} else if resp.StatusCode != http.StatusOK {
-				t.Logf("Expected status error: %s", resp.Status)
-				return
-			}
-
-			want, _ := convertJSONtoObject[corev1.Pod](t, jsonData)
-			t.Logf("%s object %s successful", tc.reqMethod, want.Name)
-		})
-	}
-}
-
 func TestPatchPutHTTPHandlers(t *testing.T) {
-	s, err := startMinkapiService(t, true)
+	s, mux, err := startMinkapiService(t)
 	if err != nil {
 		t.Errorf("Can not start minkapi service: %v", err)
 		return
@@ -838,7 +650,7 @@ func TestPatchPutHTTPHandlers(t *testing.T) {
 		},
 	}
 
-	t.Cleanup(func() { s.Shutdown(context.TODO()) })
+	t.Cleanup(func() { s.Stop(context.TODO()) })
 	for name, tc := range patchTests {
 		t.Run(name, func(t *testing.T) {
 			t.Cleanup(func() { cleanupTestPod(t, s, api.MatchCriteria{}) })
@@ -858,7 +670,7 @@ func TestPatchPutHTTPHandlers(t *testing.T) {
 			req := httptest.NewRequest(tc.reqMethod, tc.reqTarget, testObj)
 			req.Header.Set("Content-Type", tc.reqContentType)
 			w := httptest.NewRecorder()
-			s.mux.ServeHTTP(w, req)
+			mux.ServeHTTP(w, req)
 
 			resp := w.Result()
 			defer resp.Body.Close()
@@ -1060,7 +872,7 @@ func createObjectFromFileName[T any](t *testing.T, svc *InMemoryKAPI, fileName s
 	return obj, nil
 }
 
-func startMinkapiService(t *testing.T, createStores bool) (*InMemoryKAPI, error) { // TODO clean
+func startMinkapiService(t *testing.T) (*InMemoryKAPI, *http.ServeMux, error) {
 	t.Helper()
 
 	mainOpts, err := cli.ParseProgramFlags([]string{
@@ -1068,50 +880,40 @@ func startMinkapiService(t *testing.T, createStores bool) (*InMemoryKAPI, error)
 		"-H", "localhost",
 		"-P", "9892",
 		"-t", "0.5s",
-		"-v", "4",
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
-		return nil, err
+		return nil, nil, err
 	}
 	cfg := mainOpts.MinKAPIConfig
-	err = configtmpl.GenKubeConfig(configtmpl.KubeConfigParams{
-		KubeConfigPath: cfg.KubeConfigPath,
-		URL:            "http://" + net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", api.ErrStartFailed, err)
-	}
-	setMinKAPIConfigDefaults(&cfg)
-	t.Logf("Minkapi config:\n%#v\n", cfg)
+	log := logr.FromContextOrDiscard(context.TODO())
 
-	log := klog.NewKlogr()
-	mux := http.NewServeMux()
-	stores := map[schema.GroupVersionKind]*minkapistore.InMemResourceStore{}
-	if createStores {
-		for _, d := range typeinfo.SupportedDescriptors {
-			stores[d.GVK] = store.NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, cfg.WatchQueueSize, cfg.WatchTimeout, typeinfo.SupportedScheme, log)
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", api.ErrInitFailed, err)
 		}
-	}
+	}()
+	setMinKAPIConfigDefaults(&cfg)
 	scheme := typeinfo.SupportedScheme
-	baseView, err := view.New(log, cfg.KubeConfigPath, scheme, cfg.WatchTimeout, stores) // how to access stores
+	baseView, err := view.New(log, cfg.KubeConfigPath, scheme, cfg.WatchQueueSize, cfg.WatchTimeout)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
+	rootMux := http.NewServeMux()
 	s := &InMemoryKAPI{
-		cfg:    cfg,
-		scheme: scheme,
-		mux:    mux,
+		cfg:     cfg,
+		scheme:  scheme,
+		rootMux: rootMux,
 		server: &http.Server{
 			Addr:    net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
-			Handler: mux,
+			Handler: rootMux,
 		},
 		baseView: baseView,
 		log:      log,
 	}
-	s.registerRoutes()
-	return s, nil
+	baseViewMux := http.NewServeMux()
+	s.registerRoutes(baseViewMux, cfg.BasePrefix)
+	return s, baseViewMux, err
 }
 
 func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {

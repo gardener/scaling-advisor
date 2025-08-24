@@ -15,8 +15,9 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/core"
-	"github.com/gardener/scaling-advisor/minkapi/core/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/server"
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,7 +54,7 @@ func TestNodeCreation(t *testing.T) {
 		return
 	}
 
-	t.Cleanup(func() { svc.Shutdown(context.TODO()) })
+	t.Cleanup(func() { svc.Stop(context.TODO()) })
 	for name, tc := range objCreationTests {
 		t.Run(name, func(t *testing.T) {
 			nodes, err := svc.GetBaseView().ListNodes()
@@ -94,7 +95,7 @@ func TestPodListing(t *testing.T) {
 		t.Errorf("Can not start minkapi service: %v", err)
 		return
 	}
-	t.Cleanup(func() { svc.Shutdown(context.TODO()) })
+	t.Cleanup(func() { svc.Stop(context.TODO()) })
 	if err := createTestObjects(t, &svc); err != nil {
 		t.Errorf("Can not create test objects: %v", err)
 		return
@@ -160,7 +161,7 @@ func TestEventDeletion(t *testing.T) {
 		t.Errorf("Can not start minkapi service: %v", err)
 		return
 	}
-	t.Cleanup(func() { svc.Shutdown(context.TODO()) })
+	t.Cleanup(func() { svc.Stop(context.TODO()) })
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
 			_, err = createObjectFromFileName[eventsv1.Event](t, svc, "../testdata/event-a.json", typeinfo.EventsDescriptor.GVK)
@@ -206,7 +207,7 @@ func startMinkapiService(t *testing.T) (api.Server, error) {
 		return nil, err
 	}
 	cfg := mainOpts.MinKAPIConfig
-	return core.NewInMemoryMinKAPI(context.TODO(), cfg)
+	return server.NewInMemory(logr.FromContextOrDiscard(context.TODO()), cfg)
 }
 func assertError(t *testing.T, got error, want error) {
 	t.Helper()
