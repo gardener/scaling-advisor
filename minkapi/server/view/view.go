@@ -2,12 +2,17 @@ package view
 
 import (
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/clientutil"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/server/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
+	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -17,9 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"strings"
-	"sync"
-	"time"
 )
 
 var _ api.View = (*baseObjectView)(nil)

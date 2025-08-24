@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +18,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/server"
 
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 )

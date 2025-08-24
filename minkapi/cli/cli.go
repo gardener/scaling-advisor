@@ -8,11 +8,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"os"
 	"strings"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
+
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"

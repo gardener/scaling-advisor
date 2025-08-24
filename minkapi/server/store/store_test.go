@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -80,7 +81,6 @@ func TestAdd(t *testing.T) {
 			if diff := cmp.Diff(p, gotObj.(*corev1.Pod), tc.ignoredFieldsForOutputComparison); diff != "" {
 				t.Errorf("Received object mismatch (-want +got):\n%s", diff)
 				return
-
 			}
 		})
 	}
@@ -130,7 +130,7 @@ func TestUpdate(t *testing.T) {
 			p := testPod.DeepCopy()
 			p.TypeMeta = tc.typeMeta
 			if tc.name != "" {
-				p.ObjectMeta.Name = tc.name
+				p.Name = tc.name
 			}
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Update(obj1); err != nil {
@@ -149,10 +149,17 @@ func TestUpdate(t *testing.T) {
 			if diff := cmp.Diff(createdPod, gotObj.(*corev1.Pod), tc.ignoredFieldsForOutputComparison); diff != "" {
 				t.Errorf("Received object mismatch (-want +got):\n%s", diff)
 				return
-
 			}
 			originalRV, err := strconv.ParseInt(createdPod.ResourceVersion, 10, 64)
+			if err != nil {
+				t.Errorf("Error converting resourceVersion to integer")
+				return
+			}
 			gotRV, err := strconv.ParseInt(gotObj.(*corev1.Pod).ResourceVersion, 10, 64)
+			if err != nil {
+				t.Errorf("Error converting resourceVersion to integer")
+				return
+			}
 			if gotRV != originalRV+1 {
 				t.Errorf("Expected resourceVersion to increment by 1 (got: %d, want: %d)", gotRV, originalRV+1)
 				return
@@ -270,7 +277,6 @@ func TestGetByKey(t *testing.T) {
 				}
 				return
 			}
-
 		})
 	}
 }

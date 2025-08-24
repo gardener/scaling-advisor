@@ -23,8 +23,8 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
-	"github.com/go-logr/logr"
 
+	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -790,24 +790,23 @@ func compareHTTPHandlerResponse(t *testing.T, s *InMemoryKAPI, responseData []by
 
 	case "BIND":
 		gotStatus, _ := convertJSONtoObject[metav1.Status](t, responseData)
-		if gotStatus.Status == metav1.StatusSuccess {
-			wantPodBind, _ := convertJSONtoObject[corev1.Binding](t, jsonData)
-			p, err := s.baseView.ListPods(wantPodBind.Namespace, []string{wantPodBind.Name}...)
-			if err != nil {
-				err := fmt.Errorf("Error listing pods")
-				return err
-			}
-			if len(p) == 0 {
-				err := fmt.Errorf("Pod not found")
-				return err
-			}
-			if p[0].Spec.NodeName == wantPodBind.Target.Name {
-				t.Logf("Pod binding successful: nodeName is %s", p[0].Spec.NodeName)
-				return nil
-			}
-		} else {
+		if gotStatus.Status != metav1.StatusSuccess {
 			err := fmt.Errorf("Pod binding unsuccessful")
 			return err
+		}
+		wantPodBind, _ := convertJSONtoObject[corev1.Binding](t, jsonData)
+		p, err := s.baseView.ListPods(wantPodBind.Namespace, []string{wantPodBind.Name}...)
+		if err != nil {
+			err := fmt.Errorf("Error listing pods")
+			return err
+		}
+		if len(p) == 0 {
+			err := fmt.Errorf("Pod not found")
+			return err
+		}
+		if p[0].Spec.NodeName == wantPodBind.Target.Name {
+			t.Logf("Pod binding successful: nodeName is %s", p[0].Spec.NodeName)
+			return nil
 		}
 
 	case "LIST":

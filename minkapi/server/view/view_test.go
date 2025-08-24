@@ -17,6 +17,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -209,6 +210,7 @@ func startMinkapiService(t *testing.T) (api.Server, error) {
 	cfg := mainOpts.MinKAPIConfig
 	return server.NewInMemory(logr.FromContextOrDiscard(context.TODO()), cfg)
 }
+
 func assertError(t *testing.T, got error, want error) {
 	t.Helper()
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {

@@ -15,6 +15,7 @@ import (
 )
 
 var transitionTime = metav1.NewTime(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
 var testPodStatus = corev1.PodStatus{
 	Phase: corev1.PodRunning,
 	Conditions: []corev1.PodCondition{

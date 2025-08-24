@@ -6,12 +6,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/common/clientutil"
-	"github.com/gardener/scaling-advisor/common/objutil"
+	"os"
+	"os/signal"
+	"syscall"
+	"testing"
+	"time"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -20,11 +27,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"os"
-	"os/signal"
-	"syscall"
-	"testing"
-	"time"
 )
 
 var state suiteState
