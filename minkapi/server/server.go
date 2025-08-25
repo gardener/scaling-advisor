@@ -18,8 +18,13 @@ import (
 	"path/filepath"
 	rt "runtime"
 	"strconv"
-	"strings"
-	"time"
+
+	"github.com/gardener/scaling-advisor/common/webutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/view"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
@@ -48,7 +53,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -290,9 +294,9 @@ func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/namespaces/{namespace}/%s/{name}", r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/namespaces/{namespace}/%s/{name}", r), handlePatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePatchStatus(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/namespaces/{namespace}/%s/{name}", r), handleDelete(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), handlePut(d, view))        // Update
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/namespaces/{namespace}/%s/{name}", r), k.handleDelete(d))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), k.handlePut(d))        // Update
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), k.handlePut(d)) // UpdateStatus
 
 		if d.GetKind() == typeinfo.PodsDescriptor.GetKind() {
 			viewMux.HandleFunc("POST /api/v1/namespaces/{namespace}/pods/{name}/binding", handleCreatePodBinding(view))
@@ -302,21 +306,21 @@ func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/%s", r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/%s/{name}", r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/%s/{name}", r), handlePatch(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/%s/{name}", r), handleDelete(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}", r), handlePut(d, view))        // Update
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/%s/{name}", r), k.handleDelete(d))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}", r), k.handlePut(d))        // Update
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}/status", r), k.handlePut(d)) // UpdateStatus
 	} else {
 		viewMux.HandleFunc(fmt.Sprintf("POST /apis/%s/v1/namespaces/{namespace}/%s", g, r), handleCreate(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/namespaces/{namespace}/%s", g, r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handlePatch(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handleDelete(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handlePut(d, view))
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), k.handleDelete(d))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), k.handlePut(d))
 
 		viewMux.HandleFunc(fmt.Sprintf("POST /apis/%s/v1/%s", g, r), handleCreate(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/%s", g, r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/%s/{name}", g, r), handleGet(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/%s/{name}", g, r), handleDelete(d, view))
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/%s/{name}", g, r), k.handleDelete(d))
 	}
 }
 
@@ -404,7 +408,7 @@ func handleCreate(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
 		}
-		mo, err = view.CreateObject(r.Context(), d.GVK, mo)
+		err = view.StoreObject(d.GVK, mo)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -436,10 +440,36 @@ func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleDelete(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleGet(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		objName := GetObjectName(r, d)
-		obj, err := view.GetObject(r.Context(), d.GVK, objName)
+		s := getStoreOrWriteError(d.GVK, view, w, r)
+		if s == nil {
+			return
+		}
+		key := GetObjectKey(r, d)
+		obj, err := s.GetByKey(key)
+		if err != nil {
+			handleError(w, r, err)
+			return
+		}
+		writeJsonResponse(w, r, obj)
+	}
+}
+
+func (k *InMemoryKAPI) handleDelete(d typeinfo.Descriptor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s := k.getStoreOrWriteError(d.GVK, w, r)
+		if s == nil {
+			return
+		}
+
+		objKey := GetObjectName(r, d).String()
+		obj, err := s.GetByKey(objKey)
+		if err != nil {
+			handleError(w, r, err)
+			return
+		}
+		err = s.Delete(objKey)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -470,7 +500,7 @@ func handleDelete(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleListOrWatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleListOrWatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		isWatch := query.Get("watch")
@@ -491,11 +521,15 @@ func handleListOrWatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 	}
 }
 
-func handleList(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.Selector) http.HandlerFunc {
+func handleList(d typeinfo.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		s := getStoreOrWriteError(d.GVK, view, w, r)
+		if s == nil {
+			return
+		}
 		namespace := r.PathValue("namespace")
-		c := minkapi.MatchCriteria{Namespace: namespace, LabelSelector: labelSelector}
-		listObj, err := view.ListObjects(r.Context(), d.GVK, c) //s.List(c)
+		c := api.MatchCriteria{Namespace: namespace, LabelSelector: labelSelector}
+		listObj, err := view.ListObjects(d.GVK, c) //s.List(c)
 		if err != nil {
 			return
 		}
@@ -503,12 +537,21 @@ func handleList(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.S
 	}
 }
 
-func handlePatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := GetObjectName(r, d)
+		s := getStoreOrWriteError(d.GVK, view, w, r)
+		if s == nil {
+			return
+		}
+		key := GetObjectKey(r, d)
+		o, err := s.GetByKey(key)
+		if err != nil {
+			handleError(w, r, err)
+			return
+		}
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" && contentType != "application/merge-patch+json" {
-			err := fmt.Errorf("unsupported content type %q for object %q", contentType, name)
+			err = fmt.Errorf("unsupported content type %q for object %q", contentType, key)
 			handleBadRequest(w, r, err)
 			return
 		}
@@ -518,7 +561,18 @@ func handlePatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 			writeStatusError(w, r, statusErr)
 			return
 		}
-		patchedObj, err := view.PatchObject(r.Context(), d.GVK, name, types.PatchType(contentType), patchData)
+		err = patchObject(o, key, contentType, patchData)
+		if err != nil {
+			err = fmt.Errorf("failed to patch object %q: %w", key, err)
+			handleInternalServerError(w, r, err)
+			return
+		}
+		mo, err := meta.Accessor(o)
+		if err != nil {
+			handleError(w, r, fmt.Errorf("stored object with key %q is not metav1.Object: %w", key, err))
+			return
+		}
+		err = s.Update(mo)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -527,9 +581,19 @@ func handlePatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handlePatchStatus(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePatchStatus(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		objName := GetObjectName(r, d)
+		s := getStoreOrWriteError(d.GVK, view, w, r)
+		if s == nil {
+			return
+		}
+
+		key := GetObjectKey(r, d)
+		o, err := s.GetByKey(key)
+		if err != nil {
+			handleError(w, r, err)
+			return
+		}
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" {
 			err := fmt.Errorf("unsupported content type %q for o %q", contentType, objName)
@@ -543,8 +607,18 @@ func handlePatchStatus(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 			handleInternalServerError(w, r, err)
 			return
 		}
-
-		patchedObj, err := view.PatchObjectStatus(r.Context(), d.GVK, objName, patchData)
+		err = patchStatus(o, key, patchData)
+		if err != nil {
+			err = fmt.Errorf("failed to patch status for o %q: %w", key, err)
+			handleInternalServerError(w, r, err)
+			return
+		}
+		mo, err := meta.Accessor(o)
+		if err != nil {
+			handleError(w, r, fmt.Errorf("stored object with key %q is not metav1.Object: %w", key, err))
+			return
+		}
+		err = s.Update(mo)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -553,10 +627,13 @@ func handlePatchStatus(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 	}
 }
 
-// handleWatch implements watch request/response handling. It delegates watch functionality to the given minkapi.View, only
-// passing a callback which encodes the watch event and flushed it to the response stream.
-func handleWatch(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.Selector) http.HandlerFunc {
+func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		s := getStoreOrWriteError(d.GVK, view, w, r)
+		if s == nil {
+			return
+		}
+
 		var (
 			ok           bool
 			startVersion int64
@@ -576,8 +653,8 @@ func handleWatch(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.
 		flusher.Flush() // 🚨important! unblocks client-go I/O so that it can construct a watcher!
 
 		log := logr.FromContextOrDiscard(r.Context())
-		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
-			metaObj, err := objutil.AsMeta(event.Object)
+		err := s.Watch(r.Context(), startVersion, namespace, labelSelector, func(event watch.Event) error {
+			metaObj, err := store.AsMeta(log, event.Object)
 			if err != nil {
 				return err
 			}

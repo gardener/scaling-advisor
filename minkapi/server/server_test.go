@@ -32,6 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -371,7 +372,7 @@ func TestHTTPHandlers(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Cleanup(func() {
 				cleanupTestPod(t, s, api.MatchCriteria{
-					Labels: map[string]string{"app.kubernetes.io/component": "minkapitest"},
+					LabelSelector: labels.SelectorFromSet(map[string]string{"app.kubernetes.io/component": "minkapitest"}),
 				})
 			})
 
@@ -717,6 +718,7 @@ func handleTestWatchResponse(t *testing.T, resp *http.Response) error {
 			continue
 		}
 
+		t.Logf("Received response: %s", line)
 		pod, eventType, err := parseWatchEvent(t, line)
 		if err != nil {
 			t.Logf("Failed to parse watch event: %v", err)
@@ -869,7 +871,7 @@ func createObjectFromFileName[T any](t *testing.T, svc *InMemoryKAPI, fileName s
 	if !ok {
 		return obj, err
 	}
-	err = svc.baseView.CreateObject(gvk, objInterface)
+	err = svc.baseView.StoreObject(gvk, objInterface)
 	if err != nil {
 		return obj, err
 	}

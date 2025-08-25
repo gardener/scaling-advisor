@@ -86,7 +86,7 @@ func (b *baseObjectView) GetResourceStore(gvk schema.GroupVersionKind) (api.Reso
 	return s, nil
 }
 
-func (b *baseObjectView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+func (b *baseObjectView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
 	s, err := b.GetResourceStore(gvk)
 	if err != nil {
 		return err
@@ -196,6 +196,18 @@ func (b *baseObjectView) ListEvents(namespace string) ([]*eventsv1.Event, error)
 		events = append(events, obj.(*eventsv1.Event))
 	}
 	return events, nil
+}
+
+func (b *baseObjectView) ListObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (runtime.Object, error) {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return nil, err
+	}
+	listObj, err := s.List(criteria)
+	if err != nil {
+		return nil, err
+	}
+	return listObj, nil
 }
 
 func (b *baseObjectView) GetKubeConfigPath() string {

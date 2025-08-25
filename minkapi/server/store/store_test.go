@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
@@ -317,7 +318,8 @@ func TestList(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			objList, err := s.List(tc.namespace, tc.labelSelector)
+			c := api.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
+			objList, err := s.List(c)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 			}

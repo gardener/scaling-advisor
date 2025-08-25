@@ -56,7 +56,7 @@ type ResourceStore interface {
 	GetByKey(key string) (o runtime.Object, err error)
 
 	DeleteObjects(c MatchCriteria) error
-	List(namespace string, labelSelector labels.Selector) (listObj runtime.Object, err error)
+	List(c MatchCriteria) (listObj runtime.Object, err error)
 
 	ListMetaObjects(c MatchCriteria) ([]metav1.Object, error)
 
@@ -81,11 +81,12 @@ type View interface {
 	GetClientFacades() (*ClientFacades, error)
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	GetEventSink() EventSink
-	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error)
 	ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error)
 	ListEvents(namespace string) ([]*eventsv1.Event, error)
+	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	GetKubeConfigPath() string
 	Close()
 }
@@ -106,7 +107,8 @@ type Server interface {
 type MatchCriteria struct {
 	Namespace string
 	Names     sets.Set[string]
-	Labels    map[string]string
+	// Labels        map[string]string
+	LabelSelector labels.Selector
 }
 
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
@@ -116,18 +118,8 @@ func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Names.Len() > 0 && !c.Names.Has(obj.GetName()) {
 		return false
 	}
-	if len(c.Labels) > 0 && !isSubset(c.Labels, obj.GetLabels()) {
+	if c.LabelSelector != nil && !c.LabelSelector.Matches(labels.Set(obj.GetLabels())) {
 		return false
-	}
-	return true
-}
-
-// TODO: think about utilizing stdlib/apimachinery replacements for this
-func isSubset(subset, superset map[string]string) bool {
-	for k, v := range subset {
-		if val, ok := superset[k]; !ok || val != v {
-			return false
-		}
 	}
 	return true
 }

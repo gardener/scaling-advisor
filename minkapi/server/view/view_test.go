@@ -257,7 +257,7 @@ func createObjectFromFileName[T any](t *testing.T, svc api.Server, fileName stri
 	if !ok {
 		return obj, err
 	}
-	err = svc.GetBaseView().CreateObject(gvk, objInterface)
+	err = svc.GetBaseView().StoreObject(gvk, objInterface)
 	if err != nil {
 		return obj, err
 	}
