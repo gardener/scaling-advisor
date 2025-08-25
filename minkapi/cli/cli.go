@@ -8,18 +8,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/gardener/scaling-advisor/minkapi/server"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
-	"github.com/go-logr/logr"
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
 )

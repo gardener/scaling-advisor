@@ -21,8 +21,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/webutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/view"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/view"
+	"github.com/gardener/scaling-advisor/minkapi/server/podutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/store"
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -30,14 +38,17 @@ import (
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	kjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -471,8 +482,8 @@ func handleListOrWatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 			return
 		}
 
-		if isWatch == "true" || isWatch == "1" {
-			delegate = handleWatch(d, view, labelSelector)
+		if isWatch == "true" || isWatch == "1" { // FIXME : should check "1" as well
+			delegate = k.handleWatch(d, labelSelector)
 		} else {
 			delegate = handleList(d, view, labelSelector)
 		}

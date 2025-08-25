@@ -6,9 +6,17 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 
 	"github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/gardener/scaling-advisor/minkapi/server"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/go-logr/logr"
+	"github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 )
 
 func main() {
