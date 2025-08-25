@@ -6,10 +6,10 @@ package objutil
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,14 +31,7 @@ func TestLoadYamlIntoObj(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var pod1 corev1.Pod
 			gotErr := LoadYamlIntoObj(tc.filePath, &pod1)
-
-			if gotErr != tc.retErr || gotErr != nil {
-				if !strings.Contains(gotErr.Error(), tc.retErr.Error()) {
-					t.Errorf("Unexpected error when loading yaml into a pod, got: %v, wanted: %v", gotErr, tc.retErr)
-				} else {
-					t.Logf("Expected error: %v", gotErr)
-				}
-			}
+			testutils.AssertError(t, gotErr, tc.retErr)
 		})
 	}
 }

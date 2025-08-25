@@ -23,6 +23,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
+	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
@@ -107,13 +108,8 @@ func TestPatchPodStatus(t *testing.T) {
 				err = patchStatus(obj.(runtime.Object), tc.key, []byte(tc.patch))
 			}
 			if err != nil {
-				if !strings.Contains(err.Error(), tc.patchErr.Error()) {
-					t.Errorf("Unexpected error type when patching status, got: %v", err)
-					return
-				} else {
-					t.Logf("Expected error type: %v", err)
-					return
-				}
+				testutils.AssertError(t, err, tc.patchErr)
+				return
 			}
 			t.Logf("Patched pod status: %#v", pod.Status.Conditions)
 			if pod.Status.Conditions == nil {
@@ -140,13 +136,42 @@ func TestPatchObjectUsingEvent(t *testing.T) {
 		patchErr    error
 		passNilObj  bool
 	}{
-		"Strategic Merge Patch":           {contentType: "application/strategic-merge-patch+json", patchData: patchEventSeries, patchErr: nil},
-		"Merge Patch":                     {contentType: "application/merge-patch+json", patchData: patchEventSeries, patchErr: nil},
-		"Unsupported ContentType":         {contentType: "application/json-patch+json", patchData: patchEventSeries, patchErr: fmt.Errorf("unsupported patch content type")},
-		"Corrupted Strategic Merge Patch": {contentType: "application/strategic-merge-patch+json", patchData: corruptedPatch, patchErr: fmt.Errorf("invalid JSON")},
-		"Corrupted Merge Patch":           {contentType: "application/merge-patch+json", patchData: corruptedPatch, patchErr: fmt.Errorf("Invalid JSON")},
-		"invalid Patch":                   {contentType: "application/merge-patch+json", patchData: invalidPatch, patchErr: fmt.Errorf("failed to unmarshal patched JSON")},
-		"Nil object Patch":                {contentType: "application/merge-patch+json", patchData: patchEventSeries, patchErr: fmt.Errorf("non-nil pointer"), passNilObj: true},
+		"Strategic Merge Patch": {
+			contentType: "application/strategic-merge-patch+json",
+			patchData:   patchEventSeries,
+			patchErr:    nil,
+		},
+		"Merge Patch": {
+			contentType: "application/merge-patch+json",
+			patchData:   patchEventSeries,
+			patchErr:    nil,
+		},
+		"Unsupported ContentType": {
+			contentType: "application/json-patch+json",
+			patchData:   patchEventSeries,
+			patchErr:    fmt.Errorf("unsupported patch content type"),
+		},
+		"Corrupted Strategic Merge Patch": {
+			contentType: "application/strategic-merge-patch+json",
+			patchData:   corruptedPatch,
+			patchErr:    fmt.Errorf("invalid JSON"),
+		},
+		"Corrupted Merge Patch": {
+			contentType: "application/merge-patch+json",
+			patchData:   corruptedPatch,
+			patchErr:    fmt.Errorf("Invalid JSON"),
+		},
+		"invalid Patch": {
+			contentType: "application/merge-patch+json",
+			patchData:   invalidPatch,
+			patchErr:    fmt.Errorf("failed to unmarshal patched JSON"),
+		},
+		"Nil object Patch": {
+			contentType: "application/merge-patch+json",
+			patchData:   patchEventSeries,
+			patchErr:    fmt.Errorf("non-nil pointer"),
+			passNilObj:  true,
+		},
 	}
 
 	for name, tc := range contentTypeTests {
@@ -164,13 +189,8 @@ func TestPatchObjectUsingEvent(t *testing.T) {
 				err = patchObject(obj.(runtime.Object), key, tc.contentType, []byte(tc.patchData))
 			}
 			if err != nil {
-				if !strings.Contains(err.Error(), tc.patchErr.Error()) {
-					t.Errorf("Unexpected error type when patching object, got: %v", err)
-					return
-				} else {
-					t.Logf("Expected error type: %v", err)
-					return
-				}
+				testutils.AssertError(t, err, tc.patchErr)
+				return
 			}
 			t.Logf("Patched event series: %v", event.Series)
 			if event.Series == nil {
@@ -231,7 +251,7 @@ func TestHTTPHandlers(t *testing.T) {
 			createObjectBeforeRequest:        false,
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
 		},
-		"create pod missing name and generateName": { // TODO Patch pod-a rather than creating files
+		"create pod missing name and generateName": {
 			filePath:                         "./testdata/name-miss-pod-a.json",
 			reqMethod:                        http.MethodPost,
 			reqTarget:                        "/api/v1/namespaces/default/pods",
@@ -240,7 +260,7 @@ func TestHTTPHandlers(t *testing.T) {
 			createObjectBeforeRequest:        false,
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
 		},
-		"create pod missing name, UID and creationTimestamp": { // TODO Patch pod-a rather than creating files
+		"create pod missing name, UID and creationTimestamp": {
 			filePath:                         "./testdata/uid-ts-pod-a.json",
 			reqMethod:                        http.MethodPost,
 			reqTarget:                        "/api/v1/namespaces/default/pods",
@@ -281,7 +301,7 @@ func TestHTTPHandlers(t *testing.T) {
 			reqContentType:            "application/json",
 			expectedStatus:            http.StatusNotFound,
 			createObjectBeforeRequest: false,
-		}, // TODO: add delete error
+		},
 		"update non-existent pod": {
 			filePath:                  "./testdata/pod-a.json",
 			reqMethod:                 http.MethodPut,
@@ -299,15 +319,6 @@ func TestHTTPHandlers(t *testing.T) {
 			createObjectBeforeRequest:        true,
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
 		},
-		// "watch high resVer": { //
-		// 	filePath:                         "./testdata/pod-a.json",
-		// 	reqMethod:                        http.MethodGet,
-		// 	reqTarget:                        "/api/v1/pods?watch=1&resourceVersion=10000",
-		// 	reqContentType:                   "application/json",
-		// 	expectedStatus:                   http.StatusOK,
-		// 	createObjectBeforeRequest:        true,
-		// 	ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
-		// },
 		"erroneous label selector for pods": {
 			filePath:                  "./testdata/pod-a.json",
 			reqMethod:                 http.MethodGet,
@@ -315,7 +326,7 @@ func TestHTTPHandlers(t *testing.T) {
 			reqContentType:            "application/json",
 			expectedStatus:            http.StatusBadRequest,
 			createObjectBeforeRequest: true,
-		}, // TODO: check correct label selector working
+		},
 		"fetch pod list": {
 			filePath:                         "./testdata/pod-a.json",
 			reqMethod:                        http.MethodGet,
@@ -404,10 +415,6 @@ func TestHTTPHandlers(t *testing.T) {
 				t.Logf("Expected status error: %s", resp.Status)
 				return
 			}
-			// if reqType == "PATCH" || reqType == "PUT" {
-			// 	jsonData, _ = os.ReadFile("./testdata/pod-a.json")
-			// }
-			// Got status OK, now check the output
 			if err = compareHTTPHandlerResponse(t, s, responseData, reqType, tc.ignoredFieldsForOutputComparison, jsonData); err != nil {
 				t.Errorf("Failed: %v", err)
 			} else {
@@ -589,7 +596,7 @@ func TestPatchPutHTTPHandlers(t *testing.T) {
 			expectedStatus:                   http.StatusOK,
 			createObjectBeforeRequest:        true,
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion", "Name"),
-		}, // TODO: patch pod with readAll patchData error
+		},
 		"patch pod with unsupported content type": {
 			patchData:                        testPatchName,
 			reqMethod:                        http.MethodPatch,
@@ -717,9 +724,9 @@ func handleTestWatchResponse(t *testing.T, resp *http.Response) error {
 
 		t.Logf("Watch event: %s pod %s/%s, resourceVersion: %s", eventType, pod.Namespace, pod.Name, pod.ResourceVersion)
 		eventCount++
-		if eventType == "ADDED" && eventCount >= 1 {
-			break
-		}
+		// if eventType == "ADDED" && eventCount >= 1 {
+		// 	break
+		// }
 	}
 	if scanner.Err() != nil {
 		return scanner.Err()
@@ -757,7 +764,8 @@ func getRequestType(t *testing.T, reqMethod, reqTarget, resourceName string) str
 	if idx := strings.Index(reqTarget, "/binding"); idx != -1 {
 		return "BIND"
 	}
-	if idx := strings.Index(reqTarget, "/"+resourceName); idx != -1 && (reqTarget == reqTarget[:idx+1+len(resourceName)] || strings.Contains(reqTarget, resourceName+"?")) { // FIXME what about label selector reqTarget
+	idx := strings.Index(reqTarget, "/"+resourceName) // FIXME what about label selector reqTarget
+	if idx != -1 && (reqTarget == reqTarget[:idx+1+len(resourceName)] || strings.Contains(reqTarget, resourceName+"?")) {
 		if reqMethod == http.MethodGet {
 			return "LIST"
 		} else if reqMethod != http.MethodPost {
@@ -837,9 +845,6 @@ func compareHTTPHandlerResponse(t *testing.T, s *InMemoryKAPI, responseData []by
 		return err
 	}
 	t.Cleanup(func() { cleanupTestPod(t, s, api.MatchCriteria{Names: sets.New(got.Name)}) })
-	// t.Cleanup(func() {
-	// 	cleanupTestPod(t, s, map[string]string{"app.kubernetes.io/component": "minkapitest"})
-	// })
 
 	return nil
 }
@@ -871,7 +876,7 @@ func createObjectFromFileName[T any](t *testing.T, svc *InMemoryKAPI, fileName s
 	return obj, nil
 }
 
-func startMinkapiService(t *testing.T) (*InMemoryKAPI, *http.ServeMux, error) {
+func startMinkapiService(t *testing.T) (*InMemoryKAPI, *http.ServeMux, error) { // Need this explicitly in order to get viewMux
 	t.Helper()
 
 	mainOpts, err := cli.ParseProgramFlags([]string{

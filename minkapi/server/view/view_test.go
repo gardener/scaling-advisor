@@ -7,16 +7,15 @@ package view_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -60,18 +59,18 @@ func TestNodeCreation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			nodes, err := svc.GetBaseView().ListNodes()
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Nodes before creation is %d", len(nodes))
 			_, err = createObjectFromFileName[corev1.Node](t, svc, tc.fileName, tc.gvk)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			nodes, err = svc.GetBaseView().ListNodes()
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Nodes after creation is %d", len(nodes))
@@ -105,7 +104,7 @@ func TestPodListing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p, err := svc.GetBaseView().ListPods(tc.namespace, tc.names...)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			for _, pd := range p {
@@ -172,7 +171,7 @@ func TestEventDeletion(t *testing.T) {
 			}
 			events, err := svc.GetBaseView().ListEvents(tc.c.Namespace)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Events before deletion is %d", len(events))
@@ -180,13 +179,13 @@ func TestEventDeletion(t *testing.T) {
 			t.Logf("Deleting Event")
 			err = svc.GetBaseView().DeleteObjects(tc.gvk, tc.c)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 
 			events, err = svc.GetBaseView().ListEvents(tc.c.Namespace)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Events after deletion is %d", len(events))
@@ -209,15 +208,6 @@ func startMinkapiService(t *testing.T) (api.Server, error) {
 	}
 	cfg := mainOpts.MinKAPIConfig
 	return server.NewInMemory(logr.FromContextOrDiscard(context.TODO()), cfg)
-}
-
-func assertError(t *testing.T, got error, want error) {
-	t.Helper()
-	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Expected error: %v", got)
-	} else {
-		t.Errorf("Unexpected error, got: %v, want: %v", got, want)
-	}
 }
 
 func createTestObjects(t *testing.T, svc *api.Server) (err error) {

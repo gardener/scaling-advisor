@@ -6,17 +6,15 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -67,7 +65,7 @@ func TestAdd(t *testing.T) {
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Add(obj1); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -135,7 +133,7 @@ func TestUpdate(t *testing.T) {
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Update(obj1); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -213,7 +211,7 @@ func TestDelete(t *testing.T) {
 			gotObj, _ := s.GetByKey(key)
 			if err := s.Delete(key); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -271,7 +269,7 @@ func TestGetByKey(t *testing.T) {
 			if err != nil {
 				if !tc.errorCheckFunc(err) {
 					t.Errorf("Expected error to be %s, got: %v",
-						getFunctionName(t, tc.errorCheckFunc), err,
+						testutils.GetFunctionName(t, tc.errorCheckFunc), err,
 					)
 					return
 				}
@@ -321,7 +319,7 @@ func TestList(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			objList, err := s.List(tc.namespace, tc.labelSelector)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 			}
 			podList, ok := objList.(*corev1.PodList)
 			if !ok {
@@ -407,7 +405,7 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			watchEvents, err := s.buildPendingWatchEvents(tc.startVersion, tc.namespace, tc.labelSelector)
 			if err != nil {
-				assertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 			}
 			if len(watchEvents) != tc.expectedNumberOfObjects {
 				t.Errorf("Expected returned number of objects to be %d, got %d",
@@ -543,7 +541,7 @@ func TestWatch(t *testing.T) {
 			wg.Wait()
 
 			if watchErr != nil && watchErr != context.Canceled {
-				assertError(t, watchErr, tc.retErr)
+				testutils.AssertError(t, watchErr, tc.retErr)
 			}
 
 			eventsMutex.Lock()
@@ -588,15 +586,6 @@ func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, er
 	return createdPods, nil
 }
 
-func assertError(t *testing.T, got error, want error) {
-	t.Helper()
-	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Expected error: %v", got)
-	} else {
-		t.Errorf("Unexpected error, got: %v, want: %v", got, want)
-	}
-}
-
 func assertNumberOfItems(t *testing.T, s *InMemResourceStore, want int) {
 	t.Helper()
 	got := len(s.delegate.List())
@@ -605,9 +594,4 @@ func assertNumberOfItems(t *testing.T, s *InMemResourceStore, want int) {
 	} else {
 		t.Logf("Expected number of items, got: %v", got)
 	}
-}
-
-func getFunctionName(t *testing.T, fn any) string {
-	t.Helper()
-	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
