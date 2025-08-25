@@ -160,7 +160,7 @@ func (l LeastCost) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		return api.NodeScore{}, err
 	}
 	return api.NodeScore{
-		SimulationName:     args.SimulationName,
+		Name:               args.Name,
 		Placement:          args.Placement,
 		UnscheduledPods:    args.UnscheduledPods,
 		Value:              int(aggregator / price),
@@ -217,7 +217,7 @@ func (l LeastWaste) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		}
 	}
 	return api.NodeScore{
-		SimulationName:     args.SimulationName,
+		Name:               args.Name,
 		Placement:          args.Placement,
 		UnscheduledPods:    args.UnscheduledPods,
 		Value:              int(aggregator),
