@@ -243,7 +243,7 @@ type NodeScorer interface {
 	Compute(args NodeScoreArgs) (NodeScore, error)
 }
 type NodeScoreArgs struct {
-	// Name that must given to the NodeScore produced by the NodeScorer
+	// Name that must be given to the NodeScore produced by the NodeScorer
 	Name string
 	// Placement represents the placement information for the Node.
 	Placement NodePlacementInfo

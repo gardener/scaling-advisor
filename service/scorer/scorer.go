@@ -163,7 +163,7 @@ func (l LeastCost) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		Name:               args.Name,
 		Placement:          args.Placement,
 		UnscheduledPods:    args.UnscheduledPods,
-		Value:              int(aggregator / price),
+		Value:              int(aggregator / price * 100),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 	}, nil
 }
@@ -220,7 +220,7 @@ func (l LeastWaste) Compute(args api.NodeScoreArgs) (api.NodeScore, error) {
 		Name:               args.Name,
 		Placement:          args.Placement,
 		UnscheduledPods:    args.UnscheduledPods,
-		Value:              int(aggregator),
+		Value:              int(aggregator * 100),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 	}, nil
 }
