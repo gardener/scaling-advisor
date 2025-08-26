@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/watch"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server"
@@ -34,6 +37,7 @@ var state suiteState
 type suiteState struct {
 	apiServer api.Server
 	nodeA     corev1.Node
+	podA      corev1.Pod
 	client    kubernetes.Interface
 	dynClient dynamic.Interface
 }
@@ -124,6 +128,42 @@ func TestBaseViewCreateGetNodes(t *testing.T) {
 
 }
 
+func TestWatchPods(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		watcher, err := state.client.CoreV1().Pods("").Watch(ctx, metav1.ListOptions{Watch: true})
+		if err != nil {
+			t.Fatalf("failed to create pods watcher: %v", err)
+			return err
+		}
+		listObjects(t, watcher)
+		return nil
+	})
+	eg.Go(func() error {
+		<-time.After(1 * time.Second)
+		createdPod, err := state.client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create podA: %w", err)
+		}
+		t.Logf("Created podA with name %q", createdPod.Name)
+		cancel()
+		return nil
+	})
+	err := eg.Wait()
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+		return
+	}
+}
+
+func listObjects(t *testing.T, watcher watch.Interface) {
+	watchCh := watcher.ResultChan()
+	t.Logf("Iterating watchCh: %v", watchCh)
+	for ev := range watchCh {
+		t.Logf("Watch Event Type: %v | Watch Object: %v", ev.Type, ev.Object)
+	}
+}
 func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	t.Helper()
 	if got.Name != want.Name {
@@ -146,5 +186,13 @@ func initSuiteState() error {
 	if err != nil {
 		return err
 	}
-	return objutil.LoadYAMLIntoRuntimeObject("testdata/node-a.yaml", scheme, &state.nodeA)
+	err = objutil.LoadYAMLIntoRuntimeObject("testdata/node-a.yaml", scheme, &state.nodeA)
+	if err != nil {
+		return err
+	}
+	err = objutil.LoadYAMLIntoRuntimeObject("testdata/pod-a.yaml", scheme, &state.podA)
+	if err != nil {
+		return err
+	}
+	return nil
 }
