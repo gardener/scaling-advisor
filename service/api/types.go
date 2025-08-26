@@ -309,7 +309,7 @@ type NodePodAssignment struct {
 
 // NodeScoreSelector selects the winning NodeScore amongst the NodeScores of a given simulation pass and returns its index.
 // If there is no winning node score amongst the group, then it returns -1.
-type NodeScoreSelector func(groupNodeScores []NodeScore, weights map[corev1.ResourceName]int64, pricing InstancePricing) (winningIndex int, err error)
+type NodeScoreSelector func(groupNodeScores []NodeScore, weights map[corev1.ResourceName]float64, pricing InstancePricing) (winningIndex int, err error)
 
 // Simulation represents an activity that performs valid unscheduled pod to ready node assignments on a minkapi View.
 // A simulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model

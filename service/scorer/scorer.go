@@ -25,7 +25,7 @@ func GetNodeScoreSelector(scoringStrategy commontypes.NodeScoringStrategy) (api.
 // This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
 // Larger instance types --> less fragmentation
 // if multiple node scores have instance types with the same allocatable, an index is picked at random from them
-var SelectMaxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+var SelectMaxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]float64, pricing api.InstancePricing) (int, error) {
 	if len(nodeScores) == 0 {
 		return -1, nil
 	}
@@ -33,40 +33,40 @@ var SelectMaxAllocatable api.NodeScoreSelector = func(nodeScores []api.NodeScore
 		return 0, nil
 	}
 	var winners []int
-	var maxNormalizedAlloc int64
+	var maxNormalizedAlloc float64
 	for resourceName, quantity := range nodeScores[0].ScaledNodeResource.Allocatable {
 		if weight, ok := weights[resourceName]; ok {
-			maxNormalizedAlloc += weight * quantity
+			maxNormalizedAlloc += weight * float64(quantity)
 		} else {
 			return -1, fmt.Errorf("no weight found for resource %s", resourceName)
 		}
 	}
 	winners = append(winners, 0)
 	for index, candidate := range nodeScores[1:] {
-		var normalizedAlloc int64
+		var normalizedAlloc float64
 		for resourceName, quantity := range candidate.ScaledNodeResource.Allocatable {
 			if weight, ok := weights[resourceName]; ok {
-				normalizedAlloc += weight * quantity
+				normalizedAlloc += weight * float64(quantity)
 			} else {
 				return -1, fmt.Errorf("no weight found for resource %s", resourceName)
 			}
 		}
 		if maxNormalizedAlloc == normalizedAlloc {
-			winners = append(winners, index)
+			winners = append(winners, index+1)
 
 		} else if maxNormalizedAlloc < normalizedAlloc {
 			winners = winners[:0]
-			winners = append(winners, index)
+			winners = append(winners, index+1)
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
 	//pick one winner at random from winners
-	return rand.IntN(len(winners)), nil
+	return winners[rand.IntN(len(winners))], nil
 }
 
 // SelectMinPrice returns the index of the node score for the node with the lowest price.
 // if multiple node scores have instance types with the same price, an index is picked at random from them
-var SelectMinPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]int64, pricing api.InstancePricing) (int, error) {
+var SelectMinPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weights map[v1.ResourceName]float64, pricing api.InstancePricing) (int, error) {
 	if len(nodeScores) == 0 {
 		return -1, nil
 	}
@@ -85,10 +85,10 @@ var SelectMinPrice api.NodeScoreSelector = func(nodeScores []api.NodeScore, weig
 			return -1, err
 		}
 		if leastPrice == price {
-			winners = append(winners, index)
+			winners = append(winners, index+1)
 		} else if leastPrice > price {
 			winners = winners[:0]
-			winners = append(winners, index)
+			winners = append(winners, index+1)
 			leastPrice = price
 		}
 	}
