@@ -6,6 +6,8 @@ package api
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -77,16 +79,25 @@ type ClientFacades struct {
 	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
 }
 
+// View is the high-level facade to a repository of objects of different types (GVK).
+// TODO: Think of a better name. Rename this to Repository or RepoView, also add godoc ?
 type View interface {
 	GetClientFacades() (*ClientFacades, error)
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	GetEventSink() EventSink
 	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
+	UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
+	PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
+	PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
+	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
+	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
+	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error)
 	ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error)
 	ListEvents(namespace string) ([]*eventsv1.Event, error)
-	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	GetKubeConfigPath() string
 	Close()
 }

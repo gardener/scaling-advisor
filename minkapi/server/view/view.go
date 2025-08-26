@@ -1,14 +1,20 @@
 package view
 
 import (
+	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/podutil"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
-	"github.com/gardener/scaling-advisor/minkapi/server/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
@@ -86,6 +92,16 @@ func (b *baseObjectView) GetResourceStore(gvk schema.GroupVersionKind) (api.Reso
 	return s, nil
 }
 
+func (b *baseObjectView) GetObject(gvk schema.GroupVersionKind, fullName cache.ObjectName) (obj runtime.Object, err error) {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	key := fullName.String()
+	obj, err = s.GetByKey(key)
+	return
+}
+
 func (b *baseObjectView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
 	s, err := b.GetResourceStore(gvk)
 	if err != nil {
@@ -96,7 +112,7 @@ func (b *baseObjectView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Obj
 	namePrefix := obj.GetGenerateName()
 	if name == "" {
 		if namePrefix == "" {
-			return fmt.Errorf("%w: missing both name and generateName in request for creating object of objGvk %q in %q namespace", api.ErrCreateObject, gvk, obj.GetNamespace())
+			return apierrors.NewBadRequest(fmt.Errorf("%w: missing both name and generateName in request for creating object of objGvk %q in %q namespace", api.ErrCreateObject, gvk, obj.GetNamespace()).Error())
 		}
 		name = typeinfo.GenerateName(namePrefix)
 	}
@@ -119,6 +135,107 @@ func (b *baseObjectView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Obj
 	}
 
 	return nil
+}
+
+func (b *baseObjectView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return err
+	}
+	return s.Update(obj)
+}
+
+func (b *baseObjectView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error) {
+	gvk := typeinfo.PodsDescriptor.GVK
+	obj, err := b.GetObject(gvk, podName)
+	if err != nil {
+		return nil, err
+	}
+	pod := obj.(*corev1.Pod)
+	pod.Spec.NodeName = binding.Target.Name
+	podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
+		Type:   corev1.PodScheduled,
+		Status: corev1.ConditionTrue,
+	})
+	err = b.UpdateObject(gvk, pod)
+	if err != nil {
+		return nil, err
+	}
+	return pod, nil
+}
+
+func (b *baseObjectView) PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error) {
+	obj, err := b.GetObject(gvk, objName)
+	if err != nil {
+		return
+	}
+	err = objutil.PatchObject(obj, objName, patchType, patchData)
+	if err != nil {
+		err = fmt.Errorf("failed to patch object %q: %w", objName, err)
+		return
+	}
+	mo, err := meta.Accessor(obj)
+	if err != nil {
+		err = fmt.Errorf("stored object with key %q is not metav1.Object: %w", objName, err)
+		return
+	}
+	err = b.UpdateObject(gvk, mo)
+	if err != nil {
+		return
+	}
+	patchedObj = obj
+	return
+}
+
+func (b *baseObjectView) PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error) {
+	obj, err := b.GetObject(gvk, objName)
+	if err != nil {
+		return
+	}
+	err = objutil.PatchObjectStatus(obj, objName, patchData)
+	if err != nil {
+		err = fmt.Errorf("failed to patch object status of %q: %w", objName, err)
+		return
+	}
+	mo, err := meta.Accessor(obj)
+	if err != nil {
+		err = fmt.Errorf("stored object with key %q is not metav1.Object: %w", objName, err)
+		return
+	}
+	err = b.UpdateObject(gvk, mo)
+	if err != nil {
+		return
+	}
+	patchedObj = obj
+	return
+}
+
+func (b *baseObjectView) ListObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (runtime.Object, error) {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return nil, err
+	}
+	listObj, err := s.List(criteria)
+	if err != nil {
+		return nil, err
+	}
+	return listObj, nil
+}
+
+func (b *baseObjectView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return err
+	}
+	return s.Watch(ctx, startVersion, namespace, labelSelector, eventCallback)
+}
+
+func (b *baseObjectView) DeleteObject(gvk schema.GroupVersionKind, fullName cache.ObjectName) error {
+	s, err := b.GetResourceStore(gvk)
+	if err != nil {
+		return err
+	}
+	return s.Delete(fullName.String())
 }
 
 func (b *baseObjectView) DeleteObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) error {
@@ -196,18 +313,6 @@ func (b *baseObjectView) ListEvents(namespace string) ([]*eventsv1.Event, error)
 		events = append(events, obj.(*eventsv1.Event))
 	}
 	return events, nil
-}
-
-func (b *baseObjectView) ListObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (runtime.Object, error) {
-	s, err := b.GetResourceStore(gvk)
-	if err != nil {
-		return nil, err
-	}
-	listObj, err := s.List(criteria)
-	if err != nil {
-		return nil, err
-	}
-	return listObj, nil
 }
 
 func (b *baseObjectView) GetKubeConfigPath() string {

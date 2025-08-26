@@ -19,20 +19,19 @@ import (
 	rt "runtime"
 	"strconv"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
@@ -43,14 +42,12 @@ import (
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/watch"
@@ -294,11 +291,11 @@ func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/namespaces/{namespace}/%s/{name}", r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/namespaces/{namespace}/%s/{name}", r), handlePatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePatchStatus(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/namespaces/{namespace}/%s/{name}", r), k.handleDelete(d))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), k.handlePut(d))        // Update
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), k.handlePut(d)) // UpdateStatus
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/namespaces/{namespace}/%s/{name}", r), handleDelete(d, view))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), handlePut(d, view))        // Update
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
 
-		if d.GetKind() == typeinfo.PodsDescriptor.GetKind() {
+		if d.Kind == typeinfo.PodsDescriptor.Kind {
 			viewMux.HandleFunc("POST /api/v1/namespaces/{namespace}/pods/{name}/binding", handleCreatePodBinding(view))
 		}
 
@@ -306,21 +303,21 @@ func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/%s", r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /api/v1/%s/{name}", r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /api/v1/%s/{name}", r), handlePatch(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/%s/{name}", r), k.handleDelete(d))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}", r), k.handlePut(d))        // Update
-		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}/status", r), k.handlePut(d)) // UpdateStatus
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /api/v1/%s/{name}", r), handleDelete(d, view))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}", r), handlePut(d, view))        // Update
+		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
 	} else {
 		viewMux.HandleFunc(fmt.Sprintf("POST /apis/%s/v1/namespaces/{namespace}/%s", g, r), handleCreate(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/namespaces/{namespace}/%s", g, r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handleGet(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("PATCH /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handlePatch(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), k.handleDelete(d))
-		viewMux.HandleFunc(fmt.Sprintf("PUT /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), k.handlePut(d))
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handleDelete(d, view))
+		viewMux.HandleFunc(fmt.Sprintf("PUT /apis/%s/v1/namespaces/{namespace}/%s/{name}", g, r), handlePut(d, view))
 
 		viewMux.HandleFunc(fmt.Sprintf("POST /apis/%s/v1/%s", g, r), handleCreate(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/%s", g, r), handleListOrWatch(d, view))
 		viewMux.HandleFunc(fmt.Sprintf("GET /apis/%s/v1/%s/{name}", g, r), handleGet(d, view))
-		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/%s/{name}", g, r), k.handleDelete(d))
+		viewMux.HandleFunc(fmt.Sprintf("DELETE /apis/%s/v1/%s/{name}", g, r), handleDelete(d, view))
 	}
 }
 
@@ -352,32 +349,10 @@ func (k *InMemServer) handleAPIResources(apiResourceList metav1.APIResourceList)
 	}
 }
 
-func (k *InMemServer) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
-	viewName := r.PathValue("name")
-	if viewName == "" {
-		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
-		return
-	}
-	log := logr.FromContextOrDiscard(r.Context())
-	_, err := k.GetSandboxView(r.Context(), viewName)
-	if err != nil {
-		handleInternalServerError(w, r, err)
-		return
-	}
-	log.Info("sandbox view created and sandbox view API Server routes registered", "viewName", viewName)
-	statusOK := &metav1.Status{
-		TypeMeta: metav1.TypeMeta{Kind: "Status"},
-		Status:   metav1.StatusSuccess,
-		Code:     http.StatusCreated,
-		Message:  fmt.Sprintf("sandbox view %q created and routes registered", viewName),
-	}
-	writeJsonResponse(w, r, statusOK)
-}
-
-func handleGet(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleGet(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
-		obj, err := view.GetObject(r.Context(), d.GVK, name)
+		obj, err := view.GetObject(d.GVK, name)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -386,43 +361,12 @@ func handleGet(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleCreate(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var (
-			mo  metav1.Object
-			err error
-		)
-		mo, err = d.CreateObject()
-		if err != nil {
-			err = fmt.Errorf("cannot create object from objGvk %q: %v", d.GVK, err)
-			handleInternalServerError(w, r, err)
-			return
-		}
-
-		if !readBodyIntoObj(w, r, mo) {
-			return
-		}
-
-		var namespace string
-		if mo.GetNamespace() == "" {
-			namespace = GetObjectName(r, d).Namespace
-			mo.SetNamespace(namespace)
-		}
-		err = view.StoreObject(d.GVK, mo)
-		if err != nil {
-			handleError(w, r, err)
-			return
-		}
-		writeJsonResponse(w, r, mo)
-	}
-}
-
 // handlePut Ref: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#considerations-for-put-operations (TODO ensure handlePut follows this)
 // TODO: handlePut is not complete
-func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePut(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
-		obj, err := view.GetObject(r.Context(), d.GVK, name)
+		obj, err := view.GetObject(d.GVK, name)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -431,7 +375,7 @@ func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 			return
 		}
 		metaObj := obj.(metav1.Object)
-		err = view.UpdateObject(r.Context(), d.GVK, metaObj)
+		err = view.UpdateObject(d.GVK, metaObj)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -439,37 +383,10 @@ func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 		writeJsonResponse(w, r, obj)
 	}
 }
-
-func handleGet(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
+func handleDelete(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := getStoreOrWriteError(d.GVK, view, w, r)
-		if s == nil {
-			return
-		}
-		key := GetObjectKey(r, d)
-		obj, err := s.GetByKey(key)
-		if err != nil {
-			handleError(w, r, err)
-			return
-		}
-		writeJsonResponse(w, r, obj)
-	}
-}
-
-func (k *InMemoryKAPI) handleDelete(d typeinfo.Descriptor) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s := k.getStoreOrWriteError(d.GVK, w, r)
-		if s == nil {
-			return
-		}
-
-		objKey := GetObjectName(r, d).String()
-		obj, err := s.GetByKey(objKey)
-		if err != nil {
-			handleError(w, r, err)
-			return
-		}
-		err = s.Delete(objKey)
+		objName := GetObjectName(r, d)
+		obj, err := view.GetObject(d.GVK, objName)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -479,7 +396,7 @@ func (k *InMemoryKAPI) handleDelete(d typeinfo.Descriptor) http.HandlerFunc {
 			handleError(w, r, fmt.Errorf("stored object with key %q is not metav1.Object: %w", objName, err))
 			return
 		}
-		err = view.DeleteObject(r.Context(), d.GVK, objName)
+		err = view.DeleteObject(d.GVK, objName)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -523,10 +440,6 @@ func handleListOrWatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 
 func handleList(d typeinfo.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := getStoreOrWriteError(d.GVK, view, w, r)
-		if s == nil {
-			return
-		}
 		namespace := r.PathValue("namespace")
 		c := api.MatchCriteria{Namespace: namespace, LabelSelector: labelSelector}
 		listObj, err := view.ListObjects(d.GVK, c) //s.List(c)
@@ -539,19 +452,10 @@ func handleList(d typeinfo.Descriptor, view api.View, labelSelector labels.Selec
 
 func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := getStoreOrWriteError(d.GVK, view, w, r)
-		if s == nil {
-			return
-		}
-		key := GetObjectKey(r, d)
-		o, err := s.GetByKey(key)
-		if err != nil {
-			handleError(w, r, err)
-			return
-		}
+		name := GetObjectName(r, d)
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" && contentType != "application/merge-patch+json" {
-			err = fmt.Errorf("unsupported content type %q for object %q", contentType, key)
+			err := fmt.Errorf("unsupported content type %q for object %q", contentType, name)
 			handleBadRequest(w, r, err)
 			return
 		}
@@ -561,20 +465,10 @@ func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 			writeStatusError(w, r, statusErr)
 			return
 		}
-		err = patchObject(o, key, contentType, patchData)
+		patchedObj, err := view.PatchObject(d.GVK, name, types.PatchType(contentType), patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to patch object %q: %w", key, err)
+			err = fmt.Errorf("failed to patch object %q: %w", name, err)
 			handleInternalServerError(w, r, err)
-			return
-		}
-		mo, err := meta.Accessor(o)
-		if err != nil {
-			handleError(w, r, fmt.Errorf("stored object with key %q is not metav1.Object: %w", key, err))
-			return
-		}
-		err = s.Update(mo)
-		if err != nil {
-			handleError(w, r, err)
 			return
 		}
 		writeJsonResponse(w, r, patchedObj)
@@ -583,17 +477,7 @@ func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 
 func handlePatchStatus(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := getStoreOrWriteError(d.GVK, view, w, r)
-		if s == nil {
-			return
-		}
-
-		key := GetObjectKey(r, d)
-		o, err := s.GetByKey(key)
-		if err != nil {
-			handleError(w, r, err)
-			return
-		}
+		objName := GetObjectName(r, d)
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" {
 			err := fmt.Errorf("unsupported content type %q for o %q", contentType, objName)
@@ -607,18 +491,8 @@ func handlePatchStatus(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 			handleInternalServerError(w, r, err)
 			return
 		}
-		err = patchStatus(o, key, patchData)
-		if err != nil {
-			err = fmt.Errorf("failed to patch status for o %q: %w", key, err)
-			handleInternalServerError(w, r, err)
-			return
-		}
-		mo, err := meta.Accessor(o)
-		if err != nil {
-			handleError(w, r, fmt.Errorf("stored object with key %q is not metav1.Object: %w", key, err))
-			return
-		}
-		err = s.Update(mo)
+
+		patchedObj, err := view.PatchObjectStatus(d.GVK, objName, types.PatchType(contentType), patchData)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -629,11 +503,6 @@ func handlePatchStatus(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 
 func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := getStoreOrWriteError(d.GVK, view, w, r)
-		if s == nil {
-			return
-		}
-
 		var (
 			ok           bool
 			startVersion int64
@@ -650,10 +519,8 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 		if flusher == nil {
 			return
 		}
-		flusher.Flush() // 🚨important! unblocks client-go I/O so that it can construct a watcher!
-
 		log := logr.FromContextOrDiscard(r.Context())
-		err := s.Watch(r.Context(), startVersion, namespace, labelSelector, func(event watch.Event) error {
+		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
 			metaObj, err := store.AsMeta(log, event.Object)
 			if err != nil {
 				return err
@@ -681,7 +548,7 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 //
 // Example Payload
 // {"kind":"Binding","apiVersion":"v1","metadata":{"name":"a-p4r2l","namespace":"default","uid":"b8124ee8-a0c7-4069-930d-fc5e901675d3"},"target":{"kind":"Node","name":"a-kl827"}}
-func handleCreatePodBinding(view minkapi.View) http.HandlerFunc {
+func handleCreatePodBinding(view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logr.FromContextOrDiscard(r.Context())
 		d := typeinfo.PodsDescriptor
@@ -690,7 +557,18 @@ func handleCreatePodBinding(view minkapi.View) http.HandlerFunc {
 			return
 		}
 		podName := GetObjectName(r, d)
-		pod, err := view.UpdatePodNodeBinding(r.Context(), podName, binding)
+		//obj, err := view.GetObject(d.GVK, objName)
+		//if err != nil {
+		//	handleError(w, r, err)
+		//	return
+		//}
+		//pod := obj.(*corev1.Pod)
+		//pod.Spec.NodeName = binding.Target.Name
+		//podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
+		//	Type:   corev1.PodScheduled,
+		//	Status: corev1.ConditionTrue,
+		//})
+		pod, err := view.UpdatePodNodeBinding(podName, binding)
 		if err != nil {
 			log.Error(err, "cannot assign pod to node", "podName", podName, "nodeName", binding.Target.Name)
 			handleError(w, r, err)
@@ -710,6 +588,37 @@ func handleCreatePodBinding(view minkapi.View) http.HandlerFunc {
 func writeStatusError(w http.ResponseWriter, r *http.Request, statusError *apierrors.StatusError) {
 	w.WriteHeader(int(statusError.ErrStatus.Code))
 	writeJsonResponse(w, r, statusError.ErrStatus)
+}
+
+func handleCreate(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			mo  metav1.Object
+			err error
+		)
+		mo, err = d.CreateObject()
+		if err != nil {
+			err = fmt.Errorf("cannot create object from objGvk %q: %v", d.GVK, err)
+			handleInternalServerError(w, r, err)
+			return
+		}
+
+		if !readBodyIntoObj(w, r, mo) {
+			return
+		}
+
+		var namespace string
+		if mo.GetNamespace() == "" {
+			namespace = GetObjectName(r, d).Namespace
+			mo.SetNamespace(namespace)
+		}
+		err = view.StoreObject(d.GVK, mo)
+		if err != nil {
+			handleError(w, r, err)
+			return
+		}
+		writeJsonResponse(w, r, mo)
+	}
 }
 
 func readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) {
@@ -803,21 +712,57 @@ func parseLabelSelector(req *http.Request) (labels.Selector, error) {
 	return labels.Parse(raw)
 }
 
-func setMinKAPIConfigDefaults(cfg *minkapi.Config) {
-	if cfg.WatchConfig.QueueSize <= 0 {
-		cfg.WatchConfig.QueueSize = minkapi.DefaultWatchQueueSize
+func patchStatus(objPtr runtime.Object, key string, patch []byte) error {
+	objValuePtr := reflect.ValueOf(objPtr)
+	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
+		return fmt.Errorf("object %q must be a non-nil pointer", key)
 	}
-	if cfg.WatchConfig.Timeout <= 0 {
-		cfg.WatchConfig.Timeout = minkapi.DefaultWatchTimeout
+	statusField := objValuePtr.Elem().FieldByName("Status")
+	if !statusField.IsValid() {
+		return fmt.Errorf("object %q of type %T has no Status field", key, objPtr)
 	}
-	if strings.TrimSpace(cfg.BasePrefix) == "" {
-		cfg.BasePrefix = minkapi.DefaultBasePrefix
+
+	var patchWrapper map[string]json.RawMessage
+	err := json.Unmarshal(patch, &patchWrapper)
+	if err != nil {
+		return fmt.Errorf("failed to parse patch for %q as JSON object: %w", key, err)
 	}
-	if strings.TrimSpace(cfg.KubeConfigPath) == "" {
-		cfg.KubeConfigPath = minkapi.DefaultKubeConfigPath
+	statusPatchRaw, ok := patchWrapper["status"]
+	if !ok {
+		return fmt.Errorf("patch for %q does not contain a 'status' key", key)
 	}
-	if strings.TrimSpace(cfg.BindAddress) == "" {
-		cfg.BindAddress = net.JoinHostPort("", strconv.Itoa(commonconstants.DefaultMinKAPIPort))
+
+	statusInterface := statusField.Interface()
+	originalStatusJSON, err := kjson.Marshal(statusInterface)
+	if err != nil {
+		return fmt.Errorf("failed to marshal original status for object %q: %w", key, err)
+	}
+	patchedStatusJSON, err := strategicpatch.StrategicMergePatch(originalStatusJSON, statusPatchRaw, statusInterface)
+	if err != nil {
+		return fmt.Errorf("failed to apply strategic merge patch for object %q: %w", key, err)
+	}
+
+	newStatusVal := reflect.New(statusField.Type())
+	newStatusPtr := newStatusVal.Interface()
+	if err := json.Unmarshal(patchedStatusJSON, newStatusPtr); err != nil {
+		return fmt.Errorf("failed to unmarshal patched status for object %q: %w", key, err)
+	}
+	statusField.Set(newStatusVal.Elem())
+	return nil
+}
+
+func setMinKAPIConfigDefaults(cfg *api.MinKAPIConfig) {
+	if cfg.WatchQueueSize <= 0 {
+		cfg.WatchQueueSize = api.DefaultWatchQueueSize
+	}
+	if cfg.WatchTimeout <= 0 {
+		cfg.WatchTimeout = api.DefaultWatchTimeout
+	}
+	if cfg.KubeConfigPath == "" {
+		cfg.KubeConfigPath = api.DefaultKubeConfigPath
+	}
+	if cfg.Port == 0 {
+		cfg.Port = commonconstants.DefaultMinKAPIPort
 	}
 }
 

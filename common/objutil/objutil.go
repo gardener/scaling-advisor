@@ -5,15 +5,20 @@
 package objutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/fs"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
 	"os"
-	"path/filepath"
 	"reflect"
-	"slices"
-	"strconv"
+	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/gardener/scaling-advisor/common/ioutil"
 
@@ -32,25 +37,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	kjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/apimachinery/pkg/types"
-	jsonutil "k8s.io/apimachinery/pkg/util/json"
-	randutil "k8s.io/apimachinery/pkg/util/rand"
-	runtimeutil "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/client-go/tools/cache"
+	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 )
 
-// ScalingAdvisorScheme is the runtime.Scheme for Scaling Advisor types.
-var ScalingAdvisorScheme = runtime.NewScheme()
-
-func init() {
-	localSchemeBuilder := runtime.NewSchemeBuilder(
-		sacorev1alpha1.AddToScheme,
-		saconfigv1alpha1.AddToScheme,
-	)
-	runtimeutil.Must(localSchemeBuilder.AddToScheme(ScalingAdvisorScheme))
+// ToYAML serializes the given k8s runtime.Object to YAML.
+func ToYAML(obj runtime.Object) (string, error) {
+	scheme := runtime.NewScheme()
+	serializer := apijson.NewSerializerWithOptions(apijson.DefaultMetaFactory, scheme, scheme, apijson.SerializerOptions{Yaml: true, Pretty: true})
+	var buf bytes.Buffer
+	err := serializer.Encode(obj, &buf)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 // LoadUsingSchemeIntoRuntimeObject deserializes the object at objPath into the given k8s runtime.Object.
@@ -70,46 +69,21 @@ func LoadUsingSchemeIntoRuntimeObject(dirFS fs.FS, objPath string, s *runtime.Sc
 	return nil
 }
 
-// LoadIntoRuntimeObj deserializes the object at objPath into the given k8s runtime.Object using the ScalingAdvisorScheme.
-func LoadIntoRuntimeObj(dirFS fs.FS, objPath string, obj runtime.Object) (err error) {
-	return LoadUsingSchemeIntoRuntimeObject(dirFS, objPath, ScalingAdvisorScheme, obj)
-}
-
-// LoadJSONIntoObject deserializes the JSON object at objPath into the given object using standard json.Unmarshal.
-func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
-	objFile, err := dirFS.Open(objPath)
+// LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
+func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
+	data, err := os.ReadFile(yamlPath)
 	if err != nil {
-		return err
+		err = fmt.Errorf("failed to read %q: %w", yamlPath, err)
+		return
 	}
-	objBytes, err := io.ReadAll(objFile)
+	err = sigyaml.Unmarshal(data, obj)
 	if err != nil {
-		return err
+		err = fmt.Errorf("failed to unmarshal object in %q: %w", yamlPath, err)
+		return
 	}
-	return json.Unmarshal(objBytes, obj)
-}
-
-// SaveRuntimeObjAsJSONToPath serializes the given runtime object as JSON using
-// the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
-// NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
-func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
-	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: false, Pretty: true})
-	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
-	err = saveObjToPath(ser, obj, savePath)
 	return
 }
 
-// SaveRuntimeObjAsYAMLToPath serializes the given k8s runtime.Object as YAML using
-// the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
-// NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
-func SaveRuntimeObjAsYAMLToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
-	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: true, Pretty: true})
-	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
-	err = saveObjToPath(ser, obj, savePath)
-	return
-}
-
-// SetMetaObjectGVK checks if the given object has missing Kind and Version.
-// If so, it sets the object's GVK to the gvk passed in the argument.
 func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	if runtimeObj, ok := obj.(runtime.Object); ok {
 		objGVK := runtimeObj.GetObjectKind().GroupVersionKind()
@@ -123,52 +97,23 @@ func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	}
 }
 
-// StringKeyValueMapToResourceList converts the given map (resource name string to
-// resource quantity string) into a corev1.ResourceList object.
-func StringKeyValueMapToResourceList(stringMap map[string]any) corev1.ResourceList {
-	result := make(corev1.ResourceList, len(stringMap))
-	for resourceName, stringValue := range stringMap {
-		result[corev1.ResourceName(resourceName)] = resource.MustParse(stringValue.(string))
+func ResourceListToMapInt64(resources corev1.ResourceList) map[corev1.ResourceName]int64 {
+	result := make(map[corev1.ResourceName]int64, len(resources))
+	for resourceName, quantity := range resources {
+		result[resourceName] = quantity.Value()
 	}
 	return result
-}
-
-// IsResourceListEqual compares the given resource lists and checks for equality.
-func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
-	for n, q1 := range r1 {
-		q2, ok := r2[n]
-		if !ok || q1.Cmp(q2) != 0 {
-			return false
-		}
-	}
-	for n, q2 := range r2 {
-		q1, ok := r1[n]
-		if !ok || q1.Cmp(q2) != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// SubtractResources subtracts the quantities in b from a. If a resource in b is not found in a, it is ignored.
-func SubtractResources(a, b corev1.ResourceList) {
-	for res, qty := range b {
-		if v, ok := a[res]; ok {
-			v.Sub(qty)
-			a[res] = v
-		}
-	}
 }
 
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
 // TODO: Add unit test for this specific objutil method.
 func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {
 	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
+	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", name)
 	}
 	objInterface := objValuePtr.Interface()
-	originalJSON, err := jsonutil.Marshal(objInterface)
+	originalJSON, err := kjson.Marshal(objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal object %q: %w", name, err)
 	}
@@ -188,17 +133,16 @@ func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.P
 	default:
 		return fmt.Errorf("unsupported patch type %q for object %q", patchType, name)
 	}
-	err = jsonutil.Unmarshal(patchedBytes, objInterface)
+	err = kjson.Unmarshal(patchedBytes, objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal patched JSON back into obj %q: %w", name, err)
 	}
 	return nil
 }
 
-// PatchObjectStatus patches the given runtime object's status subresource with the given patchBytes.
 func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []byte) error {
 	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
+	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", objName)
 	}
 	statusField := objValuePtr.Elem().FieldByName("Status")
@@ -217,7 +161,7 @@ func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []
 	}
 
 	statusInterface := statusField.Interface()
-	originalStatusJSON, err := jsonutil.Marshal(statusInterface)
+	originalStatusJSON, err := kjson.Marshal(statusInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal original status for object %q: %w", objName, err)
 	}
@@ -233,187 +177,4 @@ func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []
 	}
 	statusField.Set(newStatusVal.Elem())
 	return nil
-}
-
-// SliceOfAnyToRuntimeObj converts a slice of generic objects to a slice of runtime.Objects.
-func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
-	result := make([]runtime.Object, 0, len(objs))
-	for _, item := range objs {
-		obj, ok := item.(runtime.Object)
-		if !ok {
-			err := fmt.Errorf("element %T does not implement runtime.Object", item)
-			return nil, apierrors.NewInternalError(err)
-		}
-		result = append(result, obj)
-	}
-	return result, nil
-}
-
-// CloneRuntimeObjects creates a cloned slice of the given slice of runtime objects.
-func CloneRuntimeObjects(objs []runtime.Object) []runtime.Object {
-	result := make([]runtime.Object, 0, len(objs))
-	for _, obj := range objs {
-		objCopy := obj.DeepCopyObject()
-		result = append(result, objCopy)
-	}
-	return result
-}
-
-// SliceOfMetaObjToRuntimeObj converts a slice of metav1.Objects to a slice of runtime.Objects.
-func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) {
-	result := make([]runtime.Object, 0, len(objs))
-	for _, item := range objs {
-		obj, ok := item.(runtime.Object)
-		if !ok {
-			err := fmt.Errorf("element %T does not implement runtime.Object", item)
-			return nil, apierrors.NewInternalError(err)
-		}
-		result = append(result, obj)
-	}
-	return result, nil
-}
-
-// ParseObjectResourceVersion parses the resource version of a metav1.Object.
-func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
-	resourceVersion, err = ParseResourceVersion(obj.GetResourceVersion())
-	if err != nil {
-		err = fmt.Errorf("cannot parse resource version %q for object %q in ns %q: %w", obj.GetResourceVersion(), obj.GetName(), obj.GetNamespace(), err)
-	}
-	return
-}
-
-// ParseResourceVersion parses a string into an int64 representing a resource version.
-func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
-	if rvStr == "" {
-		resourceVersion = 0
-		return
-	}
-	resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
-	if err != nil {
-		err = fmt.Errorf("cannot parse resource version %q: %w", rvStr, err)
-	}
-	return
-}
-
-// MaxResourceVersion finds the maximum resource version among a list of metav1.Objects.
-func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
-	var version int64
-	for _, o := range objs {
-		version, err = strconv.ParseInt(o.GetResourceVersion(), 10, 64)
-		if err != nil {
-			err = fmt.Errorf("failed to parse resource version %q from obj %q: %w",
-				o.GetResourceVersion(),
-				CacheName(o), err)
-			return
-		}
-		if version > maxVersion {
-			maxVersion = version
-		}
-	}
-	return
-}
-
-// SelectorMatchesLabels attempts to match the given selector against the given lbl labels map.
-// It returns:
-//   - true if the selector matches the labels (or is empty/nil and labels exist)
-//   - false if the selector does not match
-//   - an error only when the selector is syntactically invalid
-func SelectorMatchesLabels(selector *metav1.LabelSelector, lbl map[string]string) (bool, error) {
-	if selector == nil || (len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0) {
-		return true, nil
-	}
-
-	sel, err := metav1.LabelSelectorAsSelector(selector)
-	if err != nil {
-		return false, err
-	}
-
-	return sel.Matches(labels.Set(lbl)), nil
-}
-
-// CacheName returns the cache.ObjectName for a metav1.Object.
-func CacheName(mo metav1.Object) cache.ObjectName {
-	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
-}
-
-// NamespacedName returns the commontypes.NamespacedName for a metav1.Object.
-func NamespacedName(mo metav1.Object) commontypes.NamespacedName {
-	return commontypes.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
-}
-
-// NamespacedNameFromEventRegarding regards the commontypes.NamespacedName for the object that is the event subject.
-func NamespacedNameFromEventRegarding(ev eventsv1.Event) commontypes.NamespacedName {
-	return commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
-}
-
-// GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
-func GetFullNames(nsNames []commontypes.NamespacedName) []string {
-	if len(nsNames) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(nsNames))
-	for _, nsName := range nsNames {
-		names = append(names, nsName.String())
-	}
-	return names
-}
-
-// GenerateName generates a name by appending a random suffix to the given base name.
-func GenerateName(base string) string {
-	const suffixLen = 5
-	suffix := randutil.String(suffixLen)
-	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
-	if len(base)+len(suffix) > m {
-		base = base[:m-len(suffix)]
-	}
-	return base + suffix
-}
-
-// AsMeta converts an object to its metav1.Object representation, returning an error if the conversion fails.
-func AsMeta(o any) (mo metav1.Object, err error) {
-	mo, err = meta.Accessor(o)
-	if err != nil {
-		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
-	}
-	return
-}
-
-// Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
-func Cast[T any](obj any) (t T, err error) {
-	t, ok := obj.(T)
-	if !ok {
-		err = fmt.Errorf("%w: obj has type %T, expected %T", commonerrors.ErrUnexpectedType, obj, TypeName[T]())
-	}
-	return
-}
-
-// TypeName returns the fully qualified name of a type T.
-func TypeName[T any]() string {
-	var zero T
-	typ := reflect.TypeOf(zero)
-	if typ.Kind() == reflect.Pointer {
-		typ = typ.Elem()
-	}
-	return typ.PkgPath() + "." + typ.Name()
-}
-
-func saveObjToPath(ser *kjson.Serializer, obj runtime.Object, savePath string) error {
-	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
-	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open file %q: %w", savePath, err)
-	}
-	defer ioutil.CloseQuietly(f)
-	err = ser.Encode(obj, f)
-	if err != nil {
-		return fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
-	}
-	return nil
-}
-
-// SortByDecreasingCreationTime sorts the given slice of [metav1.Object] by decreasing creation time.
-func SortByDecreasingCreationTime[T metav1.Object](objs []T) {
-	slices.SortStableFunc(objs, func(a, b T) int {
-		return b.GetCreationTimestamp().Compare(a.GetCreationTimestamp().Time)
-	})
 }
