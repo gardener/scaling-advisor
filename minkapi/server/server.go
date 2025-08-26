@@ -501,6 +501,8 @@ func handlePatchStatus(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 	}
 }
 
+// handleWatch implements watch request/response handling. It delegates watch functionality to the given api.View, only
+// passing a callback which encodes the watch event and flushed it to the response stream.
 func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
@@ -515,10 +517,14 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
+		//w.Header().Set("Transfer-Encoding", "chunked") // NOTE: Don't do this since without setting Content-Length, the Go HTTP server automatically enables chunked transfer encoding
 		flusher := getFlusher(w)
 		if flusher == nil {
 			return
 		}
+		flusher.Flush() // 🚨important! lets client-go see 200 OK and return a watcher!
+
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
 			metaObj, err := store.AsMeta(log, event.Object)

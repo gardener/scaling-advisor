@@ -8,11 +8,15 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
+
 	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
@@ -128,41 +132,61 @@ func TestBaseViewCreateGetNodes(t *testing.T) {
 
 }
 
+type eventsHolder struct {
+	events []watch.Event
+	wg     sync.WaitGroup
+}
+
 func TestWatchPods(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		watcher, err := state.client.CoreV1().Pods("").Watch(ctx, metav1.ListOptions{Watch: true})
-		if err != nil {
-			t.Fatalf("failed to create pods watcher: %v", err)
-			return err
-		}
-		listObjects(t, watcher)
-		return nil
-	})
-	eg.Go(func() error {
-		<-time.After(1 * time.Second)
-		createdPod, err := state.client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to create podA: %w", err)
-		}
-		t.Logf("Created podA with name %q", createdPod.Name)
-		cancel()
-		return nil
-	})
-	err := eg.Wait()
+	defer cancel()
+	var h eventsHolder
+
+	watcher, err := state.client.CoreV1().Pods("").Watch(ctx, metav1.ListOptions{Watch: true})
 	if err != nil {
-		t.Fatalf("failed: %v", err)
+		t.Fatalf("failed to create pods watcher: %v", err)
 		return
+	}
+	defer watcher.Stop()
+
+	h.wg.Add(1)
+	go func() {
+		listObjects(t, watcher, &h)
+	}()
+	createdPod, err := state.client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create podA: %v", err)
+		return
+	}
+	t.Logf("Created podA with name %q", createdPod.Name)
+	h.wg.Wait()
+
+	t.Logf("got numEvents: %d", len(h.events))
+	if len(h.events) == 0 {
+		t.Fatalf("got no events, want at least one")
+		return
+	}
+	for _, ev := range h.events {
+		mo, err := meta.Accessor(ev.Object)
+		if err != nil {
+			t.Logf("WARN: Got event which is not a metav1.Object: %v", err)
+			continue
+		}
+		t.Logf("got event-> Type: %v | Object Kind: %q, Object Name: %q", ev.Type, ev.Object.GetObjectKind().GroupVersionKind(), cache.NewObjectName(mo.GetNamespace(), mo.GetName()))
+	}
+	if h.events[0].Type != watch.Added {
+		t.Errorf("got event type %v, want %v", h.events[0].Type, watch.Added)
 	}
 }
 
-func listObjects(t *testing.T, watcher watch.Interface) {
+func listObjects(t *testing.T, watcher watch.Interface, h *eventsHolder) {
 	watchCh := watcher.ResultChan()
 	t.Logf("Iterating watchCh: %v", watchCh)
 	for ev := range watchCh {
-		t.Logf("Watch Event Type: %v | Watch Object: %v", ev.Type, ev.Object)
+		h.events = append(h.events, ev)
+		h.wg.Done()
 	}
+	return
 }
 func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	t.Helper()
