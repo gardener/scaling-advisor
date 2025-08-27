@@ -10,12 +10,13 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/gardener/scaling-advisor/common/testutil"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
-	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
+	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -48,27 +49,27 @@ func TestNodeCreation(t *testing.T) {
 		},
 	}
 
-	svc, err := startMinkapiService(t)
+	baseView, err := createBaseView(t)
 	if err != nil {
-		t.Errorf("Can not start minkapi service: %v", err)
+		t.Errorf("Can not create baseView: %v", err)
 		return
 	}
 
-	t.Cleanup(func() { svc.Stop(context.TODO()) })
+	t.Cleanup(func() { baseView.Close() })
 	for name, tc := range objCreationTests {
 		t.Run(name, func(t *testing.T) {
-			nodes, err := svc.GetBaseView().ListNodes()
+			nodes, err := baseView.ListNodes()
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Nodes before creation is %d", len(nodes))
-			_, err = createObjectFromFileName[corev1.Node](t, svc, tc.fileName, tc.gvk)
+			_, err = createObjectFromFileName[corev1.Node](t, baseView, tc.fileName, tc.gvk)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
-			nodes, err = svc.GetBaseView().ListNodes()
+			nodes, err = baseView.ListNodes()
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
@@ -90,19 +91,19 @@ func TestPodListing(t *testing.T) {
 		"random namespace":         {namespace: "mnbvcxz", retErr: nil},
 		"default ns with pod name": {namespace: "default", names: []string{"pod-default"}, retErr: nil},
 	}
-	svc, err := startMinkapiService(t)
+	baseView, err := createBaseView(t)
 	if err != nil {
-		t.Errorf("Can not start minkapi service: %v", err)
+		t.Errorf("Can not create base view: %v", err)
 		return
 	}
-	t.Cleanup(func() { svc.Stop(context.TODO()) })
-	if err := createTestObjects(t, &svc); err != nil {
+	t.Cleanup(func() { baseView.Close() })
+	if err := createTestObjects(t, &baseView); err != nil {
 		t.Errorf("Can not create test objects: %v", err)
 		return
 	}
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			p, err := svc.GetBaseView().ListPods(tc.namespace, tc.names...)
+			p, err := baseView.ListPods(tc.namespace, tc.names...)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
@@ -156,20 +157,20 @@ func TestEventDeletion(t *testing.T) {
 			retErr: nil,
 		},
 	}
-	svc, err := startMinkapiService(t)
+	baseView, err := createBaseView(t)
 	if err != nil {
-		t.Errorf("Can not start minkapi service: %v", err)
+		t.Errorf("Can not create baseView: %v", err)
 		return
 	}
-	t.Cleanup(func() { svc.Stop(context.TODO()) })
+	t.Cleanup(func() { baseView.Close() })
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			_, err = createObjectFromFileName[eventsv1.Event](t, svc, "../testdata/event-a.json", typeinfo.EventsDescriptor.GVK)
+			_, err = createObjectFromFileName[eventsv1.Event](t, baseView, "../testdata/event-a.json", typeinfo.EventsDescriptor.GVK)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			events, err := svc.GetBaseView().ListEvents(tc.c.Namespace)
+			events, err := baseView.ListEvents(tc.c.Namespace)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
@@ -177,13 +178,13 @@ func TestEventDeletion(t *testing.T) {
 			t.Logf("Number of Events before deletion is %d", len(events))
 
 			t.Logf("Deleting Event")
-			err = svc.GetBaseView().DeleteObjects(tc.gvk, tc.c)
+			err = baseView.DeleteObjects(tc.gvk, tc.c)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 
-			events, err = svc.GetBaseView().ListEvents(tc.c.Namespace)
+			events, err = baseView.ListEvents(tc.c.Namespace)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
 				return
@@ -193,32 +194,30 @@ func TestEventDeletion(t *testing.T) {
 	}
 }
 
-func startMinkapiService(t *testing.T) (api.Server, error) {
+func createBaseView(t *testing.T) (api.View, error) {
 	t.Helper()
+	viewArgs := api.ViewArgs{
 
-	mainOpts, err := cli.ParseProgramFlags([]string{
-		"-k", "/tmp/minkapi-test.yaml",
-		"-H", "localhost",
-		"-P", "9892",
-		"-t", "0.5s",
-	})
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
-		return nil, err
+		Name:           api.DefaultBasePrefix,
+		KubeConfigPath: "/tmp/minkapi-test.yaml",
+		Scheme:         typeinfo.SupportedScheme,
+		WatchConfig: api.WatchConfig{
+			QueueSize: 100,
+			Timeout:   500 * time.Millisecond,
+		},
 	}
-	cfg := mainOpts.MinKAPIConfig
-	return server.NewInMemory(logr.FromContextOrDiscard(context.TODO()), cfg)
+	return view.New(logr.FromContextOrDiscard(context.TODO()), &viewArgs)
 }
 
-func createTestObjects(t *testing.T, svc *api.Server) (err error) {
+func createTestObjects(t *testing.T, view *api.View) (err error) {
 	t.Helper()
-	_, err = createObjectFromFileName[corev1.Node](t, *svc, "../testdata/node-a.json", typeinfo.NodesDescriptor.GVK)
+	_, err = createObjectFromFileName[corev1.Node](t, *view, "../testdata/node-a.json", typeinfo.NodesDescriptor.GVK)
 	if err != nil {
 		t.Error(err)
 		return err
 	}
 	for _, file := range []string{"../testdata/pod-a.json", "../testdata/pod-defaultns.json", "../testdata/pod-testns.json"} {
-		_, err = createObjectFromFileName[corev1.Pod](t, *svc, file, typeinfo.PodsDescriptor.GVK)
+		_, err = createObjectFromFileName[corev1.Pod](t, *view, file, typeinfo.PodsDescriptor.GVK)
 		if err != nil {
 			t.Error(err)
 			return err
@@ -238,7 +237,7 @@ func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
 	return obj, nil
 }
 
-func createObjectFromFileName[T any](t *testing.T, svc api.Server, fileName string, gvk schema.GroupVersionKind) (T, error) {
+func createObjectFromFileName[T any](t *testing.T, view api.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
 	t.Helper()
 	var (
 		jsonData []byte
@@ -257,7 +256,7 @@ func createObjectFromFileName[T any](t *testing.T, svc api.Server, fileName stri
 	if !ok {
 		return obj, err
 	}
-	err = svc.GetBaseView().StoreObject(gvk, objInterface)
+	err = view.StoreObject(gvk, objInterface)
 	if err != nil {
 		return obj, err
 	}

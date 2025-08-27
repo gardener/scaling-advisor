@@ -24,7 +24,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 	kjson "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
@@ -468,7 +467,7 @@ func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 		patchedObj, err := view.PatchObject(d.GVK, name, types.PatchType(contentType), patchData)
 		if err != nil {
 			err = fmt.Errorf("failed to patch object %q: %w", name, err)
-			handleInternalServerError(w, r, err)
+			handleError(w, r, err)
 			return
 		}
 		writeJsonResponse(w, r, patchedObj)
@@ -716,45 +715,6 @@ func parseLabelSelector(req *http.Request) (labels.Selector, error) {
 		return labels.Everything(), nil
 	}
 	return labels.Parse(raw)
-}
-
-func patchStatus(objPtr runtime.Object, key string, patch []byte) error {
-	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
-		return fmt.Errorf("object %q must be a non-nil pointer", key)
-	}
-	statusField := objValuePtr.Elem().FieldByName("Status")
-	if !statusField.IsValid() {
-		return fmt.Errorf("object %q of type %T has no Status field", key, objPtr)
-	}
-
-	var patchWrapper map[string]json.RawMessage
-	err := json.Unmarshal(patch, &patchWrapper)
-	if err != nil {
-		return fmt.Errorf("failed to parse patch for %q as JSON object: %w", key, err)
-	}
-	statusPatchRaw, ok := patchWrapper["status"]
-	if !ok {
-		return fmt.Errorf("patch for %q does not contain a 'status' key", key)
-	}
-
-	statusInterface := statusField.Interface()
-	originalStatusJSON, err := kjson.Marshal(statusInterface)
-	if err != nil {
-		return fmt.Errorf("failed to marshal original status for object %q: %w", key, err)
-	}
-	patchedStatusJSON, err := strategicpatch.StrategicMergePatch(originalStatusJSON, statusPatchRaw, statusInterface)
-	if err != nil {
-		return fmt.Errorf("failed to apply strategic merge patch for object %q: %w", key, err)
-	}
-
-	newStatusVal := reflect.New(statusField.Type())
-	newStatusPtr := newStatusVal.Interface()
-	if err := json.Unmarshal(patchedStatusJSON, newStatusPtr); err != nil {
-		return fmt.Errorf("failed to unmarshal patched status for object %q: %w", key, err)
-	}
-	statusField.Set(newStatusVal.Elem())
-	return nil
 }
 
 func setMinKAPIConfigDefaults(cfg *api.MinKAPIConfig) {

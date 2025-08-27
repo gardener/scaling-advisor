@@ -13,6 +13,10 @@ func AssertError(t *testing.T, got error, want error) {
 	if isNil(got) && isNil(want) {
 		return
 	}
+	if (isNil(got) && !isNil(want)) || (!isNil(got) && isNil(want)) {
+		t.Errorf("Unexpected error, got: %v, want: %v", got, want)
+		return
+	}
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
 		t.Logf("Expected error: %v", got)
 	} else {

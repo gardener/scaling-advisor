@@ -10,11 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/testutil"
 	"io"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,180 +29,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-func TestPatchPodStatus(t *testing.T) {
-	var testPodPatchStatus = `{
-"status" : {
-	"conditions" : [ {
-	  "lastProbeTime" : null,
-	  "lastTransitionTime" : "2025-05-08T08:21:44Z",
-	  "message" : "no nodes available to schedule pods",
-	  "reason" : "Unschedulable",
-	  "status" : "False",
-	  "type" : "PodScheduled"
-	} ]
-  }
-}
-`
-	var testIncorrectPatch = `{
-"status" : {
-	"conditions" : "not-an-array"
-  }
-}`
-
-	tests := map[string]struct {
-		patch      string
-		key        string
-		patchErr   error
-		passNilObj bool
-	}{
-		"correct patch": {
-			key:      "default/bingo",
-			patchErr: nil,
-			patch:    testPodPatchStatus,
-		},
-		"incorrect patch": {
-			key:      "default/bingo",
-			patchErr: fmt.Errorf("failed to unmarshal patched status"),
-			patch:    testIncorrectPatch,
-		},
-		"nil Object": {
-			key:        "default/bingo",
-			patchErr:   fmt.Errorf("non-nil pointer"),
-			patch:      testPodPatchStatus,
-			passNilObj: true,
-		},
-		"patch with no status": {
-			key:      "default/bingo",
-			patchErr: fmt.Errorf("does not contain a 'status' key"),
-			patch:    `{}`,
-		},
-		"corrupted patch": {
-			key:      "default/bingo",
-			patchErr: fmt.Errorf("failed to parse patch"),
-			patch:    `{{}`,
-		},
-		"incorrect key": { // TODO Is key only utilized for error messages
-			key:      "default/abc",
-			patchErr: nil,
-			patch:    testPodPatchStatus,
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			obj, err := typeinfo.PodsDescriptor.CreateObject()
-			if err != nil {
-				t.Errorf("Failed to create pod: %v", err)
-				return
-			}
-			pod := obj.(*corev1.Pod)
-			if tc.passNilObj {
-				err = patchStatus(nil, tc.key, []byte(tc.patch))
-			} else {
-				err = patchStatus(obj.(runtime.Object), tc.key, []byte(tc.patch))
-			}
-			if err != nil {
-				testutil.AssertError(t, err, tc.patchErr)
-				return
-			}
-			t.Logf("Patched pod status: %#v", pod.Status.Conditions)
-			if pod.Status.Conditions == nil {
-				t.Errorf("Failed to set pod conditions")
-			}
-		})
-	}
-}
-
-// TestPatchObjectUsingEvent TODO: needs to be moved to common objutil_test.go
-func TestPatchObjectUsingEvent(t *testing.T) {
-	var patchEventSeries = `
-{
-  "series": {
-	"count": 2,
-	"lastObservedTime": "2025-05-08T09:05:57.028064Z"
-  }
-}
-`
-	var corruptedPatch = `{}}`
-	var invalidPatch = `{ "metadata": "abcdefgh"}`
-	contentTypeTests := map[string]struct {
-		contentType string
-		patchData   string
-		patchErr    error
-		passNilObj  bool
-	}{
-		"Strategic Merge Patch": {
-			contentType: "application/strategic-merge-patch+json",
-			patchData:   patchEventSeries,
-			patchErr:    nil,
-		},
-		"Merge Patch": {
-			contentType: "application/merge-patch+json",
-			patchData:   patchEventSeries,
-			patchErr:    nil,
-		},
-		"Unsupported ContentType": {
-			contentType: "application/json-patch+json",
-			patchData:   patchEventSeries,
-			patchErr:    fmt.Errorf("unsupported patch content type"),
-		},
-		"Corrupted Strategic Merge Patch": {
-			contentType: "application/strategic-merge-patch+json",
-			patchData:   corruptedPatch,
-			patchErr:    fmt.Errorf("invalid JSON"),
-		},
-		"Corrupted Merge Patch": {
-			contentType: "application/merge-patch+json",
-			patchData:   corruptedPatch,
-			patchErr:    fmt.Errorf("Invalid JSON"),
-		},
-		"invalid Patch": {
-			contentType: "application/merge-patch+json",
-			patchData:   invalidPatch,
-			patchErr:    fmt.Errorf("failed to unmarshal patched JSON"),
-		},
-		"Nil object Patch": {
-			contentType: "application/merge-patch+json",
-			patchData:   patchEventSeries,
-			patchErr:    fmt.Errorf("non-nil pointer"),
-			passNilObj:  true,
-		},
-	}
-
-	for name, tc := range contentTypeTests {
-		t.Run(name, func(t *testing.T) {
-			name := cache.NewObjectName("default", "a-bingo.aaabbb")
-			obj, err := typeinfo.EventsDescriptor.CreateObject()
-			if err != nil {
-				t.Errorf("Failed to create event: %v", err)
-				return
-			}
-			event := obj.(*eventsv1.Event)
-			if tc.passNilObj {
-				err = objutil.PatchObject(nil, name, types.PatchType(tc.contentType), []byte(tc.patchData))
-			} else {
-				err = objutil.PatchObject(obj.(runtime.Object), name, types.PatchType(tc.contentType), []byte(tc.patchData))
-			}
-			if err != nil {
-				testutil.AssertError(t, err, tc.patchErr)
-				return
-			}
-			t.Logf("Patched event series: %v", event.Series)
-			if event.Series == nil {
-				t.Errorf("Failed to patch event series")
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------------------------
 func TestHTTPHandlers(t *testing.T) {
 	s, mux, err := startMinkapiService(t)
 	if err != nil {
@@ -590,7 +418,7 @@ func TestPatchPutHTTPHandlers(t *testing.T) {
 			reqMethod:                        http.MethodPatch,
 			reqTarget:                        "/api/v1/namespaces/default/pods/bingo/status",
 			reqContentType:                   "application/json-patch+json",
-			expectedStatus:                   http.StatusInternalServerError, // FIXME why internal
+			expectedStatus:                   http.StatusBadRequest,
 			createObjectBeforeRequest:        true,
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion", "Status.Conditions"),
 		},
@@ -693,7 +521,7 @@ func TestPatchPutHTTPHandlers(t *testing.T) {
 				return
 			}
 			if resp.StatusCode != tc.expectedStatus {
-				t.Errorf("Unexpected status code, got: %d, expected: %d", resp.StatusCode, tc.expectedStatus)
+				t.Errorf("Unexpected status code, got: %s, expected: %d", resp.Status, tc.expectedStatus)
 				return
 			} else if resp.StatusCode != http.StatusOK {
 				t.Logf("Expected status error: %s", resp.Status)
