@@ -7,7 +7,7 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
-	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
+	mkserver "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/service/api"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +20,9 @@ import (
 var state suiteState
 
 type suiteState struct {
-	kapiApp         *mkcli.App
+	ctx             context.Context
+	cancel          context.CancelFunc
+	app             *mkapi.App
 	nodeA           corev1.Node
 	podA            corev1.Pod
 	clientFacades   commontypes.ClientFacades
@@ -30,7 +32,7 @@ type suiteState struct {
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
 func TestMain(m *testing.M) {
-	err := initSuite()
+	err := initSuite(context.Background())
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
 		os.Exit(commoncli.ExitErrStart)
@@ -60,22 +62,37 @@ func TestPodNodeAssignment(t *testing.T) {
 		return
 	}
 	t.Logf("Created podA with name %q", createdPod.Name)
-	<-time.After(10 * time.Second)
-	t.Logf("events  = %v", state.kapiApp.Service.GetBaseView().GetEventSink().List())
+	<-time.After(5 * time.Second) // TODO: replace with better approach.
+	evList := state.app.Server.GetBaseView().GetEventSink().List()
+	if len(evList) == 0 {
+		t.Fatalf("got no evList, want at least one")
+		return
+	}
+	t.Logf("got numEvents: %d", len(evList))
+	bindingEvent := evList[0]
+	t.Logf("binding event note: %q", bindingEvent.Note)
+	if bindingEvent.Action != "Binding" {
+		t.Errorf("got event type %v, want %v", bindingEvent.Type, "Binding")
+	}
+	if bindingEvent.Reason != "Scheduled" {
+		t.Errorf("got event reason %v, want %v", bindingEvent.Reason, "Scheduled")
+	}
 }
 
-func initSuite() error {
+func initSuite(ctx context.Context) error {
 	var err error
+	var exitCode int
 
-	app, exitCode := mkcli.LaunchApp()
+	app, exitCode := mkserver.LaunchApp(ctx)
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
 	defer app.Cancel()
 	<-time.After(1 * time.Second) // give some time for startup
 
-	state.kapiApp = &app
-	state.clientFacades, err = app.Service.GetBaseView().GetClientFacades(mkapi.NetworkClient)
+	state.app = &app
+	state.ctx, state.cancel = app.Ctx, app.Cancel
+	state.clientFacades, err = app.Server.GetBaseView().GetClientFacades(commontypes.NetworkClient)
 	if err != nil {
 		return err
 	}
@@ -86,7 +103,7 @@ func initSuite() error {
 	}
 	params := &api.SchedulerLaunchParams{
 		ClientFacades: state.clientFacades,
-		EventSink:     app.Service.GetBaseView().GetEventSink(),
+		EventSink:     app.Server.GetBaseView().GetEventSink(),
 	}
 	state.schedulerHandle, err = launcher.Launch(app.Ctx, params)
 	if err != nil {
@@ -109,8 +126,5 @@ func initSuite() error {
 
 func shutdownSuite() {
 	state.schedulerHandle.Stop()
-	exitCode := mkcli.ShutdownApp(state.kapiApp)
-	if exitCode != commoncli.ExitSuccess {
-	}
-	os.Exit(exitCode)
+	_ = mkserver.ShutdownApp(state.app)
 }

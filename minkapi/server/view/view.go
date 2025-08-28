@@ -67,13 +67,13 @@ func (b *baseView) GetType() api.ViewType {
 	return api.BaseViewType
 }
 
-func (b *baseView) GetClientFacades(clientType api.ClientType) (clientFacades commontypes.ClientFacades, err error) {
+func (b *baseView) GetClientFacades(clientMode commontypes.ClientMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", api.ErrClientFacadesFailed, err)
 		}
 	}()
-	if clientType == api.NetworkClient {
+	if clientMode == commontypes.NetworkClient {
 		clientFacades, err = clientutil.CreateNetworkClientFacades(b.log, b.args.KubeConfigPath, b.args.WatchConfig.Timeout)
 		return
 	}

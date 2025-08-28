@@ -30,7 +30,7 @@ type Resettable interface {
 
 // Service is a component that can be started and stopped.
 type Service interface {
-	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
+	// Start starts the service with the given context. Start may block depending on the implementation - if the service is a server.
 	// The context is expected to be populated with a logger.
 	Start(ctx context.Context) error
 	// Stop stops the core. Stop does not block.
@@ -68,79 +68,6 @@ type NamespacedName struct {
 	Name string `json:"name"`
 }
 
-// AsObjectName converts this namespaced name to a client-go cache.ObjectName
-func (nn NamespacedName) AsObjectName() cache.ObjectName {
-	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
-}
-
-// AsObjectReference constructs an ObjectReference referring this name or nil if name is empty.
-func (nn NamespacedName) AsObjectReference() *corev1.ObjectReference {
-	if nn.Name == "" {
-		return nil
-	} else {
-		return &corev1.ObjectReference{Namespace: nn.Namespace, Name: nn.Name}
-	}
-}
-
-// String returns the general purpose string representation.
-// Matches implementation in APIMachinery types.NamespacedName
-func (nn NamespacedName) String() string {
-	return nn.Namespace + string(types.Separator) + nn.Name
-}
-
-// SimulatorStrategy represents a simulation strategy variant.
-// +enum
-type SimulatorStrategy string
-
-const (
-	// SimulatorStrategySingleNodeMultiSim represents a simulator strategy which runs independent multiple simulations differentiated by scaling a single node for a combination
-	// of NodePool, NodeTemplate and AvailabilityZone.
-	SimulatorStrategySingleNodeMultiSim SimulatorStrategy = "single-node-multi-sim"
-	// SimulatorStrategyMultiNodeSingleSim represents a simulator strategy which runs a single simulation by scaling multiple nodes for
-	// all combinations of NodePool, NodeTemplate and AvailabilityZone.
-	SimulatorStrategyMultiNodeSingleSim SimulatorStrategy = "multi-node-single-sim"
-)
-
-// IsMultiNode returns true if the strategy scales multiple nodes, false otherwise.
-func (s SimulatorStrategy) IsMultiNode() bool {
-	return s == SimulatorStrategyMultiNodeSingleSim
-}
-
-// IsSingleNode returns true if the strategy scales only a single node, false otherwise.
-func (s SimulatorStrategy) IsSingleNode() bool {
-	return s == SimulatorStrategySingleNodeMultiSim
-}
-
-// ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
-// +enum
-type ScalingAdviceGenerationMode string
-
-const (
-	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
-	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
-	ScalingAdviceGenerationModeIncremental ScalingAdviceGenerationMode = "incremental"
-	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
-	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
-	// all pending pods have been scheduled or stabilised.
-	ScalingAdviceGenerationModeAllAtOnce ScalingAdviceGenerationMode = "all-at-once"
-)
-
-// SupportedAdviceGenerationModes is a set of all supported scaling advice generation modes.
-var SupportedAdviceGenerationModes = sets.New(
-	ScalingAdviceGenerationModeIncremental,
-	ScalingAdviceGenerationModeAllAtOnce,
-)
-
-// IsIncremental returns true if the advice generation mode is incremental.
-func (a ScalingAdviceGenerationMode) IsIncremental() bool {
-	return a == ScalingAdviceGenerationModeIncremental
-}
-
-// IsAllAtOnce returns true if the advice generation mode is all-at-once.
-func (a ScalingAdviceGenerationMode) IsAllAtOnce() bool {
-	return a == ScalingAdviceGenerationModeAllAtOnce
-}
-
 // NodeScoringStrategy represents a node scoring strategy variant.
 type NodeScoringStrategy string
 
@@ -168,83 +95,19 @@ const (
 	CloudProviderOpenStack CloudProvider = "openstack"
 )
 
-// AsCloudProvider converts a string to CloudProvider type. It returns an error if the cloudProvider string
-// is not supported.
-func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
-	switch cloudProvider {
-	case "aws":
-		return CloudProviderAWS, nil
-	case "gcp":
-		return CloudProviderGCP, nil
-	case "azure":
-		return CloudProviderAzure, nil
-	case "ali":
-		return CloudProviderAli, nil
-	case "openstack":
-		return CloudProviderOpenStack, nil
-	default:
-		return "", fmt.Errorf("%w: unknown %q", commonerrors.ErrUnsupportedCloudProvider, cloudProvider)
-	}
-}
-
-// ClientAccessMode indicates the access mode of k8s client
-// +enum
-type ClientAccessMode string
+// ClientMode indicates the connection mode of k8s client
+type ClientMode string
 
 const (
-	// ClientAccessModeNetwork indicates the client accesses k8s api-server via a network call.
-	ClientAccessModeNetwork ClientAccessMode = "network"
-	// ClientAccessModeInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
-	// thus reducing the need for serialization and deserialization of requests and responses.
-	ClientAccessModeInMemory ClientAccessMode = "in-memory"
+	NetworkClient ClientMode = "Network"
+	InMemClient   ClientMode = "InMemory"
 )
 
-// ClientFacades is a holder for the primary k8s client and informer interfaces.
+// ClientFacades is a holder for the primary k8s client and informer interfaces
 type ClientFacades struct {
-	// Client is the standard Kubernetes clientset for accessing core APIs.
-	Client kubernetes.Interface
-	// DynClient is the dynamic client for accessing arbitrary Kubernetes resources.
-	DynClient dynamic.Interface
-	// InformerFactory provides shared informers for core Kubernetes resources.
-	InformerFactory informers.SharedInformerFactory
-	// DynInformerFactory provides shared informers for dynamic Kubernetes resources.
+	Mode               ClientMode
+	Client             kubernetes.Interface
+	DynClient          dynamic.Interface
+	InformerFactory    informers.SharedInformerFactory
 	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
-	// Mode indicates the access mode of the Kubernetes client.
-	Mode ClientAccessMode
-}
-
-// ContextKey is the type alias for scaling advisor related context keys
-type ContextKey string
-
-const (
-	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
-	VerbosityCtxKey ContextKey = "verbosity"
-
-	// TraceDirCtxKey is the context key under which the dir path to the trace dir is stored.
-	TraceDirCtxKey ContextKey = "trace-dir"
-
-	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-	TraceLogPathCtxKey ContextKey = "trace-log"
-)
-
-// PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
-type PriorityKey struct {
-	// First is the first priority value. Higher values represent higher priority.
-	First int32
-	// Second is the second priority value. Higher value represent higher priority. Secondary weight compared to First
-	Second int32
-}
-
-// String returns a string representation of the PriorityKey.
-func (k PriorityKey) String() string {
-	return fmt.Sprintf("%d-%d", k.First, k.Second)
-}
-
-// CmpPriorityKeyDecreasing is a compare function for [PriorityKey] in decreasing value of priority.
-// ie higher priority values  before lower priority values which is the kubernetes convention.
-func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
-	if firstCmp := cmp.Compare(b.First, a.First); firstCmp != 0 {
-		return firstCmp
-	}
-	return cmp.Compare(b.Second, a.Second)
 }

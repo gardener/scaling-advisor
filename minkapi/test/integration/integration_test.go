@@ -6,13 +6,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/minkapi/server"
 	"k8s.io/apimachinery/pkg/api/meta"
+
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 
@@ -21,10 +22,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"k8s.io/apimachinery/pkg/watch"
+	"os"
+	"testing"
+	"time"
 
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/api"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,15 +35,15 @@ import (
 var state suiteState
 
 type suiteState struct {
-	app           *cli.App
+	app           api.App
 	nodeA         corev1.Node
 	podA          corev1.Pod
 	clientFacades commontypes.ClientFacades
 }
 
-// TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutsdown.
+// TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
 func TestMain(m *testing.M) {
-	err := initSuite()
+	err := initSuite(context.Background())
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
 		os.Exit(commoncli.ExitErrStart)
@@ -83,24 +86,21 @@ func TestBaseViewCreateGetNodes(t *testing.T) {
 
 type eventsHolder struct {
 	events []watch.Event
-	wg     sync.WaitGroup
 }
 
 func TestWatchPods(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
 	var h eventsHolder
 	client := state.clientFacades.Client
-	watcher, err := client.CoreV1().Pods("").Watch(ctx, metav1.ListOptions{Watch: true})
+	watcher, err := client.CoreV1().Pods("").Watch(t.Context(), metav1.ListOptions{Watch: true})
 	if err != nil {
 		t.Fatalf("failed to create pods watcher: %v", err)
 		return
 	}
 	defer watcher.Stop()
 
-	h.wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		listObjects(t, watcher, &h)
+		listObjects(ctx, t, watcher.ResultChan(), &h)
 	}()
 	createdPod, err := client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
 	if err != nil {
@@ -108,7 +108,8 @@ func TestWatchPods(t *testing.T) {
 		return
 	}
 	t.Logf("Created podA with name %q", createdPod.Name)
-	h.wg.Wait()
+	<-time.After(2 * time.Second)
+	cancel()
 
 	t.Logf("got numEvents: %d", len(h.events))
 	if len(h.events) == 0 {
@@ -128,14 +129,36 @@ func TestWatchPods(t *testing.T) {
 	}
 }
 
-func listObjects(t *testing.T, watcher watch.Interface, h *eventsHolder) {
-	watchCh := watcher.ResultChan()
-	t.Logf("Iterating watchCh: %v", watchCh)
-	for ev := range watchCh {
-		h.events = append(h.events, ev)
-		h.wg.Done()
+func listObjects(ctx context.Context, t *testing.T, eventCh <-chan watch.Event, h *eventsHolder) {
+	t.Logf("Iterating eventCh: %v", eventCh)
+	count := 0
+outer:
+	for {
+		select {
+		case ev, ok := <-eventCh:
+			if !ok {
+				break outer
+			}
+			count++
+			mo, err := meta.Accessor(ev.Object)
+			if err != nil {
+				t.Logf("received #%d event, Type: %s, Object: %v", count, ev.Type, ev.Object)
+				continue
+			}
+			objFullName := cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+			objType, err := meta.TypeAccessor(ev.Object)
+			if err != nil {
+				t.Fatalf("failed to get TypeAccessor for event object %q: %v", objFullName, err)
+				return
+			}
+			corev1.SchemeGroupVersion.WithKind(objType.GetKind()).GroupVersion().WithKind(objType.GetKind())
+			t.Logf("received #%d event, Type: %s, ObjectName: %s", count, ev.Type, objFullName)
+			h.events = append(h.events, ev)
+		case <-ctx.Done():
+			break outer
+		}
 	}
-	return
+	t.Log("listObjects done")
 }
 func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	t.Helper()
@@ -147,18 +170,17 @@ func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	}
 }
 
-func initSuite() error {
+func initSuite(ctx context.Context) error {
 	var err error
+	var exitCode int
 
-	app, exitCode := cli.LaunchApp()
+	state.app, exitCode = server.LaunchApp(ctx)
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
-	defer app.Cancel()
-	<-time.After(1 * time.Second) // give some time for startup
+	<-time.After(1 * time.Second) // give minmal time for startup
 
-	state.app = &app
-	state.clientFacades, err = app.Service.GetBaseView().GetClientFacades(api.NetworkClient)
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(commontypes.NetworkClient)
 	if err != nil {
 		return err
 	}
@@ -178,8 +200,6 @@ func initSuite() error {
 	return nil
 }
 func shutdownSuite() {
-	exitCode := cli.ShutdownApp(state.app)
-	if exitCode != commoncli.ExitSuccess {
-	}
-	os.Exit(exitCode)
+	state.app.Cancel()
+	_ = server.ShutdownApp(&state.app)
 }

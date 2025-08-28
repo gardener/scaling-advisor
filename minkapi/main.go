@@ -5,14 +5,15 @@
 package main
 
 import (
+	"context"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/go-logr/logr"
 	"os"
 )
 
 func main() {
-	app, exitCode := cli.LaunchApp()
+	app, exitCode := server.LaunchApp(context.Background())
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
@@ -24,6 +25,6 @@ func main() {
 	<-app.Ctx.Done()
 	log.Info("Received shutdown signal, initiating graceful shutdown")
 
-	exitCode = cli.ShutdownApp(&app)
+	exitCode = server.ShutdownApp(&app)
 	os.Exit(exitCode)
 }

@@ -94,9 +94,10 @@ func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
 	return nil
 }
 
-// CreateAppContext setups up an app context with signal cancellation and a application logr.Logger.
-func CreateAppContext() (context.Context, context.CancelFunc) {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+// CreateAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
+// a cancellation function for the returned context.
+func CreateAppContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 
 	// Set up logr with klog backend using NewKlogr
 	log := klog.NewKlogr()

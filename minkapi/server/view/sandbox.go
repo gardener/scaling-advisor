@@ -64,13 +64,13 @@ func (s *sandboxView) GetType() api.ViewType {
 	return api.SandboxViewType
 }
 
-func (s *sandboxView) GetClientFacades(clientType api.ClientType) (clientFacades commontypes.ClientFacades, err error) {
+func (s *sandboxView) GetClientFacades(clientMode commontypes.ClientMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", api.ErrClientFacadesFailed, err)
 		}
 	}()
-	if clientType == api.NetworkClient {
+	if clientMode == commontypes.NetworkClient {
 		clientFacades, err = clientutil.CreateNetworkClientFacades(s.log, s.args.KubeConfigPath, s.args.WatchConfig.Timeout)
 		return
 	} else {
