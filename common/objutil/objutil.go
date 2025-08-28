@@ -78,8 +78,7 @@ func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
 	}
 	err = sigyaml.Unmarshal(data, obj)
 	if err != nil {
-		err = fmt.Errorf("failed to unmarshal object in %q: %w", yamlPath, err)
-		return
+		err = fmt.Errorf("failed to unmarshal object from dataq: %w", err)
 	}
 	return
 }

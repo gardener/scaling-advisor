@@ -82,7 +82,9 @@ type ClientFacades struct {
 // View is the high-level facade to a repository of objects of different types (GVK).
 // TODO: Think of a better name. Rename this to Repository or RepoView, also add godoc ?
 type View interface {
-	GetClientFacades() (*ClientFacades, error)
+	GetName() string
+	GetType() ViewType
+	GetClientFacades(clientType ClientType) (commontypes.ClientFacades, error)
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	GetEventSink() EventSink
 	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error

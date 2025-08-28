@@ -1,12 +1,20 @@
 package testutil
 
 import (
+	"embed"
 	"errors"
+	"fmt"
+	corev1 "k8s.io/api/core/v1"
 	"reflect"
 	"runtime"
+	sigyaml "sigs.k8s.io/yaml"
 	"strings"
 	"testing"
 )
+import _ "embed"
+
+//go:embed testdata/*
+var testDataFS embed.FS
 
 func AssertError(t *testing.T, got error, want error) {
 	t.Helper()
@@ -44,4 +52,33 @@ func isNil(v any) bool {
 func GetFunctionName(t *testing.T, fn any) string {
 	t.Helper()
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
+}
+
+func LoadTestNodes() (nodes []corev1.Node, err error) {
+	var nodeA corev1.Node
+	data, err := testDataFS.ReadFile("testdata/node-a.yaml")
+	if err != nil {
+		return
+	}
+	err = sigyaml.Unmarshal(data, &nodeA)
+	if err != nil {
+		err = fmt.Errorf("failed to unmarshal object node-a data into node obj: %w", err)
+		return
+	}
+	nodes = append(nodes, nodeA)
+	return
+}
+func LoadTestPods() (pods []corev1.Pod, err error) {
+	var podA corev1.Pod
+	data, err := testDataFS.ReadFile("testdata/pod-a.yaml")
+	if err != nil {
+		return
+	}
+	err = sigyaml.Unmarshal(data, &podA)
+	if err != nil {
+		err = fmt.Errorf("failed to unmarshal object pod-a data into pod obj: %w", err)
+		return
+	}
+	pods = append(pods, podA)
+	return
 }

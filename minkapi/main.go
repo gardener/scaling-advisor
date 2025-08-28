@@ -5,28 +5,25 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"os"
-
-	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server"
-
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"os"
 )
 
 func main() {
-	app, exitCode, err := cli.LaunchApp(context.Background())
-	if err != nil {
+	app, exitCode := cli.LaunchApp()
+	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
 	defer app.Cancel()
 
+	log := logr.FromContextOrDiscard(app.Ctx)
+
+	// Wait for a signal
 	<-app.Ctx.Done()
+	log.Info("Received shutdown signal, initiating graceful shutdown")
+
 	exitCode = cli.ShutdownApp(&app)
 	os.Exit(exitCode)
 }

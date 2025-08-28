@@ -9,10 +9,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/go-logr/logr"
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strings"
 	"syscall"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -94,14 +94,12 @@ func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
 	return nil
 }
 
-// NewAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
-// a cancellation function for the returned context.
-// NOTE: Should be invoked only AFTER parsing program flags, so that the logger instance is initialized with logger flags.
-func NewAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+// CreateAppContext setups up an app context with signal cancellation and a application logr.Logger.
+func CreateAppContext() (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 
 	// Set up logr with klog backend using NewKlogr
-	log := klog.NewKlogr().WithValues("program", programName)
+	log := klog.NewKlogr()
 	ctx = logr.NewContext(ctx, log)
 	return ctx, stop
 }

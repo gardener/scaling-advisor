@@ -522,7 +522,7 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 		if flusher == nil {
 			return
 		}
-		flusher.Flush() // 🚨important! lets client-go see 200 OK and return a watcher!
+		flusher.Flush() // 🚨important! unblocks client-go I/O so that it can construct a watcher!
 
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {

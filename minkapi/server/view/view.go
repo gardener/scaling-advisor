@@ -59,14 +59,22 @@ func New(log logr.Logger, kubeConfigPath string, scheme *runtime.Scheme, watchQu
 	}, nil
 }
 
-func (b *baseObjectView) GetClientFacades() (clientFacades *api.ClientFacades, err error) {
+func (b *baseView) GetName() string {
+	return b.args.Name
+}
+
+func (b *baseView) GetType() api.ViewType {
+	return api.BaseViewType
+}
+
+func (b *baseView) GetClientFacades(clientType api.ClientType) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", api.ErrClientFacadesFailed, err)
 		}
 	}()
-	client, dynClient, err := clientutil.BuildClients(b.kubeConfigPath) //TODO: Make in-mem clients here.
-	if err != nil {
+	if clientType == api.NetworkClient {
+		clientFacades, err = clientutil.CreateNetworkClientFacades(b.log, b.args.KubeConfigPath, b.args.WatchConfig.Timeout)
 		return
 	}
 	informerFactory, dynInformerFactory := clientutil.BuildInformerFactories(client, dynClient, b.watchQueueTimeout)

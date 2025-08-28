@@ -15,6 +15,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"net/http"
+	"time"
 )
 
 // BuildClients currently constructs static and dynamic client-go clients given a kubeconfig file.
@@ -49,9 +51,6 @@ func BuildInformerFactories(client kubernetes.Interface, dyncClient dynamic.Inte
 	return
 }
 
-// CreateNetworkClientFacades creates client facades for network access mode.
-// It builds clients and informer factories using the provided kubeconfig path and resync period,
-// then returns a client facade containing all necessary client components for network operations.
 func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPeriod time.Duration) (clientFacades commontypes.ClientFacades, err error) {
 	client, dynClient, err := BuildClients(log, kubeConfigPath)
 	if err != nil {
@@ -59,7 +58,6 @@ func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPe
 	}
 	informerFactory, dynInformerFactory := BuildInformerFactories(client, dynClient, resyncPeriod)
 	clientFacades = commontypes.ClientFacades{
-		Mode:               commontypes.ClientAccessModeNetwork,
 		Client:             client,
 		DynClient:          dynClient,
 		InformerFactory:    informerFactory,
