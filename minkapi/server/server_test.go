@@ -18,12 +18,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -712,18 +713,18 @@ func createObjectFromFileName[T any](t *testing.T, svc *InMemoryKAPI, fileName s
 
 func startMinkapiService(t *testing.T) (*InMemoryKAPI, *http.ServeMux, error) { // Need this explicitly in order to get viewMux
 	t.Helper()
-
-	mainOpts, err := cli.ParseProgramFlags([]string{
-		"-k", "/tmp/minkapi-test.yaml",
-		"-H", "localhost",
-		"-P", "9892",
-		"-t", "0.5s",
-	})
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
-		return nil, nil, err
+	var err error
+	cfg := api.MinKAPIConfig{
+		BasePrefix: api.DefaultBasePrefix,
+		ServerConfig: commontypes.ServerConfig{
+			HostPort:       commontypes.HostPort{Host: "localhost", Port: 9892},
+			KubeConfigPath: "/tmp/minkapi-test.yaml",
+		},
+		WatchConfig: api.WatchConfig{
+			QueueSize: api.DefaultWatchQueueSize,
+			Timeout:   500 * time.Millisecond,
+		},
 	}
-	cfg := mainOpts.MinKAPIConfig
 	log := logr.FromContextOrDiscard(context.TODO())
 
 	defer func() {
@@ -731,7 +732,6 @@ func startMinkapiService(t *testing.T) (*InMemoryKAPI, *http.ServeMux, error) { 
 			err = fmt.Errorf("%w: %w", api.ErrInitFailed, err)
 		}
 	}()
-	setMinKAPIConfigDefaults(&cfg)
 	scheme := typeinfo.SupportedScheme
 	baseView, err := view.New(log, &api.ViewArgs{
 		Name:           api.DefaultBasePrefix,
