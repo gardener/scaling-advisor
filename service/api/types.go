@@ -243,8 +243,6 @@ type NodeScorer interface {
 	Compute(args NodeScoreArgs) (NodeScore, error)
 }
 type NodeScoreArgs struct {
-	// Name that must be given to the NodeScore produced by the NodeScorer
-	Name string
 	// Placement represents the placement information for the Node.
 	Placement NodePlacementInfo
 	// ScaledAssignment represents the assignment of the scaled Node for the current run.
@@ -262,13 +260,13 @@ type NodeScore struct {
 	Name string
 	// Placement represents the placement information for the Node.
 	Placement       NodePlacementInfo
-	UnscheduledPods []PodResourceInfo
+	UnscheduledPods []types.NamespacedName
 	// Value is the score value for this Node.
 	Value              int
 	ScaledNodeResource NodeResourceInfo
 }
-
-type GetNodeScorer func(scoringStrategy commontypes.NodeScoringStrategy, instancePricing InstancePricing, weights map[corev1.ResourceName]float64) (NodeScorer, error)
+type GetWeightsFunc func(instanceType string) (map[corev1.ResourceName]float64, error)
+type GetNodeScorer func(scoringStrategy commontypes.NodeScoringStrategy, instancePricing InstancePricing, weightsFn GetWeightsFunc) (NodeScorer, error)
 type GetNodeScoreSelector func(scoringStrategy commontypes.NodeScoringStrategy) (NodeScoreSelector, error)
 
 type PodResourceInfo struct {
@@ -307,9 +305,9 @@ type NodePodAssignment struct {
 	ScheduledPods []PodResourceInfo
 }
 
-// NodeScoreSelector selects the winning NodeScore amongst the NodeScores of a given simulation pass and returns its index.
-// If there is no winning node score amongst the group, then it returns -1.
-type NodeScoreSelector func(groupNodeScores []NodeScore, weights map[corev1.ResourceName]float64, pricing InstancePricing) (winningIndex int, err error)
+// NodeScoreSelector selects the winning NodeScore amongst the NodeScores of a given simulation pass and returns the pointer to the same.
+// If there is no winning node score amongst the group, then it returns nil.
+type NodeScoreSelector func(groupNodeScores []NodeScore, weights map[corev1.ResourceName]float64, pricing InstancePricing) (winningNodeScore *NodeScore, err error)
 
 // Simulation represents an activity that performs valid unscheduled pod to ready node assignments on a minkapi View.
 // A simulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model

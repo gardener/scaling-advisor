@@ -18,6 +18,8 @@ var (
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
 	//ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
+	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore
+	ErrNoWinningNodeScore = errors.New("no winning node score")
 	//ErrSelectNodeScore is a sentinel error indicating that the NodeScoreSelector failed to select a score
 	ErrSelectNodeScore = errors.New("failed to select node score")
 	// ErrLoadSchedulerConfig is a sentinel error indicating that the service failed to load the scheduler configuration.
