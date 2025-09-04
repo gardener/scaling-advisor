@@ -1,0 +1,18 @@
+[
+  {
+    "instanceName": "instance_type_1",
+    "region": "region_a",
+    "memory": 100,
+    "vcpu": 2,
+    "hourlyPrice": 105,
+    "os": "linux"
+  },
+  {
+    "instanceName": "instance_type_2",
+    "region": "region_b",
+    "memory": 50.0,
+    "vcpu": 1,
+    "hourlyPrice": 206.87,
+    "os": "windows"
+  }
+]
