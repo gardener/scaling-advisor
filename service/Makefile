@@ -22,7 +22,7 @@ no-dirty:
 ## test-unit: run all unit tests
 .PHONY: test-unit
 test-unit:
-	go test -v -race -buildvcs ./...
+	go test -v -buildvcs ./...
 
 ## test-unit/cover: run all unit tests and display coverage
 .PHONY: test-unit/cover

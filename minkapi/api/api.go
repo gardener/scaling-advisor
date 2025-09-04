@@ -7,8 +7,10 @@ package api
 import (
 	"context"
 	"github.com/go-logr/logr"
+	"io"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
+	"sync/atomic"
 	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -51,21 +53,35 @@ type MinKAPIConfig struct {
 	WatchConfig WatchConfig
 }
 
+// Resettable defines types that can reset their state to a default or initial configuration.
+type Resettable interface {
+	Reset()
+}
+
 type WatchEventCallback func(watch.Event) (err error)
 
 type ResourceStore interface {
-	Add(mo metav1.Object) error
-	Update(mo metav1.Object) error
-	Delete(key string) error
-	GetByKey(key string) (o runtime.Object, err error)
+	Resettable
+	io.Closer
+	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
+	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
 
-	DeleteObjects(c MatchCriteria) error
+	Add(mo metav1.Object) error
+	GetByKey(key string) (o runtime.Object, err error)
+	Get(objName cache.ObjectName) (o runtime.Object, err error)
+	Update(mo metav1.Object) error
+	DeleteByKey(key string) error
+	Delete(objName cache.ObjectName) error
+
+	DeleteObjects(c MatchCriteria) (delCount int, err error)
 	List(c MatchCriteria) (listObj runtime.Object, err error)
 
-	ListMetaObjects(c MatchCriteria) ([]metav1.Object, error)
+	ListMetaObjects(c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
 
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
-	Shutdown()
+
+	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
+	GetVersionCounter() *atomic.Int64
 }
 
 type ResourceStoreArgs struct {
@@ -75,21 +91,27 @@ type ResourceStoreArgs struct {
 	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
 	Scheme      *runtime.Scheme
 	WatchConfig WatchConfig
-	Log         logr.Logger
+	// VersionCounter is the atomic counter for generating monotonically increasing resource versionsatchConfig WatchConfig
+	VersionCounter *atomic.Int64 //optional
+	Log            logr.Logger
 }
 
 type EventSink interface {
+	Resettable
 	events.EventSink
 	List() []*eventsv1.Event
-	Reset()
 }
 
 // View is the high-level facade to a repository of objects of different types (GVK).
 // TODO: Think of a better name. Rename this to ObjectRepository or something else, also add godoc ?
 type View interface {
+	Resettable
+	io.Closer
 	GetName() string
 	GetType() ViewType
-	GetClientFacades(clientType commontypes.ClientMode) (commontypes.ClientFacades, error)
+	// GetClientFacades gets the in-memory implementation ClientFacades that can be used by code to interact with this view
+	// via standard k8s client and informer interfaces
+	GetClientFacades() (commontypes.ClientFacades, error)
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	GetEventSink() EventSink
 	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error
@@ -98,15 +120,17 @@ type View interface {
 	UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
 	PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
 	PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
+	ListMetaObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
 	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
-	ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error)
-	ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error)
-	ListEvents(namespace string) ([]*eventsv1.Event, error)
+	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)
+	ListPods(namespace string, matchingPodNames ...string) ([]corev1.Pod, error)
+	ListEvents(namespace string) ([]eventsv1.Event, error)
+	// GetObjectChangeCount returns the current change count made to objects through this view.
+	GetObjectChangeCount() int64
 	GetKubeConfigPath() string
-	Close()
 }
 
 type ViewType string

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"reflect"
 	sigyaml "sigs.k8s.io/yaml"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -157,4 +159,53 @@ func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []
 	}
 	statusField.Set(newStatusVal.Elem())
 	return nil
+}
+
+func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
+	result := make([]runtime.Object, 0, len(objs))
+	for _, item := range objs {
+		obj, ok := item.(runtime.Object)
+		if !ok {
+			err := fmt.Errorf("element %T does not implement runtime.Object", item)
+			return nil, apierrors.NewInternalError(err)
+		}
+		result = append(result, obj)
+	}
+	return result, nil
+}
+func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) {
+	result := make([]runtime.Object, 0, len(objs))
+	for _, item := range objs {
+		obj, ok := item.(runtime.Object)
+		if !ok {
+			err := fmt.Errorf("element %T does not implement runtime.Object", item)
+			return nil, apierrors.NewInternalError(err)
+		}
+		result = append(result, obj)
+	}
+	return result, nil
+}
+
+func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
+	var version int64
+	for _, o := range objs {
+		version, err = strconv.ParseInt(o.GetResourceVersion(), 10, 64)
+		if err != nil {
+			err = fmt.Errorf("failed to parse resource version %q from obj %q: %w",
+				o.GetResourceVersion(),
+				CacheName(o), err)
+			return
+		}
+		if version > maxVersion {
+			maxVersion = version
+		}
+	}
+	return
+}
+
+func CacheName(mo metav1.Object) cache.ObjectName {
+	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+}
+func NamespacedName(mo metav1.Object) types.NamespacedName {
+	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }

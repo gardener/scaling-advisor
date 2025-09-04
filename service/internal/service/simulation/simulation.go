@@ -132,16 +132,13 @@ func (s *defaultSimulation) getScaledNodeAssignment() *api.NodePodAssignment {
 }
 
 func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (api.SchedulerHandle, error) {
-	clientFacades, err := simView.GetNetworkClientFacades()
+	clientFacades, err := simView.GetClientFacades()
 	if err != nil {
 		return nil, err
 	}
 	schedLaunchParams := &api.SchedulerLaunchParams{
-		Client:             clientFacades.Client,
-		DynClient:          clientFacades.DynClient,
-		InformerFactory:    clientFacades.InformerFactory,
-		DynInformerFactory: clientFacades.DynInformerFactory,
-		EventSink:          simView.GetEventSink(),
+		ClientFacades: clientFacades,
+		EventSink:     simView.GetEventSink(),
 	}
 	return s.args.SchedulerLauncher.Launch(ctx, schedLaunchParams)
 }
@@ -181,7 +178,7 @@ func (s *defaultSimulation) getAssignments() ([]api.NodePodAssignment, error) {
 	}
 	var assignments []api.NodePodAssignment
 	for _, node := range nodes {
-		nodeResources := getNodeResourceInfo(node)
+		nodeResources := getNodeResourceInfo(&node)
 		podResources := s.state.scheduledPods[node.Name]
 		assignments = append(assignments, api.NodePodAssignment{
 			Node:          nodeResources,

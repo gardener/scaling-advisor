@@ -4,32 +4,37 @@ import (
 	"context"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/go-logr/logr"
+	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	"sync"
+	"sync/atomic"
 )
 
 var _ api.View = (*sandboxView)(nil)
 
 type sandboxView struct {
 	log          logr.Logger
+	delegateView api.View
 	args         *api.ViewArgs
-	mu           sync.RWMutex
+	mu           *sync.RWMutex
 	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
 	eventSink    api.EventSink
-	delegateView api.View
+	changeCount  atomic.Int64
 }
 
 // NewSandbox returns a "sandbox" (private) view which holds changes made via its facade into its private store independent of the base view,
@@ -37,13 +42,11 @@ type sandboxView struct {
 func NewSandbox(log logr.Logger, delegateView api.View, args *api.ViewArgs) (api.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
 	for _, d := range typeinfo.SupportedDescriptors {
-		stores[d.GVK] = store.NewInMemResourceStore(log, &api.ResourceStoreArgs{
-			Name:          d.GVR.Resource,
-			ObjectGVK:     d.GVK,
-			ObjectListGVK: d.ListGVK,
-			Scheme:        typeinfo.SupportedScheme,
-			WatchConfig:   args.WatchConfig,
-		})
+		baseStore, err := delegateView.GetResourceStore(d.GVK)
+		if err != nil {
+			return nil, err
+		}
+		stores[d.GVK] = createInMemStore(log, d, baseStore.GetVersionCounter(), args)
 		//stores[d.GVK] = store.NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, args.WatchConfig.QueueSize, args.WatchConfig.Timeout, typeinfo.SupportedScheme, log)
 	}
 	eventSink := eventsink.New(log)
@@ -51,115 +54,256 @@ func NewSandbox(log logr.Logger, delegateView api.View, args *api.ViewArgs) (api
 		log:          log,
 		args:         args,
 		stores:       stores,
+		mu:           &sync.RWMutex{},
 		eventSink:    eventSink,
 		delegateView: delegateView,
 	}, nil
 }
 
-func (s *sandboxView) GetName() string {
-	return s.args.Name
+func (v *sandboxView) Reset() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	resetStores(v.stores)
+	v.changeCount.Store(0)
+	v.eventSink.Reset()
 }
 
-func (s *sandboxView) GetType() api.ViewType {
+func (v *sandboxView) Close() error {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return closeStores(v.stores)
+}
+
+func (v *sandboxView) GetName() string {
+	return v.args.Name
+}
+
+func (v *sandboxView) GetType() api.ViewType {
 	return api.SandboxViewType
 }
 
-func (s *sandboxView) GetClientFacades(clientMode commontypes.ClientMode) (clientFacades commontypes.ClientFacades, err error) {
+func (v *sandboxView) GetObjectChangeCount() int64 {
+	return v.changeCount.Load()
+}
+
+func (v *sandboxView) GetClientFacades() (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", api.ErrClientFacadesFailed, err)
 		}
 	}()
-	if clientMode == commontypes.NetworkClient {
-		clientFacades, err = clientutil.CreateNetworkClientFacades(s.log, s.args.KubeConfigPath, s.args.WatchConfig.Timeout)
-		return
-	} else {
-		panic("inmem client type to be implemented")
-	}
+	panic("inmem client type to be implemented")
+	return
 	return
 }
 
-func (s *sandboxView) GetResourceStore(gvk schema.GroupVersionKind) (api.ResourceStore, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) GetResourceStore(gvk schema.GroupVersionKind) (api.ResourceStore, error) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	s, exists := v.stores[gvk]
+	if !exists {
+		return nil, fmt.Errorf("%w: store not found for GVK %q in view %q", api.ErrStoreNotFound, gvk, v.args.Name)
+	}
+	return s, nil
 }
 
-func (s *sandboxView) GetEventSink() api.EventSink {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) GetEventSink() api.EventSink {
+	return v.eventSink
 }
 
-func (s *sandboxView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+	return storeObject(v, gvk, obj, &v.changeCount)
 }
 
-func (s *sandboxView) GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
+	obj, err = v.getSandboxObject(gvk, objName)
+	if obj != nil || !apierrors.IsNotFound(err) {
+		// return if I found the object or get an error other than not found error
+		return
+	}
+	obj, err = v.delegateView.GetObject(gvk, objName)
+	return
+}
+func (v *sandboxView) getSandboxObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	obj, err = s.GetByKey(objName.String())
+	return
 }
 
-func (s *sandboxView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+	objName := objutil.CacheName(obj)
+	sandboxObj, err := v.getSandboxObject(gvk, objName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if sandboxObj != nil { //sandbox object is being updated.
+		return updateObject(v, gvk, obj, &v.changeCount)
+	}
+	// The object is in base view and should not be modified - store in sandbox view now.
+	return v.StoreObject(gvk, obj)
 }
 
-func (s *sandboxView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
+	gvk := typeinfo.PodsDescriptor.GVK
+	obj, err := v.getSandboxObject(gvk, podName) // get pod from sandbox first.
+	if err != nil && !apierrors.IsNotFound(err) {
+		return
+	}
+	// TODO: make the below a bit generic later using functional programming
+	var ok bool
+	if obj != nil { // pod is found in sandbox view update pod node binding directly
+		pod, ok = obj.(*corev1.Pod)
+		if !ok {
+			err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", api.ErrUpdateObject, v.GetName(), obj, podName)
+			return
+		}
+		return updatePodNodeBinding(v, pod, binding)
+	}
+	// pod is not found in sandbox. now get from base
+	obj, err = v.delegateView.GetObject(gvk, podName)
+	if err != nil {
+		return
+	}
+	pod, ok = obj.(*corev1.Pod)
+	if !ok {
+		err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", api.ErrUpdateObject, v.GetName(), obj, podName)
+	}
+	// found in base so lets make a copy and store in sandbox
+	sandboxPod := pod.DeepCopy()
+	err = v.StoreObject(gvk, sandboxPod)
+	if err != nil {
+		return
+	}
+	pod = sandboxPod
+	return updatePodNodeBinding(v, pod, binding)
 }
 
-func (s *sandboxView) PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error) {
+	return patchObject(v, gvk, objName, patchType, patchData)
 }
 
-func (s *sandboxView) PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error) {
+	return patchObjectStatus(v, gvk, objName, patchData)
 }
 
-func (s *sandboxView) ListObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (runtime.Object, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) ListMetaObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (items []metav1.Object, maxVersion int64, err error) {
+	sandboxItems, myMax, err := listMetaObjects(v, gvk, criteria)
+	if err != nil {
+		return
+	}
+	delegateItems, delegateMax, err := v.delegateView.ListMetaObjects(gvk, criteria)
+	if err != nil {
+		return
+	}
+	if myMax >= delegateMax {
+		maxVersion = myMax
+	} else {
+		maxVersion = delegateMax
+	}
+	items = combinePrimarySecondary(sandboxItems, delegateItems)
+	return
+}
+func (v *sandboxView) ListObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) (listObj runtime.Object, err error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	items, maxVersion, err := v.ListMetaObjects(gvk, criteria) // v.ListMetaObjcts already invokes delegate
+	if err != nil {
+		return
+	}
+	objGVK, objListKind := s.GetObjAndListGVK()
+	return store.WrapMetaObjectsIntoRuntimeListObject(maxVersion, objGVK, objListKind, items)
 }
 
-func (s sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return err
+	}
+	var eg errgroup.Group
+	eg.Go(func() error {
+		v.log.Info("watching sandboxView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector)
+		return s.Watch(ctx, startVersion, namespace, labelSelector, eventCallback)
+	})
+	eg.Go(func() error {
+		v.log.Info("watching delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector)
+		return v.delegateView.WatchObjects(ctx, gvk, startVersion, namespace, labelSelector, eventCallback)
+	})
+	return eg.Wait()
 }
 
-func (s sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return err
+	}
+	obj, err := s.GetByKey(objName.String())
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if obj == nil {
+		// delegate to delegateView if obj not found in sandbox
+		return v.delegateView.DeleteObject(gvk, objName)
+	}
+	// if found in this views store, delete and return
+	err = s.Delete(objName)
+	if err != nil {
+		return err
+	}
+	v.changeCount.Add(1)
+	return nil
+
 }
 
-func (s sandboxView) DeleteObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) error {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) DeleteObjects(gvk schema.GroupVersionKind, criteria api.MatchCriteria) error {
+	err := deleteObjects(v, gvk, criteria, &v.changeCount)
+	if err != nil {
+		return err
+	}
+	return v.delegateView.DeleteObjects(gvk, criteria)
 }
 
-func (s sandboxView) ListNodes(matchingNodeNames ...string) ([]*corev1.Node, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) ListNodes(matchingNodeNames ...string) (nodes []corev1.Node, err error) {
+	gvk := typeinfo.NodesDescriptor.GVK
+	metaObjs, _, err := v.ListMetaObjects(gvk, api.MatchCriteria{
+		Names: sets.New(matchingNodeNames...),
+	})
+	if err != nil {
+		return
+	}
+	nodes, _, err = asNodes(metaObjs)
+	return
 }
 
-func (s sandboxView) ListPods(namespace string, matchingPodNames ...string) ([]*corev1.Pod, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) ListPods(namespace string, matchingPodNames ...string) (pods []corev1.Pod, err error) {
+	gvk := typeinfo.PodsDescriptor.GVK
+	metaObjs, _, err := v.ListMetaObjects(gvk, api.MatchCriteria{
+		Namespace: namespace,
+		Names:     sets.New(matchingPodNames...),
+	})
+	if err != nil {
+		return
+	}
+	pods, _, err = asPods(metaObjs)
+	return
 }
 
-func (s sandboxView) ListEvents(namespace string) ([]*eventsv1.Event, error) {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) ListEvents(namespace string) (events []eventsv1.Event, err error) {
+	metaObjs, _, err := v.ListMetaObjects(typeinfo.EventsDescriptor.GVK, api.MatchCriteria{
+		Namespace: namespace,
+	})
+	if err != nil {
+		return
+	}
+	events, _, err = asEvents(metaObjs)
+	return
+
 }
 
-func (s sandboxView) GetKubeConfigPath() string {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s sandboxView) Close() {
-	//TODO implement me
-	panic("implement me")
+func (v *sandboxView) GetKubeConfigPath() string {
+	return v.args.KubeConfigPath
 }

@@ -176,7 +176,7 @@ func (g *Generator) createSimulationGroups() ([]api.SimulationGroup, error) {
 }
 
 func (g *Generator) createSimulation(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (api.Simulation, error) {
-	simView, err := g.minKAPIServer.GetSandboxView()
+	simView, err := g.minKAPIServer.GetSandboxView(g.ctx, simulationName)
 	if err != nil {
 		return nil, err
 	}

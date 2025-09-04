@@ -6,6 +6,8 @@ package store
 
 import (
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"math"
 	"reflect"
 	"strconv"
 	"sync/atomic"
@@ -30,24 +32,42 @@ var _ api.ResourceStore = (*InMemResourceStore)(nil)
 
 type InMemResourceStore struct {
 	args        *api.ResourceStoreArgs
-	delegate    cache.Store
+	cache       cache.Store
 	broadcaster *watch.Broadcaster
-	rvCounter   atomic.Int64
-	log         logr.Logger
+	// versionCounter is the atomic counter for generating monotonically increasing resource versions
+	versionCounter *atomic.Int64
+	log            logr.Logger
+}
+
+func (s *InMemResourceStore) GetVersionCounter() *atomic.Int64 {
+	return s.versionCounter
+}
+
+func (s *InMemResourceStore) GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind) {
+	return s.args.ObjectGVK, s.args.ObjectListGVK
 }
 
 // NewInMemResourceStore returns an in-memory store for a given object GVK. TODO: think on simplifying parameters.
 func NewInMemResourceStore(log logr.Logger, args *api.ResourceStoreArgs) *InMemResourceStore {
 	s := InMemResourceStore{
-		log:      log,
-		args:     args,
-		delegate: cache.NewStore(cache.MetaNamespaceKeyFunc),
+		log:   log,
+		args:  args,
+		cache: cache.NewStore(cache.MetaNamespaceKeyFunc),
 		//broadcaster: watch.NewBroadcaster(watchQueueSize, watch.DropIfChannelFull),
-		broadcaster: watch.NewBroadcaster(args.WatchConfig.QueueSize, watch.WaitIfChannelFull),
+		broadcaster:    watch.NewBroadcaster(args.WatchConfig.QueueSize, watch.WaitIfChannelFull),
+		versionCounter: args.VersionCounter,
 	}
-	s.log.Info("created in memory resource store", "GVK", args.ObjectGVK, "resourceName", args.Name, "watchTimeout", args.WatchConfig.Timeout, "watchQueueSize", args.WatchConfig.QueueSize)
-	s.rvCounter.Store(1)
+	if s.versionCounter == nil {
+		s.versionCounter = &atomic.Int64{}
+	}
+	s.log.V(4).Info("created in memory resource store", "GVK", args.ObjectGVK, "resourceName", args.Name, "watchTimeout", args.WatchConfig.Timeout, "watchQueueSize", args.WatchConfig.QueueSize)
 	return &s
+}
+
+func (s *InMemResourceStore) Reset() {
+	s.log.V(4).Info("resetting store", "kind", s.args.ObjectGVK.Kind)
+	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	s.broadcaster = watch.NewBroadcaster(s.args.WatchConfig.QueueSize, watch.WaitIfChannelFull)
 }
 
 func (s *InMemResourceStore) Add(mo metav1.Object) error {
@@ -55,9 +75,9 @@ func (s *InMemResourceStore) Add(mo metav1.Object) error {
 	if err != nil {
 		return err
 	}
-	key := cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+	key := objutil.CacheName(mo)
 	mo.SetResourceVersion(s.NextResourceVersionAsString())
-	err = s.delegate.Add(o)
+	err = s.cache.Add(o)
 	if err != nil {
 		return apierrors.NewInternalError(fmt.Errorf("cannot add object %q to store: %w", key, err))
 	}
@@ -77,9 +97,9 @@ func (s *InMemResourceStore) Update(mo metav1.Object) error {
 	if err != nil {
 		return err
 	}
-	key := cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+	key := objutil.CacheName(mo)
 	mo.SetResourceVersion(s.NextResourceVersionAsString())
-	err = s.delegate.Update(o)
+	err = s.cache.Update(o)
 	if err != nil {
 		return apierrors.NewInternalError(fmt.Errorf("cannot update object %q in store: %w", key, err))
 	}
@@ -93,16 +113,16 @@ func (s *InMemResourceStore) Update(mo metav1.Object) error {
 	return nil
 }
 
-func (s *InMemResourceStore) Delete(key string) error {
+func (s *InMemResourceStore) DeleteByKey(key string) error {
 	o, err := s.GetByKey(key)
 	if err != nil {
 		return err
 	}
-	mo, err := AsMeta(s.log, o)
+	mo, err := AsMeta(o)
 	if err != nil {
 		return err
 	}
-	err = s.delegate.Delete(mo)
+	err = s.cache.Delete(mo)
 	if err != nil {
 		err = fmt.Errorf("cannot delete object with key %q from store: %w", key, err)
 		return apierrors.NewInternalError(err)
@@ -118,8 +138,12 @@ func (s *InMemResourceStore) Delete(key string) error {
 	return nil
 }
 
+func (s *InMemResourceStore) Delete(objName cache.ObjectName) error {
+	return s.DeleteByKey(objName.String())
+}
+
 func (s *InMemResourceStore) GetByKey(key string) (o runtime.Object, err error) {
-	obj, exists, err := s.delegate.GetByKey(key)
+	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
 		s.log.Error(err, "failed to find object with key", "key", key)
 		err = apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
@@ -140,16 +164,20 @@ func (s *InMemResourceStore) GetByKey(key string) (o runtime.Object, err error) 
 	return
 }
 
+func (s *InMemResourceStore) Get(objName cache.ObjectName) (o runtime.Object, err error) {
+	return s.GetByKey(objName.String())
+}
+
 func (s *InMemResourceStore) List(c api.MatchCriteria) (listObj runtime.Object, err error) {
-	items := s.delegate.List()
+	items := s.cache.List()
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
 	typesMap := typeinfo.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
-	listType, ok := typesMap[s.args.ObjectListGVK.Kind]
+	listType, ok := typesMap[s.args.ObjectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
 		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), s.args.ObjectListGVK)
 	}
-	ptr := reflect.New(listType) // *PodList
-	listObjVal := ptr.Elem()     // PodList
+	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
+	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList
 	typeMetaVal := listObjVal.FieldByName("TypeMeta")
 	if !typeMetaVal.IsValid() {
 		return nil, fmt.Errorf("failed to get TypeMeta field on %v", listObjVal)
@@ -165,19 +193,19 @@ func (s *InMemResourceStore) List(c api.MatchCriteria) (listObj runtime.Object, 
 	listMetaVal.Set(reflect.ValueOf(metav1.ListMeta{
 		ResourceVersion: currVersionStr,
 	}))
-	itemsField := listObjVal.FieldByName("Items")
+	itemsField := listObjVal.FieldByName("Items") // // Ex: corev1.Pod
 	if !itemsField.IsValid() || !itemsField.CanSet() || itemsField.Kind() != reflect.Slice {
 		return nil, fmt.Errorf("list object type %T for kind %q does not have a settable slice field named Items", listObj, s.args.ObjectGVK.Kind)
 	}
-	itemType := itemsField.Type().Elem() // e.g., v1.Pod
+	itemType := itemsField.Type().Elem() // e.g., corev1.Pod
 	resultSlice := reflect.MakeSlice(itemsField.Type(), 0, len(items))
 
-	objs, err := anySliceToRuntimeObjSlice(s.log, items)
+	objs, err := objutil.SliceOfAnyToRuntimeObj(items)
 	if err != nil {
 		return
 	}
 	for _, obj := range objs {
-		metaV1Obj, err := AsMeta(s.log, obj)
+		metaV1Obj, err := AsMeta(obj)
 		if err != nil {
 			s.log.Error(err, "cannot access meta object", "obj", obj)
 			continue
@@ -191,58 +219,83 @@ func (s *InMemResourceStore) List(c api.MatchCriteria) (listObj runtime.Object, 
 		}
 		val := reflect.ValueOf(obj)
 		if val.Kind() != reflect.Ptr || val.IsNil() {
+			// ensure each cached obj is a non-nil pointer (Ex *corev1.Pod).
 			return nil, fmt.Errorf("element for kind %q is not a non-nil pointer: %T", s.args.ObjectGVK, obj)
 		}
 		if val.Elem().Type() != itemType {
+			// ensure each cached obj dereferences to the expected type (Ex corev1.Pod).
 			return nil, fmt.Errorf("type mismatch, list kind %q expects items of type %v, but got %v", s.args.ObjectListGVK, itemType, val.Elem().Type())
 		}
-		resultSlice = reflect.Append(resultSlice, val.Elem()) // append the dereferenced struct
+		resultSlice = reflect.Append(resultSlice, val.Elem()) // Append the struct (not the pointer) into the .Items slice of the list.
 	}
 	itemsField.Set(resultSlice)
-	listObj = ptr.Interface().(runtime.Object)
+	listObj = listObjPtr.Interface().(runtime.Object) // Ex: listObjPtr.Interface() gets the actual *core1.PodList which is then type-asserted to runtime.Object
 	return listObj, nil
 }
 
-func (s *InMemResourceStore) ListMetaObjects(c api.MatchCriteria) ([]metav1.Object, error) {
-	items := s.delegate.List()
-	objects := make([]metav1.Object, 0, 100)
+func (s *InMemResourceStore) ListMetaObjects(c api.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
+	items := s.cache.List()
+	sliceSize := int(math.Min(float64(len(items)), float64(100)))
+	metaObjs = make([]metav1.Object, 0, sliceSize)
+	var mo metav1.Object
+	var version int64
 	for _, item := range items {
-		mo, err := AsMeta(s.log, item)
+		mo, err = AsMeta(item)
 		if err != nil {
-			err := fmt.Errorf("%w: %w", api.ErrListObjects, err)
-			return nil, err
-		}
-		if c.Matches(mo) {
-			objects = append(objects, mo)
-		}
-	}
-	return objects, nil
-}
-
-func (s *InMemResourceStore) DeleteObjects(c api.MatchCriteria) error {
-	items := s.delegate.List()
-	for _, item := range items {
-		mo, err := AsMeta(s.log, item)
-		if err != nil {
-			return fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", api.ErrListObjects, err)
+			return
 		}
 		if !c.Matches(mo) {
 			continue
 		}
-		objKey := cache.NewObjectName(mo.GetNamespace(), mo.GetName()).String()
-		if err := s.Delete(objKey); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
-			} else {
-				s.log.Info("object to delete not found in store", "key", objKey)
-			}
+		version, err = ParseObjectResourceVersion(mo)
+		if err != nil {
+			return
+		}
+		metaObjs = append(metaObjs, mo)
+		if version > maxVersion {
+			maxVersion = version
 		}
 	}
-	return nil
+	return
+}
+
+func (s *InMemResourceStore) DeleteObjects(c api.MatchCriteria) (delCount int, err error) {
+	items := s.cache.List()
+	var mo metav1.Object
+	for _, item := range items {
+		mo, err = AsMeta(item)
+		if err != nil {
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
+			return
+		}
+		if !c.Matches(mo) {
+			continue
+		}
+		objName := objutil.CacheName(mo)
+		_, err = s.Get(objName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
+			return
+		}
+		err = s.Delete(objName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
+			return
+		}
+		delCount++
+	}
+	return
 }
 
 func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Object, err error) {
-	key := cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+	key := objutil.CacheName(mo)
 	o, ok := mo.(runtime.Object)
 	if !ok {
 		err = fmt.Errorf("cannot convert meta object %q of type %T to runtime.Object", key, mo)
@@ -257,8 +310,8 @@ func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Obj
 
 func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespace string, labelSelector labels.Selector) (watchEvents []watch.Event, err error) {
 	var skip bool
-	allItems := s.delegate.List()
-	objs, err := anySliceToRuntimeObjSlice(s.log, allItems)
+	allItems := s.cache.List()
+	objs, err := objutil.SliceOfAnyToRuntimeObj(allItems)
 	if err != nil {
 		return
 	}
@@ -317,14 +370,15 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 }
 
 func (s *InMemResourceStore) CurrentResourceVersion() int64 {
-	return s.rvCounter.Load()
+	return s.versionCounter.Load()
 }
 
-func (s *InMemResourceStore) Shutdown() {
+func (s *InMemResourceStore) Close() error {
 	if s.broadcaster != nil {
 		s.log.V(4).Info("shutting down broadcaster for store", "gvk", s.args.ObjectGVK)
 		s.broadcaster.Shutdown()
 	}
+	return nil
 }
 
 func (s *InMemResourceStore) NextResourceVersionAsString() string {
@@ -333,7 +387,71 @@ func (s *InMemResourceStore) NextResourceVersionAsString() string {
 
 // nextResourceVersion increments and returns the next version for this store's GVK
 func (s *InMemResourceStore) nextResourceVersion() int64 {
-	return s.rvCounter.Add(1)
+	return s.versionCounter.Add(1)
+}
+
+func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schema.GroupVersionKind, objectListGVK schema.GroupVersionKind, items []metav1.Object) (listObj runtime.Object, err error) {
+	resourceVersionStr := strconv.FormatInt(resourceVersion, 10)
+	typesMap := typeinfo.SupportedScheme.KnownTypes(objectGVK.GroupVersion())
+	listType, ok := typesMap[objectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
+	if !ok {
+		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), objectListGVK)
+	}
+	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
+	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList
+	typeMetaVal := listObjVal.FieldByName("TypeMeta")
+	if !typeMetaVal.IsValid() {
+		return nil, fmt.Errorf("failed to get TypeMeta field on %v", listObjVal)
+	}
+	listMetaVal := listObjVal.FieldByName("ListMeta")
+	if !listMetaVal.IsValid() {
+		return nil, fmt.Errorf("failed to get ListMeta field on %v", listObjVal)
+	}
+	typeMetaVal.Set(reflect.ValueOf(metav1.TypeMeta{
+		Kind:       objectListGVK.Kind,
+		APIVersion: objectGVK.GroupVersion().String(),
+	}))
+	listMetaVal.Set(reflect.ValueOf(metav1.ListMeta{
+		ResourceVersion: resourceVersionStr,
+	}))
+	itemsField := listObjVal.FieldByName("Items") // // Ex: corev1.Pod
+	if !itemsField.IsValid() || !itemsField.CanSet() || itemsField.Kind() != reflect.Slice {
+		return nil, fmt.Errorf("list object type %T for kind %q does not have a settable slice field named Items", listObj, objectGVK.Kind)
+	}
+
+	itemType := itemsField.Type().Elem() // e.g., corev1.Pod
+	resultSlice := reflect.MakeSlice(itemType, 0, len(items))
+
+	objs, err := objutil.SliceOfMetaObjToRuntimeObj(items)
+	if err != nil {
+		return
+	}
+	for _, obj := range objs {
+		//metaV1Obj, err := AsMeta(obj)
+		//if err != nil {
+		//	log.Error(err, "cannot access meta object", "obj", obj)
+		//	continue
+		//}
+		//if c.Namespace != "" && metaV1Obj.GetNamespace() != c.Namespace {
+		//	continue
+		//}
+		//if !c.LabelSelector.Matches(labels.Set(metaV1Obj.GetLabels())) {
+		//	continue
+		//}
+		val := reflect.ValueOf(obj)
+		if val.Kind() != reflect.Ptr || val.IsNil() {
+			// ensure each cached obj is a non-nil pointer (Ex *corev1.Pod).
+			return nil, fmt.Errorf("element for kind %q is not a non-nil pointer: %T", objectGVK, obj)
+		}
+		if val.Elem().Type() != itemType {
+			// ensure each cached obj dereferences to the expected type (Ex corev1.Pod).
+			return nil, fmt.Errorf("type mismatch, list kind %q expects items of type %v, but got %v", objectListGVK, itemType, val.Elem().Type())
+		}
+		resultSlice = reflect.Append(resultSlice, val.Elem()) // Append the struct (not the pointer) into the .Items slice of the list.
+	}
+	itemsField.Set(resultSlice)
+	listObj = listObjPtr.Interface().(runtime.Object) // Ex: listObjPtr.Interface() gets the actual *core1.PodList which is then type-asserted to runtime.Object
+	return listObj, nil
 }
 
 func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, namespace string, labelSelector labels.Selector) (skip bool, err error) {
@@ -351,7 +469,7 @@ func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, n
 		skip = true
 		return
 	}
-	rv, err := parseObjectResourceVersion(o)
+	rv, err := ParseObjectResourceVersion(o)
 	if err != nil {
 		return
 	}
@@ -362,21 +480,7 @@ func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, n
 	return
 }
 
-func anySliceToRuntimeObjSlice(log logr.Logger, objs []any) ([]runtime.Object, error) {
-	result := make([]runtime.Object, 0, len(objs))
-	for _, item := range objs {
-		obj, ok := item.(runtime.Object)
-		if !ok {
-			err := fmt.Errorf("element %T does not implement runtime.Object", item)
-			log.Error(err, "cannot convert 'any' slice to 'runtime.Object' slice because of object mismatch", "obj", obj)
-			return nil, apierrors.NewInternalError(err)
-		}
-		result = append(result, obj)
-	}
-	return result, nil
-}
-
-func parseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
+func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
 	resourceVersion, err = parseResourceVersion(obj.GetResourceVersion())
 	if err != nil {
 		err = fmt.Errorf("failed to parse resource version %q for object %q in ns %q: %w", obj.GetResourceVersion(), obj.GetName(), obj.GetNamespace(), err)
@@ -391,10 +495,9 @@ func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	return
 }
 
-func AsMeta(log logr.Logger, o any) (mo metav1.Object, err error) {
+func AsMeta(o any) (mo metav1.Object, err error) {
 	mo, err = meta.Accessor(o)
 	if err != nil {
-		log.Error(err, "cannot access meta object", "object", o)
 		err = apierrors.NewInternalError(fmt.Errorf("cannot access meta object for o of type %T", o))
 	}
 	return

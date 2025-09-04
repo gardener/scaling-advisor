@@ -5,10 +5,12 @@ import (
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	mkserver "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/service/api"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -92,7 +94,8 @@ func initSuite(ctx context.Context) error {
 
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
-	state.clientFacades, err = app.Server.GetBaseView().GetClientFacades(commontypes.NetworkClient)
+	log := logr.FromContextOrDiscard(state.ctx)
+	state.clientFacades, err = clientutil.CreateNetworkClientFacades(log, app.Server.GetBaseView().GetKubeConfigPath(), mkapi.DefaultWatchTimeout)
 	if err != nil {
 		return err
 	}

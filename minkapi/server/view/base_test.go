@@ -2,13 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package view_test
+package view
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,7 +18,6 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
-	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -194,6 +195,101 @@ func TestEventDeletion(t *testing.T) {
 	}
 }
 
+func TestCombinePrimarySecondary(t *testing.T) {
+	primary := []metav1.Object{
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-a",
+				Labels: map[string]string{
+					"category": "primary",
+				},
+			},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-b",
+				Labels: map[string]string{
+					"category": "primary",
+				},
+			},
+		},
+	}
+	secondary := []metav1.Object{
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-a",
+				Labels: map[string]string{
+					"category": "secondary",
+				},
+			},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-b",
+				Labels: map[string]string{
+					"category": "secondary",
+				},
+			},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-c",
+				Labels: map[string]string{
+					"category": "secondary",
+				},
+			},
+		},
+	}
+	combined := combinePrimarySecondary(primary, secondary)
+	combinedNames := make([]string, len(combined))
+	for i, obj := range combined {
+		combinedNames[i] = objutil.CacheName(obj).String()
+	}
+	t.Logf("Combined objects: %v", combinedNames)
+
+	expectedLen := 3
+	if len(combined) != expectedLen {
+		t.Errorf("Expected %d objects, got %d", expectedLen, len(combined))
+	}
+	nodeAIdx := slices.IndexFunc(combined, func(obj metav1.Object) bool {
+		return obj.GetName() == "node-a"
+	})
+	if nodeAIdx == -1 {
+		t.Errorf("Expected to find node-a in combined list")
+		return
+	}
+	nodeACategory := combined[nodeAIdx].(*corev1.Node).Labels["category"]
+	if nodeACategory != "primary" {
+		t.Errorf("Expected node-a to have category primary, got %s", nodeACategory)
+		return
+	}
+
+	nodeBIdx := slices.IndexFunc(combined, func(obj metav1.Object) bool {
+		return obj.GetName() == "node-b"
+	})
+	if nodeBIdx == -1 {
+		t.Errorf("Expected to find node-b in combined list")
+		return
+	}
+	nodeBCategory := combined[nodeBIdx].(*corev1.Node).Labels["category"]
+	if nodeBCategory != "primary" {
+		t.Errorf("Expected node-b to have category primary, got %s", nodeBCategory)
+	}
+
+	nodeCIdx := slices.IndexFunc(combined, func(obj metav1.Object) bool {
+		return obj.GetName() == "node-c"
+	})
+	if nodeCIdx == -1 {
+		t.Errorf("Expected to find node-c in combined list")
+		return
+	}
+	nodeCCategory := combined[nodeCIdx].(*corev1.Node).Labels["category"]
+	if nodeCCategory != "secondary" {
+		t.Errorf("Expected node-c to have category secondary, got %s", nodeCCategory)
+	}
+	return
+}
+
 func createBaseView(t *testing.T) (api.View, error) {
 	t.Helper()
 	viewArgs := api.ViewArgs{
@@ -206,7 +302,7 @@ func createBaseView(t *testing.T) (api.View, error) {
 			Timeout:   500 * time.Millisecond,
 		},
 	}
-	return view.New(logr.FromContextOrDiscard(context.TODO()), &viewArgs)
+	return New(logr.FromContextOrDiscard(context.TODO()), &viewArgs)
 }
 
 func createTestObjects(t *testing.T, view *api.View) (err error) {
