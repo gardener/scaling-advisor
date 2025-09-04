@@ -6,11 +6,11 @@ import (
 	"context"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
 	"os"
 	"testing"
 	"time"
@@ -91,6 +91,7 @@ func TestWatchPods(t *testing.T) {
 	go func() {
 		listObjects(ctx, t, watcher.ResultChan(), &h)
 	}()
+
 	createdPod, err := client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("failed to create podA: %v", err)
@@ -105,14 +106,7 @@ func TestWatchPods(t *testing.T) {
 		t.Fatalf("got no events, want at least one")
 		return
 	}
-	for _, ev := range h.events {
-		mo, err := meta.Accessor(ev.Object)
-		if err != nil {
-			t.Logf("WARN: Got event which is not a metav1.Object: %v", err)
-			continue
-		}
-		t.Logf("got event-> Type: %v | Object Kind: %q, Object Name: %q", ev.Type, ev.Object.GetObjectKind().GroupVersionKind(), cache.NewObjectName(mo.GetNamespace(), mo.GetName()))
-	}
+
 	if h.events[0].Type != watch.Added {
 		t.Errorf("got event type %v, want %v", h.events[0].Type, watch.Added)
 	}
@@ -134,7 +128,7 @@ outer:
 				t.Logf("received #%d event, Type: %s, Object: %v", count, ev.Type, ev.Object)
 				continue
 			}
-			objFullName := cache.NewObjectName(mo.GetNamespace(), mo.GetName())
+			objFullName := objutil.CacheName(mo)
 			objType, err := meta.TypeAccessor(ev.Object)
 			if err != nil {
 				t.Fatalf("failed to get TypeAccessor for event object %q: %v", objFullName, err)
@@ -169,7 +163,7 @@ func initSuite(ctx context.Context) error {
 	}
 	<-time.After(1 * time.Second) // give minmal time for startup
 
-	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(commontypes.NetworkClient)
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades()
 	if err != nil {
 		return err
 	}

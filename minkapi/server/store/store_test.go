@@ -61,7 +61,7 @@ func TestAdd(t *testing.T) {
 			p := testPod.DeepCopy()
 			p.TypeMeta = tc.typeMeta
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Shutdown() })
+			t.Cleanup(func() { s.Close() })
 
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Add(obj1); err != nil {
@@ -117,7 +117,7 @@ func TestUpdate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create object before updating
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Shutdown() })
+			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
 			createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
@@ -197,7 +197,7 @@ func TestDelete(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Shutdown() })
+			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
@@ -210,14 +210,14 @@ func TestDelete(t *testing.T) {
 
 			key := cache.NewObjectName(createdPod.Namespace, tc.name).String()
 			gotObj, _ := s.GetByKey(key)
-			if err := s.Delete(key); err != nil {
+			if err := s.DeleteByKey(key); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 				testutil.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 
-			mo, _ := AsMeta(s.log, gotObj)
+			mo, _ := AsMeta(gotObj)
 			if !reflect.DeepEqual(mo.GetDeletionTimestamp().Time, time.Time{}) { // FIXME
 				t.Errorf("Expected deletionTimestamp to be set for object that's successfully deleted, got: %v", mo.GetDeletionTimestamp())
 				return
@@ -255,7 +255,7 @@ func TestGetByKey(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Shutdown() })
+			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
@@ -370,7 +370,7 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 			namespace:               testPod.Namespace,
 			labelSelector:           labels.NewSelector(),
 			retErr:                  nil,
-			startVersion:            3,
+			startVersion:            2,
 			expectedNumberOfObjects: 1,
 		},
 		"negative resource version": {
@@ -453,7 +453,7 @@ func TestWatch(t *testing.T) {
 			namespace:               testPod.Namespace,
 			labelSelector:           labels.NewSelector(),
 			retErr:                  nil,
-			startVersion:            3,
+			startVersion:            2,
 			expectedNumberOfObjects: 1,
 		},
 		"labels that don't match all objects": {
@@ -490,7 +490,7 @@ func TestWatch(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Shutdown() })
+			t.Cleanup(func() { s.Close() })
 
 			createdPods, _ := createPodsForTesting(t, s)
 			var (
@@ -501,7 +501,7 @@ func TestWatch(t *testing.T) {
 			)
 
 			eventCallback := func(event watch.Event) error {
-				evt, err := AsMeta(s.log, event.Object)
+				evt, err := AsMeta(event.Object)
 				if err != nil {
 					return err
 				}
@@ -597,7 +597,7 @@ func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, er
 
 func assertNumberOfItems(t *testing.T, s *InMemResourceStore, want int) {
 	t.Helper()
-	got := len(s.delegate.List())
+	got := len(s.cache.ListKeys())
 	if got != want {
 		t.Errorf("Unexpected number of items, got: %v, want: %v", got, want)
 	} else {

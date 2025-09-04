@@ -128,7 +128,7 @@ func NewDefaultInMemory(log logr.Logger, cfg api.MinKAPIConfig) (api.Server, err
 	if err != nil {
 		return nil, err
 	}
-	return NewInMemoryUsingViews(cfg, baseView, view.NewSandboxView)
+	return NewInMemoryUsingViews(cfg, baseView, view.NewSandbox)
 }
 
 // NewInMemoryUsingViews constructs a KAPI server with the given base view and the sandbox view creation function.
@@ -508,7 +508,6 @@ func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 		}
 		patchedObj, err := view.PatchObject(d.GVK, name, types.PatchType(contentType), patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to patch object %q: %w", name, err)
 			handleError(w, r, err)
 			return
 		}
@@ -566,7 +565,7 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
-			metaObj, err := store.AsMeta(log, event.Object)
+			metaObj, err := store.AsMeta(event.Object)
 			if err != nil {
 				return err
 			}
@@ -636,6 +635,7 @@ func writeStatusError(w http.ResponseWriter, r *http.Request, statusError *apier
 }
 
 func readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) {
+	log := logr.FromContextOrDiscard(r.Context())
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		handleBadRequest(w, r, err)
@@ -644,9 +644,13 @@ func readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) 
 	}
 	if err := json.Unmarshal(data, obj); err != nil {
 		err = fmt.Errorf("cannot unmarshal JSON for request %q: %w", r.RequestURI, err)
+		log.Error(err, "cannot unmarshal JSON for request body", "payload", string(data))
 		handleBadRequest(w, r, err)
 		ok = false
 		return
+	}
+	if log.V(4).Enabled() {
+		log.V(4).Info("read payload into object", "payload", string(data))
 	}
 	ok = true
 	return

@@ -58,7 +58,7 @@ func (g *defaultSimulationGroup) GetSimulations() []api.Simulation {
 func (g *defaultSimulationGroup) Run(ctx context.Context) (result api.SimGroupRunResult, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: simulation group %q failed: %w", api.ErrRunSimulationGroup, g.Name, err)
+			err = fmt.Errorf("%w: simulation group %q failed: %w", api.ErrRunSimulationGroup, g.Name(), err)
 		}
 	}()
 	eg, groupCtx := errgroup.WithContext(ctx)
