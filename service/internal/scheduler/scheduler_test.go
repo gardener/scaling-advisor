@@ -92,7 +92,7 @@ func initSuite(ctx context.Context) error {
 
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
-	state.clientFacades, err = app.Server.GetBaseView().GetClientFacades(commontypes.NetworkClient)
+	state.clientFacades, err = app.Server.GetBaseView().GetClientFacades()
 	if err != nil {
 		return err
 	}

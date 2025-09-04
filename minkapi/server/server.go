@@ -139,7 +139,7 @@ func NewDefaultInMemory(log logr.Logger, cfg api.MinKAPIConfig) (api.Server, err
 	if err != nil {
 		return nil, err
 	}
-	return NewUsingViews(ctx, cfg, viewAccess)
+	return NewInMemoryUsingViews(cfg, baseView, view.NewSandbox)
 }
 
 // NewUsingViews constructs a KAPI server with the given base view.
@@ -529,7 +529,6 @@ func handlePatch(d typeinfo.Descriptor, view api.View) http.HandlerFunc {
 		}
 		patchedObj, err := view.PatchObject(d.GVK, name, types.PatchType(contentType), patchData)
 		if err != nil {
-			err = fmt.Errorf("failed to patch object %q: %w", name, err)
 			handleError(w, r, err)
 			return
 		}
@@ -587,7 +586,7 @@ func handleWatch(d typeinfo.Descriptor, view api.View, labelSelector labels.Sele
 
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
-			metaObj, err := store.AsMeta(log, event.Object)
+			metaObj, err := store.AsMeta(event.Object)
 			if err != nil {
 				return err
 			}

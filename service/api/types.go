@@ -393,14 +393,7 @@ type SimGroupRunResult struct {
 
 // SimGroupScores represents the scoring results for the simulation group after running the NodeScorer against the SimGroupRunResult.
 type SimGroupScores struct {
-	AllNodeScores    []NodeScore
-	WinnerScoreIndex int
-	WinnerNode       *corev1.Node
-}
-
-func (s *SimGroupScores) GetWinner() *NodeScore {
-	if s.WinnerScoreIndex < 0 {
-		return nil
-	}
-	return &s.AllNodeScores[s.WinnerScoreIndex]
+	AllNodeScores   []NodeScore
+	WinnerNodeScore *NodeScore
+	WinnerNode      *corev1.Node
 }
