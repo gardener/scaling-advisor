@@ -6,7 +6,6 @@ metadata:
     app.kubernetes.io/component: minkapitest
     app.kubernetes.io/name: a
   namespace: default
-  uid: d6d62038-d46c-4ee8-972e-a48ffa6fbc77
 spec:
   containers:
     - image: registry.k8s.io/pause:3.5

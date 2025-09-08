@@ -7,31 +7,25 @@ package minkapi
 import (
 	"errors"
 	"fmt"
-
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 
 var (
-	// ErrInitFailed is a sentinel error indicating that the minkapi program failed to initialize.
-	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
-	// ErrStartFailed is a sentinel error indicating that the core failed to start.
-	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
-	// ErrClientFacadesFailed is a sentinel error indicating that client facades creation failed.
+	ErrInitFailed = fmt.Errorf("%s init failed", ProgramName)
+	// ErrStartFailed is a sentinel error indicating that the service failed to start.
+	ErrStartFailed         = fmt.Errorf("%s start failed", ProgramName)
 	ErrClientFacadesFailed = errors.New("failed to create client facades")
-	// ErrServiceFailed is a sentinel error indicating that the core failed.
-	ErrServiceFailed = fmt.Errorf("%s core failed", ProgramName)
-	// ErrStoreNotFound is a sentinel error indicating that a resource store was not found.
-	ErrStoreNotFound = errors.New("store not found")
-	// ErrCreateWatcher is a sentinel error indicating that watcher creation failed.
-	ErrCreateWatcher = errors.New("cannot create watcher")
-	// ErrCreateObject is a sentinel error indicating that object creation failed.
-	ErrCreateObject = errors.New("cannot create object")
-	// ErrDeleteObject is a sentinel error indicating that object deletion failed.
-	ErrDeleteObject = errors.New("cannot delete object")
-	// ErrListObjects is a sentinel error indicating that object listing failed.
-	ErrListObjects = errors.New("cannot list objects")
-	// ErrUpdateObject is a sentinel error indicating that object update failed.
+	// ErrServiceFailed is a sentinel error indicating that the service failed.
+	ErrServiceFailed = fmt.Errorf("%s service failed", ProgramName)
+	// ErrMissingOpt is a sentinel error indicating that one or more required command line options are missing.
+	ErrMissingOpt            = errors.New("missing option")
+	ErrLoadConfigTemplate    = errors.New("cannot load config template")
+	ErrExecuteConfigTemplate = errors.New("cannot execute config template")
+	ErrStoreNotFound         = errors.New("store not found")
+	ErrCreateObject          = errors.New("cannot create object")
+	ErrDeleteObject          = errors.New("cannot delete object")
+	ErrListObjects           = errors.New("cannot list objects")
+
 	ErrUpdateObject = errors.New("cannot update object")
-	// ErrCreateView is a sentinel error indicating that view creation failed.
-	ErrCreateView = errors.New("cannot create view")
+
+	ErrCreateSandbox = errors.New("cannot create sandbox")
 )

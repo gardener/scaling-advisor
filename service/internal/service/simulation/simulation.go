@@ -1,14 +1,18 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package simulation
 
 import (
 	"context"
 	"fmt"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
-	"github.com/gardener/scaling-advisor/service/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -18,25 +22,25 @@ import (
 
 type defaultSimulation struct {
 	name            string
-	args            *api.SimulationArgs
+	args            *svcapi.SimulationArgs
 	nodeTemplate    *sacorev1alpha1.NodeTemplate
-	schedulerHandle api.SchedulerHandle
+	schedulerHandle svcapi.SchedulerHandle
 	state           *trackState
 }
 
 // traceState is regularly populated when simulation is running.
 type trackState struct {
-	status          api.ActivityStatus
+	status          svcapi.ActivityStatus
 	simNode         *corev1.Node
-	unscheduledPods []api.PodResourceInfo
-	scheduledPods   map[string][]api.PodResourceInfo
-	result          api.SimRunResult
+	unscheduledPods []svcapi.PodResourceInfo
+	scheduledPods   map[string][]svcapi.PodResourceInfo
+	result          svcapi.SimRunResult
 	err             error
 }
 
-var _ api.CreateSimulationFunc = New
+var _ svcapi.CreateSimulationFunc = New
 
-func New(name string, args *api.SimulationArgs) (api.Simulation, error) {
+func New(name string, args *svcapi.SimulationArgs) (svcapi.Simulation, error) {
 	var nodeTemplate *sacorev1alpha1.NodeTemplate
 	for _, nt := range args.NodePool.NodeTemplates {
 		if nt.Name == args.NodeTemplateName {
@@ -45,14 +49,14 @@ func New(name string, args *api.SimulationArgs) (api.Simulation, error) {
 		}
 	}
 	if nodeTemplate == nil {
-		return nil, fmt.Errorf("%w: node template %q not found in node pool %q", api.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
+		return nil, fmt.Errorf("%w: node template %q not found in node pool %q", svcapi.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
 	}
 	return &defaultSimulation{
 		name:         name,
 		args:         args,
 		nodeTemplate: nodeTemplate,
 		state: &trackState{
-			status: api.ActivityStatusPending,
+			status: svcapi.ActivityStatusPending,
 		},
 	}, nil
 }
@@ -67,18 +71,18 @@ func (s *defaultSimulation) NodeTemplate() *sacorev1alpha1.NodeTemplate {
 func (s *defaultSimulation) Name() string {
 	return s.name
 }
-func (s *defaultSimulation) ActivityStatus() api.ActivityStatus {
+func (s *defaultSimulation) ActivityStatus() svcapi.ActivityStatus {
 	return s.state.status
 }
 
-func (s *defaultSimulation) Result() (api.SimRunResult, error) {
+func (s *defaultSimulation) Result() (svcapi.SimRunResult, error) {
 	return s.state.result, s.state.err
 }
 
 func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: run of simulation %q failed: %w", api.ErrRunSimulation, s.name, err)
+			err = fmt.Errorf("%w: run of simulation %q failed: %w", svcapi.ErrRunSimulation, s.name, err)
 			s.state.err = err
 		}
 	}()
@@ -93,7 +97,7 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 		return
 	}
 	s.schedulerHandle = schedulerHandle
-	s.state.status = api.ActivityStatusRunning
+	s.state.status = svcapi.ActivityStatusRunning
 	err = s.trackUntilStabilized(simCtx)
 	if err != nil {
 		return
@@ -102,10 +106,10 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return
 	}
-	s.state.result = api.SimRunResult{
+	s.state.result = svcapi.SimRunResult{
 		Name:       s.name,
 		ScaledNode: s.state.simNode,
-		NodeScoreArgs: api.NodeScoreArgs{
+		NodeScoreArgs: svcapi.NodeScoreArgs{
 			ID:               s.name,
 			Placement:        s.getScaledNodePlacementInfo(),
 			ScaledAssignment: s.getScaledNodeAssignment(),
@@ -116,8 +120,8 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	return
 }
 
-func (s *defaultSimulation) getScaledNodePlacementInfo() api.NodePlacementInfo {
-	return api.NodePlacementInfo{
+func (s *defaultSimulation) getScaledNodePlacementInfo() svcapi.NodePlacementInfo {
+	return svcapi.NodePlacementInfo{
 		NodePoolName:     s.args.NodePool.Name,
 		NodeTemplateName: s.nodeTemplate.Name,
 		InstanceType:     s.nodeTemplate.InstanceType,
@@ -125,19 +129,19 @@ func (s *defaultSimulation) getScaledNodePlacementInfo() api.NodePlacementInfo {
 	}
 }
 
-func (s *defaultSimulation) getScaledNodeAssignment() *api.NodePodAssignment {
-	return &api.NodePodAssignment{
+func (s *defaultSimulation) getScaledNodeAssignment() *svcapi.NodePodAssignment {
+	return &svcapi.NodePodAssignment{
 		Node:          getNodeResourceInfo(s.state.simNode),
 		ScheduledPods: s.state.scheduledPods[s.state.simNode.Name],
 	}
 }
 
-func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (api.SchedulerHandle, error) {
+func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (svcapi.SchedulerHandle, error) {
 	clientFacades, err := simView.GetClientFacades()
 	if err != nil {
 		return nil, err
 	}
-	schedLaunchParams := &api.SchedulerLaunchParams{
+	schedLaunchParams := &svcapi.SchedulerLaunchParams{
 		ClientFacades: clientFacades,
 		EventSink:     simView.GetEventSink(),
 	}
@@ -168,7 +172,7 @@ func (s *defaultSimulation) trackUntilStabilized(ctx context.Context) error {
 	panic("implement me") //TODO immplement trackUntilStabilized
 }
 
-func (s *defaultSimulation) getAssignments() ([]api.NodePodAssignment, error) {
+func (s *defaultSimulation) getAssignments() ([]svcapi.NodePodAssignment, error) {
 	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPods))
 	nodeNames = slices.DeleteFunc(nodeNames, func(nodeName string) bool {
 		return nodeName == s.state.simNode.Name
@@ -177,11 +181,11 @@ func (s *defaultSimulation) getAssignments() ([]api.NodePodAssignment, error) {
 	if err != nil {
 		return nil, err
 	}
-	var assignments []api.NodePodAssignment
+	var assignments []svcapi.NodePodAssignment
 	for _, node := range nodes {
 		nodeResources := getNodeResourceInfo(&node)
 		podResources := s.state.scheduledPods[node.Name]
-		assignments = append(assignments, api.NodePodAssignment{
+		assignments = append(assignments, svcapi.NodePodAssignment{
 			Node:          nodeResources,
 			ScheduledPods: podResources,
 		})
@@ -194,17 +198,17 @@ func newSimulationContext(ctx context.Context, simulationName string) context.Co
 	return logr.NewContext(ctx, log.WithValues("simulationName", simulationName))
 }
 
-func getNodeResourceInfo(node *corev1.Node) api.NodeResourceInfo {
+func getNodeResourceInfo(node *corev1.Node) svcapi.NodeResourceInfo {
 	instanceType := nodeutil.GetInstanceType(node)
-	return api.NodeResourceInfo{
+	return svcapi.NodeResourceInfo{
 		Name:         node.Name,
 		InstanceType: instanceType,
-		Capacity:     objutil.ResourceListToMapInt64(node.Status.Capacity),
-		Allocatable:  objutil.ResourceListToMapInt64(node.Status.Allocatable),
+		Capacity:     objutil.ResourceListToInt64Map(node.Status.Capacity),
+		Allocatable:  objutil.ResourceListToInt64Map(node.Status.Allocatable),
 	}
 }
 
-func getNamespacesNames(pods []api.PodResourceInfo) []types.NamespacedName {
+func getNamespacesNames(pods []svcapi.PodResourceInfo) []types.NamespacedName {
 	namespacesNames := make([]types.NamespacedName, 0, len(pods))
 	for _, pod := range pods {
 		namespacesNames = append(namespacesNames, pod.NamespacedName)

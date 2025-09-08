@@ -1,11 +1,14 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package view
 
 import (
 	"fmt"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
-	"github.com/gardener/scaling-advisor/minkapi/api"
-	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
@@ -18,20 +21,20 @@ import (
 
 var (
 	log          = klog.NewKlogr()
-	baseViewArgs = api.ViewArgs{
+	baseViewArgs = mkapi.ViewArgs{
 		Name:           "base",
 		KubeConfigPath: "base",
 		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: api.WatchConfig{
+		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
 			Timeout:   mkapi.DefaultWatchTimeout,
 		},
 	}
-	sandboxViewArgs = api.ViewArgs{
+	sandboxViewArgs = mkapi.ViewArgs{
 		Name:           "sandbox",
 		KubeConfigPath: "sandbox",
 		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: api.WatchConfig{
+		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
 			Timeout:   mkapi.DefaultWatchTimeout,
 		},
@@ -290,7 +293,7 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 	}
 
 }
-func setup(t *testing.T) (b api.View, s api.View, err error) {
+func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
 	t.Helper()
 	err = loadTestNodes(t)
 	if err != nil {
@@ -342,7 +345,7 @@ func loadTestPods(t *testing.T) error {
 	return nil
 }
 
-func createViews(t *testing.T) (b api.View, s api.View, err error) {
+func createViews(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
 	t.Helper()
 	b, err = New(log, &baseViewArgs)
 	if err != nil {
@@ -357,7 +360,7 @@ func createViews(t *testing.T) (b api.View, s api.View, err error) {
 	return
 }
 
-func updateBinding(t *testing.T, v api.View, p *corev1.Pod, n *corev1.Node) (*corev1.Pod, error) {
+func updateBinding(t *testing.T, v mkapi.View, p *corev1.Pod, n *corev1.Node) (*corev1.Pod, error) {
 	t.Helper()
 	binding := createBinding(p, n)
 	pMod, err := v.UpdatePodNodeBinding(objutil.CacheName(p), binding)
@@ -386,7 +389,7 @@ func createBinding(p *corev1.Pod, n *corev1.Node) corev1.Binding {
 	}
 }
 
-func storePod(t *testing.T, v api.View, p *corev1.Pod) error {
+func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 	t.Helper()
 	err := v.StoreObject(typeinfo.PodsDescriptor.GVK, p)
 	if err != nil {
@@ -396,7 +399,7 @@ func storePod(t *testing.T, v api.View, p *corev1.Pod) error {
 	return nil
 }
 
-func storeNode(t *testing.T, v api.View, n *corev1.Node) error {
+func storeNode(t *testing.T, v mkapi.View, n *corev1.Node) error {
 	t.Helper()
 	err := v.StoreObject(typeinfo.NodesDescriptor.GVK, n)
 	if err != nil {
@@ -406,7 +409,7 @@ func storeNode(t *testing.T, v api.View, n *corev1.Node) error {
 	return nil
 }
 
-func getNode(t *testing.T, v api.View, name string) (n *corev1.Node, err error) {
+func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error) {
 	t.Helper()
 	o, err := v.GetObject(typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", name))
 	if err != nil {
@@ -424,7 +427,7 @@ func getNode(t *testing.T, v api.View, name string) (n *corev1.Node, err error) 
 	return
 }
 
-func getPod(t *testing.T, v api.View, namespace, name string) (p *corev1.Pod, err error) {
+func getPod(t *testing.T, v mkapi.View, namespace, name string) (p *corev1.Pod, err error) {
 	t.Helper()
 	o, err := v.GetObject(typeinfo.PodsDescriptor.GVK, cache.NewObjectName(namespace, name))
 	if err != nil {

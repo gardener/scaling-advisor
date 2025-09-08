@@ -7,11 +7,7 @@ package types
 import (
 	"cmp"
 	"context"
-	"fmt"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"

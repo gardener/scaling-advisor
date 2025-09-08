@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"os"
 	"slices"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/gardener/scaling-advisor/common/testutil"
 
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	"github.com/go-logr/logr"
@@ -46,7 +46,7 @@ func TestNodeCreation(t *testing.T) {
 		"Missing name and generateName in file": {
 			fileName: "../testdata/name-node-a.json",
 			gvk:      typeinfo.NodesDescriptor.GVK,
-			retErr:   api.ErrCreateObject,
+			retErr:   minkapi.ErrCreateObject,
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestNodeCreation(t *testing.T) {
 
 func TestPodListing(t *testing.T) {
 	matchCriteria := map[string]struct {
-		c         api.MatchCriteria
+		c         minkapi.MatchCriteria
 		namespace string
 		names     []string
 		retErr    error
@@ -122,38 +122,38 @@ func TestPodListing(t *testing.T) {
 // TODO test matching when deleting
 func TestEventDeletion(t *testing.T) {
 	matchCriteria := map[string]struct {
-		c      api.MatchCriteria
+		c      minkapi.MatchCriteria
 		gvk    schema.GroupVersionKind
 		retErr error
 	}{
 		"No criteria": {
-			c:      api.MatchCriteria{},
+			c:      minkapi.MatchCriteria{},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: fmt.Errorf("cannot list events without namespace"),
 		},
 		"test namespace": {
-			c:      api.MatchCriteria{Namespace: "test"},
+			c:      minkapi.MatchCriteria{Namespace: "test"},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		"random namespace": {
-			c:      api.MatchCriteria{Namespace: "mnbvcxz"},
+			c:      minkapi.MatchCriteria{Namespace: "mnbvcxz"},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		"default namespace": {
-			c:      api.MatchCriteria{Namespace: "default"},
+			c:      minkapi.MatchCriteria{Namespace: "default"},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		// TODO GVK is only utilized for checking store existence
 		"incorrect gvk when deleting": {
-			c:      api.MatchCriteria{Namespace: "default"},
+			c:      minkapi.MatchCriteria{Namespace: "default"},
 			gvk:    typeinfo.PodsDescriptor.GVK,
 			retErr: nil,
 		},
 		"non-existing name": {
-			c:      api.MatchCriteria{Namespace: "default", Names: sets.New("bingo")},
+			c:      minkapi.MatchCriteria{Namespace: "default", Names: sets.New("bingo")},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
@@ -290,14 +290,14 @@ func TestCombinePrimarySecondary(t *testing.T) {
 	return
 }
 
-func createBaseView(t *testing.T) (api.View, error) {
+func createBaseView(t *testing.T) (minkapi.View, error) {
 	t.Helper()
-	viewArgs := api.ViewArgs{
+	viewArgs := minkapi.ViewArgs{
 
-		Name:           api.DefaultBasePrefix,
+		Name:           minkapi.DefaultBasePrefix,
 		KubeConfigPath: "/tmp/minkapi-test.yaml",
 		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: api.WatchConfig{
+		WatchConfig: minkapi.WatchConfig{
 			QueueSize: 100,
 			Timeout:   500 * time.Millisecond,
 		},
@@ -305,7 +305,7 @@ func createBaseView(t *testing.T) (api.View, error) {
 	return New(logr.FromContextOrDiscard(context.TODO()), &viewArgs)
 }
 
-func createTestObjects(t *testing.T, view *api.View) (err error) {
+func createTestObjects(t *testing.T, view *minkapi.View) (err error) {
 	t.Helper()
 	_, err = createObjectFromFileName[corev1.Node](t, *view, "../testdata/node-a.json", typeinfo.NodesDescriptor.GVK)
 	if err != nil {
@@ -333,7 +333,7 @@ func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
 	return obj, nil
 }
 
-func createObjectFromFileName[T any](t *testing.T, view api.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
+func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
 	t.Helper()
 	var (
 		jsonData []byte

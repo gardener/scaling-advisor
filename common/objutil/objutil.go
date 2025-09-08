@@ -8,38 +8,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	kjson "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/client-go/tools/cache"
 	"os"
 	"reflect"
-	sigyaml "sigs.k8s.io/yaml"
 	"strconv"
 
-	"github.com/gardener/scaling-advisor/common/ioutil"
-
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/apimachinery/pkg/types"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/client-go/tools/cache"
+	sigyaml "sigs.k8s.io/yaml"
 )
 
 // ToYAML serializes the given k8s runtime.Object to YAML.
@@ -98,12 +84,36 @@ func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	}
 }
 
-func ResourceListToMapInt64(resources corev1.ResourceList) map[corev1.ResourceName]int64 {
+func ResourceListToInt64Map(resources corev1.ResourceList) map[corev1.ResourceName]int64 {
 	result := make(map[corev1.ResourceName]int64, len(resources))
 	for resourceName, quantity := range resources {
 		result[resourceName] = quantity.Value()
 	}
 	return result
+}
+
+func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.ResourceList {
+	result := make(corev1.ResourceList, len(intMap))
+	for resourceName, intValue := range intMap {
+		result[resourceName] = *resource.NewQuantity(intValue, resource.DecimalSI)
+	}
+	return result
+}
+
+func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
+	for n, q1 := range r1 {
+		q2, ok := r2[n]
+		if !ok || q1.Cmp(q2) != 0 {
+			return false
+		}
+	}
+	for n, q2 := range r2 {
+		q1, ok := r1[n]
+		if !ok || q1.Cmp(q2) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
@@ -192,6 +202,7 @@ func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
 	}
 	return result, nil
 }
+
 func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) {
 	result := make([]runtime.Object, 0, len(objs))
 	for _, item := range objs {
@@ -225,6 +236,7 @@ func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
+
 func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }

@@ -1,26 +1,30 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package simulation
 
 import (
 	"cmp"
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/service/api"
+	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"golang.org/x/sync/errgroup"
 	"slices"
 )
 
-var _ api.SimulationGroup = (*defaultSimulationGroup)(nil)
+var _ svcapi.SimulationGroup = (*defaultSimulationGroup)(nil)
 
 type defaultSimulationGroup struct {
 	name        string
-	key         api.SimGroupKey
-	simulations []api.Simulation
+	key         svcapi.SimGroupKey
+	simulations []svcapi.Simulation
 }
 
-func CreateSimulationGroups(simulations []api.Simulation) ([]api.SimulationGroup, error) {
-	groupsByKey := make(map[api.SimGroupKey]*defaultSimulationGroup)
+func CreateSimulationGroups(simulations []svcapi.Simulation) ([]svcapi.SimulationGroup, error) {
+	groupsByKey := make(map[svcapi.SimGroupKey]*defaultSimulationGroup)
 	for _, sim := range simulations {
-		gk := api.SimGroupKey{
+		gk := svcapi.SimGroupKey{
 			NodePoolPriority:     sim.NodePool().Priority,
 			NodeTemplatePriority: sim.NodeTemplate().Priority,
 		}
@@ -29,14 +33,14 @@ func CreateSimulationGroups(simulations []api.Simulation) ([]api.SimulationGroup
 			g = &defaultSimulationGroup{
 				name:        fmt.Sprintf("%s_%s_%s", sim.NodePool().Name, sim.NodeTemplate().Name, gk),
 				key:         gk,
-				simulations: []api.Simulation{sim},
+				simulations: []svcapi.Simulation{sim},
 			}
 		} else {
 			g.simulations = append(g.simulations, sim)
 		}
 		groupsByKey[gk] = g
 	}
-	simGroups := make([]api.SimulationGroup, 0, len(groupsByKey))
+	simGroups := make([]svcapi.SimulationGroup, 0, len(groupsByKey))
 	for _, g := range groupsByKey {
 		simGroups = append(simGroups, g)
 	}
@@ -47,18 +51,18 @@ func CreateSimulationGroups(simulations []api.Simulation) ([]api.SimulationGroup
 func (g *defaultSimulationGroup) Name() string {
 	return g.name
 }
-func (g *defaultSimulationGroup) GetKey() api.SimGroupKey {
+func (g *defaultSimulationGroup) GetKey() svcapi.SimGroupKey {
 	return g.key
 }
 
-func (g *defaultSimulationGroup) GetSimulations() []api.Simulation {
+func (g *defaultSimulationGroup) GetSimulations() []svcapi.Simulation {
 	return g.simulations
 }
 
-func (g *defaultSimulationGroup) Run(ctx context.Context) (result api.SimGroupRunResult, err error) {
+func (g *defaultSimulationGroup) Run(ctx context.Context) (result svcapi.SimGroupRunResult, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: simulation group %q failed: %w", api.ErrRunSimulationGroup, g.Name(), err)
+			err = fmt.Errorf("%w: simulation group %q failed: %w", svcapi.ErrRunSimulationGroup, g.Name(), err)
 		}
 	}()
 	eg, groupCtx := errgroup.WithContext(ctx)
@@ -73,8 +77,8 @@ func (g *defaultSimulationGroup) Run(ctx context.Context) (result api.SimGroupRu
 		return
 	}
 
-	var simResults []api.SimRunResult
-	var simResult api.SimRunResult
+	var simResults []svcapi.SimRunResult
+	var simResult svcapi.SimRunResult
 	for _, sim := range g.simulations {
 		simResult, err = sim.Result()
 		if err != nil {
@@ -82,7 +86,7 @@ func (g *defaultSimulationGroup) Run(ctx context.Context) (result api.SimGroupRu
 		}
 		simResults = append(simResults, simResult)
 	}
-	result = api.SimGroupRunResult{
+	result = svcapi.SimGroupRunResult{
 		Name:              g.name,
 		Key:               g.key,
 		SimulationResults: simResults,
@@ -90,8 +94,8 @@ func (g *defaultSimulationGroup) Run(ctx context.Context) (result api.SimGroupRu
 	return
 }
 
-func SortGroups(groups []api.SimulationGroup) {
-	slices.SortFunc(groups, func(a, b api.SimulationGroup) int {
+func SortGroups(groups []svcapi.SimulationGroup) {
+	slices.SortFunc(groups, func(a, b svcapi.SimulationGroup) int {
 		ak := a.GetKey()
 		bk := b.GetKey()
 		npPriorityCmp := cmp.Compare(ak.NodePoolPriority, bk.NodePoolPriority)

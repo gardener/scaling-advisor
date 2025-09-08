@@ -1,11 +1,15 @@
-package api
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package service
 
 import (
 	"context"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	corev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -84,7 +88,7 @@ type ScalingAdviceResponse struct {
 // ScalingAdvisorServiceConfig holds the configuration for the scaling advisor service.
 type ScalingAdvisorServiceConfig struct {
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor service.
-	MinKAPIConfig mkapi.MinKAPIConfig
+	MinKAPIConfig mkapi.Config
 	// SchedulerConfigPath is the path to the kube-scheduler configuration file.
 	SchedulerConfigPath string
 	// MaxConcurrentSimulations is the maximum number of concurrent simulations that can be run by the scaling advisor service.
@@ -175,6 +179,7 @@ type PodInfo struct {
 	RuntimeClassName          *string
 	Overhead                  map[corev1.ResourceName]int64
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint
+	SchedulingGates           []corev1.PodSchedulingGate
 	ResourceClaims            []corev1.PodResourceClaim
 }
 
@@ -199,6 +204,8 @@ type NodeInfo struct {
 	Capacity map[corev1.ResourceName]int64
 	// Allocatable is the allocatable resource capacity of the node.
 	Allocatable map[corev1.ResourceName]int64
+	// Conditions are the node's conditions.
+	Conditions []corev1.NodeCondition
 	// CSIDriverVolumeMaximums is a map of CSI driver names to the maximum number of unique volumes managed by the
 	// CSI driver that can be used on a node.
 	CSIDriverVolumeMaximums map[string]int32
@@ -219,8 +226,12 @@ type ResourceMeta struct {
 	types.NamespacedName
 	// Labels are the labels associated with the resource.
 	Labels map[string]string
+	// Annotations are the annotations associated with the resource.
+	Annotations map[string]string
 	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
 	DeletionTimestamp time.Time
+	// OwnerReferences are the owner references associated with the resource.
+	OwnerReferences []metav1.OwnerReference
 }
 
 type InstancePricing interface {

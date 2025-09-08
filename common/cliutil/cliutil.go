@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/go-logr/logr"
 	"os"
 	"os/signal"
 	"runtime/debug"

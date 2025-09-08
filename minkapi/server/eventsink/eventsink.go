@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package eventsink
 
 import (
 	"context"
 	"fmt"
-
-	"github.com/gardener/scaling-advisor/minkapi/api"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 
 	"github.com/go-logr/logr"
 	eventsv1 "k8s.io/api/events/v1"
@@ -13,14 +16,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 )
 
-var _ api.EventSink = (*InMemEventSink)(nil)
+var _ mkapi.EventSink = (*InMemEventSink)(nil)
 
 type InMemEventSink struct {
 	log    logr.Logger
 	events []*eventsv1.Event
 }
 
-func New(log logr.Logger) api.EventSink {
+func New(log logr.Logger) mkapi.EventSink {
 	return &InMemEventSink{
 		log:    log,
 		events: make([]*eventsv1.Event, 0, 100),

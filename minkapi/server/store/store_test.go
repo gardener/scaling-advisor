@@ -7,13 +7,14 @@ package store
 import (
 	"context"
 	"fmt"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
@@ -318,7 +319,7 @@ func TestList(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			c := api.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
+			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
 			objList, err := s.List(c)
 			if err != nil {
 				testutils.AssertError(t, err, tc.retErr)
@@ -564,7 +565,14 @@ func createStoreForTesting(d typeinfo.Descriptor) *InMemResourceStore {
 	queueSize := 100
 	watchTimeout := time.Duration(2 * time.Second)
 	log := klog.NewKlogr().V(4)
-	return NewInMemResourceStore(d.GVK, d.ListGVK, d.GVR.GroupResource().Resource, queueSize, watchTimeout, typeinfo.SupportedScheme, log)
+
+	return NewInMemResourceStore(log, &mkapi.ResourceStoreArgs{
+		Name:          d.GVR.Resource,
+		ObjectGVK:     d.GVK,
+		ObjectListGVK: d.ListGVK,
+		Scheme:        typeinfo.SupportedScheme,
+		WatchConfig:   mkapi.WatchConfig{QueueSize: queueSize, Timeout: watchTimeout},
+	})
 }
 
 func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, error) {

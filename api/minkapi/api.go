@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package api
+package minkapi
 
 import (
 	"context"
@@ -40,13 +40,16 @@ const (
 	DefaultBasePrefix = "base"
 )
 
-// MinKAPIConfig holds the configuration for MinKAPI.
-type MinKAPIConfig struct {
-	commontypes.ServerConfig
-	// WatchTimeout represents the timeout for watches following which MinKAPI service will close the connection and ends the watch.
-	WatchTimeout time.Duration
-	// WatchQueueSize is the maximum number of events to queue per watcher
-	WatchQueueSize int
+// WatchConfig holds config parameters relevant for watchers.
+type WatchConfig struct {
+	// QueueSize is the maximum number of events to queue per watcher
+	QueueSize int
+	// Timeout represents the timeout for watches following which MinKAPI service will close the connection and ends the watch.
+	Timeout time.Duration
+}
+
+// Config holds the configuration for MinKAPI.
+type Config struct {
 	// BasePrefix is the path prefix at which the base View of the minkapi service is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
@@ -90,7 +93,7 @@ type ResourceStoreArgs struct {
 	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
 	Scheme      *runtime.Scheme
 	WatchConfig WatchConfig
-	// VersionCounter is the atomic counter for generating monotonically increasing resource versionsatchConfig WatchConfig
+	// VersionCounter is the atomic counter for generating monotonically increasing resource versions
 	VersionCounter *atomic.Int64 //optional
 	Log            logr.Logger
 }

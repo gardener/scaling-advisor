@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 package integration
@@ -10,6 +14,7 @@ import (
 	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/server"
@@ -26,7 +31,6 @@ import (
 	"time"
 
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,7 +38,7 @@ import (
 var state suiteState
 
 type suiteState struct {
-	app           api.App
+	app           minkapi.App
 	nodeA         corev1.Node
 	podA          corev1.Pod
 	clientFacades commontypes.ClientFacades

@@ -1,11 +1,15 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package generator
 
 import (
 	"context"
 	"fmt"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	mkapi "github.com/gardener/scaling-advisor/minkapi/api"
-	"github.com/gardener/scaling-advisor/service/api"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -14,20 +18,20 @@ type Generator struct {
 	ctx               context.Context
 	log               logr.Logger
 	args              *Args
-	minKAPIConfig     mkapi.MinKAPIConfig
+	minKAPIConfig     mkapi.Config
 	minKAPIServer     mkapi.Server
-	schedulerLauncher api.SchedulerLauncher
+	schedulerLauncher svcapi.SchedulerLauncher
 }
 
 type Args struct {
-	Pricer            api.InstancePricing
-	WeightsFn         api.GetWeightsFunc
-	Scorer            api.NodeScorer
-	Selector          api.NodeScoreSelector
-	CreateSimFn       api.CreateSimulationFunc
-	CreateSimGroupsFn api.CreateSimulationGroupsFunc
-	Request           api.ScalingAdviceRequest
-	ResponseFn        api.ScalingAdviceResponseFn
+	Pricer            svcapi.InstanceTypeInfoAccess
+	WeightsFn         svcapi.GetWeightsFunc
+	Scorer            svcapi.NodeScorer
+	Selector          svcapi.NodeScoreSelector
+	CreateSimFn       svcapi.CreateSimulationFunc
+	CreateSimGroupsFn svcapi.CreateSimulationGroupsFunc
+	Request           svcapi.ScalingAdviceRequest
+	EventChannel      chan svcapi.ScalingAdviceEvent
 }
 
 func New(ctx context.Context, args *Args) *Generator {
@@ -38,14 +42,22 @@ func New(ctx context.Context, args *Args) *Generator {
 	}
 }
 func (g *Generator) populateBaseView() error {
-	// TODO populates the base View with the g.request.ClusterSnapshot
+	baseView := g.minKAPIServer.GetBaseView()
+	baseView.Reset()
 	return nil
 }
 
-func (g *Generator) Generate() (err error) {
-	defer func() {
-		err = api.AsGenerateError(g.args.Request.ID, g.args.Request.CorrelationID, err)
-	}()
+func (g *Generator) Generate() {
+	err := g.doGenerate()
+	if err != nil {
+		g.args.EventChannel <- svcapi.ScalingAdviceEvent{
+			Err: svcapi.AsGenerateError(g.args.Request.ID, g.args.Request.CorrelationID, err),
+		}
+		return
+	}
+}
+
+func (g *Generator) doGenerate() (err error) {
 	if err = g.populateBaseView(); err != nil {
 		return
 	}
@@ -55,8 +67,8 @@ func (g *Generator) Generate() (err error) {
 		return
 	}
 	var (
-		winnerNodeScores, passNodeScores []api.NodeScore
-		unscheduledPods                  []api.PodResourceInfo
+		winnerNodeScores, passNodeScores []svcapi.NodeScore
+		unscheduledPods                  []svcapi.PodResourceInfo
 	)
 	for {
 		passNodeScores, unscheduledPods, err = g.RunPass(groups)
@@ -74,7 +86,7 @@ func (g *Generator) Generate() (err error) {
 
 	// If there is no scaling advice then return an error indicating the same.
 	if len(winnerNodeScores) == 0 {
-		err = api.ErrNoScalingAdvice
+		err = svcapi.ErrNoScalingAdvice
 		return
 	}
 
@@ -85,10 +97,10 @@ func (g *Generator) Generate() (err error) {
 	return nil
 }
 
-func (g *Generator) RunPass(groups []api.SimulationGroup) (winnerNodeScores []api.NodeScore, unscheduledPods []api.PodResourceInfo, err error) {
+func (g *Generator) RunPass(groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo, err error) {
 	var (
-		groupRunResult api.SimGroupRunResult
-		groupScores    *api.SimGroupScores
+		groupRunResult svcapi.SimGroupRunResult
+		groupScores    *svcapi.SimGroupScores
 	)
 	for _, group := range groups {
 		groupRunResult, err = group.Run(g.ctx)
@@ -116,18 +128,19 @@ func (g *Generator) RunPass(groups []api.SimulationGroup) (winnerNodeScores []ap
 	return
 }
 
-func computeSimGroupScores(pricer api.InstancePricing, weightsFun api.GetWeightsFunc, scorer api.NodeScorer, selector api.NodeScoreSelector, groupResult *api.SimGroupRunResult) (*api.SimGroupScores, error) {
-	var nodeScores []api.NodeScore
+func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (*svcapi.SimGroupScores, error) {
+	var nodeScores []svcapi.NodeScore
 	for _, sr := range groupResult.SimulationResults {
 		nodeScore, err := scorer.Compute(sr.NodeScoreArgs)
 		if err != nil {
-			return nil, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", api.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
+			// TODO: fix this when compute already returns a error with a sentinel wrapped error.
+			return nil, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", svcapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
 		}
 		nodeScores = append(nodeScores, nodeScore)
 	}
 	winnerNodeScore, err := selector(nodeScores, weightsFun, pricer)
 	if err != nil {
-		return nil, fmt.Errorf("%w: node score selection failed for group %q: %w", api.ErrSelectNodeScore, groupResult.Name, err)
+		return nil, fmt.Errorf("%w: node score selection failed for group %q: %w", svcapi.ErrSelectNodeScore, groupResult.Name, err)
 	}
 	//if winnerScoreIndex < 0 {
 	//	return nil, nil //No winning score for this group
@@ -136,13 +149,13 @@ func computeSimGroupScores(pricer api.InstancePricing, weightsFun api.GetWeights
 	//if winnerNode == nil {
 	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.Name)
 	//}
-	return &api.SimGroupScores{
+	return &svcapi.SimGroupScores{
 		AllNodeScores:   nodeScores,
 		WinnerNodeScore: winnerNodeScore,
 		WinnerNode:      winnerNode,
 	}, nil
 }
-func getScaledNodeOfWinner(results []api.SimRunResult, winnerNodeScore *api.NodeScore) *corev1.Node {
+func getScaledNodeOfWinner(results []svcapi.SimRunResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
 	var (
 		winnerNode *corev1.Node
 	)
@@ -156,9 +169,9 @@ func getScaledNodeOfWinner(results []api.SimRunResult, winnerNodeScore *api.Node
 }
 
 // createSimulationGroups creates a slice of SimulationGroup based on priorities that are defined at the NodePool and NodeTemplate level.
-func (g *Generator) createSimulationGroups() ([]api.SimulationGroup, error) {
+func (g *Generator) createSimulationGroups() ([]svcapi.SimulationGroup, error) {
 	var (
-		allSimulations []api.Simulation
+		allSimulations []svcapi.Simulation
 		counter        int
 	)
 	for _, nodePool := range g.args.Request.Constraint.Spec.NodePools {
@@ -176,12 +189,12 @@ func (g *Generator) createSimulationGroups() ([]api.SimulationGroup, error) {
 	return g.args.CreateSimGroupsFn(allSimulations)
 }
 
-func (g *Generator) createSimulation(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (api.Simulation, error) {
+func (g *Generator) createSimulation(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (svcapi.Simulation, error) {
 	simView, err := g.minKAPIServer.GetSandboxView(g.ctx, simulationName)
 	if err != nil {
 		return nil, err
 	}
-	simArgs := &api.SimulationArgs{
+	simArgs := &svcapi.SimulationArgs{
 		AvailabilityZone:  zone,
 		NodePool:          nodePool,
 		NodeTemplateName:  nodeTemplateName,
