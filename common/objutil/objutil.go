@@ -124,6 +124,16 @@ func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
 	return true
 }
 
+// SubtractResources subtracts the quantities in b from a. If a resource in b is not found in a, it is ignored.
+func SubtractResources(a, b corev1.ResourceList) {
+	for res, qty := range b {
+		if v, ok := a[res]; ok {
+			v.Sub(qty)
+			a[res] = v
+		}
+	}
+}
+
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
 // TODO: Add unit test for this specific objutil method.
 func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {

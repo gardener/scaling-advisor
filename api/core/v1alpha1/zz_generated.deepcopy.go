@@ -10,7 +10,6 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	resource "k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -453,35 +452,16 @@ func (in *NodeTemplate) DeepCopyInto(out *NodeTemplate) {
 	}
 	if in.KubeReserved != nil {
 		in, out := &in.KubeReserved, &out.KubeReserved
-		*out = new(corev1.ResourceList)
-		if **in != nil {
-			in, out := *in, *out
-			*out = make(map[corev1.ResourceName]resource.Quantity, len(*in))
-			for key, val := range *in {
-				(*out)[key] = val.DeepCopy()
-			}
+		*out = make(corev1.ResourceList, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val.DeepCopy()
 		}
 	}
 	if in.SystemReserved != nil {
 		in, out := &in.SystemReserved, &out.SystemReserved
-		*out = new(corev1.ResourceList)
-		if **in != nil {
-			in, out := *in, *out
-			*out = make(map[corev1.ResourceName]resource.Quantity, len(*in))
-			for key, val := range *in {
-				(*out)[key] = val.DeepCopy()
-			}
-		}
-	}
-	if in.EvictionThreshold != nil {
-		in, out := &in.EvictionThreshold, &out.EvictionThreshold
-		*out = new(corev1.ResourceList)
-		if **in != nil {
-			in, out := *in, *out
-			*out = make(map[corev1.ResourceName]resource.Quantity, len(*in))
-			for key, val := range *in {
-				(*out)[key] = val.DeepCopy()
-			}
+		*out = make(corev1.ResourceList, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val.DeepCopy()
 		}
 	}
 	return

@@ -13,6 +13,7 @@ import (
 	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"sync/atomic"
 )
 
 type Generator struct {
@@ -30,9 +31,6 @@ type Args struct {
 	CreateSimGroupsFn        svcapi.CreateSimulationGroupsFunc
 	SchedulerConfigPath      string
 	MaxConcurrentSimulations int
-	// Option 1
-	// GetBaseViewFn  func() mkapi.View
-	// GetSandboxViewFn func(name)  mkapi.View
 }
 
 // RunArgs is used to run the generator and generate scaling advice
@@ -69,7 +67,8 @@ func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 
 func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
-	groups, err := g.createSimulationGroups(log, runArgs)
+	var groupRunPassCounter atomic.Uint32
+	groups, err := g.createSimulationGroups(log, runArgs, &groupRunPassCounter)
 	if err != nil {
 		return
 	}
@@ -89,6 +88,7 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		if len(unscheduledPods) == 0 {
 			break
 		}
+		groupRunPassCounter.Add(1)
 	}
 
 	// If there is no scaling advice, then return an error indicating the same.
@@ -177,7 +177,7 @@ func getScaledNodeOfWinner(results []svcapi.SimRunResult, winnerNodeScore *svcap
 }
 
 // createSimulationGroups creates a slice of SimulationGroup based on priorities that are defined at the NodePool and NodeTemplate level.
-func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs) ([]svcapi.SimulationGroup, error) {
+func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
 	request := runArgs.Request
 	var (
 		allSimulations []svcapi.Simulation
@@ -185,8 +185,8 @@ func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs) ([
 	for _, nodePool := range request.Constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
 			for _, zone := range nodePool.AvailabilityZones {
-				simulationName := fmt.Sprintf("%s-%s-%s", nodePool.Name, nodeTemplate.Name, zone)
-				sim, err := g.createSimulation(log, runArgs.SandboxViewFn, simulationName, &nodePool, nodeTemplate.Name, zone)
+				simulationName := fmt.Sprintf("%s_%s_%s", nodePool.Name, nodeTemplate.Name, zone)
+				sim, err := g.createSimulation(log, runArgs.SandboxViewFn, simulationName, &nodePool, nodeTemplate.Name, zone, groupRunPassCounter)
 				if err != nil {
 					return nil, err
 				}
@@ -197,17 +197,18 @@ func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs) ([
 	return g.args.CreateSimGroupsFn(allSimulations)
 }
 
-func (g *Generator) createSimulation(log logr.Logger, sandboxViewFn SandBoxViewFunc, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (svcapi.Simulation, error) {
+func (g *Generator) createSimulation(log logr.Logger, sandboxViewFn SandBoxViewFunc, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
 	simView, err := sandboxViewFn(log, simulationName)
 	if err != nil {
 		return nil, err
 	}
 	simArgs := &svcapi.SimulationArgs{
-		AvailabilityZone:  zone,
-		NodePool:          nodePool,
-		NodeTemplateName:  nodeTemplateName,
-		SchedulerLauncher: g.schedulerLauncher,
-		View:              simView,
+		GroupRunPassCounter: groupRunPassCounter,
+		AvailabilityZone:    zone,
+		NodePool:            nodePool,
+		NodeTemplateName:    nodeTemplateName,
+		SchedulerLauncher:   g.schedulerLauncher,
+		View:                simView,
 	}
 	return g.args.CreateSimFn(simulationName, simArgs)
 }

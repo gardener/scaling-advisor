@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"sync/atomic"
 	"time"
 )
 
@@ -406,11 +407,12 @@ type SimRunResult struct {
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.
 type SimulationArgs struct {
-	AvailabilityZone  string
-	NodeTemplateName  string
-	NodePool          *corev1alpha1.NodePool
-	SchedulerLauncher SchedulerLauncher
-	View              mkapi.View
+	GroupRunPassCounter *atomic.Uint32
+	AvailabilityZone    string
+	NodeTemplateName    string
+	NodePool            *corev1alpha1.NodePool
+	SchedulerLauncher   SchedulerLauncher
+	View                mkapi.View
 }
 
 // CreateSimulationFunc is a factory function for constructing a simulation instance

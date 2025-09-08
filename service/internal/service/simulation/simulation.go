@@ -15,9 +15,11 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"maps"
 	"slices"
+	"time"
 )
 
 type defaultSimulation struct {
@@ -149,11 +151,23 @@ func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, si
 }
 
 func (s *defaultSimulation) buildSimulationNode() *corev1.Node {
-	/*
-		create a simulation node based on the provided template, region, zone, labels, and taints.
-		Add apiconstants.LabelSimulationID with the value of simulationName to the labels.
-	*/
-	return &corev1.Node{}
+	simNodeName := fmt.Sprintf("n-%d.%s.%s.%s", s.args.GroupRunPassCounter.Load(), s.args.AvailabilityZone, s.args.NodeTemplateName, s.args.NodePool.Name)
+	nodeTaints := slices.Clone(s.args.NodePool.Taints)
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   simNodeName,
+			Labels: nodeutil.CreateNodeLabels(s.name, s.args.NodePool, s.nodeTemplate, s.args.AvailabilityZone, s.args.GroupRunPassCounter.Load(), simNodeName),
+		},
+		Spec: corev1.NodeSpec{
+			ProviderID: simNodeName,
+			Taints:     nodeTaints,
+		},
+		Status: corev1.NodeStatus{
+			Capacity:    s.nodeTemplate.Capacity,
+			Allocatable: nodeutil.ComputeAllocatable(s.nodeTemplate.Capacity, s.nodeTemplate.SystemReserved, s.nodeTemplate.SystemReserved),
+			Conditions:  nodeutil.BuildReadyConditions(time.Now()),
+		},
+	}
 }
 
 // trackUntilStabilized monitors the EventSink for scheduling events for all the unscheduled pods for a simulation run.

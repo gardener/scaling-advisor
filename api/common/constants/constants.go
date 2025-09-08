@@ -30,9 +30,14 @@ const (
 )
 
 const (
-	// LabelSimulationID is the label key to identify simulation objects for a specific simulation run.
-	// The value of the label is the simulation ID.
-	LabelSimulationID = "sa.gardener.cloud/simulation-id"
+	// LabelSimulationName is the label key to identify name of the simulation inside a simulation group.
+	LabelSimulationName = "sa.gardener.cloud/simulation-name"
+	// LabelSimulationGroupPassNum is the label key to identify the pass number of the simulation group.
+	LabelSimulationGroupPassNum = "sa.gardener.cloud/simulation-group-pass-num"
+	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
+	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
+	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
+	LabelNodeTemplateName = "sa.gardener.cloud/node-template-name"
 )
 
 const (
