@@ -57,26 +57,27 @@ const (
 
 // ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
 type ScalingAdviceRequest struct {
-	// ID is the unique identifier for the request.
-	ID string
-	// CorrelationID is the correlation identifier for the request, used to correlate a request and one or more responses.
-	CorrelationID string
+	ScalingAdviceRequestRef
 	// GenerationStrategy
 	GenerationStrategy ScalingAdviceGenerationStrategy
 	// Constraint is the cluster scaling constraint using which the scaling advice is generated.
 	Constraint corev1alpha1.ClusterScalingConstraint
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
-	Snapshot ClusterSnapshot
+	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
 	Feedback *corev1alpha1.ClusterScalingFeedback
 }
 
-// ScalingAdviceResponse encapsulates the response from the scaling advisor service.
-type ScalingAdviceResponse struct {
-	// RequestID is the Request unique identifier for which this response is generated.
-	RequestID string
+type ScalingAdviceRequestRef struct {
+	// ID is the Request unique identifier for which this response is generated.
+	ID string
 	// CorrelationID is the correlation identifier for the request, used to correlate this response with the request.
 	CorrelationID string
+}
+
+// ScalingAdviceResponse encapsulates the response from the scaling advisor service.
+type ScalingAdviceResponse struct {
+	RequestRef ScalingAdviceRequestRef
 	// ResponseType indicates the type of response being sent.
 	ResponseType ScalingAdviceResponseType
 	// Message is a human-readable message providing additional context about the response.

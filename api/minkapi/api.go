@@ -164,7 +164,7 @@ type Server interface {
 	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
 	//
 	// TODO: discuss whether the above is OK.
-	GetSandboxView(ctx context.Context, name string) (View, error)
+	GetSandboxView(log logr.Logger, name string) (View, error)
 }
 
 // App represents an application that wraps a minkapi Server, an application context and application cancel func.

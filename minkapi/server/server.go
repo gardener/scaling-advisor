@@ -225,8 +225,7 @@ func (k *InMemoryKAPI) GetBaseView() mkapi.View {
 	return k.baseView
 }
 
-func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (mkapi.View, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("sandboxName", name)
+func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View, error) {
 	sandboxView, ok := k.sandboxViews[name] // TODO: protected with mutex.
 	if ok {
 		return sandboxView, nil

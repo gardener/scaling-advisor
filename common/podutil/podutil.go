@@ -89,3 +89,14 @@ func AsPod(info svcapi.PodInfo) *corev1.Pod {
 		},
 	}
 }
+func GetPodResourceInfos(podInfos []svcapi.PodInfo) []svcapi.PodResourceInfo {
+	podResourceInfos := make([]svcapi.PodResourceInfo, 0, len(podInfos))
+	for _, podInfo := range podInfos {
+		podResourceInfos = append(podResourceInfos, svcapi.PodResourceInfo{
+			UID:                podInfo.UID,
+			NamespacedName:     podInfo.NamespacedName,
+			AggregatedRequests: podInfo.AggregatedRequests,
+		})
+	}
+	return podResourceInfos
+}
