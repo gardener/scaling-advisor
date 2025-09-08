@@ -4,7 +4,7 @@
 
 REPO_ROOT           := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
 REPO_HACK_DIR       := $(REPO_ROOT)/hack
-SUBMODULES          := api common minkapi operator
+SUBMODULES          := api common minkapi service operator scadctl
 
 include $(REPO_HACK_DIR)/tools.mk
 

@@ -6,6 +6,7 @@ package types
 
 import (
 	"context"
+	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -68,6 +69,23 @@ const (
 	AliCloudProvider       CloudProvider = "ali"
 	OpenStackCloudProvider CloudProvider = "openstack"
 )
+
+func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
+	switch cloudProvider {
+	case "aws":
+		return AWSCloudProvider, nil
+	case "gcp":
+		return GCPCloudProvider, nil
+	case "azure":
+		return AzureCloudProvider, nil
+	case "ali":
+		return AliCloudProvider, nil
+	case "openstack":
+		return OpenStackCloudProvider, nil
+	default:
+		return "", fmt.Errorf("unuspported cloud provider: %s", cloudProvider)
+	}
+}
 
 // ClientMode indicates the connection mode of k8s client
 type ClientMode string
