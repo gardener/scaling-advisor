@@ -5,6 +5,7 @@ import (
 	"fmt"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/tools/types/awsprice"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -146,6 +147,9 @@ func parseVCPU(s string) (int32, error) {
 	val, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil {
 		return 0, err
+	}
+	if val < 0 || val > math.MaxInt32 {
+		return 0, fmt.Errorf("vCPU value %d out of int32 range", val)
 	}
 	return int32(val), nil
 }
