@@ -20,6 +20,9 @@ var (
 	ErrRunSimulation = errors.New("failed to run simulation")
 	// ErrRunSimulationGroup is a sentinel error indicating that a scaling simulation group failed
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
+
+	// ErrSimulationTimeout is a sentinel error indicating that the simulation timed out
+	ErrSimulationTimeout = errors.New("simulation timed out")
 	//ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore

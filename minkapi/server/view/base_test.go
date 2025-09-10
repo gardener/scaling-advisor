@@ -104,7 +104,8 @@ func TestPodListing(t *testing.T) {
 	}
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			p, err := baseView.ListPods(tc.namespace, tc.names...)
+			criteria := minkapi.MatchCriteria{Namespace: tc.namespace, Names: sets.New(tc.names...)}
+			p, err := baseView.ListPods(criteria)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)
 				return

@@ -12,32 +12,24 @@ import (
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"maps"
 	"slices"
 	"time"
 )
 
 type defaultSimulation struct {
-	name            string
-	args            *svcapi.SimulationArgs
-	nodeTemplate    *sacorev1alpha1.NodeTemplate
-	schedulerHandle svcapi.SchedulerHandle
-	state           *trackState
-}
-
-// traceState is regularly populated when simulation is running.
-type trackState struct {
-	status          svcapi.ActivityStatus
-	simNode         *corev1.Node
-	unscheduledPods []svcapi.PodResourceInfo
-	scheduledPods   map[string][]svcapi.PodResourceInfo
-	result          svcapi.SimRunResult
-	err             error
+	name         string
+	args         *svcapi.SimulationArgs
+	nodeTemplate *sacorev1alpha1.NodeTemplate
+	state        *trackState
 }
 
 var _ svcapi.CreateSimulationFunc = New
@@ -53,14 +45,55 @@ func New(name string, args *svcapi.SimulationArgs) (svcapi.Simulation, error) {
 	if nodeTemplate == nil {
 		return nil, fmt.Errorf("%w: node template %q not found in node pool %q", svcapi.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
 	}
-	return &defaultSimulation{
+	unscheduledPods, err := getUnscheduledPodsMap(args.View)
+	if err != nil {
+		return nil, fmt.Errorf("%w: simulation %q was unable to get unscheduled pods from view: %v", svcapi.ErrCreateSimulation, name, err)
+	}
+	if len(unscheduledPods) == 0 {
+		return nil, fmt.Errorf("%w: %w: simulation %q was created with no unscheduled pods in its view", svcapi.ErrCreateSimulation, svcapi.ErrNoUnscheduledPods, name)
+	}
+	sim := &defaultSimulation{
 		name:         name,
 		args:         args,
 		nodeTemplate: nodeTemplate,
 		state: &trackState{
-			status: svcapi.ActivityStatusPending,
+			status:              svcapi.ActivityStatusPending,
+			unscheduledPods:     unscheduledPods,
+			scheduledPodsByNode: make(map[string][]svcapi.PodResourceInfo),
 		},
-	}, nil
+	}
+	return sim, nil
+}
+
+func getUnscheduledPodsMap(v mkapi.View) (unscheduled map[types.NamespacedName]svcapi.PodResourceInfo, err error) {
+	pods, err := v.ListPods(mkapi.MatchAllCriteria)
+	if err != nil {
+		return
+	}
+	unscheduled = make(map[types.NamespacedName]svcapi.PodResourceInfo, len(pods))
+	for _, p := range pods {
+		if IsUnscheduledPod(&p) {
+			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
+		}
+	}
+	return
+}
+func getUnscheduledPods(v mkapi.View) (unscheduled []svcapi.PodResourceInfo, err error) {
+	pods, err := v.ListPods(mkapi.MatchAllCriteria)
+	if err != nil {
+		return
+	}
+	unscheduled = make([]svcapi.PodResourceInfo, 0, len(pods))
+	for _, p := range pods {
+		if IsUnscheduledPod(&p) {
+			unscheduled = append(unscheduled, podutil.PodResourceInfoFromCoreV1Pod(&p))
+		}
+	}
+	return
+}
+
+func IsUnscheduledPod(pod *corev1.Pod) bool {
+	return pod.Spec.NodeName == ""
 }
 
 func (s *defaultSimulation) NodePool() *sacorev1alpha1.NodePool {
@@ -88,23 +121,27 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 			s.state.err = err
 		}
 	}()
+	s.state.status = svcapi.ActivityStatusRunning
 	s.state.simNode = s.buildSimulationNode()
 	err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
 	if err != nil {
 		return
 	}
-	simCtx := newSimulationContext(ctx, s.name)
+	simCtx, simCancelFn := newSimulationContext(ctx, s.name, s.args.Timeout)
+	defer simCancelFn()
+
+	s.state.status = svcapi.ActivityStatusRunning
 	schedulerHandle, err := s.launchSchedulerForSimulation(simCtx, s.args.View)
 	if err != nil {
 		return
 	}
-	s.schedulerHandle = schedulerHandle
-	s.state.status = svcapi.ActivityStatusRunning
+	defer schedulerHandle.Stop()
+
 	err = s.trackUntilStabilized(simCtx)
 	if err != nil {
 		return
 	}
-	assignments, err := s.getAssignments()
+	otherAssignments, err := s.getOtherAssignments()
 	if err != nil {
 		return
 	}
@@ -115,8 +152,8 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 			ID:               s.name,
 			Placement:        s.getScaledNodePlacementInfo(),
 			ScaledAssignment: s.getScaledNodeAssignment(),
-			UnscheduledPods:  getNamespacesNames(s.state.unscheduledPods),
-			OtherAssignments: assignments,
+			UnscheduledPods:  slices.Collect(maps.Keys(s.state.unscheduledPods)),
+			OtherAssignments: otherAssignments,
 		},
 	}
 	return
@@ -134,7 +171,7 @@ func (s *defaultSimulation) getScaledNodePlacementInfo() svcapi.NodePlacementInf
 func (s *defaultSimulation) getScaledNodeAssignment() *svcapi.NodePodAssignment {
 	return &svcapi.NodePodAssignment{
 		Node:          getNodeResourceInfo(s.state.simNode),
-		ScheduledPods: s.state.scheduledPods[s.state.simNode.Name],
+		ScheduledPods: s.state.scheduledPodsByNode[s.state.simNode.Name],
 	}
 }
 
@@ -170,24 +207,34 @@ func (s *defaultSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-// trackUntilStabilized monitors the EventSink for scheduling events for all the unscheduled pods for a simulation run.
+// trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
+//  1. All the pods are scheduled within the stabilization period OR
+//  2. Stabilization period is over and there are still unscheduled pods.
 func (s *defaultSimulation) trackUntilStabilized(ctx context.Context) error {
-	/*
-			NOTE: If there is an error then you return the error.
-			If the ctx.Done then return the ctx.Err
-			Get all the unscheduled pods from the simulation view.
-			This function starts a loop which does the following till one of the following conditions is met:
-		      1. All the pods are scheduled within the stabilization period OR
-		      2. Stabilization period is over and there are still unscheduled pods.
-
-			At the end of the loop it does the following:
-			1. Updates the defaultSimulation.state with unscheduled and scheduled pods.
-	*/
-	panic("implement me") //TODO immplement trackUntilStabilized
+	log := logr.FromContextOrDiscard(ctx)
+	v := s.args.View
+	s.state.status = svcapi.ActivityStatusRunning
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			err = s.state.reconcile(log, v, v.GetEventSink().List())
+			if err != nil {
+				return err
+			}
+			if len(s.state.unscheduledPods) == 0 {
+				log.Info("no unscheduled pods left")
+				return nil
+			}
+		}
+		<-time.After(s.args.TrackPollInterval)
+	}
 }
 
-func (s *defaultSimulation) getAssignments() ([]svcapi.NodePodAssignment, error) {
-	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPods))
+func (s *defaultSimulation) getOtherAssignments() ([]svcapi.NodePodAssignment, error) {
+	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPodsByNode))
 	nodeNames = slices.DeleteFunc(nodeNames, func(nodeName string) bool {
 		return nodeName == s.state.simNode.Name
 	})
@@ -195,10 +242,10 @@ func (s *defaultSimulation) getAssignments() ([]svcapi.NodePodAssignment, error)
 	if err != nil {
 		return nil, err
 	}
-	var assignments []svcapi.NodePodAssignment
+	assignments := make([]svcapi.NodePodAssignment, 0, len(nodes))
 	for _, node := range nodes {
 		nodeResources := getNodeResourceInfo(&node)
-		podResources := s.state.scheduledPods[node.Name]
+		podResources := s.state.scheduledPodsByNode[node.Name]
 		assignments = append(assignments, svcapi.NodePodAssignment{
 			Node:          nodeResources,
 			ScheduledPods: podResources,
@@ -207,9 +254,58 @@ func (s *defaultSimulation) getAssignments() ([]svcapi.NodePodAssignment, error)
 	return assignments, nil
 }
 
-func newSimulationContext(ctx context.Context, simulationName string) context.Context {
+// traceState is regularly populated when simulation is running.
+type trackState struct {
+	status              svcapi.ActivityStatus
+	simNode             *corev1.Node
+	unscheduledPods     map[types.NamespacedName]svcapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
+	scheduledPodsByNode map[string][]svcapi.PodResourceInfo             // map of node names to PodReosurceInfo
+	result              svcapi.SimRunResult
+	err                 error
+}
+
+func (t *trackState) reconcile(log logr.Logger, view mkapi.View, events []eventsv1.Event) error {
+	for _, ev := range events {
+		log.V(4).Info("analyzing event", "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding)
+		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
+			continue
+		}
+		podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
+		log.Info("pod was scheduled", "namespacedName", podNsName, "eventNote", ev.Note)
+		podObjName := cache.NamespacedNameAsObjectName(podNsName)
+		obj, err := view.GetObject(typeinfo.PodsDescriptor.GVK, podObjName)
+		if err != nil {
+			return err
+		}
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
+		}
+		if pod.Spec.NodeName == "" {
+			return fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
+		}
+		podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
+		found := slices.ContainsFunc(podsOnNode, func(podOnNode svcapi.PodResourceInfo) bool {
+			return podOnNode.NamespacedName == podNsName
+		})
+		if found {
+			continue
+		}
+		podsOnNode = append(podsOnNode, podutil.PodResourceInfoFromCoreV1Pod(pod))
+		t.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
+		log.V(4).Info("pod added to trackState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", len(t.scheduledPodsByNode))
+		delete(t.unscheduledPods, podNsName)
+	}
+	return nil
+}
+
+func newSimulationContext(ctx context.Context, simulationName string, timeout time.Duration) (context.Context, context.CancelFunc) {
 	log := logr.FromContextOrDiscard(ctx)
-	return logr.NewContext(ctx, log.WithValues("simulationName", simulationName))
+	ctx = logr.NewContext(ctx, log.WithValues("simulationName", simulationName))
+	ctx, cancel := context.WithTimeoutCause(ctx,
+		timeout,
+		fmt.Errorf("%w: %q timed out after duration %q", svcapi.ErrSimulationTimeout, simulationName, timeout))
+	return ctx, cancel
 }
 
 func getNodeResourceInfo(node *corev1.Node) svcapi.NodeResourceInfo {
@@ -220,12 +316,4 @@ func getNodeResourceInfo(node *corev1.Node) svcapi.NodeResourceInfo {
 		Capacity:     objutil.ResourceListToInt64Map(node.Status.Capacity),
 		Allocatable:  objutil.ResourceListToInt64Map(node.Status.Allocatable),
 	}
-}
-
-func getNamespacesNames(pods []svcapi.PodResourceInfo) []types.NamespacedName {
-	namespacesNames := make([]types.NamespacedName, 0, len(pods))
-	for _, pod := range pods {
-		namespacesNames = append(namespacesNames, pod.NamespacedName)
-	}
-	return namespacesNames
 }

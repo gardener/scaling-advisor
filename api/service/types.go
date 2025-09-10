@@ -179,6 +179,7 @@ type SchedulerHandle interface {
 }
 
 // ClusterSnapshot represents a snapshot of the cluster at a specific time and encapsulates the scheduling relevant information required by the kube-scheduler.
+// Pods inside the ClusterSnapshot should not have SchedulingGates - these should be filtered out by creator of the ClusterSnapshot.
 type ClusterSnapshot struct {
 	// Pods are the pods that are present in the cluster.
 	Pods []PodInfo
@@ -202,7 +203,7 @@ func (c *ClusterSnapshot) GetUnscheduledPods() []PodInfo {
 
 // PodInfo contains the minimum set of information about corev1.Pod that will be required by the kube-scheduler.
 // NOTES:
-//  1. PodSchedulingGates is not part of PodInfo. It is expected that pods having scheduling gates will be filtered out before setting up simulation runs.
+//  1. PodSchedulingGates should not be not part of PodInfo. It is expected that pods having scheduling gates will be filtered out before setting up simulation runs.
 //  2. Consider including PodSpec.Resources in future when it graduates to beta/GA.
 type PodInfo struct {
 	ResourceMeta
@@ -227,7 +228,6 @@ type PodInfo struct {
 	RuntimeClassName          *string
 	Overhead                  map[corev1.ResourceName]int64
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint
-	SchedulingGates           []corev1.PodSchedulingGate
 	ResourceClaims            []corev1.PodResourceClaim
 }
 
@@ -407,12 +407,16 @@ type SimRunResult struct {
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.
 type SimulationArgs struct {
-	GroupRunPassCounter *atomic.Uint32
+	NodePool            *corev1alpha1.NodePool
 	AvailabilityZone    string
 	NodeTemplateName    string
-	NodePool            *corev1alpha1.NodePool
+	GroupRunPassCounter *atomic.Uint32
 	SchedulerLauncher   SchedulerLauncher
 	View                mkapi.View
+	// TrackPollInterval is the polling interval for tracking pod scheduling in the view and reconciling simulation state
+	TrackPollInterval time.Duration
+	// Timeout is the simulation timeout
+	Timeout time.Duration
 }
 
 // CreateSimulationFunc is a factory function for constructing a simulation instance

@@ -111,8 +111,7 @@ func (d *defaultScalingAdvisor) Stop(ctx context.Context) error {
 func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svcapi.ScalingAdviceRequest) <-chan svcapi.ScalingAdviceEvent {
 	adviceEventCh := make(chan svcapi.ScalingAdviceEvent)
 	go func() {
-		unscheduledPods := podutil.GetPodResourceInfos(request.Snapshot.GetUnscheduledPods())
-		if len(unscheduledPods) == 0 {
+		if len(request.Snapshot.GetUnscheduledPods()) == 0 {
 			generator.SendError(adviceEventCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
 			return
 		}

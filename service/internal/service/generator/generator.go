@@ -14,6 +14,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"sync/atomic"
+	"time"
 )
 
 type Generator struct {
@@ -73,19 +74,22 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		return
 	}
 	var (
-		winnerNodeScores, passNodeScores []svcapi.NodeScore
-		unscheduledPods                  []svcapi.PodResourceInfo
+		winnerNodeScores []svcapi.NodeScore
+		unscheduledPods  []svcapi.PodResourceInfo
 	)
 	for {
+		var passNodeScores []svcapi.NodeScore
 		passNodeScores, unscheduledPods, err = g.RunPass(ctx, groups)
 		if err != nil {
 			return
 		}
 		if len(passNodeScores) == 0 {
+			log.Info("Aborting loop since no node scores produced in %d pass.", groupRunPassCounter.Load())
 			break
 		}
 		winnerNodeScores = append(winnerNodeScores, passNodeScores...)
 		if len(unscheduledPods) == 0 {
+			log.Info("All pods have been scheduled in %d pass", groupRunPassCounter.Load())
 			break
 		}
 		groupRunPassCounter.Add(1)
@@ -131,6 +135,7 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 		winnerNodeScores = append(winnerNodeScores, *groupScores.WinnerNodeScore)
 		if len(groupScores.WinnerNodeScore.UnscheduledPods) == 0 {
 			log.Info("simulation group winner has left NO unscheduled pods. No need to continue to next group", "simulationGroupName", groupRunResult.Name)
+			break
 		}
 	}
 	return
@@ -209,6 +214,7 @@ func (g *Generator) createSimulation(log logr.Logger, sandboxViewFn SandBoxViewF
 		NodeTemplateName:    nodeTemplateName,
 		SchedulerLauncher:   g.schedulerLauncher,
 		View:                simView,
+		TrackPollInterval:   3 * time.Second,
 	}
 	return g.args.CreateSimFn(simulationName, simArgs)
 }

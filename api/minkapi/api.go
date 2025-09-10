@@ -99,7 +99,7 @@ type ResourceStoreArgs struct {
 type EventSink interface {
 	Resettable
 	events.EventSink
-	List() []*eventsv1.Event
+	List() []eventsv1.Event
 }
 
 // View is the high-level facade to a repository of objects of different types (GVK).
@@ -126,7 +126,7 @@ type View interface {
 	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)
-	ListPods(namespace string, matchingPodNames ...string) ([]corev1.Pod, error)
+	ListPods(criteria MatchCriteria) ([]corev1.Pod, error)
 	ListEvents(namespace string) ([]eventsv1.Event, error)
 	// GetObjectChangeCount returns the current change count made to objects through this view.
 	GetObjectChangeCount() int64
@@ -182,6 +182,8 @@ type MatchCriteria struct {
 	// Labels        map[string]string
 	LabelSelector labels.Selector
 }
+
+var MatchAllCriteria = MatchCriteria{}
 
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {

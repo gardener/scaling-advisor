@@ -203,15 +203,7 @@ func (v *baseView) ListNodes(matchingNodeNames ...string) (nodes []corev1.Node, 
 	return
 }
 
-func (v *baseView) ListPods(namespace string, matchingPodNames ...string) ([]corev1.Pod, error) {
-	if len(strings.TrimSpace(namespace)) == 0 {
-		return nil, apierrors.NewBadRequest("cannot list pods without namespace")
-	}
-	podNamesSet := sets.New(matchingPodNames...)
-	c := minkapi.MatchCriteria{
-		Namespace: namespace,
-		Names:     podNamesSet,
-	}
+func (v *baseView) ListPods(c minkapi.MatchCriteria) ([]corev1.Pod, error) {
 	gvk := typeinfo.PodsDescriptor.GVK
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
