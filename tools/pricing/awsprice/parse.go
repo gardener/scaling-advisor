@@ -21,7 +21,7 @@ import (
 // Behavior:
 //   - Filters products by the given operating system.
 //   - Includes only Shared tenancy SKUs.
-//   - Extracts per-hour OnDemand prices using extractOnDemandPriceForSKU.
+//   - Extracts per-hour OnDemand prices using extractOnDemandHourlyPriceForSKU.
 //   - Deduplicates entries by keeping the lowest valid hourly price
 //     per (InstanceType, Region, OS).
 //
@@ -36,7 +36,6 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 
 	type priceKey struct {
 		InstanceType string
-		Region       string
 		OS           string
 	}
 
@@ -63,12 +62,12 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 			continue
 		}
 
-		price := extractOnDemandPriceForSKU(raw.Terms, sku)
+		price := extractOnDemandHourlyPriceForSKU(raw.Terms, sku)
 		if price <= 0 {
 			continue
 		}
 
-		key := priceKey{InstanceType: attrs.InstanceType, Region: region, OS: attrs.OperatingSys}
+		key := priceKey{InstanceType: attrs.InstanceType, OS: attrs.OperatingSys}
 		if existing, ok := best[key]; !ok || price < existing.HourlyPrice {
 			best[key] = svcapi.InstanceTypeInfo{
 				Name:        attrs.InstanceType,
@@ -88,7 +87,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 	return infos, nil
 }
 
-// extractOnDemandPriceForSKU returns the lowest non-zero OnDemand hourly price
+// extractOnDemandHourlyPriceForSKU returns the lowest non-zero OnDemand hourly price
 // for a given SKU. It filters out any price dimensions that are not per-hour
 // (e.g., per-second billing).
 //
@@ -116,7 +115,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 //	   }
 //	 }
 //	}
-func extractOnDemandPriceForSKU(terms awsprice.Terms, sku string) float64 {
+func extractOnDemandHourlyPriceForSKU(terms awsprice.Terms, sku string) float64 {
 	offers, ok := terms.OnDemand[sku]
 	if !ok {
 		return 0.0
@@ -130,7 +129,7 @@ func extractOnDemandPriceForSKU(terms awsprice.Terms, sku string) float64 {
 			}
 			if usd, ok := dim.PricePerUnit["USD"]; ok {
 				val, err := strconv.ParseFloat(usd, 64)
-				if err != nil || val <= 0 {
+				if err != nil {
 					continue
 				}
 				if best == 0.0 || val < best {
