@@ -5,6 +5,7 @@
 package scorer
 
 import (
+	"errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/service/pricing/testutil"
@@ -12,6 +13,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -61,6 +64,13 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			CreateMockPod("simPodA", 1, 2),
 		},
 	}
+	//test case where weights are not defined for all resources
+	pod2 := CreateMockPod("simStorage", 1, 2)
+	pod2.AggregatedRequests["Storage"] = 10
+	assignment2 := service.NodePodAssignment{
+		Node:          CreateMockNode("simNode1", "instance-a-2", 2, 4),
+		ScheduledPods: []service.PodResourceInfo{pod2},
+	}
 	tests := map[string]struct {
 		input         service.NodeScoreArgs
 		expectedErr   error
@@ -101,6 +111,23 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledNodeResource: assignment.Node,
 			},
 		},
+
+		"weights undefined for resource type": {
+			input: service.NodeScoreArgs{
+				ID:               "testing",
+				Placement:        service.NodePlacementInfo{},
+				ScaledAssignment: &assignment2,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			expectedErr: nil,
+			expectedScore: service.NodeScore{
+				ID:                 "testing",
+				Placement:          service.NodePlacementInfo{},
+				UnscheduledPods:    nil,
+				Value:              700,
+				ScaledNodeResource: assignment2.Node,
+			},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -132,6 +159,13 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		ScheduledPods: []service.PodResourceInfo{
 			CreateMockPod("simPodA", 1, 2),
 		},
+	}
+	//test case where weights are not defined for all resources
+	pod2 := CreateMockPod("simStorage", 1, 2)
+	pod2.AggregatedRequests["Storage"] = 10
+	assignment2 := service.NodePodAssignment{
+		Node:          CreateMockNode("simNode1", "instance-a-2", 2, 4),
+		ScheduledPods: []service.PodResourceInfo{pod2},
 	}
 	tests := map[string]struct {
 		input         service.NodeScoreArgs
@@ -173,6 +207,22 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledNodeResource: assignment.Node,
 			},
 		},
+		"weights undefined for resource type": {
+			input: service.NodeScoreArgs{
+				ID:               "testing",
+				Placement:        service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				ScaledAssignment: &assignment2,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			expectedErr: nil,
+			expectedScore: service.NodeScore{
+				ID:                 "testing",
+				Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				UnscheduledPods:    nil,
+				Value:              350,
+				ScaledNodeResource: assignment2.Node,
+			},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -196,6 +246,8 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		return
 	}
 	selector, err := GetNodeScoreSelector(commontypes.LeastCostNodeScoringStrategy)
+	simNodeWithStorage := CreateMockNode("simNode1", "instance-a-1", 2, 4)
+	simNodeWithStorage.Allocatable["Storage"] = 10
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,6 +322,30 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
 				},
 			},
+		},
+		"undefined weights for resource type": {
+			input: []service.NodeScore{
+				{
+					ID:                 "testing1",
+					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 4, 8)},
+				{
+					ID:                 "testing2",
+					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: simNodeWithStorage,
+				}},
+			expectedErr: nil,
+			expectedIn: []service.NodeScore{{
+				ID:                 "testing1",
+				Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+				UnscheduledPods:    nil,
+				Value:              1,
+				ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 4, 8),
+			}},
 		},
 	}
 	for name, tc := range tests {
@@ -401,6 +477,107 @@ func TestSelectMinPrice(t *testing.T) {
 			}
 			if errDiff != "" {
 				t.Fatalf("Difference: %s", errDiff)
+			}
+		})
+	}
+}
+
+func getFunctionName(f interface{}) string {
+	if f == nil {
+		return "<nil>"
+	}
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
+}
+
+func TestGetNodeScoreSelector(t *testing.T) {
+	tests := map[string]struct {
+		input                commontypes.NodeScoringStrategy
+		expectedFunctionName string
+		expectedErrMsg       string
+	}{
+		"least-cost strategy": {
+			input:                commontypes.LeastCostNodeScoringStrategy,
+			expectedFunctionName: getFunctionName(SelectMaxAllocatable),
+			expectedErrMsg:       "",
+		},
+		"least-waste strategy": {
+			input:                commontypes.LeastWasteNodeScoringStrategy,
+			expectedFunctionName: getFunctionName(SelectMinPrice),
+			expectedErrMsg:       "",
+		},
+		"invalid strategy": {
+			input:                "invalid",
+			expectedFunctionName: "",
+			expectedErrMsg:       "unsupported node scoring strategy: unsupported \"invalid\"",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := GetNodeScoreSelector(tc.input)
+			gotFunctionName := getFunctionName(got)
+			if gotFunctionName != tc.expectedFunctionName {
+				t.Fatalf("Expected function %s but got %s", tc.expectedFunctionName, gotFunctionName)
+			}
+			if tc.expectedErrMsg == "" && err != nil {
+				t.Fatalf("Expected error to be nil but got %v", err)
+			} else if tc.expectedErrMsg != "" && err == nil {
+				t.Fatalf("Expected error to be %s but got nil", tc.expectedErrMsg)
+			} else if err != nil && tc.expectedErrMsg != "" {
+				errDiff := cmp.Diff(tc.expectedErrMsg, err.Error())
+				if errDiff != "" {
+					t.Fatalf("Difference:%s", errDiff)
+				}
+			}
+
+		})
+	}
+}
+
+func TestGetNodeScorer(t *testing.T) {
+	tests := map[string]struct {
+		input         commontypes.NodeScoringStrategy
+		expectedType  string
+		expectedError error
+	}{
+		"least-cost strategy": {
+			input:         commontypes.LeastCostNodeScoringStrategy,
+			expectedType:  "*scorer.LeastCost",
+			expectedError: nil,
+		},
+		"least-waste strategy": {
+			input:         commontypes.LeastWasteNodeScoringStrategy,
+			expectedType:  "*scorer.LeastWaste",
+			expectedError: nil,
+		},
+		"invalid strategy": {
+			input:         "invalid",
+			expectedType:  "",
+			expectedError: service.ErrUnsupportedNodeScoringStrategy,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := GetNodeScorer(tc.input, nil, nil)
+			if tc.expectedError == nil {
+				if err != nil {
+					t.Fatalf("Expected error to be nil but got %v", err)
+				}
+			} else if tc.expectedError != nil {
+				if err != nil && !errors.Is(err, tc.expectedError) {
+					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
+				} else if err == nil {
+					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
+				}
+			}
+			if tc.expectedType != "" {
+				if got == nil {
+					t.Fatalf("Expected scorer to be %s but got nil", got)
+				} else {
+					gotType := reflect.TypeOf(got).String()
+					if gotType != tc.expectedType {
+						t.Fatalf("Expected type %s but got %s", tc.expectedType, gotType)
+					}
+				}
 			}
 		})
 	}
