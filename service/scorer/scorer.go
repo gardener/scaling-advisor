@@ -153,7 +153,7 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 	var totalNormalizedResourceUnits float64
 	for resourceName, waste := range wastage {
 		if weight, found := weights[resourceName]; !found {
-			return nodeScore, fmt.Errorf("no weight found for resourceName %s", resourceName)
+			continue
 		} else {
 			totalNormalizedResourceUnits += weight * float64(waste)
 		}
