@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
@@ -257,4 +259,15 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 
 func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+}
+
+// GenerateName generates a name by appending a random suffix to the given base name.
+func GenerateName(base string) string {
+	const suffixLen = 5
+	suffix := utilrand.String(suffixLen)
+	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
+	if len(base)+len(suffix) > m {
+		base = base[:m-len(suffix)]
+	}
+	return base + suffix
 }

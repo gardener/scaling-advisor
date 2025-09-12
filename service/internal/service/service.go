@@ -78,29 +78,6 @@ func (d *defaultScalingAdvisor) Start(ctx context.Context) (err error) {
 	return
 }
 
-func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
-	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
-	// the base view with the current state of the target cluster.
-	view.Reset()
-	for _, nodeInfo := range cs.Nodes {
-		if err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
-			return err
-		}
-	}
-	for _, pod := range cs.Pods {
-		if err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
-			return err
-		}
-	}
-	for _, pc := range cs.PriorityClasses {
-		if err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
-			return err
-		}
-	}
-	// TODO: also populate RuntimeClasses after support for the same is introduced in minkapi
-	return nil
-}
-
 func (d *defaultScalingAdvisor) Stop(ctx context.Context) error {
 	if d.minKAPIServer != nil {
 		return d.minKAPIServer.Stop(ctx)
@@ -133,4 +110,27 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svca
 		d.generator.Run(genCtx, runArgs)
 	}()
 	return adviceEventCh
+}
+
+func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
+	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
+	// the base view with the current state of the target cluster.
+	view.Reset()
+	for _, nodeInfo := range cs.Nodes {
+		if err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
+			return err
+		}
+	}
+	for _, pod := range cs.Pods {
+		if err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+			return err
+		}
+	}
+	for _, pc := range cs.PriorityClasses {
+		if err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+			return err
+		}
+	}
+	// TODO: also populate RuntimeClasses after support for the same is introduced in minkapi
+	return nil
 }

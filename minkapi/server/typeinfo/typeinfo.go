@@ -6,6 +6,7 @@ package typeinfo
 
 import (
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"maps"
 	"slices"
 	"strings"
@@ -22,9 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 type KindName string
@@ -354,7 +353,7 @@ func NewDescriptor(kind KindName, listKind KindName, namespaced bool, gvr schema
 			Verbs:              SupportedVerbs,
 			ShortNames:         shortNames,
 			Categories:         []string{"all"}, // TODO: Uhhh, WTH is this exactly ? Who uses this ?
-			StorageVersionHash: GenerateName(singularName),
+			StorageVersionHash: objutil.GenerateName(singularName),
 		},
 	}
 }
@@ -370,14 +369,4 @@ func (d Descriptor) CreateObject() (obj metav1.Object, err error) {
 
 func (d Descriptor) Resource() string {
 	return d.GVR.Resource
-}
-
-func GenerateName(base string) string {
-	const suffixLen = 5
-	suffix := utilrand.String(suffixLen)
-	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
-	if len(base)+len(suffix) > m {
-		base = base[:m-len(suffix)]
-	}
-	return base + suffix
 }

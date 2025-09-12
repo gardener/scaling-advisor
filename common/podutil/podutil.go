@@ -131,3 +131,12 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
 	}
 	return aggregate
 }
+
+// GetObjectNamesFromPodResourceInfos maps a slice of PodResourceInfo to pod names of the form "namespace/name"
+func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string {
+	objectNames := make([]string, 0, len(pods))
+	for _, pod := range pods {
+		objectNames = append(objectNames, pod.NamespacedName.String())
+	}
+	return objectNames
+}

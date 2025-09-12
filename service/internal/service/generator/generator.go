@@ -59,9 +59,7 @@ func New(args *Args) (*Generator, error) {
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 	err := g.doGenerate(ctx, runArgs)
 	if err != nil {
-		runArgs.AdviceEventCh <- svcapi.ScalingAdviceEvent{
-			Err: svcapi.AsGenerateError(runArgs.Request.ID, runArgs.Request.CorrelationID, err),
-		}
+		SendError(runArgs.AdviceEventCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 }
@@ -74,45 +72,77 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		return
 	}
 	var (
-		winnerNodeScores []svcapi.NodeScore
-		unscheduledPods  []svcapi.PodResourceInfo
+		allWinnerNodeScores []svcapi.NodeScore
+		unscheduledPods     []svcapi.PodResourceInfo
 	)
 	for {
-		var passNodeScores []svcapi.NodeScore
-		passNodeScores, unscheduledPods, err = g.RunPass(ctx, groups)
+		var passWinnerNodeScores []svcapi.NodeScore
+		groupRunPassNum := groupRunPassCounter.Load()
+		log := log.WithValues("groupRunPass", groupRunPassNum) // purposefully shadowed.
+		passCtx := logr.NewContext(ctx, log)
+		passWinnerNodeScores, unscheduledPods, err = g.RunPass(passCtx, groups)
 		if err != nil {
 			return
 		}
-		if len(passNodeScores) == 0 {
-			log.Info("Aborting loop since no node scores produced in %d pass.", groupRunPassCounter.Load())
+		// If there are no winning nodes produced by a pass for the pending unscheduled pods, then abort the loop.
+		// This means that we could not identify any node from the node pool and node template combinations (as specified in the constraint)
+		// that could accommodate any unscheduled pods. It is fruitless to continue further.
+		if len(passWinnerNodeScores) == 0 {
+			log.Info("Aborting loop since no node scores produced in %d pass.", groupRunPassNum)
 			break
 		}
-		winnerNodeScores = append(winnerNodeScores, passNodeScores...)
+		allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
+		if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
+			err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
+			if err != nil {
+				return
+			}
+		}
 		if len(unscheduledPods) == 0 {
-			log.Info("All pods have been scheduled in %d pass", groupRunPassCounter.Load())
+			log.Info("All pods have been scheduled in %d pass", groupRunPassNum)
 			break
 		}
 		groupRunPassCounter.Add(1)
 	}
 
 	// If there is no scaling advice, then return an error indicating the same.
-	if len(winnerNodeScores) == 0 {
+	if len(allWinnerNodeScores) == 0 {
 		err = svcapi.ErrNoScalingAdvice
 		return
 	}
+	if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
+		err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
+	}
+	return
+}
 
-	//for _, wns := range winnerNodeScores {
-	//	 TODO: create ScaleItems and ScalingAdvice and ScaleEvent and sent on event adviceCh
-	//}
+func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
+	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
+	if err != nil {
+		return err
+	}
+	var msg string
+	if request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
+		msg = fmt.Sprintf("%s scaling advice for total num passes %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
+	} else {
+		msg = fmt.Sprintf("%s scaling advice for pass %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
+	}
+
+	adviceCh <- svcapi.ScalingAdviceEvent{
+		Response: &svcapi.ScalingAdviceResponse{
+			RequestRef:    request.ScalingAdviceRequestRef,
+			Message:       msg,
+			ScalingAdvice: scalingAdvice,
+		},
+	}
 	return nil
-
 }
 
 func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
 		groupRunResult svcapi.SimGroupRunResult
-		groupScores    *svcapi.SimGroupScores
+		groupScores    svcapi.SimGroupScores
 	)
 	for _, group := range groups {
 		groupRunResult, err = group.Run(ctx)
@@ -123,11 +153,6 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 		if err != nil {
 			return
 		}
-		// TODO: verify logic and error handling flow here with team.
-		//if groupScores == nil {
-		//	g.log.Info("simulation group did not produce any winning score. Skipping this group.", "simulationGroupName", groupRunResult.Name)
-		//	continue
-		//}
 		if groupScores.WinnerNodeScore == nil {
 			log.Info("simulation group did not produce any winning score. Skipping this group.", "simulationGroupName", groupRunResult.Name)
 			continue
@@ -141,19 +166,18 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 	return
 }
 
-func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (*svcapi.SimGroupScores, error) {
+func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (svcapi.SimGroupScores, error) {
 	var nodeScores []svcapi.NodeScore
 	for _, sr := range groupResult.SimulationResults {
 		nodeScore, err := scorer.Compute(sr.NodeScoreArgs)
 		if err != nil {
-			// TODO: fix this when compute already returns a error with a sentinel wrapped error.
-			return nil, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", svcapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
+			return svcapi.SimGroupScores{}, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", svcapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
 		}
 		nodeScores = append(nodeScores, nodeScore)
 	}
 	winnerNodeScore, err := selector(nodeScores, weightsFun, pricer)
 	if err != nil {
-		return nil, fmt.Errorf("%w: node score selection failed for group %q: %w", svcapi.ErrSelectNodeScore, groupResult.Name, err)
+		return svcapi.SimGroupScores{}, fmt.Errorf("%w: node score selection failed for group %q: %w", svcapi.ErrSelectNodeScore, groupResult.Name, err)
 	}
 	//if winnerScoreIndex < 0 {
 	//	return nil, nil //No winning score for this group
@@ -162,7 +186,7 @@ func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svca
 	//if winnerNode == nil {
 	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.Name)
 	//}
-	return &svcapi.SimGroupScores{
+	return svcapi.SimGroupScores{
 		AllNodeScores:   nodeScores,
 		WinnerNodeScore: winnerNodeScore,
 		WinnerNode:      winnerNode,

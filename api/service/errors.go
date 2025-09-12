@@ -40,6 +40,7 @@ var (
 	ErrUnsupportedCloudProvider       = errors.New("unsupported cloud provider")
 
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
+	ErrMissingRequiredLabel = errors.New("missing required label")
 )
 
 func AsGenerateError(id string, correlationID string, err error) error {
