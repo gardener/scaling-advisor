@@ -167,7 +167,7 @@ type Server interface {
 	GetSandboxView(log logr.Logger, name string) (View, error)
 }
 
-// App represents an application that wraps a minkapi Server, an application context and application cancel func.
+// App represents an application process that wraps a minkapi Server, an application context and application cancel func.
 //
 // `main` entry-point functions taht embed minkapi are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {

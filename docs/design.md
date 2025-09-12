@@ -11,8 +11,17 @@
 - Real actions are taken by a consuming lifecycle management component like the MCM. Scaling advisor does not take actions
 
 
+## Modules
 
-## Internals
+The scaling-advisor has been structured into several modules, some of which are independently re-useable.
+
+### API Module
+
+
+### Components
+### Overview
+
+
 
 ### Simulation Engine 
 

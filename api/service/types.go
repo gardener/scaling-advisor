@@ -154,6 +154,14 @@ type ScalingAdvisorService interface {
 	GenerateAdvice(ctx context.Context, req ScalingAdviceRequest) <-chan ScalingAdviceEvent
 }
 
+// App represents an application process that wraps a ScalingAdvisorService, , an application context and application cancel func.
+// `main` entry-point functions that embed scadsvc are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+type App struct {
+	Service ScalingAdvisorService
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+}
+
 // SchedulerLaunchParams holds the parameters required to launch a kube-scheduler instance.
 type SchedulerLaunchParams struct {
 	commontypes.ClientFacades
