@@ -45,7 +45,7 @@ func NewMockWeightsFunc(instanceType string) (map[corev1.ResourceName]float64, e
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -118,7 +118,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -190,7 +190,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -298,7 +298,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return

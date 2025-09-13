@@ -257,7 +257,7 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 	namePrefix := obj.GetGenerateName()
 	if name == "" {
 		if namePrefix == "" {
-			return apierrors.NewBadRequest(fmt.Errorf("%w: missing both name and generateName in request for creating object of objGvk %q in %q namespace", minkapi.ErrCreateObject, gvk, obj.GetNamespace()).Error())
+			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
 		name = typeinfo.GenerateName(namePrefix)
 	}

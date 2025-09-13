@@ -7,11 +7,14 @@ package service
 import (
 	"errors"
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 
 var (
 	// ErrInitFailed is a sentinel error indicating that the scaling-advisor service failed to initialize.
-	ErrInitFailed = fmt.Errorf("failed to initialize %s service", ServiceName)
+	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
+	// ErrStartFailed is a sentinel error indicating that the scaling-advisor service failed to start.
+	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
 	// ErrGenScalingAdvice is a sentinel error indicating that the service failed to generate scaling advice.
 	ErrGenScalingAdvice = errors.New("failed to generate scaling advice")
 	// ErrCreateSimulation is a sentinel error indicating that the service failed to create a scaling simulation

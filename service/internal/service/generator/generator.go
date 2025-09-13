@@ -24,14 +24,14 @@ type Generator struct {
 
 // Args is used to construct a new instance of the Generator
 type Args struct {
-	Pricer                   svcapi.InstanceTypeInfoAccess
-	WeightsFn                svcapi.GetWeightsFunc
-	Scorer                   svcapi.NodeScorer
-	Selector                 svcapi.NodeScoreSelector
-	CreateSimFn              svcapi.CreateSimulationFunc
-	CreateSimGroupsFn        svcapi.CreateSimulationGroupsFunc
-	SchedulerConfigPath      string
-	MaxConcurrentSimulations int
+	PricingAccess          svcapi.InstancePricingAccess
+	WeightsFn              svcapi.GetWeightsFunc
+	NodeScorer             svcapi.NodeScorer
+	Selector               svcapi.NodeScoreSelector
+	CreateSimFn            svcapi.CreateSimulationFunc
+	CreateSimGroupsFn      svcapi.CreateSimulationGroupsFunc
+	SchedulerConfigPath    string
+	MaxParallelSimulations int
 }
 
 // RunArgs is used to run the generator and generate scaling advice
@@ -46,7 +46,7 @@ type RunArgs struct {
 type SandBoxViewFunc func(log logr.Logger, name string) (mkapi.View, error)
 
 func New(args *Args) (*Generator, error) {
-	launcher, err := scheduler.NewLauncher(args.SchedulerConfigPath, args.MaxConcurrentSimulations)
+	launcher, err := scheduler.NewLauncher(args.SchedulerConfigPath, args.MaxParallelSimulations)
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +119,13 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 		if err != nil {
 			return
 		}
-		groupScores, err = computeSimGroupScores(g.args.Pricer, g.args.WeightsFn, g.args.Scorer, g.args.Selector, &groupRunResult)
+		groupScores, err = computeSimGroupScores(g.args.PricingAccess, g.args.WeightsFn, g.args.NodeScorer, g.args.Selector, &groupRunResult)
 		if err != nil {
 			return
 		}
 		// TODO: verify logic and error handling flow here with team.
 		//if groupScores == nil {
-		//	g.log.Info("simulation group did not produce any winning score. Skipping this group.", "simulationGroupName", groupRunResult.Name)
+		//	g.log.Info("simulation group did not produce any winning score. Skipping this group.", "simulationGroupName", groupRunResult.InstanceType)
 		//	continue
 		//}
 		if groupScores.WinnerNodeScore == nil {
@@ -141,7 +141,7 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 	return
 }
 
-func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (*svcapi.SimGroupScores, error) {
+func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (*svcapi.SimGroupScores, error) {
 	var nodeScores []svcapi.NodeScore
 	for _, sr := range groupResult.SimulationResults {
 		nodeScore, err := scorer.Compute(sr.NodeScoreArgs)
@@ -160,7 +160,7 @@ func computeSimGroupScores(pricer svcapi.InstanceTypeInfoAccess, weightsFun svca
 	//}
 	winnerNode := getScaledNodeOfWinner(groupResult.SimulationResults, winnerNodeScore)
 	//if winnerNode == nil {
-	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.Name)
+	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.InstanceType)
 	//}
 	return &svcapi.SimGroupScores{
 		AllNodeScores:   nodeScores,

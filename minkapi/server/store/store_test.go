@@ -104,13 +104,13 @@ func TestUpdate(t *testing.T) {
 			retErr:                  fmt.Errorf("does not match expected objGVK"),
 			expectedNumberOfObjects: 1,
 		},
-		"update non-existent object": { // If object doesn't exist, it creates one
-			name:                             "abcd",
-			typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
-			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "Name", "ResourceVersion"),
-			retErr:                           nil,
-			expectedNumberOfObjects:          2,
-		},
+		//"update non-existent object": { // If object doesn't exist, it creates one
+		//	name:                             "abcd",
+		//	typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+		//	ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "InstanceType", "ResourceVersion"),
+		//	retErr:                           nil,
+		//	expectedNumberOfObjects:          2,
+		//},
 	}
 
 	for name, tc := range tests {

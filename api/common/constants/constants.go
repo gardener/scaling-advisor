@@ -41,9 +41,10 @@ const (
 )
 
 const (
-	DefaultMinKAPIPort             = 8084
-	DefaultOperatorServerPort      = 8085
-	DefaultOperatorHealthProbePort = 8086
-	DefaultOperatorMetricsPort     = 8087
-	DefaultOperatorProfilingPort   = 8088
+	DefaultOperatorServerPort      = 8080
+	DefaultOperatorHealthProbePort = 8081
+	DefaultOperatorMetricsPort     = 8082
+	DefaultOperatorProfilingPort   = 8083
+	DefaultAdvisorServicePort      = 8090
+	DefaultMinKAPIPort             = 8091
 )
