@@ -6,6 +6,7 @@ package scorer
 
 import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/service/pricing/testutil"
 	"github.com/google/go-cmp/cmp"
@@ -69,14 +70,14 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		"pod scheduled on scaled node only": {
 			input: service.NodeScoreArgs{
 				ID:               "testing",
-				Placement:        service.NodePlacementInfo{},
+				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
-				Placement:          service.NodePlacementInfo{},
+				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              700,
 				ScaledNodeResource: assignment.Node,
@@ -85,7 +86,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		"pods scheduled on scaled node and existing node": {
 			input: service.NodeScoreArgs{
 				ID:               "testing",
-				Placement:        service.NodePlacementInfo{},
+				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
 					Node:          CreateMockNode("exNode1", "instance-b-1", 2, 4),
@@ -95,7 +96,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
-				Placement:          service.NodePlacementInfo{},
+				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              0,
 				ScaledNodeResource: assignment.Node,
@@ -141,14 +142,14 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		"pod scheduled on scaled node only": {
 			input: service.NodeScoreArgs{
 				ID:               "testing",
-				Placement:        service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
-				Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              350,
 				ScaledNodeResource: assignment.Node,
@@ -157,7 +158,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		"pods scheduled on scaled node and existing node": {
 			input: service.NodeScoreArgs{
 				ID:               "testing",
-				Placement:        service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
 					Node:          CreateMockNode("exNode1", "instance-b-1", 2, 4),
@@ -167,7 +168,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
-				Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              700,
 				ScaledNodeResource: assignment.Node,
@@ -205,9 +206,9 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: service.NodePlacementInfo{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: service.NodePlacementInfo{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -218,13 +219,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			input: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
@@ -232,7 +233,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{{
 				ID:                 "testing2",
-				Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              1,
 				ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
@@ -242,13 +243,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			input: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
@@ -258,13 +259,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			expectedIn: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
@@ -313,9 +314,9 @@ func TestSelectMinPrice(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: service.NodePlacementInfo{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: service.NodePlacementInfo{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -326,13 +327,13 @@ func TestSelectMinPrice(t *testing.T) {
 			input: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-2"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 1, 2),
@@ -342,7 +343,7 @@ func TestSelectMinPrice(t *testing.T) {
 			expectedIn: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
@@ -351,13 +352,13 @@ func TestSelectMinPrice(t *testing.T) {
 			input: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-c-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),
@@ -367,13 +368,13 @@ func TestSelectMinPrice(t *testing.T) {
 			expectedIn: []service.NodeScore{
 				{
 					ID:                 "testing1",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-a-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
-					Placement:          service.NodePlacementInfo{Region: "s", InstanceType: "instance-c-1"},
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),

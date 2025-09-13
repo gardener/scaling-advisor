@@ -67,7 +67,12 @@ type LeastCost struct {
 // resource requests.
 // Resource quantities of different resource types are reduced to a representation in terms of resource units
 // based on pre-configured weights.
-func (l LeastCost) Compute(args service.NodeScoreArgs) (service.NodeScore, error) {
+func (l LeastCost) Compute(args service.NodeScoreArgs) (score service.NodeScore, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: least-cost node scoring failed for simulation %q: %v", service.ErrComputeNodeScore, args.ID, err)
+		}
+	}()
 	//add resources required by pods scheduled on scaled candidate node and existing nodes
 	aggregatedPodsResources := getAggregatedScheduledPodsResources(args.ScaledAssignment, args.OtherAssignments)
 	//calculate total scheduledResources in terms of normalized resource units using weights

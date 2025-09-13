@@ -119,9 +119,11 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 		if err != nil {
 			err = fmt.Errorf("%w: run of simulation %q failed: %w", svcapi.ErrRunSimulation, s.name, err)
 			s.state.err = err
+			s.state.status = svcapi.ActivityStatusFailure
 		}
 	}()
 	s.state.status = svcapi.ActivityStatusRunning
+	s.state.groupRunPassNum = s.args.GroupRunPassCounter.Load()
 	s.state.simNode = s.buildSimulationNode()
 	err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
 	if err != nil {
@@ -130,7 +132,6 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	simCtx, simCancelFn := newSimulationContext(ctx, s.name, s.args.Timeout)
 	defer simCancelFn()
 
-	s.state.status = svcapi.ActivityStatusRunning
 	schedulerHandle, err := s.launchSchedulerForSimulation(simCtx, s.args.View)
 	if err != nil {
 		return
@@ -149,18 +150,19 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 		Name:       s.name,
 		ScaledNode: s.state.simNode,
 		NodeScoreArgs: svcapi.NodeScoreArgs{
-			ID:               s.name,
+			ID:               fmt.Sprintf("%s-%d", s.name, s.args.GroupRunPassCounter.Load()),
 			Placement:        s.getScaledNodePlacementInfo(),
 			ScaledAssignment: s.getScaledNodeAssignment(),
 			UnscheduledPods:  slices.Collect(maps.Keys(s.state.unscheduledPods)),
 			OtherAssignments: otherAssignments,
 		},
 	}
+	s.state.status = svcapi.ActivityStatusSuccess
 	return
 }
 
-func (s *defaultSimulation) getScaledNodePlacementInfo() svcapi.NodePlacementInfo {
-	return svcapi.NodePlacementInfo{
+func (s *defaultSimulation) getScaledNodePlacementInfo() sacorev1alpha1.NodePlacement {
+	return sacorev1alpha1.NodePlacement{
 		NodePoolName:     s.args.NodePool.Name,
 		NodeTemplateName: s.nodeTemplate.Name,
 		InstanceType:     s.nodeTemplate.InstanceType,
@@ -256,6 +258,7 @@ func (s *defaultSimulation) getOtherAssignments() ([]svcapi.NodePodAssignment, e
 
 // traceState is regularly populated when simulation is running.
 type trackState struct {
+	groupRunPassNum     uint32
 	status              svcapi.ActivityStatus
 	simNode             *corev1.Node
 	unscheduledPods     map[types.NamespacedName]svcapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
