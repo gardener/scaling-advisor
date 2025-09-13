@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
@@ -122,6 +124,16 @@ func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
 		}
 	}
 	return true
+}
+
+// SubtractResources subtracts the quantities in b from a. If a resource in b is not found in a, it is ignored.
+func SubtractResources(a, b corev1.ResourceList) {
+	for res, qty := range b {
+		if v, ok := a[res]; ok {
+			v.Sub(qty)
+			a[res] = v
+		}
+	}
 }
 
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
@@ -247,4 +259,15 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 
 func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+}
+
+// GenerateName generates a name by appending a random suffix to the given base name.
+func GenerateName(base string) string {
+	const suffixLen = 5
+	suffix := utilrand.String(suffixLen)
+	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
+	if len(base)+len(suffix) > m {
+		base = base[:m-len(suffix)]
+	}
+	return base + suffix
 }

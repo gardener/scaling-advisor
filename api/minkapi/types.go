@@ -99,7 +99,7 @@ type ResourceStoreArgs struct {
 type EventSink interface {
 	Resettable
 	events.EventSink
-	List() []*eventsv1.Event
+	List() []eventsv1.Event
 }
 
 // View is the high-level facade to a repository of objects of different types (GVK).
@@ -126,7 +126,7 @@ type View interface {
 	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)
-	ListPods(namespace string, matchingPodNames ...string) ([]corev1.Pod, error)
+	ListPods(criteria MatchCriteria) ([]corev1.Pod, error)
 	ListEvents(namespace string) ([]eventsv1.Event, error)
 	// GetObjectChangeCount returns the current change count made to objects through this view.
 	GetObjectChangeCount() int64
@@ -164,10 +164,10 @@ type Server interface {
 	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
 	//
 	// TODO: discuss whether the above is OK.
-	GetSandboxView(ctx context.Context, name string) (View, error)
+	GetSandboxView(log logr.Logger, name string) (View, error)
 }
 
-// App represents an application that wraps a minkapi Server, an application context and application cancel func.
+// App represents an application process that wraps a minkapi Server, an application context and application cancel func.
 //
 // `main` entry-point functions taht embed minkapi are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {
@@ -182,6 +182,8 @@ type MatchCriteria struct {
 	// Labels        map[string]string
 	LabelSelector labels.Selector
 }
+
+var MatchAllCriteria = MatchCriteria{}
 
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {

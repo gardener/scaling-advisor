@@ -210,11 +210,7 @@ func (s *InMemResourceStore) List(c mkapi.MatchCriteria) (listObj runtime.Object
 			s.log.Error(err, "cannot access meta object", "obj", obj)
 			continue
 		}
-
-		if c.Namespace != "" && metaV1Obj.GetNamespace() != c.Namespace {
-			continue
-		}
-		if !c.LabelSelector.Matches(labels.Set(metaV1Obj.GetLabels())) {
+		if !c.Matches(metaV1Obj) {
 			continue
 		}
 		val := reflect.ValueOf(obj)

@@ -8,7 +8,7 @@
             "app.kubernetes.io/component": "minkapitest",
             "app.kubernetes.io/name": "a"
         },
-        "name": "pwned",
+        "instanceType": "pwned",
         "namespace": "default",
         "resourceVersion": "1",
         "uid": "d6d62038-d46c-4ee8-972e-a48ffa6fbc77"
@@ -17,7 +17,7 @@
         "containers": [
             {
                 "image": "registry.k8s.io/pause:3.5",
-                "name": "pause",
+                "instanceType": "pause",
                 "resources": {
                     "requests": {
                         "cpu": "100m",

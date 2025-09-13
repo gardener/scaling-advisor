@@ -114,18 +114,12 @@ type NodeTemplate struct {
 	// KubeReserved defines the capacity for kube reserved resources.
 	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
 	// +optional
-	KubeReserved *corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
+	KubeReserved corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
 	// SystemReserved defines the capacity for system reserved resources.
 	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
 	// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
 	// +optional
-	SystemReserved *corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
-	// EvictionThreshold defines the threshold beyond which kubelet will start to evict pods. If defined this will be used to compute
-	// the allocatable for a Node for the node template so that we prevent over provisioning of resources during simulation runs.
-	// See https://github.com/kubernetes/design-proposals-archive/blob/main/node/kubelet-eviction.md#eviction-thresholds for more information.
-	// Soft eviction thresholds are not supported as they are enforced upon expiry of a grace period. For a scaling recommender it is not possible
-	// to determine what will change while waiting for the grace period. Therefore, only hard eviction thresholds should be specified.
-	EvictionThreshold *corev1.ResourceList `json:"evictionThreshold,omitempty"`
+	SystemReserved corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes"`
 }

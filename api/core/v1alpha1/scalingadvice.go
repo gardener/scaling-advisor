@@ -6,7 +6,6 @@ package v1alpha1
 
 import (
 	apicommon "github.com/gardener/scaling-advisor/api/common/types"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -60,30 +59,45 @@ type ClusterScalingAdviceStatus struct {
 
 // ScaleOutPlan is the plan for scaling out a node pool.
 type ScaleOutPlan struct {
+	// UnsatisfiedPodNames is the list of all pods (namespace/name) that could not be satisfied by the scale out plan.
+	UnsatisfiedPodNames []string `json:"unsatisfiedPodNames"`
 	// Items is the slice of scaling-out advice for a node pool.
-	Items []ScaleItem `json:"Items"`
+	Items []ScaleOutItem `json:"Items"`
 }
 
 // ScaleInPlan is the plan for scaling in a node pool and/or targeted set of nodes.
 type ScaleInPlan struct {
 	// Items is the slice of scaling-in advice for a node pool.
-	Items []ScaleItem `json:"items"`
-	// NodeNames is the list of node names to be removed.
-	NodeNames []string `json:"nodeNames"`
+	Items []ScaleInItem `json:"items"`
 }
 
-// ScaleItem is the unit of scaling advice for a node pool.
-type ScaleItem struct {
+type ScaleInItem struct {
+	NodePlacement `json:",inline"`
+	// NodeName is the name of the node to be scaled in.
+	NodeName string `json:"nodeName"`
+}
+
+// ScaleOutItem is the unit of scaling advice for a node pool.
+type ScaleOutItem struct {
+	NodePlacement `json:",inline"`
+	// CurrentReplicas is the current number of replicas for the NodePlacement.
+	CurrentReplicas int32 `json:"currentReplicas"`
+	// Delta is the delta change in the number of nodes for the NodePlacement.
+	Delta int32 `json:"delta"`
+}
+
+// NodePlacement provides information about the placement of a node.
+type NodePlacement struct {
 	// NodePoolName is the name of the node pool.
 	NodePoolName string `json:"nodePoolName"`
 	// NodeTemplateName is the name of the node template.
 	NodeTemplateName string `json:"nodeTemplateName"`
+	// InstanceType is the instance type of the Node.
+	InstanceType string `json:"instanceType"`
+	// Region is the region of the instance
+	Region string `json:"region"`
 	// AvailabilityZone is the availability zone of the node pool.
 	AvailabilityZone string `json:"availabilityZone"`
-	// Delta is the delta change in the number of nodes for the node pool for this NodeTemplateName.
-	Delta int32 `json:"delta"`
-	// DesiredReplicas is the desired number of replicas for the node pool for this NodeTemplateName.
-	DesiredReplicas int32 `json:"desiredReplicas"`
 }
 
 // ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.

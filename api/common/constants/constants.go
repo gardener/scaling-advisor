@@ -30,15 +30,25 @@ const (
 )
 
 const (
-	// LabelSimulationID is the label key to identify simulation objects for a specific simulation run.
-	// The value of the label is the simulation ID.
-	LabelSimulationID = "sa.gardener.cloud/simulation-id"
+	// LabelSimulationName is the label key to identify name of the simulation inside a simulation group.
+	LabelSimulationName = "sa.gardener.cloud/simulation-name"
+	// LabelSimulationGroupPassNum is the label key to identify the pass number of the simulation group.
+	LabelSimulationGroupPassNum = "sa.gardener.cloud/simulation-group-pass-num"
+	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
+	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
+	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
+	LabelNodeTemplateName = "sa.gardener.cloud/node-template-name"
+	// LabelRequestID is the label key to identify the request ID of scaling advice request.
+	LabelRequestID = "sa.gardener.cloud/request-id"
+	// LabelCorrelationID is the label key to identify the correlation ID of the scaling advice request.
+	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
 )
 
 const (
-	DefaultMinKAPIPort             = 8084
-	DefaultOperatorServerPort      = 8085
-	DefaultOperatorHealthProbePort = 8086
-	DefaultOperatorMetricsPort     = 8087
-	DefaultOperatorProfilingPort   = 8088
+	DefaultOperatorServerPort      = 8080
+	DefaultOperatorHealthProbePort = 8081
+	DefaultOperatorMetricsPort     = 8082
+	DefaultOperatorProfilingPort   = 8083
+	DefaultAdvisorServicePort      = 8090
+	DefaultMinKAPIPort             = 8091
 )

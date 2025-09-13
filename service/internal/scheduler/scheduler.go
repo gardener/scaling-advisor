@@ -38,7 +38,7 @@ type schedulerHandle struct {
 	params    *svcapi.SchedulerLaunchParams
 }
 
-func NewLauncher(schedulerConfigPath string, maxConcurrent int) (svcapi.SchedulerLauncher, error) {
+func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
 	scheduledConfig, err := loadSchedulerConfig(schedulerConfigPath)
 	if err != nil {
@@ -46,7 +46,7 @@ func NewLauncher(schedulerConfigPath string, maxConcurrent int) (svcapi.Schedule
 	}
 	return &schedulerLauncher{
 		schedulerConfig: scheduledConfig,
-		semaphore:       semaphore.NewWeighted(int64(maxConcurrent)),
+		semaphore:       semaphore.NewWeighted(int64(maxParallel)),
 	}, nil
 }
 

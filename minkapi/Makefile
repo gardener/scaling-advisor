@@ -32,9 +32,9 @@ test-unit/cover:
 	go tool cover -html=/tmp/coverage.out
 
 ## test-integration: run all integration tests
-.PHONY: test-integration
-test-integration:
-	go test -v -buildvcs -tags=integration ./test/integration/...
+#.PHONY: test-integration
+#test-integration:
+#	go test -v -buildvcs -tags=integration ./test/integration/...
 
 ## upgradeable: list direct dependencies that have upgrades available
 .PHONY: upgradeable

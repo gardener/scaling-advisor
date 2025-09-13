@@ -7,10 +7,13 @@ require (
 	github.com/gardener/scaling-advisor/common v0.0.0
 	github.com/gardener/scaling-advisor/minkapi v0.0.0
 	github.com/go-logr/logr v1.4.3
+	github.com/google/go-cmp v0.7.0
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/sync v0.16.0
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
 	k8s.io/client-go v0.33.3
+	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.33.3
 )
 
@@ -43,6 +46,8 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.33.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.33.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.33.3
+	sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.6.0
+	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.5.0
 )
 
 require (
@@ -61,7 +66,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/cel-go v0.23.2 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -76,8 +80,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/spf13/cobra v1.9.1 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
+	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/otel v1.33.0 // indirect
@@ -104,7 +107,6 @@ require (
 	k8s.io/controller-manager v0.33.3 // indirect
 	k8s.io/csi-translation-lib v0.0.0 // indirect
 	k8s.io/dynamic-resource-allocation v0.33.3 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
 	k8s.io/kube-scheduler v0.33.3 // indirect
 	k8s.io/kubelet v0.33.3 // indirect

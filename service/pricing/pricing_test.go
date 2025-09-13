@@ -10,7 +10,7 @@ import (
 )
 
 func TestGetInstancePricing(t *testing.T) {
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Error(err)
 		return
@@ -42,7 +42,7 @@ func TestGetPrice(t *testing.T) {
 		{"invalid region but valid instance", "invalid_region", "instance_type_2", true},
 	}
 
-	access, err := testutil.LoadTestInstanceTypeInfoAccess()
+	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Error(err)
 		return

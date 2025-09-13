@@ -7,7 +7,6 @@ package types
 import (
 	"context"
 	"fmt"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -42,6 +41,12 @@ type HostPort struct {
 	Host string `json:"host"`
 	// Port is the port on which to serve requests.
 	Port int `json:"port"`
+}
+
+// QPSBurst is a simple encapsulation of client QPS and Burst settings.
+type QPSBurst struct {
+	QPS   float32 `json:"qps"`
+	Burst int     `json:"burst"`
 }
 
 // ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.

@@ -203,15 +203,7 @@ func (v *baseView) ListNodes(matchingNodeNames ...string) (nodes []corev1.Node, 
 	return
 }
 
-func (v *baseView) ListPods(namespace string, matchingPodNames ...string) ([]corev1.Pod, error) {
-	if len(strings.TrimSpace(namespace)) == 0 {
-		return nil, apierrors.NewBadRequest("cannot list pods without namespace")
-	}
-	podNamesSet := sets.New(matchingPodNames...)
-	c := minkapi.MatchCriteria{
-		Namespace: namespace,
-		Names:     podNamesSet,
-	}
+func (v *baseView) ListPods(c minkapi.MatchCriteria) ([]corev1.Pod, error) {
 	gvk := typeinfo.PodsDescriptor.GVK
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
@@ -265,7 +257,7 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 	namePrefix := obj.GetGenerateName()
 	if name == "" {
 		if namePrefix == "" {
-			return apierrors.NewBadRequest(fmt.Errorf("%w: missing both name and generateName in request for creating object of objGvk %q in %q namespace", minkapi.ErrCreateObject, gvk, obj.GetNamespace()).Error())
+			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
 		name = typeinfo.GenerateName(namePrefix)
 	}

@@ -6,6 +6,9 @@ package typeinfo
 
 import (
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"maps"
 	"slices"
 	"strings"
@@ -22,9 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 type KindName string
@@ -354,7 +355,7 @@ func NewDescriptor(kind KindName, listKind KindName, namespaced bool, gvr schema
 			Verbs:              SupportedVerbs,
 			ShortNames:         shortNames,
 			Categories:         []string{"all"}, // TODO: Uhhh, WTH is this exactly ? Who uses this ?
-			StorageVersionHash: GenerateName(singularName),
+			StorageVersionHash: objutil.GenerateName(singularName),
 		},
 	}
 }

@@ -63,45 +63,38 @@ spec:
                     description: Items is the slice of scaling-in advice for a node
                       pool.
                     items:
-                      description: ScaleItem is the unit of scaling advice for a node
-                        pool.
                       properties:
                         availabilityZone:
                           description: AvailabilityZone is the availability zone of
                             the node pool.
                           type: string
-                        delta:
-                          description: Delta is the delta change in the number of
-                            nodes for the node pool for this NodeTemplateName.
-                          format: int32
-                          type: integer
-                        desiredReplicas:
-                          description: DesiredReplicas is the desired number of replicas
-                            for the node pool for this NodeTemplateName.
-                          format: int32
-                          type: integer
+                        instanceType:
+                          description: InstanceType is the instance type of the Node.
+                          type: string
+                        nodeName:
+                          description: NodeName is the name of the node to be scaled
+                            in.
+                          type: string
                         nodePoolName:
                           description: NodePoolName is the name of the node pool.
                           type: string
                         nodeTemplateName:
                           description: NodeTemplateName is the name of the node template.
                           type: string
+                        region:
+                          description: Region is the region of the instance
+                          type: string
                       required:
                       - availabilityZone
-                      - delta
-                      - desiredReplicas
+                      - instanceType
+                      - nodeName
                       - nodePoolName
                       - nodeTemplateName
+                      - region
                       type: object
-                    type: array
-                  nodeNames:
-                    description: NodeNames is the list of node names to be removed.
-                    items:
-                      type: string
                     type: array
                 required:
                 - items
-                - nodeNames
                 type: object
               scaleOutPlan:
                 description: ScaleOutPlan is the plan for scaling out across node
@@ -111,39 +104,54 @@ spec:
                     description: Items is the slice of scaling-out advice for a node
                       pool.
                     items:
-                      description: ScaleItem is the unit of scaling advice for a node
-                        pool.
+                      description: ScaleOutItem is the unit of scaling advice for
+                        a node pool.
                       properties:
                         availabilityZone:
                           description: AvailabilityZone is the availability zone of
                             the node pool.
                           type: string
+                        currentReplicas:
+                          description: CurrentReplicas is the current number of replicas
+                            for the NodePlacement.
+                          format: int32
+                          type: integer
                         delta:
                           description: Delta is the delta change in the number of
-                            nodes for the node pool for this NodeTemplateName.
+                            nodes for the NodePlacement.
                           format: int32
                           type: integer
-                        desiredReplicas:
-                          description: DesiredReplicas is the desired number of replicas
-                            for the node pool for this NodeTemplateName.
-                          format: int32
-                          type: integer
+                        instanceType:
+                          description: InstanceType is the instance type of the Node.
+                          type: string
                         nodePoolName:
                           description: NodePoolName is the name of the node pool.
                           type: string
                         nodeTemplateName:
                           description: NodeTemplateName is the name of the node template.
                           type: string
+                        region:
+                          description: Region is the region of the instance
+                          type: string
                       required:
                       - availabilityZone
+                      - currentReplicas
                       - delta
-                      - desiredReplicas
+                      - instanceType
                       - nodePoolName
                       - nodeTemplateName
+                      - region
                       type: object
+                    type: array
+                  unsatisfiedPodNames:
+                    description: UnsatisfiedPodNames is the list of all pods (namespace/name)
+                      that could not be satisfied by the scale out plan.
+                    items:
+                      type: string
                     type: array
                 required:
                 - Items
+                - unsatisfiedPodNames
                 type: object
             required:
             - constraintRef

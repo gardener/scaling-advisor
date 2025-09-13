@@ -4,8 +4,9 @@
   "eventTime": "2025-05-08T09:09:29.472279Z",
   "kind": "Event",
   "metadata": {
+    "generateName": "e-",
     "creationTimestamp": "2025-05-08T09:09:29Z",
-    "name": "a-bingo.aaabbb",
+    "instanceType": "a-bingo.aaabbb",
     "namespace": "default",
     "resourceVersion": "1",
     "uid": "58d73789-6d07-4293-ac3e-b764cd0a9acd"
@@ -15,7 +16,7 @@
   "regarding": {
     "apiVersion": "v1",
     "kind": "Pod",
-    "name": "a-s8z6g",
+    "instanceType": "a-s8z6g",
     "namespace": "default",
     "resourceVersion": "1",
     "uid": "8fc81f11-1bac-472e-a12c-cfc0075e172b"

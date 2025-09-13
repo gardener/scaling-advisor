@@ -11,7 +11,7 @@ import (
 )
 
 // ParseRegionPrices parses the raw pricing JSON for a given AWS region and OS,
-// and returns a slice of InstanceTypeInfo values.
+// and returns a slice of InstancePriceInfo values.
 //
 // Parameters:
 //   - region:  AWS region name (e.g., "us-east-1").
@@ -26,9 +26,9 @@ import (
 //     per (InstanceType, Region, OS).
 //
 // Returns:
-//   - A slice of svcapi.InstanceTypeInfo with normalized pricing data.
+//   - A slice of svcapi.InstancePriceInfo with normalized pricing data.
 //   - An error if the input JSON cannot be parsed.
-func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTypeInfo, error) {
+func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePriceInfo, error) {
 	var raw awsprice.PriceList
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 		OS           string
 	}
 
-	best := make(map[priceKey]svcapi.InstanceTypeInfo, 1000)
+	best := make(map[priceKey]svcapi.InstancePriceInfo, 1000)
 
 	for sku, prod := range raw.Products {
 		attrs := prod.Attributes
@@ -69,18 +69,18 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstanceTyp
 
 		key := priceKey{InstanceType: attrs.InstanceType, OS: attrs.OperatingSys}
 		if existing, ok := best[key]; !ok || price < existing.HourlyPrice {
-			best[key] = svcapi.InstanceTypeInfo{
-				Name:        attrs.InstanceType,
-				Region:      region,
-				VCPU:        vcpu,
-				Memory:      mem,
-				HourlyPrice: price,
-				OS:          attrs.OperatingSys,
+			best[key] = svcapi.InstancePriceInfo{
+				InstanceType: attrs.InstanceType,
+				Region:       region,
+				VCPU:         vcpu,
+				Memory:       mem,
+				HourlyPrice:  price,
+				OS:           attrs.OperatingSys,
 			}
 		}
 	}
 
-	infos := make([]svcapi.InstanceTypeInfo, 0, len(best))
+	infos := make([]svcapi.InstancePriceInfo, 0, len(best))
 	for _, v := range best {
 		infos = append(infos, v)
 	}
