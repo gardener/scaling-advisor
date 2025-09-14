@@ -92,17 +92,17 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	}
 }
 
-// ClientMode indicates the connection mode of k8s client
-type ClientMode string
+// ClientAccessMode indicates the access mode of k8s client
+type ClientAccessMode string
 
 const (
-	NetworkClient ClientMode = "Network"
-	InMemClient   ClientMode = "InMemory"
+	ClientAccessNetwork  ClientAccessMode = "Network"
+	ClientAccessInMemory ClientAccessMode = "InMemory"
 )
 
 // ClientFacades is a holder for the primary k8s client and informer interfaces
 type ClientFacades struct {
-	Mode               ClientMode
+	Mode               ClientAccessMode
 	Client             kubernetes.Interface
 	DynClient          dynamic.Interface
 	InformerFactory    informers.SharedInformerFactory
