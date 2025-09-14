@@ -63,15 +63,13 @@ spec:
                     description: Items is the slice of scaling-in advice for a node
                       pool.
                     items:
-                      description: ScaleInItem is the unit of scaling-in advice for
-                        a specific node.
                       properties:
                         availabilityZone:
                           description: AvailabilityZone is the availability zone of
                             the node pool.
                           type: string
                         instanceType:
-                          description: InstanceType is the instance type of the Node
+                          description: InstanceType is the instance type of the Node.
                           type: string
                         nodeName:
                           description: NodeName is the name of the node to be scaled
@@ -124,7 +122,7 @@ spec:
                           format: int32
                           type: integer
                         instanceType:
-                          description: InstanceType is the instance type of the Node
+                          description: InstanceType is the instance type of the Node.
                           type: string
                         nodePoolName:
                           description: NodePoolName is the name of the node pool.

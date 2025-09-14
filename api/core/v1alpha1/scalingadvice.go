@@ -6,7 +6,6 @@ package v1alpha1
 
 import (
 	apicommon "github.com/gardener/scaling-advisor/api/common/types"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -61,9 +60,9 @@ type ScalingAdviceStatus struct {
 // ScaleOutPlan is the plan for scaling out a node pool.
 type ScaleOutPlan struct {
 	// UnsatisfiedPodNames is the list of all pods (namespace/name) that could not be satisfied by the scale out plan.
-	UnsatisfiedPodNames []string `json:"unsatisfiedPodNames,omitempty"`
+	UnsatisfiedPodNames []string `json:"unsatisfiedPodNames"`
 	// Items is the slice of scaling-out advice for a node pool.
-	Items []ScaleOutItem `json:"items"`
+	Items []ScaleOutItem `json:"Items"`
 }
 
 // ScaleInPlan is the plan for scaling in a node pool and/or targeted set of nodes.
@@ -72,7 +71,6 @@ type ScaleInPlan struct {
 	Items []ScaleInItem `json:"items"`
 }
 
-// ScaleInItem is the unit of scaling-in advice for a specific node.
 type ScaleInItem struct {
 	NodePlacement `json:",inline"`
 	// NodeName is the name of the node to be scaled in.
@@ -90,11 +88,11 @@ type ScaleOutItem struct {
 
 // NodePlacement provides information about the placement of a node.
 type NodePlacement struct {
-	// PoolName is the name of the node pool.
-	PoolName string `json:"poolName"`
-	// TemplateName is the name of the node template.
-	TemplateName string `json:"templateName"`
-	// InstanceType is the instance type of the Node
+	// NodePoolName is the name of the node pool.
+	NodePoolName string `json:"nodePoolName"`
+	// NodeTemplateName is the name of the node template.
+	NodeTemplateName string `json:"nodeTemplateName"`
+	// InstanceType is the instance type of the Node.
 	InstanceType string `json:"instanceType"`
 	// Region is the region of the instance
 	Region string `json:"region"`

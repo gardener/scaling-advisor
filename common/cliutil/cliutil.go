@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -43,9 +44,10 @@ var (
 
 // MapServerConfigFlags adds the constants flags to the passed FlagSet.
 func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig) {
-	flagSet.StringVar(&opts.BindAddress, "bind-address", commonconstants.DefaultMinKAPIBindAddress, "bind address of the form <host>:<port>")
-	flagSet.BoolVar(&opts.ProfilingEnabled, "profile", false, "enable pprof profiling")
-	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", commonconstants.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
+	flagSet.StringVarP(&opts.Host, "host", "H", "", "host name to bind this service. Use 0.0.0.0 for all interfaces")
+	flagSet.IntVarP(&opts.Port, "port", "P", opts.Port, "listen port for REST API")
+	flagSet.BoolVarP(&opts.ProfilingEnabled, "pprof", "p", false, "enable pprof profiling")
+	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", time.Second*6, "graceful shutdown timeout")
 
 	klogFlagSet := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(klogFlagSet)
@@ -54,13 +56,10 @@ func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig
 }
 
 const (
-	// DefaultQPS used when talking to kubernetes apiserver
-	DefaultQPS = 50.0
-	// DefaultBurst used when talking to kubernetes apiserver
+	DefaultQPS   = 50.0
 	DefaultBurst = 100
 )
 
-// MapQPSBurstFlags adds the QPS and Burst values to the passed FlagSet.
 func MapQPSBurstFlags(flagSet *pflag.FlagSet, opts *commontypes.QPSBurst) {
 	flagSet.Float32Var(&opts.QPS, "kube-api-qps", DefaultQPS, "QPS to use while talking with kubernetes apiserver")
 	flagSet.IntVar(&opts.Burst, "kube-api-burst", DefaultBurst, "Burst to use while talking with kubernetes apiserver")

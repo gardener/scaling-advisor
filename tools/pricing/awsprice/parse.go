@@ -33,9 +33,9 @@ import (
 //     per (InstanceType, Region, OS).
 //
 // Returns:
-//   - A slice of pricingapi.InstancePriceInfo with normalized pricing data.
+//   - A slice of svcapi.InstancePriceInfo with normalized pricing data.
 //   - An error if the input JSON cannot be parsed.
-func ParseRegionPrices(region, osName string, data []byte) ([]pricingapi.InstancePriceInfo, error) {
+func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePriceInfo, error) {
 	var raw awsprice.PriceList
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]pricingapi.Instanc
 		OS           string
 	}
 
-	best := make(map[priceKey]pricingapi.InstancePriceInfo, 1000)
+	best := make(map[priceKey]svcapi.InstancePriceInfo, 1000)
 
 	for sku, prod := range raw.Products {
 		attrs := prod.Attributes
@@ -96,20 +96,18 @@ func ParseRegionPrices(region, osName string, data []byte) ([]pricingapi.Instanc
 
 		key := priceKey{InstanceType: attrs.InstanceType, OS: attrs.OperatingSys}
 		if existing, ok := best[key]; !ok || price < existing.HourlyPrice {
-			best[key] = pricingapi.InstancePriceInfo{
+			best[key] = svcapi.InstancePriceInfo{
 				InstanceType: attrs.InstanceType,
 				Region:       region,
 				VCPU:         vcpu,
 				Memory:       mem,
-				GPU:          gpu,
-				GPUMemory:    gpuMemory,
 				HourlyPrice:  price,
 				OS:           attrs.OperatingSys,
 			}
 		}
 	}
 
-	infos := make([]pricingapi.InstancePriceInfo, 0, len(best))
+	infos := make([]svcapi.InstancePriceInfo, 0, len(best))
 	for _, v := range best {
 		infos = append(infos, v)
 	}

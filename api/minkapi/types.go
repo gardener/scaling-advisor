@@ -6,34 +6,34 @@ package minkapi
 
 import (
 	"context"
-	"fmt"
+	"github.com/go-logr/logr"
 	"io"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"sync/atomic"
 	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 )
 
 const (
 	// ProgramName is the name of the program.
-	ProgramName = "minkapi"
-	// DefaultWatchQueueSize is the default maximum number of events to queue per watcher.
+	ProgramName           = "minkapi"
 	DefaultWatchQueueSize = 100
-	// DefaultWatchTimeout is the default timeout for watches after which MinKAPI core closes the connection.
-	DefaultWatchTimeout = 5 * time.Minute
+	DefaultWatchTimeout   = 5 * time.Minute
 	// DefaultKubeConfigPath is the default kubeconfig path if none is specified.
 	DefaultKubeConfigPath = "/tmp/minkapi.yaml"
 	// DefaultBasePrefix is the default path prefix for the base minkapi server
@@ -44,212 +44,128 @@ const (
 type WatchConfig struct {
 	// QueueSize is the maximum number of events to queue per watcher
 	QueueSize int
-	// Timeout represents the timeout for watches following which MinKAPI core will close the connection and ends the watch.
+	// Timeout represents the timeout for watches following which MinKAPI service will close the connection and ends the watch.
 	Timeout time.Duration
 }
 
 // Config holds the configuration for MinKAPI.
 type Config struct {
-	// BasePrefix is the path prefix at which the base View of the minkapi core is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
+	// BasePrefix is the path prefix at which the base View of the minkapi service is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
-	commontypes.ServerConfig
-	// WatchConfig holds config parameters relevant for watchers.
-	WatchConfig WatchConfig
 }
 
-// WatchEventCallback is a function type for handling watch events from a ResourceStore.
+// Resettable defines types that can reset their state to a default or initial configuration.
+type Resettable interface {
+	Reset()
+}
+
 type WatchEventCallback func(watch.Event) (err error)
 
-// ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	commontypes.Resettable
+	Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
-	// Add adds a new object to the store.
-	Add(ctx context.Context, mo metav1.Object) error
-	// GetByKey retrieves an object from the store by its key.
-	GetByKey(ctx context.Context, key string) (o runtime.Object, err error)
-	// Get retrieves an object from the store by its name.
-	Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error)
-	// Update updates an existing object in the store.
-	Update(ctx context.Context, mo metav1.Object) error
-	// DeleteByKey deletes an object from the store by its key.
-	DeleteByKey(ctx context.Context, key string) error
-	// Delete deletes an object from the store by its name.
-	Delete(ctx context.Context, objName cache.ObjectName) error
-	// DeleteObjects deletes objects matching the given criteria and returns the count of deleted objects.
-	DeleteObjects(ctx context.Context, c MatchCriteria) (delCount int, err error)
-	// List lists objects matching the given criteria.
-	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
-	// ListMetaObjects lists metadata objects matching the given criteria.
-	ListMetaObjects(ctx context.Context, c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
-	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
+
+	Add(mo metav1.Object) error
+	GetByKey(key string) (o runtime.Object, err error)
+	Get(objName cache.ObjectName) (o runtime.Object, err error)
+	Update(mo metav1.Object) error
+	DeleteByKey(key string) error
+	Delete(objName cache.ObjectName) error
+
+	DeleteObjects(c MatchCriteria) (delCount int, err error)
+	List(c MatchCriteria) (listObj runtime.Object, err error)
+
+	ListMetaObjects(c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
-	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
-	// options.FieldSelector is currently not supported.
-	GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (watch.Interface, error)
+
 	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
 	GetVersionCounter() *atomic.Int64
 }
 
-// ResourceStoreArgs contains arguments for creating a ResourceStore.
 type ResourceStoreArgs struct {
+	Name          string
+	ObjectGVK     schema.GroupVersionKind
+	ObjectListGVK schema.GroupVersionKind
 	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
-	Scheme *runtime.Scheme
+	Scheme      *runtime.Scheme
+	WatchConfig WatchConfig
 	// VersionCounter is the atomic counter for generating monotonically increasing resource versions
 	VersionCounter *atomic.Int64 //optional
-	// ObjectGVK is the GroupVersionKind for objects stored in this store.
-	ObjectGVK schema.GroupVersionKind
-	// ObjectListGVK is the GroupVersionKind for object lists from this store.
-	ObjectListGVK schema.GroupVersionKind
-	// Log is the logger instance for this store.
-	Log logr.Logger
-	// Name is the name of the resource store.
-	Name string
-	// WatchConfig contains configuration for watch operations.
-	WatchConfig WatchConfig
+	Log            logr.Logger
 }
 
-// EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	commontypes.Resettable
+	Resettable
 	events.EventSink
-	// List returns all events in the sink.
 	List() []eventsv1.Event
 }
 
 // View is the high-level facade to a repository of objects of different types (GVK).
-// TODO: Think of a better name. Rename this to ObjectRepository or something else, also add godoc ?
+// TODO: Think of a better name. Rename this to Repository or RepoView, also add godoc ?
 type View interface {
-	commontypes.Resettable
+	Resettable
 	io.Closer
-	// GetName returns the name of this view.
 	GetName() string
-	// GetType returns the type of this view (base or sandbox).
 	GetType() ViewType
-	// SetKubeConfigPath sets the path to the kubeconfig file for this view used to create network client facades.
-	SetKubeConfigPath(path string)
-	// GetClientFacades gets a ClientFacades populated according to the given accessMode that can be used by code to interact with this view
+	// GetClientFacades gets the in-memory implementation ClientFacades that can be used by code to interact with this view
 	// via standard k8s client and informer interfaces
-	GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
-	// GetResourceStore returns the resource store for the specified GroupVersionKind.
+	GetClientFacades() (commontypes.ClientFacades, error)
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
-	// GetEventSink returns the event sink for this view.
 	GetEventSink() EventSink
-	// CreateObject creates a new object of the specified GVK in this view.
-	CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
-	// GetObject retrieves an object of the specified GVK by name.
-	GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
-	// UpdateObject updates an existing object of the specified GVK.
-	UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) error
-	// UpdatePodNodeBinding updates a pod's node binding and returns the updated pod.
-	UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
-	// PatchObject applies a patch to an object of the specified GVK.
-	PatchObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
-	// PatchObjectStatus applies a patch to an object's status subresource.
-	PatchObjectStatus(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
-	// ListMetaObjects lists metadata objects matching the given criteria.
-	ListMetaObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
-	// ListObjects lists objects in the store while matching the criteria and returns the matching objects as a runtime.Object which is actually a *<Kind>List. Ex: *PodList
-	// TODO: consider better name for this method.
-	ListObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
-	// WatchObjects watches for changes to objects of the specified GVK.
+	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
+	UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
+	PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
+	PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
+	ListMetaObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
-	// GetWatcher returns a watcher for objects of the specified GVK.
-	GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error)
-	// DeleteObject deletes an object of the specified GVK by name.
-	DeleteObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) error
-	// DeleteObjects deletes objects of the specified GVK matching the criteria.
-	DeleteObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) error
-	// ListNodes returns nodes matching the specified node names, or all nodes if none specified.
-	ListNodes(ctx context.Context, matchingNodeNames ...string) ([]corev1.Node, error)
-	// ListPods returns pods matching the specified criteria.
-	ListPods(ctx context.Context, criteria MatchCriteria) ([]corev1.Pod, error)
-	// ListEvents returns events in the specified namespace.
-	ListEvents(ctx context.Context, namespace string) ([]eventsv1.Event, error)
+	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
+	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
+	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)
+	ListPods(criteria MatchCriteria) ([]corev1.Pod, error)
+	ListEvents(namespace string) ([]eventsv1.Event, error)
 	// GetObjectChangeCount returns the current change count made to objects through this view.
 	GetObjectChangeCount() int64
-	// GetKubeConfigPath returns the path to the kubeconfig file for this view.
 	GetKubeConfigPath() string
 }
 
-// GetViewFunc is a type alias for view provider functions that take a context and view name and construct/return the
-// associated minkapi View. Used to decouple components.
-type GetViewFunc func(ctx context.Context, name string) (View, error)
-
-// ViewType represents the type of View.
-type ViewType string
-
-const (
-	// ViewTypeBase represents the foundational view of the MinKAPI server.
-	ViewTypeBase ViewType = "base"
-	// ViewTypeSandbox represents a sandboxed private view.
-	ViewTypeSandbox ViewType = "sandbox"
-)
-
-// ViewArgs contains arguments for creating a View.
-type ViewArgs struct {
-	// Scheme is the runtime Scheme used by KAPI objects exposed by this view
-	Scheme *runtime.Scheme
-	// Name represents name of View
-	Name string
-	// KubeConfigPath is the path of the kubeconfig file corresponding to this view
-	KubeConfigPath string
-	// WatchConfig contains configuration for watch operations.
-	WatchConfig WatchConfig
-}
-
-// ViewAccess is a facade to get or create KAPI Views.
-type ViewAccess interface {
-	io.Closer
-	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
-	GetBaseView() View
-	// GetSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
-	// at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig named `minkapi-<name>.yaml` is also generated
-	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
-	// TODO: discuss whether the above is OK.
-	GetSandboxView(ctx context.Context, name string) (View, error)
-	// GetSandboxViewOverDelegate creates or returns a sandboxed KAPI View with the given name over the provided
-	// delegateView that is also served as a KAPI Service at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig
-	// named `minkapi-<name>.yaml` is also generated in the same directory as the base `minkapi.yaml`.  The sandbox name
-	// should be a valid path-prefix, ie no-spaces.
-	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
-}
-
-// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
+// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) service accessible at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
 	commontypes.Service
-	ViewAccess
+	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
+	GetBaseView() View
+	// GetSandboxView creates or returns a sandboxed KAPI View that is also served as a KAPI Service at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
+	// A kubeconfig named `minkapi-<sandboxName>.yaml` is also generated in the same directory as the base `minkapi.yaml`
+	//
+	// TODO: discuss whether the above is OK.
+	GetSandboxView(log logr.Logger, name string) (View, error)
 }
 
-// App represents a MinKAPI application process that wraps a minkapi Server, an application context and application cancel func.
-// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp and shutdown applications via minkapi cli.ShutdownApp
+// App represents an application process that wraps a minkapi Server, an application context and application cancel func.
+//
+// `main` entry-point functions taht embed minkapi are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {
-	// Ctx is the application context.
-	Ctx context.Context
-	// Cancel is the context cancellation function.
-	Cancel context.CancelFunc
-	// Server is the MinKAPI server instance.
 	Server Server
+	Ctx    context.Context
+	Cancel context.CancelFunc
 }
 
-// MatchCriteria defines criteria for matching Kubernetes objects.
 type MatchCriteria struct {
-	// LabelSelector specifies the label selector for matching objects.
-	LabelSelector labels.Selector
-	// Names specifies the set of object names to match. Empty means all names.
-	Names sets.Set[string]
-	// Namespace specifies the namespace to match. Empty means all namespaces.
 	Namespace string
+	Names     sets.Set[string]
+	// Labels        map[string]string
+	LabelSelector labels.Selector
 }
 
-// MatchAllCriteria is a predefined criteria that matches all objects.
 var MatchAllCriteria = MatchCriteria{}
 
-// Matches returns true if the given object matches the criteria.
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {
 		return false
@@ -261,9 +177,4 @@ func (c MatchCriteria) Matches(obj metav1.Object) bool {
 		return false
 	}
 	return true
-}
-
-// String gets a human-readable string value for the MatchCriteria
-func (c MatchCriteria) String() string {
-	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
 }

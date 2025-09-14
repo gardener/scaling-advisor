@@ -13,7 +13,7 @@
         "containers": [
             {
                 "image": "registry.k8s.io/pause:3.5",
-                "name": "pause",
+                "instanceType": "pause",
                 "resources": {
                     "requests": {
                         "cpu": "100m",

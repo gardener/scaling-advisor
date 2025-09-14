@@ -72,7 +72,8 @@ type InMemoryKAPI struct {
 	sandboxViews        map[string]mkapi.View
 }
 
-// LaunchApp is a helper function used to parse cli args, construct, and start the MinKAPI server.
+// LaunchApp is a helper function used to parse cli args, construct, and start the MinKAPI server,
+// embed this inside an App representing the binary process along with an application context and application cancel func.
 //
 // On success, returns an initialized App which holds the minkapi Server, the App Context (which has been setup for SIGINT and SIGTERM cancellation and holds a logger),
 // and the Cancel func which callers are expected to defer in their main routines.
@@ -80,9 +81,9 @@ type InMemoryKAPI struct {
 // On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
 func LaunchApp(ctx context.Context) (app mkapi.App, exitCode int) {
 	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx)
-	log := logr.FromContextOrDiscard(app.Ctx)
+	log := logr.FromContextOrDiscard(app.Ctx).WithValues("program", mkapi.ProgramName)
 	commoncli.PrintVersion(mkapi.ProgramName)
-	mainOpts, err := cli.ParseProgramFlags(os.Args[1:])
+	cliOpts, err := cli.ParseProgramFlags(os.Args[1:])
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
 			return
@@ -91,7 +92,7 @@ func LaunchApp(ctx context.Context) (app mkapi.App, exitCode int) {
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}
-	app.Server, err = NewDefaultInMemory(log, mainOpts.Config)
+	app.Server, err = NewDefaultInMemory(log, cliOpts.Config)
 	if err != nil {
 		log.Error(err, "failed to initialize InMemoryKAPI")
 		exitCode = commoncli.ExitErrStart
@@ -220,11 +221,11 @@ func (k *InMemServer) Start(ctx context.Context) error {
 }
 
 // Stop shuts down the HTTP server and closes the base view
-func (k *InMemServer) Stop(ctx context.Context) (err error) {
+func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
 	var errs []error
 	var cancel context.CancelFunc
 	if k.cfg.GracefulShutdownTimeout.Duration > 0 {
-		// It is possible that ctx is already a shutdown context where minkapi is embedded intoa  higher-level core
+		// It is possible that ctx is already a shutdown context where minkapi is embedded intoa  higher-level service
 		// whose Stop has already created a shutdown context prior to invoking minkapi Stop
 		// In such a case, it is expected that cfg.GracefulShutdownTimeout for minkapi would not be explicitly specified.
 		ctx, cancel = context.WithTimeout(ctx, k.cfg.GracefulShutdownTimeout.Duration)
@@ -234,7 +235,7 @@ func (k *InMemServer) Stop(ctx context.Context) (err error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	err = k.viewAccess.Close()
+	err = k.baseView.Close()
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -248,8 +249,7 @@ func (k *InMemoryKAPI) GetBaseView() mkapi.View {
 	return k.baseView
 }
 
-func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (mkapi.View, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("sandboxName", name)
+func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View, error) {
 	sandboxView, ok := k.sandboxViews[name] // TODO: protected with mutex.
 	if ok {
 		return sandboxView, nil
@@ -647,7 +647,7 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 		//	return
 		//}
 		//pod := obj.(*corev1.Pod)
-		//pod.Spec.NodeName = binding.Target.Name
+		//pod.Spec.NodeName = binding.Target.InstanceType
 		//podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
 		//	Type:   corev1.PodScheduled,
 		//	Status: corev1.ConditionTrue,

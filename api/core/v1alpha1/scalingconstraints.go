@@ -137,6 +137,17 @@ type NodeTemplate struct {
 	InstanceType string `json:"instanceType"`
 	// Priority is the priority of the node template. The lower the number, the higher the priority.
 	Priority int32 `json:"priority"`
+	// Capacity defines the capacity of resources that are available for this instance type.
+	Capacity corev1.ResourceList `json:"capacity"`
+	// KubeReserved defines the capacity for kube reserved resources.
+	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
+	// +optional
+	KubeReserved corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
+	// SystemReserved defines the capacity for system reserved resources.
+	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
+	// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
+	// +optional
+	SystemReserved corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes,omitzero"`
 }

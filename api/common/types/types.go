@@ -7,7 +7,7 @@ package types
 import (
 	"cmp"
 	"context"
-
+	"fmt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -54,13 +54,15 @@ type QPSBurst struct {
 	Burst int `json:"burst"`
 }
 
-// NamespacedName is a fully qualified object name.
-// NOTE: This is only needed since k8s APIMachinery types.NamespacedName does not have JSON tags and k8s maintainers
-// recommended that every project should use their own copy of NamespacedName.
-type NamespacedName struct {
-	// Namespace is the namespace of the object.
-	Namespace string `json:"namespace,omitempty"`
-	// Name is the name of the object.
+// QPSBurst is a simple encapsulation of client QPS and Burst settings.
+type QPSBurst struct {
+	QPS   float32 `json:"qps"`
+	Burst int     `json:"burst"`
+}
+
+// ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.
+type ConstraintReference struct {
+	// Name is the name of the ClusterScalingConstraint.
 	Name string `json:"name"`
 }
 

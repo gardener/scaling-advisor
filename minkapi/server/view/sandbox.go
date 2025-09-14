@@ -283,12 +283,9 @@ func (v *sandboxView) ListNodes(matchingNodeNames ...string) (nodes []corev1.Nod
 	return
 }
 
-func (v *sandboxView) ListPods(namespace string, matchingPodNames ...string) (pods []corev1.Pod, err error) {
+func (v *sandboxView) ListPods(c minkapi.MatchCriteria) (pods []corev1.Pod, err error) {
 	gvk := typeinfo.PodsDescriptor.GVK
-	metaObjs, _, err := v.ListMetaObjects(gvk, minkapi.MatchCriteria{
-		Namespace: namespace,
-		Names:     sets.New(matchingPodNames...),
-	})
+	metaObjs, _, err := v.ListMetaObjects(gvk, c)
 	if err != nil {
 		return
 	}

@@ -20,6 +20,27 @@ help:
 no-dirty:
 	@test -z "$(shell git status --porcelain)"
 
+## test-unit: run all unit tests
+.PHONY: test-unit
+test-unit:
+	go test -v -race -buildvcs ./...
+
+## test-unit/cover: run all unit tests and display coverage
+.PHONY: test-unit/cover
+test-unit/cover:
+	go test -v -race -buildvcs -coverprofile=/tmp/coverage.out ./...
+	go tool cover -html=/tmp/coverage.out
+
+## test-integration: run all integration tests
+#.PHONY: test-integration
+#test-integration:
+#	go test -v -buildvcs -tags=integration ./test/integration/...
+
+## upgradeable: list direct dependencies that have upgrades available
+.PHONY: upgradeable
+upgradeable:
+	@go list -u -f '{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}: {{.Version}} -> {{.Update.Version}}{{end}}' -m all
+
 ## tidy: tidies up go mod
 .PHONY: tidy
 tidy:
