@@ -7,11 +7,14 @@ package service
 import (
 	"errors"
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 
 var (
 	// ErrInitFailed is a sentinel error indicating that the scaling-advisor service failed to initialize.
-	ErrInitFailed = fmt.Errorf("failed to initialize %s service", ServiceName)
+	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
+	// ErrStartFailed is a sentinel error indicating that the scaling-advisor service failed to start.
+	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
 	// ErrGenScalingAdvice is a sentinel error indicating that the service failed to generate scaling advice.
 	ErrGenScalingAdvice = errors.New("failed to generate scaling advice")
 	// ErrCreateSimulation is a sentinel error indicating that the service failed to create a scaling simulation
@@ -20,6 +23,9 @@ var (
 	ErrRunSimulation = errors.New("failed to run simulation")
 	// ErrRunSimulationGroup is a sentinel error indicating that a scaling simulation group failed
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
+
+	// ErrSimulationTimeout is a sentinel error indicating that the simulation timed out
+	ErrSimulationTimeout = errors.New("simulation timed out")
 	//ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore
@@ -37,6 +43,7 @@ var (
 	ErrUnsupportedCloudProvider       = errors.New("unsupported cloud provider")
 
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
+	ErrMissingRequiredLabel = errors.New("missing required label")
 )
 
 func AsGenerateError(id string, correlationID string, err error) error {

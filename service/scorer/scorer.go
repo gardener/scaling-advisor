@@ -44,12 +44,12 @@ func getAggregatedScheduledPodsResources(scaledNodeAssignments *service.NodePodA
 
 var _ service.GetNodeScorer = GetNodeScorer
 
-func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instanceTypeInfoAccess service.InstanceTypeInfoAccess, weightsFn service.GetWeightsFunc) (service.NodeScorer, error) {
+func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instancePricingAccess service.InstancePricingAccess, weightsFn service.GetWeightsFunc) (service.NodeScorer, error) {
 	switch scoringStrategy {
 	case commontypes.LeastCostNodeScoringStrategy:
-		return &LeastCost{instanceTypeInfoAccess: instanceTypeInfoAccess, weightsFn: weightsFn}, nil
+		return &LeastCost{instancePricingAccess: instancePricingAccess, weightsFn: weightsFn}, nil
 	case commontypes.LeastWasteNodeScoringStrategy:
-		return &LeastWaste{instancePricing: instanceTypeInfoAccess, weightsFn: weightsFn}, nil
+		return &LeastWaste{instancePricing: instancePricingAccess, weightsFn: weightsFn}, nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported %q", service.ErrUnsupportedNodeScoringStrategy, scoringStrategy)
 	}
@@ -58,8 +58,8 @@ func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instanceType
 var _ service.NodeScorer = (*LeastCost)(nil)
 
 type LeastCost struct {
-	instanceTypeInfoAccess service.InstanceTypeInfoAccess
-	weightsFn              service.GetWeightsFunc
+	instancePricingAccess service.InstancePricingAccess
+	weightsFn             service.GetWeightsFunc
 }
 
 // Compute uses the least-cost strategy to generate a score representing the number of resource units scheduled per unit cost.
@@ -67,7 +67,12 @@ type LeastCost struct {
 // resource requests.
 // Resource quantities of different resource types are reduced to a representation in terms of resource units
 // based on pre-configured weights.
-func (l LeastCost) Compute(args service.NodeScoreArgs) (service.NodeScore, error) {
+func (l LeastCost) Compute(args service.NodeScoreArgs) (score service.NodeScore, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: least-cost node scoring failed for simulation %q: %v", service.ErrComputeNodeScore, args.ID, err)
+		}
+	}()
 	//add resources required by pods scheduled on scaled candidate node and existing nodes
 	aggregatedPodsResources := getAggregatedScheduledPodsResources(args.ScaledAssignment, args.OtherAssignments)
 	//calculate total scheduledResources in terms of normalized resource units using weights
@@ -81,7 +86,7 @@ func (l LeastCost) Compute(args service.NodeScoreArgs) (service.NodeScore, error
 		}
 	}
 	//divide total NormalizedResourceUnits by instance price to get score
-	info, err := l.instanceTypeInfoAccess.GetInfo(args.Placement.Region, args.Placement.InstanceType)
+	info, err := l.instancePricingAccess.GetInfo(args.Placement.Region, args.Placement.InstanceType)
 	if err != nil {
 		return service.NodeScore{}, err
 	}
@@ -97,7 +102,7 @@ func (l LeastCost) Compute(args service.NodeScoreArgs) (service.NodeScore, error
 var _ service.NodeScorer = (*LeastWaste)(nil)
 
 type LeastWaste struct {
-	instancePricing service.InstanceTypeInfoAccess
+	instancePricing service.InstancePricingAccess
 	weightsFn       service.GetWeightsFunc
 }
 
@@ -180,7 +185,7 @@ func GetNodeScoreSelector(scoringStrategy commontypes.NodeScoringStrategy) (serv
 // This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
 // Larger instance types --> less fragmentation
 // if multiple node scores have instance types with the same allocatable, an index is picked at random from them
-func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, pricing service.InstanceTypeInfoAccess) (winner *service.NodeScore, err error) {
+func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, pricing service.InstancePricingAccess) (winner *service.NodeScore, err error) {
 	if len(nodeScores) == 0 {
 		return nil, service.ErrNoWinningNodeScore
 	}
@@ -228,7 +233,7 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 
 // SelectMinPrice returns the index of the node score for the node with the lowest price.
 // if multiple node scores have instance types with the same price, an index is picked at random from them
-func SelectMinPrice(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, pricing service.InstanceTypeInfoAccess) (winner *service.NodeScore, err error) {
+func SelectMinPrice(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, pricing service.InstancePricingAccess) (winner *service.NodeScore, err error) {
 	if len(nodeScores) == 0 {
 		return nil, service.ErrNoWinningNodeScore
 	}

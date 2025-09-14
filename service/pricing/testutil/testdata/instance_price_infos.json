@@ -1,6 +1,6 @@
 [
   {
-    "name": "instance_type_1",
+    "instanceType": "instance_type_1",
     "region": "region_a",
     "memory": 100,
     "vcpu": 2,
@@ -8,7 +8,7 @@
     "os": "linux"
   },
   {
-    "name": "instance_type_2",
+    "instanceType": "instance_type_2",
     "region": "region_b",
     "memory": 50.0,
     "vcpu": 1,
@@ -16,7 +16,7 @@
     "os": "windows"
   },
   {
-    "name": "instance-a-1",
+    "instanceType": "instance-a-1",
     "region": "s",
     "memory": 12.0,
     "vcpu": 1,
@@ -24,7 +24,7 @@
     "os": "linux"
   },
   {
-    "name": "instance-a-2",
+    "instanceType": "instance-a-2",
     "region": "s",
     "memory": 12.0,
     "vcpu": 1,
@@ -32,7 +32,7 @@
     "os": "linux"
   },
   {
-    "name": "instance-b-1",
+    "instanceType": "instance-b-1",
     "region": "s",
     "memory": 12.0,
     "vcpu": 1,
@@ -40,7 +40,7 @@
     "os": "linux"
   },
   {
-    "name": "instance-b-2",
+    "instanceType": "instance-b-2",
     "region": "s",
     "memory": 12.0,
     "vcpu": 1,
@@ -48,7 +48,7 @@
     "os": "linux"
   },
   {
-    "name": "instance-c-1",
+    "instanceType": "instance-c-1",
     "region": "s",
     "memory": 12.0,
     "vcpu": 1,

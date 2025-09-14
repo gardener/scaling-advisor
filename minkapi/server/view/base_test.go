@@ -104,7 +104,8 @@ func TestPodListing(t *testing.T) {
 	}
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			p, err := baseView.ListPods(tc.namespace, tc.names...)
+			criteria := minkapi.MatchCriteria{Namespace: tc.namespace, Names: sets.New(tc.names...)}
+			p, err := baseView.ListPods(criteria)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)
 				return
@@ -306,21 +307,17 @@ func createBaseView(t *testing.T) (minkapi.View, error) {
 }
 
 func createTestObjects(t *testing.T, view *minkapi.View) (err error) {
-	t.Helper()
 	_, err = createObjectFromFileName[corev1.Node](t, *view, "../testdata/node-a.json", typeinfo.NodesDescriptor.GVK)
 	if err != nil {
-		t.Error(err)
-		return err
+		return
 	}
 	for _, file := range []string{"../testdata/pod-a.json", "../testdata/pod-defaultns.json", "../testdata/pod-testns.json"} {
 		_, err = createObjectFromFileName[corev1.Pod](t, *view, file, typeinfo.PodsDescriptor.GVK)
 		if err != nil {
-			t.Error(err)
-			return err
+			return
 		}
 	}
-
-	return nil
+	return
 }
 
 func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
@@ -334,7 +331,6 @@ func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
 }
 
 func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
-	t.Helper()
 	var (
 		jsonData []byte
 		obj      T
@@ -348,14 +344,14 @@ func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName s
 	if err != nil {
 		return obj, err
 	}
-	objInterface, ok := any(&obj).(metav1.Object)
+	metaObj, ok := any(&obj).(metav1.Object)
 	if !ok {
 		return obj, err
 	}
-	err = view.CreateObject(gvk, objInterface)
+	err = view.CreateObject(gvk, metaObj)
 	if err != nil {
 		return obj, err
 	}
-	t.Logf("Creating %s %s", gvk.Kind, objInterface.GetName())
+	t.Logf("Created %s %q", gvk.Kind, objutil.CacheName(metaObj))
 	return obj, nil
 }

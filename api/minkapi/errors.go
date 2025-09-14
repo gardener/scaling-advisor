@@ -7,17 +7,16 @@ package minkapi
 import (
 	"errors"
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 
 var (
-	ErrInitFailed = fmt.Errorf("%s init failed", ProgramName)
+	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
 	// ErrStartFailed is a sentinel error indicating that the service failed to start.
-	ErrStartFailed         = fmt.Errorf("%s start failed", ProgramName)
+	ErrStartFailed         = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
 	ErrClientFacadesFailed = errors.New("failed to create client facades")
 	// ErrServiceFailed is a sentinel error indicating that the service failed.
-	ErrServiceFailed = fmt.Errorf("%s service failed", ProgramName)
-	// ErrMissingOpt is a sentinel error indicating that one or more required command line options are missing.
-	ErrMissingOpt            = errors.New("missing option")
+	ErrServiceFailed         = fmt.Errorf("%s service failed", ProgramName)
 	ErrLoadConfigTemplate    = errors.New("cannot load config template")
 	ErrExecuteConfigTemplate = errors.New("cannot execute config template")
 	ErrStoreNotFound         = errors.New("store not found")

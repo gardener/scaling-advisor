@@ -15,13 +15,13 @@ import (
 //go:embed testdata/*
 var testDataFS embed.FS
 
-func LoadTestInstanceTypeInfoAccess() (access service.InstanceTypeInfoAccess, err error) {
+func LoadTestInstancePricingAccess() (access service.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", service.ErrLoadInstanceTypeInfo, err)
 		}
 	}()
-	testData, err := testDataFS.ReadFile("testdata/instance_type_infos.json")
+	testData, err := testDataFS.ReadFile("testdata/instance_price_infos.json")
 	if err != nil {
 		return
 	}

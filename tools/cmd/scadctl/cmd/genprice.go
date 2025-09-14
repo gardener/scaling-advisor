@@ -75,7 +75,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 		return fmt.Errorf("failed to create pricing dir: %w", err)
 	}
 
-	var allInfos []svcapi.InstanceTypeInfo
+	var allInfos []svcapi.InstancePriceInfo
 	for _, region := range regions {
 		fmt.Printf("Fetching AWS pricing for region: %s\n", region)
 
@@ -91,15 +91,15 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 		fmt.Printf("Fetched %d instance type prices for region %s\n", len(infos), region)
 		allInfos = append(allInfos, infos...)
 	}
-	slices.SortFunc(allInfos, func(a, b svcapi.InstanceTypeInfo) int {
-		return cmp.Compare(a.Name, b.Name)
+	slices.SortFunc(allInfos, func(a, b svcapi.InstancePriceInfo) int {
+		return cmp.Compare(a.InstanceType, b.InstanceType)
 	})
 	fmt.Printf("Fetched %d instance type prices across %d region(s)\n", len(allInfos), len(regions))
 	outputFile := filepath.Join(pricingDir, "aws_instance-type-infos.json")
 	return writeInstanceTypeInfos(outputFile, allInfos)
 }
 
-func writeInstanceTypeInfos(path string, infos []svcapi.InstanceTypeInfo) error {
+func writeInstanceTypeInfos(path string, infos []svcapi.InstancePriceInfo) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)

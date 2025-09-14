@@ -2,7 +2,8 @@
   "apiVersion": "v1",
   "kind": "Pod",
   "metadata": {
-    "name": "pod-default",
+    "generateName": "b-",
+    "instanceType": "pod-default",
     "namespace": "default",
     "labels": {
       "app.kubernetes.io/name": "pod-default",
@@ -15,7 +16,7 @@
     "preemptionPolicy": "PreemptLowerPriority",
     "containers": [
       {
-        "name": "pause",
+        "instanceType": "pause",
         "image": "registry.k8s.io/pause:3.5",
         "resources": {
           "requests": {
