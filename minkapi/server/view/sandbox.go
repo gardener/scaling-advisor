@@ -7,6 +7,7 @@ package view
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/watchutil"
 	"sync"
 	"sync/atomic"
 
@@ -28,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -242,6 +244,28 @@ func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionK
 		return v.delegateView.WatchObjects(ctx, gvk, startVersion, namespace, labelSelector, eventCallback)
 	})
 	return eg.Wait()
+}
+
+func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return nil, err
+	}
+	w1, err := s.GetWatcher(ctx, namespace, opts)
+	if err != nil {
+		return nil, err
+	}
+	log.V(4).Info("got watcher for sandboxView objects", "gvk", gvk, "namespace", namespace, "opts", opts)
+
+	w2, err := v.delegateView.GetWatcher(ctx, gvk, namespace, opts)
+	if err != nil {
+		return nil, err
+	}
+	log.V(4).Info("got watcher for delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
+	eventWatcher := watchutil.CombineTwoWatchers(ctx, w1, w2)
+	log.Info("returning combined watcher for sandboxView+delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
+	return eventWatcher, nil
 }
 
 func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {

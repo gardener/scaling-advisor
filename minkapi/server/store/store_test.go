@@ -31,7 +31,7 @@ import (
 var testPod = corev1.Pod{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:            "bingo",
-		Namespace:       "default",
+		Namespace:       metav1.NamespaceDefault,
 		ResourceVersion: "2",
 	},
 }

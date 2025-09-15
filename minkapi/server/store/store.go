@@ -6,6 +6,7 @@ package store
 
 import (
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"math"
 	"reflect"
 	"strconv"
@@ -244,7 +245,7 @@ func (s *InMemResourceStore) ListMetaObjects(c mkapi.MatchCriteria) (metaObjs []
 		if !c.Matches(mo) {
 			continue
 		}
-		version, err = ParseObjectResourceVersion(mo)
+		version, err = objutil.ParseObjectResourceVersion(mo)
 		if err != nil {
 			return
 		}
@@ -365,6 +366,48 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 	}
 }
 
+func (s *InMemResourceStore) GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (eventWatcher watch.Interface, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w :%w", mkapi.ErrCreateWatcher, err)
+		}
+	}()
+	log := logr.FromContextOrDiscard(ctx)
+	out := make(chan watch.Event)
+	startVersion, err := objutil.ParseResourceVersion(options.ResourceVersion)
+	if err != nil {
+		return
+	}
+	labelSelector := labels.Everything()
+	if options.LabelSelector != "" {
+		labelSelector, err = labels.Parse(options.LabelSelector)
+		if err != nil {
+			return
+		}
+	}
+	proxyWatcher := watch.NewProxyWatcher(out)
+	// Start the callback-based watcher in its own goroutine
+	go func() {
+		defer close(out)
+		err := s.Watch(ctx, startVersion, namespace, labelSelector, func(e watch.Event) error {
+			select {
+			case out <- e:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-proxyWatcher.StopChan():
+				return context.Canceled
+			}
+		})
+		if err != nil {
+			// can do nothing but log this as watch.Interface has no error channel
+			log.Error(err, "error in InMemResourceStore.Watch", "gvk", s.args.ObjectGVK, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector.String())
+		}
+	}()
+	eventWatcher = proxyWatcher
+	return
+}
+
 func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 	return s.versionCounter.Load()
 }
@@ -423,17 +466,6 @@ func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schem
 		return
 	}
 	for _, obj := range objs {
-		//metaV1Obj, err := AsMeta(obj)
-		//if err != nil {
-		//	log.Error(err, "cannot access meta object", "obj", obj)
-		//	continue
-		//}
-		//if c.Namespace != "" && metaV1Obj.GetNamespace() != c.Namespace {
-		//	continue
-		//}
-		//if !c.LabelSelector.Matches(labels.Set(metaV1Obj.GetLabels())) {
-		//	continue
-		//}
 		val := reflect.ValueOf(obj)
 		if val.Kind() != reflect.Ptr || val.IsNil() {
 			// ensure each cached obj is a non-nil pointer (Ex *corev1.Pod).
@@ -453,7 +485,6 @@ func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schem
 func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, namespace string, labelSelector labels.Selector) (skip bool, err error) {
 	o, err := meta.Accessor(obj)
 	if err != nil {
-		log.Error(err, "cannot access object metadata for obj", "obj", obj)
 		err = fmt.Errorf("cannot access object metadata for obj type %T: %w", obj, err)
 		return
 	}
@@ -465,7 +496,7 @@ func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, n
 		skip = true
 		return
 	}
-	rv, err := ParseObjectResourceVersion(o)
+	rv, err := objutil.ParseObjectResourceVersion(o)
 	if err != nil {
 		return
 	}
@@ -476,25 +507,10 @@ func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, n
 	return
 }
 
-func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
-	resourceVersion, err = parseResourceVersion(obj.GetResourceVersion())
-	if err != nil {
-		err = fmt.Errorf("failed to parse resource version %q for object %q in ns %q: %w", obj.GetResourceVersion(), obj.GetName(), obj.GetNamespace(), err)
-	}
-	return
-}
-
-func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
-	if rvStr != "" {
-		resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
-	}
-	return
-}
-
 func AsMeta(o any) (mo metav1.Object, err error) {
 	mo, err = meta.Accessor(o)
 	if err != nil {
-		err = apierrors.NewInternalError(fmt.Errorf("cannot access meta object for o of type %T", o))
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
 	}
 	return
 }

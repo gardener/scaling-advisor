@@ -8,6 +8,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
@@ -23,9 +26,7 @@ import (
 	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )
@@ -236,6 +237,25 @@ func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) 
 	return result, nil
 }
 
+func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
+	resourceVersion, err = ParseResourceVersion(obj.GetResourceVersion())
+	if err != nil {
+		err = fmt.Errorf("cannot parse resource version %q for object %q in ns %q: %w", obj.GetResourceVersion(), obj.GetName(), obj.GetNamespace(), err)
+	}
+	return
+}
+func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
+	if rvStr == "" {
+		resourceVersion = 0
+		return
+	}
+	resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("cannot parse resource version %q: %w", rvStr, err)
+	}
+	return
+}
+
 func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 	var version int64
 	for _, o := range objs {
@@ -270,4 +290,21 @@ func GenerateName(base string) string {
 		base = base[:m-len(suffix)]
 	}
 	return base + suffix
+}
+
+func Cast[T any](obj any) (t T, err error) {
+	t, ok := obj.(T)
+	if !ok {
+		err = fmt.Errorf("%w: obj has type %T, expected %T", commonerrors.ErrUnexpectedType, obj, TypeName[T]())
+	}
+	return
+}
+
+func TypeName[T any]() string {
+	var zero T
+	typ := reflect.TypeOf(zero)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	return typ.PkgPath() + "." + typ.Name()
 }

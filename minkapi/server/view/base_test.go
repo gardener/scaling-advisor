@@ -89,7 +89,7 @@ func TestPodListing(t *testing.T) {
 		"No criteria (need ns)":    {retErr: fmt.Errorf("cannot list pods without namespace")},
 		"test namespace":           {namespace: "test", retErr: nil},
 		"random namespace":         {namespace: "mnbvcxz", retErr: nil},
-		"default ns with pod name": {namespace: "default", names: []string{"pod-default"}, retErr: nil},
+		"default ns with pod name": {namespace: metav1.NamespaceDefault, names: []string{"pod-default"}, retErr: nil},
 	}
 	baseView, err := createBaseView(t)
 	if err != nil {
@@ -142,18 +142,18 @@ func TestEventDeletion(t *testing.T) {
 			retErr: nil,
 		},
 		"default namespace": {
-			c:      minkapi.MatchCriteria{Namespace: "default"},
+			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		// TODO GVK is only utilized for checking store existence
 		"incorrect gvk when deleting": {
-			c:      minkapi.MatchCriteria{Namespace: "default"},
+			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
 			gvk:    typeinfo.PodsDescriptor.GVK,
 			retErr: nil,
 		},
 		"non-existing name": {
-			c:      minkapi.MatchCriteria{Namespace: "default", Names: sets.New("bingo")},
+			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault, Names: sets.New("bingo")},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},

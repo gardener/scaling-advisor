@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/watch"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -177,6 +178,14 @@ func (v *baseView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind
 		return err
 	}
 	return s.Watch(ctx, startVersion, namespace, labelSelector, eventCallback)
+}
+
+func (v *baseView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetWatcher(ctx, namespace, opts)
 }
 
 func (v *baseView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {
@@ -420,7 +429,7 @@ func asNodes(metaObjects []metav1.Object) (nodes []corev1.Node, maxVersion int64
 			err = fmt.Errorf("object %q is not a corev1.Node", objutil.CacheName(obj))
 			return
 		}
-		version, err = store.ParseObjectResourceVersion(obj)
+		version, err = objutil.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -441,7 +450,7 @@ func asPods(metaObjects []metav1.Object) (pods []corev1.Pod, maxVersion int64, e
 			err = fmt.Errorf("object %q is not a corev1.Pod", objutil.CacheName(obj))
 			return
 		}
-		version, err = store.ParseObjectResourceVersion(obj)
+		version, err = objutil.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -462,7 +471,7 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 			err = fmt.Errorf("object %q is not a corev1.Pod", objutil.CacheName(obj))
 			return
 		}
-		version, err = store.ParseObjectResourceVersion(obj)
+		version, err = objutil.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -474,7 +483,7 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 	return
 }
 
-// combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over same obj in secondary
+// combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over the same obj in secondary
 func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object) (combined []metav1.Object) {
 	found := make(map[cache.ObjectName]bool, len(primary))
 	for _, o := range primary {

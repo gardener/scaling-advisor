@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"io"
 	"net"
 	"net/http"
@@ -729,19 +730,12 @@ func getParseResourceVersion(w http.ResponseWriter, r *http.Request) (resourceVe
 		resourceVersion = 0
 		return
 	}
-	resourceVersion, err := parseResourceVersion(paramValue)
+	resourceVersion, err := objutil.ParseResourceVersion(paramValue)
 	if err != nil {
-		handleBadRequest(w, r, fmt.Errorf("invalid resource version %q: %w", paramValue, err))
+		handleBadRequest(w, r, err)
 		return
 	}
 	ok = true
-	return
-}
-
-func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
-	if rvStr != "" {
-		resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
-	}
 	return
 }
 
