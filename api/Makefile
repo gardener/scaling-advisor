@@ -26,6 +26,10 @@ check-generate:
 generate: $(CONTROLLER_GEN) tidy
 	@$(MODULE_HACK_DIR)/generate.sh
 
+.PHONY: generate-api-docs
+generate-api-docs: $(CRD_REF_DOCS)
+	@$(MODULE_HACK_DIR)/generate-api-docs.sh
+
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
 	@$(REPO_HACK_DIR)/format.sh ./core ./config ./common

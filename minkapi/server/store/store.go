@@ -6,8 +6,6 @@ package store
 
 import (
 	"fmt"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"math"
 	"reflect"
 	"strconv"
@@ -16,6 +14,8 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

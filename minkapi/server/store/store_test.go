@@ -7,8 +7,6 @@ package store
 import (
 	"context"
 	"fmt"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/testutil"
 	"reflect"
 	"strconv"
 	"sync"
@@ -17,6 +15,8 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"

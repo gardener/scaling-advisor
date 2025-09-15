@@ -5,15 +5,17 @@
 package scorer
 
 import (
+	"testing"
+
+	"github.com/gardener/scaling-advisor/service/pricing/testutil"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/service/pricing/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"testing"
 )
 
 func CreateMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
@@ -45,6 +47,7 @@ func CreateMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 func NewMockWeightsFunc(instanceType string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
+
 func TestLeastWasteScoringStrategy(t *testing.T) {
 	access, err := testutil.LoadTestInstancePricingAccess()
 	if err != nil {
@@ -63,12 +66,12 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		},
 	}
 	tests := map[string]struct {
-		input         service.NodeScoreArgs
+		input         service.NodeScorerArgs
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
-			input: service.NodeScoreArgs{
+			input: service.NodeScorerArgs{
 				ID:               "testing",
 				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
@@ -84,7 +87,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
-			input: service.NodeScoreArgs{
+			input: service.NodeScorerArgs{
 				ID:               "testing",
 				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
@@ -135,12 +138,12 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		},
 	}
 	tests := map[string]struct {
-		input         service.NodeScoreArgs
+		input         service.NodeScorerArgs
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
-			input: service.NodeScoreArgs{
+			input: service.NodeScorerArgs{
 				ID:               "testing",
 				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,
@@ -156,7 +159,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
-			input: service.NodeScoreArgs{
+			input: service.NodeScorerArgs{
 				ID:               "testing",
 				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,

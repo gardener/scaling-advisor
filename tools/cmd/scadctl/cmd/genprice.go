@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/gardener/scaling-advisor/tools/pricing/awsprice"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/tools/pricing/awsprice"
 	"github.com/spf13/cobra"
 )
 

@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/gardener/scaling-advisor/api/common/constants"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	componentbaseconfigv1alpha1 "k8s.io/component-base/config/v1alpha1"
 	"k8s.io/utils/ptr"
 )
 
@@ -21,7 +19,7 @@ const (
 )
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
-func SetDefaults_ClientConnectionConfiguration(clientConnConfig *componentbaseconfigv1alpha1.ClientConnectionConfiguration) {
+func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfiguration) {
 	if clientConnConfig.QPS == 0.0 {
 		clientConnConfig.QPS = 100.0
 	}
@@ -31,8 +29,17 @@ func SetDefaults_ClientConnectionConfiguration(clientConnConfig *componentbaseco
 }
 
 // SetDefaults_LeaderElectionConfiguration sets defaults for the leader election of the scalingadvisor operator.
-func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *componentbaseconfigv1alpha1.LeaderElectionConfiguration) {
-	componentbaseconfigv1alpha1.RecommendedDefaultLeaderElectionConfiguration(leaderElectionConfig)
+func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectionConfiguration) {
+	zero := metav1.Duration{}
+	if leaderElectionConfig.LeaseDuration == zero {
+		leaderElectionConfig.LeaseDuration = metav1.Duration{Duration: 15 * time.Second}
+	}
+	if leaderElectionConfig.RenewDeadline == zero {
+		leaderElectionConfig.RenewDeadline = metav1.Duration{Duration: 10 * time.Second}
+	}
+	if leaderElectionConfig.RetryPeriod == zero {
+		leaderElectionConfig.RetryPeriod = metav1.Duration{Duration: 2 * time.Second}
+	}
 	if leaderElectionConfig.ResourceLock == "" {
 		leaderElectionConfig.ResourceLock = defaultLeaderElectionResourceLock
 	}
@@ -41,34 +48,25 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *componentbase
 	}
 }
 
-// SetDefaults_HealthProbes sets the defaults for health probes.
-func SetDefaults_HealthProbes(healthProbesConfig commontypes.HostPort) {
-	if healthProbesConfig.Port == 0 {
-		healthProbesConfig.Port = constants.DefaultOperatorHealthProbePort
+// SetDefaults_ScalingAdvisorServerConfiguration sets defaults for ScalingAdvisorServerConfiguration.
+func SetDefaults_ScalingAdvisorServerConfiguration(serverConfig *ScalingAdvisorServerConfiguration) {
+	if serverConfig.Port == 0 {
+		serverConfig.Port = constants.DefaultOperatorServerPort
 	}
-}
+	if serverConfig.GracefulShutdownTimeout.Duration == 0 {
+		serverConfig.GracefulShutdownTimeout = metav1.Duration{Duration: 5 * time.Second}
+	}
 
-// SetDefaults_Metrics sets the defaults for metrics server configuration.
-func SetDefaults_Metrics(metricsConfig commontypes.HostPort) {
-	if metricsConfig.Port == 0 {
-		metricsConfig.Port = constants.DefaultOperatorMetricsPort
+	if serverConfig.HealthProbes.Port == 0 {
+		serverConfig.HealthProbes.Port = constants.DefaultOperatorHealthProbePort
 	}
-}
 
-// SetDefaults_Profiling sets the defaults for profiling.
-func SetDefaults_Profiling(profilingConfig commontypes.HostPort) {
-	if profilingConfig.Port == 0 {
-		profilingConfig.Port = constants.DefaultOperatorProfilingPort
+	if serverConfig.Metrics.Port == 0 {
+		serverConfig.Metrics.Port = constants.DefaultOperatorMetricsPort
 	}
-}
 
-// SetDefaults_ServerConfig sets the default for Server configuration.
-func SetDefaults_ServerConfig(serverCfg *commontypes.ServerConfig) {
-	if serverCfg.Port == 0 {
-		serverCfg.Port = constants.DefaultOperatorServerPort
-	}
-	if serverCfg.GracefulShutdownTimeout.Duration == 0 {
-		serverCfg.GracefulShutdownTimeout = metav1.Duration{Duration: 5 * time.Second}
+	if serverConfig.Profiling.Port == 0 {
+		serverConfig.Profiling.Port = constants.DefaultOperatorProfilingPort
 	}
 }
 
