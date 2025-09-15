@@ -10,12 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/spf13/pflag"
 	"io"
-	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/apimachinery/pkg/types"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -25,6 +20,12 @@ import (
 	rt "runtime"
 	"strconv"
 	"time"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/spf13/pflag"
+	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
@@ -165,6 +166,7 @@ func NewInMemoryUsingViews(cfg mkapi.Config, baseView mkapi.View, sandboxViewCre
 	// DO NOT REMOVE: Single route registration crap needed for kubectl compatability as it ignores server path prefixes
 	// and always makes a call to http://localhost:8084/api/v1/?timeout=32s
 	rootMux.HandleFunc("GET /api/v1/", s.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
+	rootMux.HandleFunc("POST /views/{name}", s.handleCreateSandboxView)
 	k = s
 	return
 }
@@ -200,7 +202,7 @@ func (k *InMemoryKAPI) Start(ctx context.Context) error {
 	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
 		KubeConfigPath:          k.cfg.KubeConfigPath,
 		KubeSchedulerConfigPath: fmt.Sprintf("/tmp/%s-kube-scheduler-config.yaml", mkapi.ProgramName),
-		QPS:                     100, //TODO: pass this as param ?
+		QPS:                     100,
 		Burst:                   50,
 	}
 	err = configtmpl.GenKubeSchedulerConfig(schedulerTmplParams)
@@ -255,7 +257,7 @@ func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View,
 		return nil, fmt.Errorf("%w: invalid sandbox-kapi URI for view %q: %w", mkapi.ErrCreateSandbox, name, err)
 	}
 	baseKubeConfigDir := filepath.Dir(k.cfg.KubeConfigPath)
-	kubeConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("minkapi-%s.yaml", name))
+	kubeConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s.yaml", mkapi.ProgramName, name))
 	log.Info("generating kubeconfig for sandbox", "name", name, "path", kubeConfigPath)
 	err = configtmpl.GenKubeConfig(configtmpl.KubeConfigParams{
 		Name:           name,
@@ -266,6 +268,18 @@ func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View,
 		return nil, fmt.Errorf("%w: cannot generate kubeconfig for view %q: %w", mkapi.ErrCreateSandbox, name, err)
 	}
 	log.Info("sandbox kubeconfig generated", "name", name, "path", k.cfg.KubeConfigPath)
+
+	kubeSchedulerConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s-kube-scheduler-config.yaml", mkapi.ProgramName, name))
+	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
+		KubeConfigPath:          kubeConfigPath,
+		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
+		QPS:                     100, //TODO: pass this as param ?
+		Burst:                   50,
+	}
+	err = configtmpl.GenKubeSchedulerConfig(schedulerTmplParams)
+	if err != nil {
+		return nil, fmt.Errorf("%w: cannot generate kube-scheduler config for view %q: %w", mkapi.ErrStartFailed, name, err)
+	}
 
 	sandboxView, err = k.createSandboxViewFn(log, k.baseView, &mkapi.ViewArgs{
 		Name:           name,
@@ -388,6 +402,28 @@ func (k *InMemoryKAPI) handleAPIResources(apiResourceList metav1.APIResourceList
 		}
 		writeJsonResponse(w, r, apiResourceList)
 	}
+}
+
+func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
+	viewName := r.PathValue("name")
+	if viewName == "" {
+		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
+		return
+	}
+	log := logr.FromContextOrDiscard(r.Context())
+	_, err := k.GetSandboxView(log, viewName)
+	if err != nil {
+		handleInternalServerError(w, r, err)
+		return
+	}
+	log.Info("sandbox view created and sandbox view API Server routes registered", "viewName", viewName)
+	statusOK := &metav1.Status{
+		TypeMeta: metav1.TypeMeta{Kind: "Status"},
+		Status:   metav1.StatusSuccess,
+		Code:     http.StatusCreated,
+		Message:  fmt.Sprintf("sandbox view %q created and routes registered", viewName),
+	}
+	writeJsonResponse(w, r, statusOK)
 }
 
 func handleGet(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
