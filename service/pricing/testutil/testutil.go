@@ -7,9 +7,11 @@ package testutil
 import (
 	"embed"
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/service/pricing"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/service/pricing"
 )
 
 //go:embed testdata/*

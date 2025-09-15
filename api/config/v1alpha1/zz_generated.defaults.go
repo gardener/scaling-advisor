@@ -18,3 +18,10 @@ import (
 func RegisterDefaults(scheme *runtime.Scheme) error {
 	return nil
 }
+
+func SetObjectDefaults_ScalingAdvisorConfiguration(in *ScalingAdvisorConfiguration) {
+	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
+	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
+	SetDefaults_ScalingAdvisorServerConfiguration(&in.Server)
+	SetDefaults_ScalingConstraintsControllerConfiguration(&in.Controllers.ScalingConstraints)
+}

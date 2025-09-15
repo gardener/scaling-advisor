@@ -38,11 +38,3 @@ check: $(GOLANGCI_LINT) format
 .PHONY: test-unit
 test-unit:
 	$(call run-in-submodules,test-unit)
-
-.PHONY: sast
-sast: $(GOSEC)
-	@$(REPO_HACK_DIR)/sast.sh
-
-.PHONY: sast-report
-sast-report: $(GOSEC)
-	@$(REPO_HACK_DIR)/sast.sh --gosec-report true

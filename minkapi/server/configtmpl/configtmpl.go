@@ -8,10 +8,11 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"os"
 	"sync"
 	"text/template"
+
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 )
 
 var (

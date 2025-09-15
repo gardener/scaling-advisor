@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"time"
 
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/spf13/pflag"
 	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
@@ -42,17 +41,19 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	"github.com/gardener/scaling-advisor/common/objutil"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
+	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -486,6 +487,7 @@ func handlePut(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 		writeJsonResponse(w, r, obj)
 	}
 }
+
 func handleDelete(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		objName := GetObjectName(r, d)

@@ -7,9 +7,10 @@ package pricing
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/service"
-	"os"
 )
 
 var _ service.GetProviderInstancePricingAccessFunc = GetInstancePricingAccess

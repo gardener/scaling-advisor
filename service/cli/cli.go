@@ -3,6 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -11,8 +14,6 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/spf13/pflag"
-	"os"
-	"strings"
 )
 
 // Opts is a struct that encapsulates target fields for CLI options parsing.
@@ -71,6 +72,7 @@ func validateMainOpts(opts *Opts) error {
 	}
 	return errors.Join(errs...)
 }
+
 func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
 	flagSet := pflag.NewFlagSet(svcapi.ProgramName, pflag.ContinueOnError)

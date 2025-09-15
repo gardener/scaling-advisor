@@ -20,8 +20,7 @@ func ValidateScalingAdvisorConfiguration(config *configv1apha1.OperatorConfig) f
 	return allErrs
 }
 
-// validateClientConnectionConfiguration validates the client connection configuration.
-func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfig, fldPath *field.Path) field.ErrorList {
+func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfiguration, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
 	if config.Burst < 0 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("burst"), config.Burst, "burst must be non-negative"))
@@ -29,8 +28,7 @@ func validateClientConnectionConfiguration(config configv1apha1.ClientConnection
 	return allErrs
 }
 
-// validateLeaderElectionConfiguration validates the leader election configuration.
-func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfig, fldPath *field.Path) field.ErrorList {
+func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if !config.Enabled {
 		return allErrs

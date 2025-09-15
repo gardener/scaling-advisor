@@ -8,9 +8,10 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
+
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"golang.org/x/sync/errgroup"
-	"slices"
 )
 
 var _ svcapi.SimulationGroup = (*defaultSimulationGroup)(nil)
@@ -51,6 +52,7 @@ func CreateSimulationGroups(simulations []svcapi.Simulation) ([]svcapi.Simulatio
 func (g *defaultSimulationGroup) Name() string {
 	return g.name
 }
+
 func (g *defaultSimulationGroup) GetKey() svcapi.SimGroupKey {
 	return g.key
 }

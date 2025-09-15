@@ -8,6 +8,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path"
+
+	"github.com/gardener/scaling-advisor/service/cli"
+	"github.com/gardener/scaling-advisor/service/internal/scheduler"
+	"github.com/gardener/scaling-advisor/service/internal/service/generator"
+	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
+	"github.com/gardener/scaling-advisor/service/pricing"
+	"github.com/gardener/scaling-advisor/service/scorer"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -18,17 +28,9 @@ import (
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
-	"github.com/gardener/scaling-advisor/service/cli"
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
-	"github.com/gardener/scaling-advisor/service/internal/service/generator"
-	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
-	"github.com/gardener/scaling-advisor/service/pricing"
-	"github.com/gardener/scaling-advisor/service/scorer"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
-	"os"
-	"path"
 )
 
 var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)

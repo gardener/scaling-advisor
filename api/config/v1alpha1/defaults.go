@@ -11,6 +11,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/common/constants"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -20,7 +21,7 @@ const (
 )
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
-func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfig) {
+func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfiguration) {
 	if clientConnConfig.QPS == 0.0 {
 		clientConnConfig.QPS = 100.0
 	}
@@ -30,7 +31,7 @@ func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectio
 }
 
 // SetDefaults_LeaderElectionConfiguration sets defaults for the leader election of the scalingadvisor operator.
-func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectionConfig) {
+func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectionConfiguration) {
 	zero := metav1.Duration{}
 	if leaderElectionConfig.LeaseDuration == zero {
 		leaderElectionConfig.LeaseDuration = metav1.Duration{Duration: 15 * time.Second}
@@ -49,24 +50,31 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectio
 	}
 }
 
-// SetDefaults_ScalingAdvisorServerConfiguration sets defaults for ScalingAdvisorServerConfig.
-func SetDefaults_ScalingAdvisorServerConfiguration(serverConfig *ScalingAdvisorServerConfig) {
-	if strings.TrimSpace(serverConfig.HealthProbeBindAddress) == "" {
-		serverConfig.HealthProbeBindAddress = constants.DefaultOperatorHealthProbeBindAddress
+// SetDefaults_ScalingAdvisorServerConfiguration sets defaults for ScalingAdvisorServerConfiguration.
+func SetDefaults_ScalingAdvisorServerConfiguration(serverConfig *ScalingAdvisorServerConfiguration) {
+	if serverConfig.Port == 0 {
+		serverConfig.Port = constants.DefaultOperatorServerPort
 	}
-	if strings.TrimSpace(serverConfig.MetricsBindAddress) == "" {
-		serverConfig.MetricsBindAddress = constants.DefaultOperatorMetricsBindAddress
+	if serverConfig.GracefulShutdownTimeout.Duration == 0 {
+		serverConfig.GracefulShutdownTimeout = metav1.Duration{Duration: 5 * time.Second}
 	}
-	if serverConfig.ProfilingEnabled {
-		if strings.TrimSpace(serverConfig.ProfilingBindAddress) == "" {
-			serverConfig.ProfilingBindAddress = constants.DefaultOperatorProfilingBindAddress
-		}
+
+	if serverConfig.HealthProbes.Port == 0 {
+		serverConfig.HealthProbes.Port = constants.DefaultOperatorHealthProbePort
+	}
+
+	if serverConfig.Metrics.Port == 0 {
+		serverConfig.Metrics.Port = constants.DefaultOperatorMetricsPort
+	}
+
+	if serverConfig.Profiling.Port == 0 {
+		serverConfig.Profiling.Port = constants.DefaultOperatorProfilingPort
 	}
 }
 
-// SetDefaults_ScalingConstraintsControllerConfiguration sets defaults for the ScalingConstraintsControllerConfig.
-func SetDefaults_ScalingConstraintsControllerConfiguration(scalingConstraintsConfig *ScalingConstraintsControllerConfig) {
-	if scalingConstraintsConfig.ConcurrentSyncs <= 0 {
-		scalingConstraintsConfig.ConcurrentSyncs = defaultConcurrentSyncs
+// SetDefaults_ScalingConstraintsControllerConfiguration sets defaults for the ScalingConstraintsControllerConfiguration.
+func SetDefaults_ScalingConstraintsControllerConfiguration(scalingConstraintsConfig *ScalingConstraintsControllerConfiguration) {
+	if scalingConstraintsConfig.ConcurrentSyncs == nil {
+		scalingConstraintsConfig.ConcurrentSyncs = ptr.To(1)
 	}
 }

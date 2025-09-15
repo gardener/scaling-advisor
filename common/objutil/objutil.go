@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
@@ -25,7 +23,9 @@ import (
 	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )

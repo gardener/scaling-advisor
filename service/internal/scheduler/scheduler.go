@@ -7,6 +7,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"os"
+
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
@@ -18,7 +20,6 @@ import (
 	schedulerapiconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	schedulerapiconfigv1 "k8s.io/kubernetes/pkg/scheduler/apis/config/v1"
 	"k8s.io/kubernetes/pkg/scheduler/profile"
-	"os"
 )
 
 var _ svcapi.SchedulerLauncher = (*schedulerLauncher)(nil)

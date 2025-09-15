@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -33,8 +34,7 @@ type Service interface {
 	Stop(ctx context.Context) error
 }
 
-// ServerConfig is the common configuration for a server which can be used as standalone
-// or embedded within another process.
+// ServerConfig is the common configuration for a server.
 type ServerConfig struct {
 	// KubeConfigPath is the path to master kube-config.
 	KubeConfigPath string `json:"kubeConfigPath"`

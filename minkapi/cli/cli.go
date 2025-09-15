@@ -7,14 +7,15 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
-	"os"
-	"strings"
 )
 
 // Opts is a struct that encapsulates target fields for CLI options parsing.

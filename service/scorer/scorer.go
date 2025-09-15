@@ -6,11 +6,12 @@ package scorer
 
 import (
 	"fmt"
+	"math"
+	"math/rand/v2"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/service"
 	corev1 "k8s.io/api/core/v1"
-	"math"
-	"math/rand/v2"
 )
 
 // getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
@@ -67,7 +68,7 @@ type LeastCost struct {
 // resource requests.
 // Resource quantities of different resource types are reduced to a representation in terms of resource units
 // based on pre-configured weights.
-func (l LeastCost) Compute(args service.NodeScoreArgs) (score service.NodeScore, err error) {
+func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: least-cost node scoring failed for simulation %q: %v", service.ErrComputeNodeScore, args.ID, err)
@@ -132,7 +133,7 @@ type LeastWaste struct {
 // Pod C: 3 GB --> N3
 //
 // Waste = 4 - (1+2+3) = -2
-func (l LeastWaste) Compute(args service.NodeScoreArgs) (nodeScore service.NodeScore, err error) {
+func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.NodeScore, err error) {
 	var wastage = make(map[corev1.ResourceName]int64)
 	//start with allocatable of scaled candidate node
 	for resourceName, quantity := range args.ScaledAssignment.Node.Allocatable {

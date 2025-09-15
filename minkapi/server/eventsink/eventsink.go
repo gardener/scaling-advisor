@@ -7,9 +7,9 @@ package eventsink
 import (
 	"context"
 	"fmt"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"slices"
 
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/go-logr/logr"
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

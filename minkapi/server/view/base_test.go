@@ -8,17 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"os"
 	"slices"
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/common/testutil"
-
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"

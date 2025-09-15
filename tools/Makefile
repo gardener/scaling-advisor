@@ -49,7 +49,7 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./...
+	@$(REPO_HACK_DIR)/format.sh ./cmd ./pricing ./types .
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format

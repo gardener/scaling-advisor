@@ -6,14 +6,12 @@ package typeinfo
 
 import (
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"maps"
 	"slices"
 	"strings"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,7 +23,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 type KindName string

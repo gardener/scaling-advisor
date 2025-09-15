@@ -14,7 +14,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/tools/types/awsprice"
 
-	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	svcapi "github.com/gardener/scaling-advisor/api/service"
 )
 
 // ParseRegionPrices parses the raw pricing JSON for a given AWS region and OS,
