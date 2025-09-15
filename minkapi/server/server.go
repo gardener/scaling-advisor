@@ -399,6 +399,28 @@ func (k *InMemServer) handleAPIResources(apiResourceList metav1.APIResourceList)
 	}
 }
 
+func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
+	viewName := r.PathValue("name")
+	if viewName == "" {
+		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
+		return
+	}
+	log := logr.FromContextOrDiscard(r.Context())
+	_, err := k.GetSandboxView(log, viewName)
+	if err != nil {
+		handleInternalServerError(w, r, err)
+		return
+	}
+	log.Info("sandbox view created and sandbox view API Server routes registered", "viewName", viewName)
+	statusOK := &metav1.Status{
+		TypeMeta: metav1.TypeMeta{Kind: "Status"},
+		Status:   metav1.StatusSuccess,
+		Code:     http.StatusCreated,
+		Message:  fmt.Sprintf("sandbox view %q created and routes registered", viewName),
+	}
+	writeJsonResponse(w, r, statusOK)
+}
+
 func handleGet(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
