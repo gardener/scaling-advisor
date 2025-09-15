@@ -6,6 +6,7 @@ package store
 
 import (
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"math"
@@ -494,7 +495,7 @@ func parseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 func AsMeta(o any) (mo metav1.Object, err error) {
 	mo, err = meta.Accessor(o)
 	if err != nil {
-		err = apierrors.NewInternalError(fmt.Errorf("cannot access meta object for o of type %T", o))
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
 	}
 	return
 }

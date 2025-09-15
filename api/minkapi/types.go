@@ -121,6 +121,8 @@ type View interface {
 	PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
 	PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
 	ListMetaObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	// ListObjects lists objects in the store while matching the criteria and returns the matching objects as a runtime.Object which is actually a *<Kind>List. Ex: *PodList
+	// TODO: consider better name for this method.
 	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error

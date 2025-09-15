@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
@@ -270,4 +271,21 @@ func GenerateName(base string) string {
 		base = base[:m-len(suffix)]
 	}
 	return base + suffix
+}
+
+func Cast[T any](obj any) (t T, err error) {
+	t, ok := obj.(T)
+	if !ok {
+		err = fmt.Errorf("%w: obj has type %T, expected %T", commonerrors.ErrUnexpectedType, obj, TypeName[T]())
+	}
+	return
+}
+
+func TypeName[T any]() string {
+	var zero T
+	typ := reflect.TypeOf(zero)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	return typ.PkgPath() + "." + typ.Name()
 }
