@@ -10,12 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/spf13/pflag"
 	"io"
-	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/apimachinery/pkg/types"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -25,6 +20,12 @@ import (
 	rt "runtime"
 	"strconv"
 	"time"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/spf13/pflag"
+	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
@@ -409,12 +410,12 @@ func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Re
 		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
 		return
 	}
-	_, err := k.GetSandboxView(r.Context(), viewName)
+	log := logr.FromContextOrDiscard(r.Context())
+	_, err := k.GetSandboxView(log, viewName)
 	if err != nil {
 		handleInternalServerError(w, r, err)
 		return
 	}
-	log := logr.FromContextOrDiscard(r.Context())
 	log.Info("sandbox view created and sandbox view API Server routes registered", "viewName", viewName)
 	statusOK := &metav1.Status{
 		TypeMeta: metav1.TypeMeta{Kind: "Status"},
@@ -423,7 +424,6 @@ func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Re
 		Message:  fmt.Sprintf("sandbox view %q created and routes registered", viewName),
 	}
 	writeJsonResponse(w, r, statusOK)
-	return
 }
 
 func handleGet(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
