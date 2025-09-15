@@ -337,10 +337,10 @@ type InstancePricingAccess interface {
 type GetProviderInstancePricingAccessFunc func(provider commontypes.CloudProvider, instanceTypeInfoPath string) (InstancePricingAccess, error)
 
 type NodeScorer interface {
-	// Compute computes the node score given the NodeScoreArgs. On failure, it must return an error with the sentinel error api.ErrComputeNodeScore
-	Compute(args NodeScoreArgs) (NodeScore, error)
+	// Compute computes the node score given the NodeScorerArgs. On failure, it must return an error with the sentinel error api.ErrComputeNodeScore
+	Compute(args NodeScorerArgs) (NodeScore, error)
 }
-type NodeScoreArgs struct {
+type NodeScorerArgs struct {
 	// ID that must be given to the NodeScore produced by the NodeScorer
 	ID string
 	// Placement represents the placement information for the Node.
@@ -423,7 +423,7 @@ type SimRunResult struct {
 	Name string
 	// ScaledNode is the simulated scaled node.
 	ScaledNode *corev1.Node
-	NodeScoreArgs
+	NodeScorerArgs
 }
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.

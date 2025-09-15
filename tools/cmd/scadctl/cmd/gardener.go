@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -12,6 +13,7 @@ type ShootCoordinate struct {
 }
 
 var scenarioDir string
+
 var shootCoords ShootCoordinate
 
 // gardenerCmd represents the gardener sub-command for generating scaling scenario(s) for a gardener cluster.

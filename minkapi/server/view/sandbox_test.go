@@ -6,17 +6,19 @@ package view
 
 import (
 	"fmt"
+	"testing"
+
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"testing"
 )
 
 var (
@@ -293,6 +295,7 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 	}
 
 }
+
 func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
 	t.Helper()
 	err = loadTestNodes(t)

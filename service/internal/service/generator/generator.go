@@ -7,14 +7,16 @@ package generator
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
+	"time"
+
+	"github.com/gardener/scaling-advisor/service/internal/scheduler"
+
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"sync/atomic"
-	"time"
 )
 
 type Generator struct {
@@ -169,7 +171,7 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (svcapi.SimGroupScores, error) {
 	var nodeScores []svcapi.NodeScore
 	for _, sr := range groupResult.SimulationResults {
-		nodeScore, err := scorer.Compute(sr.NodeScoreArgs)
+		nodeScore, err := scorer.Compute(sr.NodeScorerArgs)
 		if err != nil {
 			return svcapi.SimGroupScores{}, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", svcapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
 		}
@@ -192,12 +194,13 @@ func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcap
 		WinnerNode:      winnerNode,
 	}, nil
 }
+
 func getScaledNodeOfWinner(results []svcapi.SimRunResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
 	var (
 		winnerNode *corev1.Node
 	)
 	for _, sr := range results {
-		if sr.NodeScoreArgs.ID == winnerNodeScore.ID {
+		if sr.NodeScorerArgs.ID == winnerNodeScore.ID {
 			winnerNode = sr.ScaledNode
 			break
 		}

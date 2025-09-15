@@ -4,9 +4,16 @@
 
 REPO_ROOT           := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
 REPO_HACK_DIR       := $(REPO_ROOT)/hack
-SUBMODULES          := api common minkapi service operator tools
 
 include $(REPO_HACK_DIR)/tools.mk
+
+# run-in-submodules iterates over all submodules and invokes the passed in make target.
+define run-in-submodules
+	@for dir in $$(find . -type f -name go.mod -exec dirname {} \; | sort); do \
+		echo "Running 'make $(1)' in $$dir"; \
+		$(MAKE) -C $$dir $(1) || exit 1; \
+	done
+endef
 
 .PHONY: add-license-headers
 add-license-headers: $(GO_ADD_LICENSE)
@@ -14,30 +21,20 @@ add-license-headers: $(GO_ADD_LICENSE)
 
 .PHONY: tidy
 tidy:
-	@for dir in $(SUBMODULES); do \
-	  $(MAKE) -C $$dir tidy; \
-	done
+	$(call run-in-submodules,tidy)
 
 .PHONY: build
 build:
-	@for dir in $(SUBMODULES); do \
-	  $(MAKE) -C $$dir build; \
-	done
+	$(call run-in-submodules,build)
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@for dir in $(SUBMODULES); do \
-	  $(MAKE) -C $$dir format; \
-	done
+	$(call run-in-submodules,format)
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format
-	@for dir in $(SUBMODULES); do \
-	  $(MAKE) -C $$dir check; \
-	done
+	$(call run-in-submodules,check)
 
 .PHONY: test-unit
 test-unit:
-	@for dir in $(SUBMODULES); do \
-	  $(MAKE) -C $$dir test-unit; \
-	done
+	$(call run-in-submodules,test-unit)

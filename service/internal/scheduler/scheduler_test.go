@@ -7,6 +7,10 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"os"
+	"testing"
+	"time"
+
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
@@ -17,9 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
-	"os"
-	"testing"
-	"time"
 )
 
 var state suiteState

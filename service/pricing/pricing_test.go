@@ -5,8 +5,9 @@
 package pricing_test
 
 import (
-	"github.com/gardener/scaling-advisor/service/pricing/testutil"
 	"testing"
+
+	"github.com/gardener/scaling-advisor/service/pricing/testutil"
 )
 
 func TestGetInstancePricing(t *testing.T) {

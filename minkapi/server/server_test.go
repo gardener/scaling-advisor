@@ -7,21 +7,21 @@ package server
 import (
 	"context"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/testutil"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/watch"
 	"os"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 )
 
 var state suiteState
@@ -86,6 +86,7 @@ func (h *eventsHolder) Add(e watch.Event) {
 	defer h.mu.Unlock()
 	h.events = append(h.events, e)
 }
+
 func (h *eventsHolder) Events() []watch.Event {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -159,6 +160,7 @@ outer:
 	}
 	t.Log("listObjects done")
 }
+
 func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	t.Helper()
 	if got.Name != want.Name {
@@ -198,6 +200,7 @@ func initSuite(ctx context.Context) error {
 
 	return nil
 }
+
 func shutdownSuite() {
 	state.app.Cancel()
 	_ = ShutdownApp(&state.app)

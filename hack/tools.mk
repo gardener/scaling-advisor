@@ -8,12 +8,14 @@ CONTROLLER_GEN          := $(TOOLS_BIN_DIR)/controller-gen
 GOLANGCI_LINT           := $(TOOLS_BIN_DIR)/golangci-lint
 GOIMPORTS_REVISER       := $(TOOLS_BIN_DIR)/goimports-reviser
 GO_ADD_LICENSE          := $(TOOLS_BIN_DIR)/addlicense
+CRD_REF_DOCS            := $(TOOLS_BIN_DIR)/crd-ref-docs
 
 # default tool versions
 GOLANGCI_LINT_VERSION     ?= v2.1.1
 GOIMPORTS_REVISER_VERSION ?= v3.9.1
 GO_ADD_LICENSE_VERSION    ?= v1.1.1
 CONTROLLER_GEN_VERSION    ?= $(call version_gomod,sigs.k8s.io/controller-tools)
+CRD_REF_DOCS_VERSION      ?= v0.1.0
 
 export PATH := $(abspath $(TOOLS_BIN_DIR)):$(PATH)
 
@@ -37,3 +39,6 @@ $(GOIMPORTS_REVISER):
 
 $(GO_ADD_LICENSE):
 	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install github.com/google/addlicense@$(GO_ADD_LICENSE_VERSION)
+
+$(CRD_REF_DOCS):
+	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install github.com/elastic/crd-ref-docs@$(CRD_REF_DOCS_VERSION)

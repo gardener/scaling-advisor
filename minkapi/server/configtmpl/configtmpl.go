@@ -8,9 +8,10 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"os"
 	"text/template"
+
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 )
 
 //go:embed templates/*.yaml
