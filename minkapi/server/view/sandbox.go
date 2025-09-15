@@ -10,6 +10,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
@@ -24,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 	"sync"
 	"sync/atomic"
@@ -238,6 +240,25 @@ func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionK
 		return v.delegateView.WatchObjects(ctx, gvk, startVersion, namespace, labelSelector, eventCallback)
 	})
 	return eg.Wait()
+}
+
+func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector) (eventWatcher watch.Interface, err error) {
+	log := logr.FromContextOrDiscard(ctx)
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	w1 := s.GetWatcher(ctx, startVersion, namespace, labelSelector)
+	log.V(4).Info("got watcher for sandboxView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector)
+
+	w2, err := v.delegateView.GetWatcher(ctx, gvk, startVersion, namespace, labelSelector)
+	if err != nil {
+		return
+	}
+	log.V(4).Info("got watcher for delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector, "delegateViewName", v.delegateView.GetName())
+	eventWatcher = watchutil.CombineTwoWatchers(ctx, w1, w2)
+	log.Info("returning combined watcher for sandboxView+delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector, "delegateViewName", v.delegateView.GetName())
+	return
 }
 
 func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {

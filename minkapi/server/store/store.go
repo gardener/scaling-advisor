@@ -366,6 +366,30 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 	}
 }
 
+func (s *InMemResourceStore) GetWatcher(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector) watch.Interface {
+	log := logr.FromContextOrDiscard(ctx)
+	out := make(chan watch.Event)
+	proxyWatcher := watch.NewProxyWatcher(out)
+	// Start the callback-based watcher in its own goroutine
+	go func() {
+		defer close(out)
+		err := s.Watch(ctx, startVersion, namespace, labelSelector, func(e watch.Event) error {
+			select {
+			case out <- e:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-proxyWatcher.StopChan():
+				return context.Canceled
+			}
+		})
+		if err != nil {
+			log.Error(err, "error in InMemResourceStore.Watch", "gvk", s.args.ObjectGVK, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector.String())
+		}
+	}()
+	return proxyWatcher
+}
+
 func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 	return s.versionCounter.Load()
 }
@@ -454,7 +478,6 @@ func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schem
 func shouldSkipObject(log logr.Logger, obj runtime.Object, startVersion int64, namespace string, labelSelector labels.Selector) (skip bool, err error) {
 	o, err := meta.Accessor(obj)
 	if err != nil {
-		log.Error(err, "cannot access object metadata for obj", "obj", obj)
 		err = fmt.Errorf("cannot access object metadata for obj type %T: %w", obj, err)
 		return
 	}

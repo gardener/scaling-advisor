@@ -12,6 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/clientutil"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/watch"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -179,6 +180,14 @@ func (v *baseView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind
 		return err
 	}
 	return s.Watch(ctx, startVersion, namespace, labelSelector, eventCallback)
+}
+
+func (v *baseView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector) (watch.Interface, error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetWatcher(ctx, startVersion, namespace, labelSelector), nil
 }
 
 func (v *baseView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {
