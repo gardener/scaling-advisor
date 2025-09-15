@@ -48,9 +48,9 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 		GracefulShutdownTimeout: &saCfg.Server.GracefulShutdownTimeout.Duration,
 		Logger:                  log,
 		Metrics: ctrlmetricsserver.Options{
-			BindAddress: net.JoinHostPort(saCfg.Metrics.Host, strconv.Itoa(saCfg.Metrics.Port)),
+			BindAddress: net.JoinHostPort(saCfg.Server.Metrics.Host, strconv.Itoa(saCfg.Server.Metrics.Port)),
 		},
-		LeaderElection:                *saCfg.LeaderElection.LeaderElect,
+		LeaderElection:                saCfg.LeaderElection.Enabled,
 		LeaderElectionID:              saCfg.LeaderElection.ResourceName,
 		LeaderElectionResourceLock:    saCfg.LeaderElection.ResourceLock,
 		LeaderElectionReleaseOnCancel: true,
@@ -62,7 +62,7 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 		},
 	}
 	if saCfg.Server.ProfilingEnabled {
-		opts.PprofBindAddress = net.JoinHostPort(saCfg.Profiling.Host, strconv.Itoa(saCfg.Profiling.Port))
+		opts.PprofBindAddress = net.JoinHostPort(saCfg.Server.Profiling.Host, strconv.Itoa(saCfg.Server.Profiling.Port))
 	}
 	return opts, nil
 }

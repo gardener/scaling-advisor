@@ -7,6 +7,7 @@ package types
 import (
 	"context"
 	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -24,7 +25,7 @@ type Service interface {
 	Stop(ctx context.Context) error
 }
 
-// ServerConfig is the configuration for services that are servers.
+// ServerConfig is the common configuration for a server.
 type ServerConfig struct {
 	HostPort `json:",inline"`
 	// KubeConfigPath is the path to master kube-config.

@@ -8,37 +8,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/clientutil"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
-
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
-
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
@@ -303,6 +301,7 @@ func updateObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object
 	changeCount.Add(1)
 	return nil
 }
+
 func updatePodNodeBinding(v minkapi.View, pod *corev1.Pod, binding corev1.Binding) (*corev1.Pod, error) {
 	pod.Spec.NodeName = binding.Target.Name
 	podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
@@ -359,6 +358,7 @@ func patchObject(v minkapi.View, gvk schema.GroupVersionKind, objName cache.Obje
 	patchedObj = obj
 	return
 }
+
 func patchObjectStatus(v minkapi.View, gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error) {
 	obj, err := v.GetObject(gvk, objName)
 	if err != nil {
@@ -419,6 +419,7 @@ func listNodes(v minkapi.View, matchingNodeNames []string) (nodes []corev1.Node,
 	}
 	return asNodes(objs)
 }
+
 func asNodes(metaObjects []metav1.Object) (nodes []corev1.Node, maxVersion int64, err error) {
 	nodes = make([]corev1.Node, 0, len(metaObjects))
 	var version int64
@@ -510,6 +511,7 @@ func createInMemStore(log logr.Logger, d typeinfo.Descriptor, versionCounter *at
 		WatchConfig:    args.WatchConfig,
 	})
 }
+
 func closeStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) error {
 	var errs []error
 	for _, s := range stores {

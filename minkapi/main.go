@@ -6,10 +6,12 @@ package main
 
 import (
 	"context"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server"
-	"github.com/go-logr/logr"
 	"os"
+
+	"github.com/gardener/scaling-advisor/minkapi/server"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/go-logr/logr"
 )
 
 func main() {

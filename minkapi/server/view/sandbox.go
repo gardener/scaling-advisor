@@ -7,13 +7,17 @@ package view
 import (
 	"context"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/watchutil"
+	"sync"
+	"sync/atomic"
+
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
@@ -27,8 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
-	"sync"
-	"sync/atomic"
 )
 
 var _ minkapi.View = (*sandboxView)(nil)
@@ -130,6 +132,7 @@ func (v *sandboxView) GetObject(gvk schema.GroupVersionKind, objName cache.Objec
 	obj, err = v.delegateView.GetObject(gvk, objName)
 	return
 }
+
 func (v *sandboxView) getSandboxObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
@@ -212,6 +215,7 @@ func (v *sandboxView) ListMetaObjects(gvk schema.GroupVersionKind, criteria mink
 	items = combinePrimarySecondary(sandboxItems, delegateItems)
 	return
 }
+
 func (v *sandboxView) ListObjects(gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) (listObj runtime.Object, err error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {

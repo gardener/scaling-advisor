@@ -7,6 +7,10 @@ package simulation
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+	"time"
+
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
@@ -20,9 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
-	"maps"
-	"slices"
-	"time"
 )
 
 type defaultSimulation struct {
@@ -78,6 +79,7 @@ func getUnscheduledPodsMap(v mkapi.View) (unscheduled map[types.NamespacedName]s
 	}
 	return
 }
+
 func getUnscheduledPods(v mkapi.View) (unscheduled []svcapi.PodResourceInfo, err error) {
 	pods, err := v.ListPods(mkapi.MatchAllCriteria)
 	if err != nil {
@@ -99,6 +101,7 @@ func IsUnscheduledPod(pod *corev1.Pod) bool {
 func (s *defaultSimulation) NodePool() *sacorev1alpha1.NodePool {
 	return s.args.NodePool
 }
+
 func (s *defaultSimulation) NodeTemplate() *sacorev1alpha1.NodeTemplate {
 	return s.nodeTemplate
 }
@@ -106,6 +109,7 @@ func (s *defaultSimulation) NodeTemplate() *sacorev1alpha1.NodeTemplate {
 func (s *defaultSimulation) Name() string {
 	return s.name
 }
+
 func (s *defaultSimulation) ActivityStatus() svcapi.ActivityStatus {
 	return s.state.status
 }
@@ -149,7 +153,7 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	s.state.result = svcapi.SimRunResult{
 		Name:       s.name,
 		ScaledNode: s.state.simNode,
-		NodeScoreArgs: svcapi.NodeScoreArgs{
+		NodeScorerArgs: svcapi.NodeScorerArgs{
 			ID:               fmt.Sprintf("%s-%d", s.name, s.args.GroupRunPassCounter.Load()),
 			Placement:        s.getScaledNodePlacementInfo(),
 			ScaledAssignment: s.getScaledNodeAssignment(),
