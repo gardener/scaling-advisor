@@ -20,6 +20,7 @@ var (
 	ErrLoadConfigTemplate    = errors.New("cannot load config template")
 	ErrExecuteConfigTemplate = errors.New("cannot execute config template")
 	ErrStoreNotFound         = errors.New("store not found")
+	ErrCreateWatcher         = errors.New("cannot create watcher")
 	ErrCreateObject          = errors.New("cannot create object")
 	ErrDeleteObject          = errors.New("cannot delete object")
 	ErrListObjects           = errors.New("cannot list objects")

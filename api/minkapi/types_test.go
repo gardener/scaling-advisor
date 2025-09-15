@@ -17,7 +17,7 @@ func TestMatchCriteria(t *testing.T) {
 	testPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bingo",
-			Namespace: "default",
+			Namespace: metav1.NamespaceDefault,
 			Labels:    map[string]string{"k1": "v1", "k2": "v2"},
 		},
 	}
@@ -29,7 +29,7 @@ func TestMatchCriteria(t *testing.T) {
 		"not matching name": {criteria: MatchCriteria{Names: sets.New("abcd")}, matches: false},
 		"matching name":     {criteria: MatchCriteria{Names: sets.New("bingo")}, matches: true},
 		"matching name and namespace": {
-			criteria: MatchCriteria{Names: sets.New("bingo"), Namespace: "default"},
+			criteria: MatchCriteria{Names: sets.New("bingo"), Namespace: metav1.NamespaceDefault},
 			matches:  true,
 		},
 		"matching name but different namespace": {
@@ -37,11 +37,11 @@ func TestMatchCriteria(t *testing.T) {
 			matches:  false,
 		},
 		"matching namespace and label": {
-			criteria: MatchCriteria{Namespace: "default", LabelSelector: labels.SelectorFromSet(map[string]string{"k1": "v1"})},
+			criteria: MatchCriteria{Namespace: metav1.NamespaceDefault, LabelSelector: labels.SelectorFromSet(map[string]string{"k1": "v1"})},
 			matches:  true,
 		},
 		"matching namespace but not label": {
-			criteria: MatchCriteria{Namespace: "default", LabelSelector: labels.SelectorFromSet(map[string]string{"k1": "v2"})},
+			criteria: MatchCriteria{Namespace: metav1.NamespaceDefault, LabelSelector: labels.SelectorFromSet(map[string]string{"k1": "v2"})},
 			matches:  false,
 		},
 	}

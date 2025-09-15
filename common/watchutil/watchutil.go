@@ -8,6 +8,7 @@ import (
 // CombineTwoWatchers merges exactly two watchers into one ProxyWatcher.
 // The returned watcher will close when both inputs close, when ctx is canceled,
 // or when Stop() is called on the returned watcher.
+// TODO: add unit test for me
 func CombineTwoWatchers(ctx context.Context, w1, w2 watch.Interface) watch.Interface {
 	out := make(chan watch.Event)
 	proxy := watch.NewProxyWatcher(out)

@@ -5,6 +5,7 @@
 package scorer
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 
 	"github.com/gardener/scaling-advisor/service/pricing/testutil"
@@ -34,7 +35,7 @@ func CreateMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 		UID: "pod-12345",
 		NamespacedName: types.NamespacedName{
 			Name:      name,
-			Namespace: "default",
+			Namespace: metav1.NamespaceDefault,
 		},
 		AggregatedRequests: map[corev1.ResourceName]int64{
 			corev1.ResourceCPU:    cpu,

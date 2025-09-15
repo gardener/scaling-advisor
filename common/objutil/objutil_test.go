@@ -6,6 +6,10 @@ package objutil
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"reflect"
 	"testing"
 
@@ -15,10 +19,6 @@ import (
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 )
 
 func TestResourceListToInt64MapAndBack(t *testing.T) {
@@ -79,7 +79,7 @@ func TestSetMetaObjectGVK(t *testing.T) {
 	testPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bingo",
-			Namespace: "default",
+			Namespace: metav1.NamespaceDefault,
 		},
 	}
 
@@ -125,7 +125,7 @@ func TestPatchPodStatus(t *testing.T) {
 	testPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bingo",
-			Namespace: "default",
+			Namespace: metav1.NamespaceDefault,
 		},
 	}
 	var testPodPatchStatus = `{
@@ -191,7 +191,7 @@ func TestPatchPodStatus(t *testing.T) {
 			pod := testPod.DeepCopy()
 			obj := metav1.Object(pod)
 
-			objectName := cache.NewObjectName("default", tc.key)
+			objectName := cache.NewObjectName(metav1.NamespaceDefault, tc.key)
 			if tc.passNilObj {
 				err = PatchObjectStatus(nil, objectName, []byte(tc.patch))
 			} else {
@@ -214,9 +214,10 @@ func TestPatchObjectUsingEvent(t *testing.T) {
 	testEvent := eventsv1.Event{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "a-bingo.aaabbb",
-			Namespace: "default",
+			Namespace: metav1.NamespaceDefault,
 		},
 	}
+
 	var patchEventSeries = `
 {
   "series": {

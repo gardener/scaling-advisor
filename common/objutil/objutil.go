@@ -237,6 +237,25 @@ func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) 
 	return result, nil
 }
 
+func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
+	resourceVersion, err = ParseResourceVersion(obj.GetResourceVersion())
+	if err != nil {
+		err = fmt.Errorf("cannot parse resource version %q for object %q in ns %q: %w", obj.GetResourceVersion(), obj.GetName(), obj.GetNamespace(), err)
+	}
+	return
+}
+func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
+	if rvStr == "" {
+		resourceVersion = 0
+		return
+	}
+	resourceVersion, err = strconv.ParseInt(rvStr, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("cannot parse resource version %q: %w", rvStr, err)
+	}
+	return
+}
+
 func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 	var version int64
 	for _, o := range objs {

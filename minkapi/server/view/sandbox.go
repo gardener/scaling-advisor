@@ -246,23 +246,26 @@ func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionK
 	return eg.Wait()
 }
 
-func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector) (eventWatcher watch.Interface, err error) {
+func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
-		return
+		return nil, err
 	}
-	w1 := s.GetWatcher(ctx, startVersion, namespace, labelSelector)
-	log.V(4).Info("got watcher for sandboxView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector)
-
-	w2, err := v.delegateView.GetWatcher(ctx, gvk, startVersion, namespace, labelSelector)
+	w1, err := s.GetWatcher(ctx, namespace, opts)
 	if err != nil {
-		return
+		return nil, err
 	}
-	log.V(4).Info("got watcher for delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector, "delegateViewName", v.delegateView.GetName())
-	eventWatcher = watchutil.CombineTwoWatchers(ctx, w1, w2)
-	log.Info("returning combined watcher for sandboxView+delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector, "delegateViewName", v.delegateView.GetName())
-	return
+	log.V(4).Info("got watcher for sandboxView objects", "gvk", gvk, "namespace", namespace, "opts", opts)
+
+	w2, err := v.delegateView.GetWatcher(ctx, gvk, namespace, opts)
+	if err != nil {
+		return nil, err
+	}
+	log.V(4).Info("got watcher for delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
+	eventWatcher := watchutil.CombineTwoWatchers(ctx, w1, w2)
+	log.Info("returning combined watcher for sandboxView+delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
+	return eventWatcher, nil
 }
 
 func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error {

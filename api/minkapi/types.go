@@ -81,8 +81,9 @@ type ResourceStore interface {
 	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 
-	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from startVersion and belonging to the given namespace, then use the given labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
-	GetWatcher(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector) watch.Interface
+	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
+	// options.FieldSelector is currently not supported.
+	GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (watch.Interface, error)
 
 	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
 	GetVersionCounter() *atomic.Int64
@@ -129,7 +130,7 @@ type View interface {
 	// TODO: consider better name for this method.
 	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
-	GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector) (watch.Interface, error)
+	GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error)
 	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)

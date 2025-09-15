@@ -51,17 +51,12 @@ func getObjectList[T metav1.ListInterface](ctx context.Context, view minkapi.Vie
 	}
 	return objutil.Cast[T](listObj)
 }
-func getWatcher[T metav1.ListInterface](ctx context.Context, view minkapi.View, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
+func getWatcher(ctx context.Context, view minkapi.View, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
 	err = checkLogListOptions(ctx, opts)
 	if err != nil {
 		return
 	}
-	c, err := asMatchCriteria(namespace, opts)
-	if err != nil {
-		return
-	}
-	view.WatchObjects()
-
+	return view.GetWatcher(ctx, gvk, namespace, opts)
 }
 
 func checkLogListOptions(ctx context.Context, opts metav1.ListOptions) error {
