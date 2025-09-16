@@ -6,7 +6,6 @@ package inmclient
 
 import (
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	discovery "k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	clientadmissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
@@ -74,12 +73,6 @@ type inMemClient struct {
 	view mkapi.View
 }
 
-type resourceAccessImpl struct {
-	view      mkapi.View
-	gvk       schema.GroupVersionKind
-	namespace string
-}
-
 // AppsV1 retrieves the AppsV1Client
 func (c *inMemClient) AppsV1() clientappsv1.AppsV1Interface {
 	return &appsV1Impl{c.view}
@@ -87,7 +80,7 @@ func (c *inMemClient) AppsV1() clientappsv1.AppsV1Interface {
 
 // CoreV1 retrieves the CoreV1Client
 func (c *inMemClient) CoreV1() clientcorev1.CoreV1Interface {
-	panic("todo")
+	return &coreV1Impl{c.view}
 }
 
 // Discovery retrieves the DiscoveryClient

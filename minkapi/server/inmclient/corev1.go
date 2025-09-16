@@ -1,99 +1,97 @@
 package inmclient
 
 import (
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
+	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 )
 
 var (
-	_ corev1.CoreV1Interface = (*coreV1Impl)(nil)
+	_ clientcorev1.CoreV1Interface = (*coreV1Impl)(nil)
 )
 
 type coreV1Impl struct {
 	view mkapi.View
 }
 
-func (c coreV1Impl) RESTClient() rest.Interface {
-	panic("implement RESTClient")
+func (c *coreV1Impl) RESTClient() rest.Interface {
+	panic(commonerrors.ErrUnimplemented)
+}
+func (c *coreV1Impl) ComponentStatuses() clientcorev1.ComponentStatusInterface {
+	panic(commonerrors.ErrUnimplemented)
 }
 
-func (c coreV1Impl) ComponentStatuses() corev1.ComponentStatusInterface {
+func (c *coreV1Impl) ConfigMaps(namespace string) clientcorev1.ConfigMapInterface {
+	return access.NewConfigMapAccess(c.view, namespace)
+}
+
+func (c *coreV1Impl) Endpoints(namespace string) clientcorev1.EndpointsInterface {
+	panic(commonerrors.ErrUnimplemented)
+}
+
+func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) ConfigMaps(namespace string) corev1.ConfigMapInterface {
+func (c *coreV1Impl) LimitRanges(namespace string) clientcorev1.LimitRangeInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) Endpoints(namespace string) corev1.EndpointsInterface {
+func (c *coreV1Impl) Namespaces() clientcorev1.NamespaceInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) Events(namespace string) corev1.EventInterface {
+func (c *coreV1Impl) Nodes() clientcorev1.NodeInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) LimitRanges(namespace string) corev1.LimitRangeInterface {
+func (c *coreV1Impl) PersistentVolumes() clientcorev1.PersistentVolumeInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) Namespaces() corev1.NamespaceInterface {
+func (c *coreV1Impl) PersistentVolumeClaims(namespace string) clientcorev1.PersistentVolumeClaimInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) Nodes() corev1.NodeInterface {
+func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) PersistentVolumes() corev1.PersistentVolumeInterface {
+func (c *coreV1Impl) PodTemplates(namespace string) clientcorev1.PodTemplateInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) PersistentVolumeClaims(namespace string) corev1.PersistentVolumeClaimInterface {
+func (c *coreV1Impl) ReplicationControllers(namespace string) clientcorev1.ReplicationControllerInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) Pods(namespace string) corev1.PodInterface {
+func (c *coreV1Impl) ResourceQuotas(namespace string) clientcorev1.ResourceQuotaInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) PodTemplates(namespace string) corev1.PodTemplateInterface {
+func (c *coreV1Impl) Secrets(namespace string) clientcorev1.SecretInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) ReplicationControllers(namespace string) corev1.ReplicationControllerInterface {
+func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c coreV1Impl) ResourceQuotas(namespace string) corev1.ResourceQuotaInterface {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c coreV1Impl) Secrets(namespace string) corev1.SecretInterface {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c coreV1Impl) Services(namespace string) corev1.ServiceInterface {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c coreV1Impl) ServiceAccounts(namespace string) corev1.ServiceAccountInterface {
+func (c *coreV1Impl) ServiceAccounts(namespace string) clientcorev1.ServiceAccountInterface {
 	//TODO implement me
 	panic("implement me")
 }

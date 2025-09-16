@@ -668,7 +668,7 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 			return
 		}
 		podName := GetObjectName(r, d)
-		//obj, err := view.GetObject(d.GVK, objName)
+		//obj, err := view.getObject(d.GVK, objName)
 		//if err != nil {
 		//	handleError(w, r, err)
 		//	return
