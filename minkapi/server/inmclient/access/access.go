@@ -24,53 +24,68 @@ type BasicResourceAccess[T metav1.Object, L metav1.ListInterface] struct {
 	ResourceListPtr L
 }
 
-type ResourceWithStatusAccess[T metav1.Object, L metav1.ListInterface, S metav1.Object] struct {
+type StatusResourceAccess[T metav1.Object, L metav1.ListInterface, S metav1.Object] struct {
 	BasicResourceAccess[T, L]
 	StatusResourcePtr S
 }
 
-func (r *BasicResourceAccess[T, L]) createObject(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
+func (a *BasicResourceAccess[T, L]) createObject(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
 	if opts.DryRun != nil {
 		err = fmt.Errorf("%w: dry run not implemented for %T.Create", commonerrors.ErrUnimplemented, obj)
 		return
 	}
-	err = r.view.CreateObject(r.gvk, obj)
+	err = a.view.CreateObject(a.gvk, obj)
 	if err != nil {
 		return
 	}
-	t, err = r.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	return
+}
+func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
+	if opts.DryRun != nil {
+		err = fmt.Errorf("%w: dry run not implemented for %T.Create", commonerrors.ErrUnimplemented, obj)
+		return
+	}
+	if obj.GetNamespace() != a.Namespace {
+		obj.SetNamespace(a.Namespace)
+	}
+	err = a.view.CreateObject(a.gvk, obj)
+	if err != nil {
+		return
+	}
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
 	return
 }
 
-func (r *BasicResourceAccess[T, L]) updateObject(ctx context.Context, opts metav1.UpdateOptions, obj T) (t T, err error) {
+func (a *BasicResourceAccess[T, L]) updateObject(ctx context.Context, opts metav1.UpdateOptions, obj T) (t T, err error) {
 	if opts.DryRun != nil {
 		err = fmt.Errorf("%w: dry run not implemented for %T.Update", commonerrors.ErrUnimplemented, obj)
 		return
 	}
-	err = r.view.UpdateObject(r.gvk, obj)
+	err = a.view.UpdateObject(a.gvk, obj)
 	if err != nil {
 		return
 	}
-	t, err = r.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
 	return
 }
 
-func (r *BasicResourceAccess[T, L]) deleteObject(_ context.Context, opts metav1.DeleteOptions, namespace, name string) error {
+func (a *BasicResourceAccess[T, L]) deleteObject(_ context.Context, opts metav1.DeleteOptions, namespace, name string) error {
 	if opts.DryRun != nil {
-		return fmt.Errorf("%w: dry run not implemented for Delete of %q", commonerrors.ErrUnimplemented, r.gvk.Kind)
+		return fmt.Errorf("%w: dry run not implemented for Delete of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 	}
-	return r.view.DeleteObject(r.gvk, cache.NewObjectName(namespace, name))
+	return a.view.DeleteObject(a.gvk, cache.NewObjectName(namespace, name))
 }
 
-func (r *BasicResourceAccess[T, L]) deleteObjectCollection(ctx context.Context, namespace string, delOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+func (a *BasicResourceAccess[T, L]) deleteObjectCollection(ctx context.Context, namespace string, delOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	if delOpts.DryRun != nil {
-		return fmt.Errorf("%w: dry run not implemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, r.gvk.Kind)
+		return fmt.Errorf("%w: dry run not implemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 	}
 	if delOpts.PropagationPolicy != nil {
-		return fmt.Errorf("%w: propagationPolicy is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, r.gvk.Kind)
+		return fmt.Errorf("%w: propagationPolicy is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 	}
 	if delOpts.PropagationPolicy != nil {
-		return fmt.Errorf("%w: gracePeriodSeconds is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, r.gvk.Kind)
+		return fmt.Errorf("%w: gracePeriodSeconds is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 	}
 	err := checkLogListOptions(ctx, listOpts)
 	if err != nil {
@@ -80,19 +95,19 @@ func (r *BasicResourceAccess[T, L]) deleteObjectCollection(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return r.view.DeleteObjects(r.gvk, c)
+	return a.view.DeleteObjects(a.gvk, c)
 }
 
-func (r *BasicResourceAccess[T, L]) getObject(_ context.Context, namespace, name string) (t T, err error) {
+func (a *BasicResourceAccess[T, L]) getObject(_ context.Context, namespace, name string) (t T, err error) {
 	objName := cache.NewObjectName(namespace, name)
-	obj, err := r.view.GetObject(r.gvk, objName)
+	obj, err := a.view.GetObject(a.gvk, objName)
 	if err != nil {
 		return
 	}
 	return objutil.Cast[T](obj)
 }
 
-func (r *BasicResourceAccess[T, L]) getObjectList(ctx context.Context, namespace string, opts metav1.ListOptions) (l L, err error) {
+func (a *BasicResourceAccess[T, L]) getObjectList(ctx context.Context, namespace string, opts metav1.ListOptions) (l L, err error) {
 	err = checkLogListOptions(ctx, opts)
 	if err != nil {
 		return
@@ -101,25 +116,25 @@ func (r *BasicResourceAccess[T, L]) getObjectList(ctx context.Context, namespace
 	if err != nil {
 		return
 	}
-	listObj, err := r.view.ListObjects(r.gvk, c)
+	listObj, err := a.view.ListObjects(a.gvk, c)
 	if err != nil {
 		return
 	}
 	return objutil.Cast[L](listObj)
 }
-func (r *BasicResourceAccess[T, L]) getWatcher(ctx context.Context, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
+func (a *BasicResourceAccess[T, L]) getWatcher(ctx context.Context, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
 	err = checkLogListOptions(ctx, opts)
 	if err != nil {
 		return
 	}
-	return r.view.GetWatcher(ctx, r.gvk, namespace, opts)
+	return a.view.GetWatcher(ctx, a.gvk, namespace, opts)
 }
-func (r *BasicResourceAccess[T, L]) patchObject(_ context.Context, name string, pt types.PatchType, patchData []byte, opts metav1.PatchOptions) (t T, err error) {
+func (a *BasicResourceAccess[T, L]) patchObject(_ context.Context, name string, pt types.PatchType, patchData []byte, opts metav1.PatchOptions) (t T, err error) {
 	if opts.DryRun != nil {
-		err = fmt.Errorf("%w: dry run not implemented for Patch of %q", commonerrors.ErrUnimplemented, r.gvk.Kind)
+		err = fmt.Errorf("%w: dry run not implemented for Patch of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 		return
 	}
-	obj, err := r.view.PatchObject(r.gvk, cache.NewObjectName(r.Namespace, name), pt, patchData)
+	obj, err := a.view.PatchObject(a.gvk, cache.NewObjectName(a.Namespace, name), pt, patchData)
 	if err != nil {
 		return
 	}

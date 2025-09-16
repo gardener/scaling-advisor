@@ -32,8 +32,7 @@ func (c *coreV1Impl) Endpoints(namespace string) clientcorev1.EndpointsInterface
 }
 
 func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewEventAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) LimitRanges(namespace string) clientcorev1.LimitRangeInterface {
