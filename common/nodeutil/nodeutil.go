@@ -6,14 +6,16 @@ package nodeutil
 
 import (
 	"fmt"
+	"maps"
+	"time"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"maps"
-	"time"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func GetInstanceType(node *corev1.Node) string {
@@ -74,4 +76,28 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels[corev1.LabelHostname] = nodeName
 
 	return nodeLabels
+}
+
+func AsNodeInfo(node corev1.Node, nodeAllocatable map[string]int32) svcapi.NodeInfo {
+	var delTS time.Time
+	if node.DeletionTimestamp != nil {
+		delTS = node.DeletionTimestamp.Time
+	}
+	return svcapi.NodeInfo{
+		ResourceMeta: svcapi.ResourceMeta{
+			UID:               node.UID,
+			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
+			Labels:            node.Labels,
+			Annotations:       node.Annotations,
+			DeletionTimestamp: delTS, // FIXME nil
+			OwnerReferences:   node.OwnerReferences,
+		},
+		InstanceType:            node.Labels[corev1.LabelInstanceType], // TODO check
+		Unschedulable:           node.Spec.Unschedulable,
+		Taints:                  node.Spec.Taints,
+		Capacity:                objutil.ResourceListToInt64Map(node.Status.Capacity),
+		Allocatable:             objutil.ResourceListToInt64Map(node.Status.Allocatable),
+		Conditions:              node.Status.Conditions,
+		CSIDriverVolumeMaximums: nodeAllocatable,
+	}
 }

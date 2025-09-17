@@ -8,12 +8,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
+
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
@@ -107,6 +108,14 @@ func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.Resourc
 	result := make(corev1.ResourceList, len(intMap))
 	for resourceName, intValue := range intMap {
 		result[resourceName] = *resource.NewQuantity(intValue, resource.DecimalSI)
+	}
+	return result
+}
+
+func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
+	result := make(corev1.ResourceList, len(stringMap))
+	for resourceName, stringValue := range stringMap {
+		result[corev1.ResourceName(resourceName)] = resource.MustParse(stringValue.(string))
 	}
 	return result
 }
