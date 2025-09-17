@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -463,4 +464,61 @@ func buildAPIGroupList() metav1.APIGroupList {
 		},
 		Groups: slices.Collect(maps.Values(groups)),
 	}
+}
+
+func NewDescriptor(kind KindName, listKind KindName, namespaced bool, gvr schema.GroupVersionResource, shortNames ...string) Descriptor {
+	var singularName string
+
+	// please pardon the hack below
+	if strings.HasSuffix(gvr.Resource, "sses") { // Ex: priorityclasses
+		singularName = strings.TrimSuffix(gvr.Resource, "es")
+	} else if strings.HasSuffix(gvr.Resource, "ties") { // Ex: csistoragecapacities
+		singularName = strings.TrimSuffix(gvr.Resource, "ties") + "ty"
+	} else {
+		singularName = strings.TrimSuffix(gvr.Resource, "s")
+	}
+	return Descriptor{
+		Kind: kind,
+		GVK: schema.GroupVersionKind{
+			Group:   gvr.Group,
+			Version: gvr.Version,
+			Kind:    string(kind),
+		},
+		ListKind: listKind,
+		ListGVK: schema.GroupVersionKind{
+			Group:   gvr.Group,
+			Version: gvr.Version,
+			Kind:    string(listKind),
+		},
+		GVR: gvr,
+		ListTypeMeta: metav1.TypeMeta{
+			Kind:       string(listKind),
+			APIVersion: gvr.GroupVersion().String(),
+		},
+		APIResource: metav1.APIResource{
+			Name:               gvr.Resource,
+			SingularName:       singularName,
+			Namespaced:         namespaced,
+			Group:              gvr.Group,
+			Version:            gvr.Version,
+			Kind:               string(kind),
+			Verbs:              SupportedVerbs,
+			ShortNames:         shortNames,
+			Categories:         []string{"all"}, // TODO: Uhhh, WTH is this exactly ? Who uses this ?
+			StorageVersionHash: objutil.GenerateName(singularName),
+		},
+	}
+}
+
+func (d Descriptor) CreateObject() (obj metav1.Object, err error) {
+	runtimeObj, err := SupportedScheme.New(d.GVK)
+	if err != nil {
+		return
+	}
+	obj = runtimeObj.(metav1.Object)
+	return
+}
+
+func (d Descriptor) Resource() string {
+	return d.GVR.Resource
 }
