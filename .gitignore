@@ -27,3 +27,4 @@
 
 # hack tools binaries and generated configurations
 **/bin/
+gen/

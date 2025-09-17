@@ -112,6 +112,14 @@ func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.Resourc
 	return result
 }
 
+func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
+	result := make(corev1.ResourceList, len(stringMap))
+	for resourceName, stringValue := range stringMap {
+		result[corev1.ResourceName(resourceName)] = resource.MustParse(stringValue.(string))
+	}
+	return result
+}
+
 func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
 	for n, q1 := range r1 {
 		q2, ok := r2[n]
