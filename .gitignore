@@ -31,3 +31,4 @@ go.work.sum
 
 # hack tools binaries and generated configurations
 **/bin/
+gen/

@@ -17,6 +17,7 @@ var rootCmd = &cobra.Command{
 	Long: `scadctl is a CLI for for the scaling advice service and scaling advice operator. It also supports various operations
 such as
 	- generating pricing information file for various cloud providers
+    - generating cluster snapshot and scaling constraints file
 `,
 }
 
