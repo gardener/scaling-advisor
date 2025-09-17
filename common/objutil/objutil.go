@@ -13,6 +13,9 @@ import (
 	"strconv"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+
+	"k8s.io/apimachinery/pkg/util/validation/field"
+
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -308,4 +311,28 @@ func TypeName[T any]() string {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()
+}
+
+func CheckObjectNameAndNamespace(metaObj metav1.Object, name cache.ObjectName, gk schema.GroupKind) (err error) { // TODO: rename this function
+	if metaObj.GetName() != name.Name {
+		fieldErr := field.Error{
+			Type:     field.ErrorTypeInvalid,
+			BadValue: metaObj.GetName(),
+			Field:    "metadata.name",
+			Detail:   fmt.Sprintf("Invalid value: %q: field is immutable", metaObj.GetName()),
+		}
+		err = apierrors.NewInvalid(gk, name.Name, field.ErrorList{&fieldErr})
+		return
+	}
+	if metaObj.GetNamespace() != name.Namespace {
+		fieldErr := field.Error{
+			Type:     field.ErrorTypeInvalid,
+			Field:    "metadata.namespace",
+			BadValue: metaObj.GetNamespace(),
+			Detail:   fmt.Sprintf("Invalid value: %q: field is immutable", metaObj.GetNamespace()),
+		}
+		err = apierrors.NewInvalid(gk, name.Name, field.ErrorList{&fieldErr})
+		return
+	}
+	return
 }

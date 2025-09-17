@@ -8,14 +8,16 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	corev1 "k8s.io/api/core/v1"
 	"reflect"
 	"runtime"
-	sigyaml "sigs.k8s.io/yaml"
 	"strings"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	sigyaml "sigs.k8s.io/yaml"
+
+	_ "embed"
 )
-import _ "embed"
 
 //go:embed testdata/*
 var testDataFS embed.FS
@@ -30,7 +32,7 @@ func AssertError(t *testing.T, got error, want error) {
 		return
 	}
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Expected error: %v", got)
+		t.Logf("Expected: %v", got)
 	} else {
 		t.Errorf("Unexpected error, got: %v, want: %v", got, want)
 	}
