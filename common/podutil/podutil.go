@@ -6,7 +6,6 @@ package podutil
 
 import (
 	"slices"
-	"time"
 
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -143,18 +142,15 @@ func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string 
 	return objectNames
 }
 
+// AsPodInfo converts a corev1.Pod to a svcapi.PodInfo object.
 func AsPodInfo(pod corev1.Pod) svcapi.PodInfo {
-	var delTS time.Time
-	if pod.DeletionTimestamp != nil {
-		delTS = pod.DeletionTimestamp.Time
-	}
 	return svcapi.PodInfo{
 		ResourceMeta: svcapi.ResourceMeta{
 			UID:               pod.UID,
 			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
 			Labels:            pod.Labels,
 			Annotations:       pod.Annotations,
-			DeletionTimestamp: delTS, // FIXME nil
+			DeletionTimestamp: pod.DeletionTimestamp,
 			OwnerReferences:   pod.OwnerReferences,
 		},
 		AggregatedRequests:        AggregatePodRequests(&pod),
@@ -170,5 +166,6 @@ func AsPodInfo(pod corev1.Pod) svcapi.PodInfo {
 		RuntimeClassName:          pod.Spec.RuntimeClassName,
 		Overhead:                  objutil.ResourceListToInt64Map(pod.Spec.Overhead),
 		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
+		ResourceClaims:            pod.Spec.ResourceClaims,
 	}
 }

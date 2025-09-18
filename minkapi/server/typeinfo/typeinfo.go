@@ -16,6 +16,7 @@ import (
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	nodev1 "k8s.io/api/node/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -264,6 +265,7 @@ var (
 		appsv1.AddToScheme,
 		coordinationv1.AddToScheme,
 		eventsv1.AddToScheme,
+		nodev1.AddToScheme,
 		rbacv1.AddToScheme,
 		schedulingv1.AddToScheme,
 		policyv1.AddToScheme,
