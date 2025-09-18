@@ -83,6 +83,8 @@ func WriteCoreRuntimeObjToYaml(obj runtime.Object, yamlPath string) error {
 	return nil
 }
 
+// SetMetaObjectGVK checks if the given object has missing Kind and Version.
+// If so, it sets the object's GVK to the gvk passed in the argument.
 func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	if runtimeObj, ok := obj.(runtime.Object); ok {
 		objGVK := runtimeObj.GetObjectKind().GroupVersionKind()
@@ -96,6 +98,8 @@ func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	}
 }
 
+// ResourceListToInt64Map converts the given ResourceList to a map from
+// ResourceName to ResourceValue expressed as an int64 number.
 func ResourceListToInt64Map(resources corev1.ResourceList) map[corev1.ResourceName]int64 {
 	result := make(map[corev1.ResourceName]int64, len(resources))
 	for resourceName, quantity := range resources {
@@ -104,6 +108,8 @@ func ResourceListToInt64Map(resources corev1.ResourceList) map[corev1.ResourceNa
 	return result
 }
 
+// Int64MapToResourceList converts the given map from ResourceName to
+// ResourceValue(int64) into a ResourceList object.
 func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.ResourceList {
 	result := make(corev1.ResourceList, len(intMap))
 	for resourceName, intValue := range intMap {
@@ -112,6 +118,8 @@ func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.Resourc
 	return result
 }
 
+// StringMapToResourceList converts the given map from ResourceName(string) to
+// ResourceValue(any) into a ResourceList object.
 func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
 	result := make(corev1.ResourceList, len(stringMap))
 	for resourceName, stringValue := range stringMap {

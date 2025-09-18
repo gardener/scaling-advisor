@@ -24,6 +24,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -31,21 +32,23 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// ShootCoordinate is a struct comprising of the information needed to uniquely
+// identify a gardener Shoot cluster: Landscape, Project and Shoot name.
 type ShootCoordinate struct {
 	Landscape string
 	Project   string
 	Shoot     string
 }
 
-var scenarioDir string
-
-var shootCoords ShootCoordinate
+var (
+	shootCoords ShootCoordinate
+	scenarioDir string
+)
 
 type GardenerPlane int
 
@@ -60,7 +63,7 @@ type ShootAccess interface {
 	ListPods(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Pod, error)
 	ListPriorityClasses(ctx context.Context) ([]schedulingv1.PriorityClass, error)
 	ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error)
-	MakeCSIDriverVolumeMap(ctx context.Context) (map[string]int32, error)
+	GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, error)
 	GetShootWorker(ctx context.Context) (map[string]any, error)
 }
 
@@ -80,62 +83,63 @@ type ScalingScenario struct {
 	feedback        apiv1alpha1.ClusterScalingFeedback
 }
 
-// gardenerCmd represents the gardener sub-command for generating scaling scenario(s) for a gardener cluster.
+// gardenerCmd represents the gardener sub-command of genscenario
+// for generating scaling scenario(s) for a gardener cluster.
 var gardenerCmd = &cobra.Command{
 	Use:   "gardener <scenario-dir>",
-	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager",
-	Run: func(cmd *cobra.Command, args []string) {
+	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager (needs 'gardenctl' to be present on the system)",
+	PreRunE: func(_ *cobra.Command, _ []string) (err error) {
+		_, err = exec.LookPath("gardenctl")
+		if err != nil {
+			return fmt.Errorf("'gardenctl' is a requirement for running 'genscenario gardener': %v", err)
+		}
+		return
+	},
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		// Create scaling scenario directory
-		fullyQualName := constructFullyQualifiedName(shootCoords)
 		if len(args) == 0 {
-			scenarioDir = "/tmp/" + fullyQualName
+			scenarioDir = "/tmp/" + shootCoords.getFullyQualifiedName()
 		} else {
-			scenarioDir = path.Join(args[0], fullyQualName)
+			scenarioDir = path.Join(args[0], shootCoords.getFullyQualifiedName())
 		}
 		fmt.Printf("Generating scaling scenarios for shoot in %s\n", scenarioDir)
-		err := os.MkdirAll(scenarioDir, 0755)
+		err = os.MkdirAll(scenarioDir, 0755)
 		if err != nil {
-			fmt.Printf("Error creating scenario directory: %v\n", err)
-			return
+			return fmt.Errorf("error creating scenario directory: %v", err)
 		}
 
 		// Create shoot access with shoot and control plane clients
-		ctx := context.Background()
-		acc, err := createShootAccess(ctx)
+		ctx := cmd.Context()
+		shootAccess, err := createShootAccess(ctx)
 		if err != nil {
-			fmt.Printf("Error creating shoot access: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error creating shoot access: %v", err)
 		}
 
 		// Generate cluster snapshot
-		snap, err := createClusterSnapshot(ctx, acc)
+		snap, err := createClusterSnapshot(ctx, shootAccess)
 		if err != nil {
-			fmt.Printf("Error creating cluster snapshot: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error creating cluster snapshot: %v", err)
 		}
 		fmt.Printf("Created cluster snapshot with %d nodes and %d pods\n", len(snap.Nodes), len(snap.Pods))
 		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
-			fmt.Printf("Error creating snapshot variants: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error creating snapshot variants: %v", err)
 		}
 
 		// Generate cluster scaling constraint
-		extensionWorker, err := acc.GetShootWorker(ctx)
+		extensionWorker, err := shootAccess.GetShootWorker(ctx)
 		if err != nil {
-			fmt.Printf("Error getting shoot worker: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error getting shoot worker: %v", err)
 		}
 
 		csc, err := createScalingConstraint(extensionWorker)
 		if err != nil {
-			fmt.Printf("Error creating cluster scaling constraint: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error creating cluster scaling constraint: %v", err)
 		}
 		if err := saveDataToFile(csc, path.Join(scenarioDir, "cluster-scaling-constraints.json")); err != nil {
-			fmt.Printf("Error saving cluster scaling constraint: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
 		}
 		fmt.Println("Created cluster scaling constraints")
+		return nil
 	},
 }
 
@@ -167,16 +171,16 @@ func init() {
 	gardenerCmd.MarkFlagRequired("shoot")
 }
 
-func constructFullyQualifiedName(shootCoords ShootCoordinate) string {
-	trimmedLandscape := strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-")
-	return fmt.Sprintf("%s:%s:%s", trimmedLandscape, shootCoords.Project, shootCoords.Shoot)
+func (sc *ShootCoordinate) getFullyQualifiedName() string {
+	trimmedLandscape := strings.TrimPrefix(sc.Landscape, "sap-landscape-")
+	return fmt.Sprintf("%s:%s:%s", trimmedLandscape, sc.Project, sc.Shoot)
 }
 
 // ---------------------------------------------------------------------------------
 // Shoot Access
 // ---------------------------------------------------------------------------------
 func createShootAccess(ctx context.Context) (*access, error) {
-	clientScheme := registerSchemes()
+	clientScheme := typeinfo.RegisterSchemes()
 
 	shootClient, err := getClient(ctx, shootCoords, clientScheme, DataPlane)
 	if err != nil {
@@ -196,32 +200,23 @@ func createShootAccess(ctx context.Context) (*access, error) {
 	}, nil
 }
 
-func registerSchemes() *runtime.Scheme {
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(nodev1.AddToScheme(scheme))
-	utilruntime.Must(schedulingv1.AddToScheme(scheme))
-	utilruntime.Must(storagev1.AddToScheme(scheme))
-	return scheme
-}
-
 func getClient(ctx context.Context, shootCoord ShootCoordinate, scheme *runtime.Scheme, plane GardenerPlane) (client.Client, error) {
-	var targetStr string
+	var targetCmd string
 
 	switch plane {
 	case VirtualGardenPlane:
-		targetStr = fmt.Sprintf("gardenctl target --garden %s", shootCoord.Landscape)
+		targetCmd = fmt.Sprintf("gardenctl target --garden %s", shootCoord.Landscape)
 	case DataPlane:
-		targetStr = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s",
+		targetCmd = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s",
 			shootCoord.Landscape, shootCoord.Project, shootCoord.Shoot)
 	case ControlPlane:
-		targetStr = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s --control-plane",
+		targetCmd = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s --control-plane",
 			shootCoord.Landscape, shootCoord.Project, shootCoord.Shoot)
 	default:
 		return nil, fmt.Errorf("unsupported gardener plane: %d", plane)
 	}
 
-	cmdStr := fmt.Sprintf("eval $(gardenctl kubectl-env bash) && %s > /dev/null && gardenctl kubectl-env bash", targetStr)
+	cmdStr := fmt.Sprintf("eval $(gardenctl kubectl-env bash) && %s > /dev/null && gardenctl kubectl-env bash", targetCmd)
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	cmd.Env = append(os.Environ(), "GCTL_SESSION_ID=dev")
 
@@ -246,6 +241,7 @@ func getClient(ctx context.Context, shootCoord ShootCoordinate, scheme *runtime.
 // ---------------------------------------------------------------------------------
 // Cluster Snapshot
 // ---------------------------------------------------------------------------------
+
 func (a *access) ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) (nodes []corev1.Node, err error) {
 	var nodeList corev1.NodeList
 	err = a.shootClient.List(ctx, &nodeList, &client.ListOptions{
@@ -274,14 +270,18 @@ func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria) (po
 	if err != nil {
 		return nil, err
 	}
-	if criteria.Names.Len() <= 0 {
-		return podList.Items, nil
-	}
+	checkPodName := criteria.Names.Len() > 0
 	for _, p := range podList.Items {
-		// TODO Check if needed: filter pods having scheduling gates
-		if criteria.Names.Has(p.Name) && len(p.Spec.SchedulingGates) != 0 {
-			pods = append(pods, p)
+		// Filter pods having scheduling gates (check PodInfo docstring)
+		if len(p.Spec.SchedulingGates) != 0 {
+			continue
 		}
+		// pod name doesn't match the required names
+		if checkPodName && !criteria.Names.Has(p.Name) {
+			continue
+		}
+
+		pods = append(pods, p)
 	}
 	return pods, err
 }
@@ -298,14 +298,18 @@ func (a *access) ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass,
 	return runtimeClassList.Items, err
 }
 
-func (a *access) MakeCSIDriverVolumeMap(ctx context.Context) (map[string]int32, error) {
+func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, error) {
 	var csiNodeList storagev1.CSINodeList
 	err := a.shootClient.List(ctx, &csiNodeList)
-	if len(csiNodeList.Items) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("error listing CSI nodes: %v", err)
 	}
 
-	volMap := make(map[string]int32, 0)
+	if len(csiNodeList.Items) == 0 {
+		return nil, fmt.Errorf("no CSI nodes found")
+	}
+
+	volMap := make(map[string]int32)
 	for _, csiNode := range csiNodeList.Items {
 		for _, d := range csiNode.Spec.Drivers {
 			if d.Allocatable != nil {
@@ -335,7 +339,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		return nodeB.CreationTimestamp.Compare(nodeA.CreationTimestamp.Time)
 	})
 	snap.Nodes = make([]svcapi.NodeInfo, 0, len(nodes))
-	volMap, err := a.MakeCSIDriverVolumeMap(ctx)
+	volMap, err := a.GetCSIDriverToVolCount(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to create volume map: %w", err)
 	}
@@ -366,6 +370,10 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 	return snap, nil
 }
 
+// genSnapshotVariants takes the cluster snapshot and generates variants
+// of the snapshot without a few of the most recent scaled nodes and
+// unbinds the pods scheduled on those nodes. This is useful to compare
+// the removed nodes with the nodes scaled up by autoscaling component.
 func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
 	formattedTime := time.Now().UTC().Format("020106-1504") // DDMMYY-HHMM
 
@@ -375,15 +383,15 @@ func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
 	}
 	fmt.Printf("> Generated snapshot at %s\n", incrementalSnapshotFileName)
 
-	for _, count := range []int{1, 5, 10, 20} {
-		count = min(count, len(snap.Nodes))
+	for _, numNodesToRemove := range []int{1, 5, 10, 20} {
+		numNodesToRemove = min(numNodesToRemove, len(snap.Nodes))
 		countNodeRemovedSnapFileName := path.Join(
-			dir, "snapshot-"+formattedTime+"-latest-"+strconv.Itoa(count)+".json",
+			dir, "snapshot-"+formattedTime+"-latest-"+strconv.Itoa(numNodesToRemove)+".json",
 		)
 		if _, err := os.Stat(countNodeRemovedSnapFileName); !os.IsNotExist(err) {
 			continue // Snapshot already created
 		}
-		newSnap := removeNodesFromSnapshot(snap, count)
+		newSnap := removeNodesFromSnapshot(snap, numNodesToRemove)
 		if err := saveDataToFile(newSnap, countNodeRemovedSnapFileName); err != nil {
 			return err
 		}
@@ -413,6 +421,7 @@ func removeNodesFromSnapshot(snap svcapi.ClusterSnapshot, count int) svcapi.Clus
 // ---------------------------------------------------------------------------------
 // ScalingConstraint
 // ---------------------------------------------------------------------------------
+
 // Get Worker extension objects from control plane
 func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	var worker unstructured.Unstructured
@@ -431,100 +440,124 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	return worker.Object, nil
 }
 
-func createScalingConstraint(extensionWorker map[string]any) (csc apiv1alpha1.ClusterScalingConstraint, err error) {
-	csc.Spec.NodePools, err = createNodePools(extensionWorker)
+func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ClusterScalingConstraint, err error) {
+	nodePools, err := createNodePools(extensionWorker)
 	if err != nil {
+		err = fmt.Errorf("error creating node pools: %v", err)
 		return
 	}
-	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
+
+	csc = &apiv1alpha1.ClusterScalingConstraint{}
+	csc.Spec.NodePools = nodePools
 	csc.Spec.AdviceGenerationMode = apiv1alpha1.ScalingAdviceGenerationModeAllAtOnce // FIXME hardcoded for now
+	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }
 
-func createNodePools(worker map[string]any) (nodePools []apiv1alpha1.NodePool, err error) {
-	region, found, err := unstructured.NestedString(worker, "spec", "region")
-	if !found || err != nil {
+func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
+	var nodePools []apiv1alpha1.NodePool
+	region, _, err := unstructured.NestedString(worker, "spec", "region")
+	if err != nil {
 		return nil, fmt.Errorf("worker is missing region: %v", err)
 	}
 
-	pools, found, err := unstructured.NestedSlice(worker, "spec", "pools")
-	if !found || err != nil {
+	pools, _, err := unstructured.NestedSlice(worker, "spec", "pools")
+	if err != nil {
 		return nil, fmt.Errorf("worker is missing pools: %v", err)
 	}
 
-	for _, poolInterface := range pools {
-		var nP apiv1alpha1.NodePool
-		pool, ok := poolInterface.(map[string]any)
+	for _, pool := range pools {
+		var nodePool apiv1alpha1.NodePool
+		poolObj, ok := pool.(map[string]any)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("error getting pool object from the worker: %v", err)
 		}
 
-		nP.Name = pool["name"].(string)
-		nP.Region = region
-		if priority, found, _ := unstructured.NestedInt64(pool, "priority"); found {
-			nP.Priority = int32(priority)
+		nodePool.Name = poolObj["name"].(string)
+		nodePool.Region = region
+		if priority, _, err := unstructured.NestedInt64(poolObj, "priority"); err != nil {
+			return nil, fmt.Errorf("error getting node pool priority: %v", err)
+		} else {
+			nodePool.Priority = int32(priority)
 		}
-		if labels, found, _ := unstructured.NestedStringMap(pool, "labels"); found {
-			nP.Labels = labels
+		if labels, _, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
+			return nil, fmt.Errorf("error getting node pool labels: %v", err)
+
+		} else {
+			nodePool.Labels = labels
 		}
-		if annotations, found, _ := unstructured.NestedStringMap(pool, "annotations"); found {
-			nP.Annotations = annotations
+		if annotations, _, err := unstructured.NestedStringMap(poolObj, "annotations"); err != nil {
+			return nil, fmt.Errorf("error getting node pool annotations: %v", err)
+		} else {
+			nodePool.Annotations = annotations
 		}
-		if taints, found, _ := unstructured.NestedSlice(pool, "taints"); found {
+		if taints, _, err := unstructured.NestedSlice(poolObj, "taints"); err != nil {
+			return nil, fmt.Errorf("error getting node pool taints")
+		} else {
 			taintsJSON, err := json.Marshal(taints)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("error getting the JSON encoding of taints slice: %v", err)
 			}
-			if err = json.Unmarshal(taintsJSON, &nP.Taints); err != nil {
-				continue
+			if err = json.Unmarshal(taintsJSON, &nodePool.Taints); err != nil {
+				return nil, fmt.Errorf("error converting taints JSON to Taints object: %v", err)
 			}
 		}
-		nP.AvailabilityZones, _, _ = unstructured.NestedStringSlice(pool, "zones")
-		nP.NodeTemplates, err = constructNodeTemplates(pool, nP.Name, nP.Priority)
-		if err != nil {
-			continue
+		if availZones, _, err := unstructured.NestedStringSlice(poolObj, "zones"); err != nil {
+			return nil, fmt.Errorf("error getting node pool availability zones: %v", err)
+		} else {
+			nodePool.AvailabilityZones = availZones
+		}
+		if nodeTemplate, err := constructNodeTemplate(poolObj, nodePool.Name, nodePool.Priority); err != nil {
+			return nil, fmt.Errorf("error constructing the node template for %s: %v", nodePool.Name, err)
+		} else {
+			nodePool.NodeTemplates = append(nodePool.NodeTemplates, *nodeTemplate)
 		}
 		// TODO nP.Quota, nP.ScaleInPolicy, nP.BackoffPolicy
 
-		nodePools = append(nodePools, nP)
+		nodePools = append(nodePools, nodePool)
 	}
 
 	return nodePools, nil
 }
 
-func constructNodeTemplates(pool map[string]any, name string, priority int32) ([]apiv1alpha1.NodeTemplate, error) {
-	var nodeTemplates []apiv1alpha1.NodeTemplate
-	var cap, kr map[string]any
-	var ok bool
-	if capacity, found, _ := unstructured.NestedFieldCopy(pool, "nodeTemplate", "capacity"); found {
-		if cap, ok = capacity.(map[string]any); !ok {
+func constructNodeTemplate(pool map[string]any, name string, priority int32) (*apiv1alpha1.NodeTemplate, error) {
+	var (
+		capacity, kubeReserved map[string]any
+		ok                     bool
+	)
+	if capacityObj, _, err := unstructured.NestedFieldCopy(pool, "nodeTemplate", "capacity"); err != nil {
+		return nil, fmt.Errorf("error getting node template capacity: %v", err)
+	} else {
+		if capacity, ok = capacityObj.(map[string]any); !ok {
 			return nil, fmt.Errorf("could not get capacity")
 		}
 	}
-	if kubeReserved, found, _ := unstructured.NestedFieldNoCopy(pool, "kubeletConfig", "kubeReserved"); found {
-		if kr, ok = kubeReserved.(map[string]any); !ok {
+	if kubeReservedObj, _, err := unstructured.NestedFieldNoCopy(pool, "kubeletConfig", "kubeReserved"); err != nil {
+		return nil, fmt.Errorf("error getting node template capacity: %v", err)
+	} else {
+		if kubeReserved, ok = kubeReservedObj.(map[string]any); !ok {
 			return nil, fmt.Errorf("could not get kubeReserved")
 		}
 	}
-
-	nT := apiv1alpha1.NodeTemplate{
+	nodeTemplate := apiv1alpha1.NodeTemplate{
 		Name:         name,
 		Architecture: pool["architecture"].(string),
 		InstanceType: pool["machineType"].(string),
 		Priority:     priority,
-		Capacity:     objutil.StringMapToResourceList(cap),
-		KubeReserved: objutil.StringMapToResourceList(kr),
+		Capacity:     objutil.StringMapToResourceList(capacity),
+		KubeReserved: objutil.StringMapToResourceList(kubeReserved),
+		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
+
 		// TODO:
-		// SystemReserved: corev1.ResourceList{},
 		// MaxVolumes:     0,
 	}
-	nodeTemplates = append(nodeTemplates, nT)
-	return nodeTemplates, nil
+	return &nodeTemplate, nil
 }
 
 // ---------------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------------
+
 func extractKubeConfigPath(output string) (string, error) {
 	kubeConfigRe := regexp.MustCompile(`export KUBECONFIG='([^']+)'`)
 	matches := kubeConfigRe.FindStringSubmatch(output)
@@ -552,8 +585,8 @@ func invokeCommand(cmd *exec.Cmd) (string, error) {
 	return stdout.String(), nil
 }
 
-func saveDataToFile(data any, filename string) error {
-	file, err := os.Create(filename)
+func saveDataToFile(data any, filepath string) error {
+	file, err := os.Create(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
