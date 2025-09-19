@@ -51,13 +51,11 @@ func (c *coreV1Impl) Nodes() clientcorev1.NodeInterface {
 }
 
 func (c *coreV1Impl) PersistentVolumes() clientcorev1.PersistentVolumeInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewPersistentVolumeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumeClaims(namespace string) clientcorev1.PersistentVolumeClaimInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewPersistentVolumeClaimAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {

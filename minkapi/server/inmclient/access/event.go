@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
@@ -12,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/applyconfigurations/core/v1"
+	v1 "k8s.io/client-go/applyconfigurations/core/v1"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -80,7 +81,7 @@ func (a *eventAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch
 
 func (a *eventAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.Event, err error) {
 	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for events", subresources, commonerrors.ErrInvalidOptVal)
+		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for events", commonerrors.ErrInvalidOptVal, subresources)
 	}
 	return a.patchObject(ctx, name, pt, data, opts)
 }

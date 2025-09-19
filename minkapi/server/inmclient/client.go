@@ -110,7 +110,7 @@ func (c *inMemClient) SchedulingV1() clientschedulingv1.SchedulingV1Interface {
 
 // StorageV1 retrieves the StorageV1Client
 func (c *inMemClient) StorageV1() clientstoragev1.StorageV1Interface {
-	panic("todo")
+	return &storageV1Impl{c.view}
 }
 
 // AdmissionregistrationV1 retrieves the AdmissionregistrationV1Client
