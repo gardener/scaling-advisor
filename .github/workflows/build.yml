@@ -10,7 +10,9 @@ on:
         description: |
           the mode to use. either `snapshot` or `release`. Will affect effective version, as well
           as target-oci-registry.
-
+  push:
+    branches:
+      - main
 jobs:
   prepare:
     uses: gardener/cc-utils/.github/workflows/prepare.yaml@master
