@@ -40,7 +40,7 @@ echo "> Running gosec"
 gosec --version
 
 if [[ "$GOSEC_REPORT" != "false" ]]; then
-  echo "Exporting report to $root_dir/gosec-report.sarif"
+  echo "Exporting report to $SCRIPT_DIR/gosec-report.sarif"
   GOSEC_REPORT_PARSE_FLAGS="-track-suppressions -fmt=sarif -out=gosec-report.sarif -stdout"
 fi
 
