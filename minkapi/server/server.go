@@ -31,7 +31,6 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
