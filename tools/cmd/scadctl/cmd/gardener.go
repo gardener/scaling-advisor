@@ -50,20 +50,34 @@ var (
 	scenarioDir string
 )
 
+// GardenerPlane defines which gardener cluster to the target for a shoot
 type GardenerPlane int
 
 const (
-	DataPlane          GardenerPlane = 0
-	ControlPlane       GardenerPlane = 1
+	// DataPlane referes to the shoot cluster
+	DataPlane GardenerPlane = 0
+	// ControlPlane refers to the control (seed) cluster
+	ControlPlane GardenerPlane = 1
+	// VirtualGardenPlane refers to the virtual garden cluster
 	VirtualGardenPlane GardenerPlane = 2
 )
 
+// ShootAccess defines methods used to fetch and access resources needed
+// for creating ClusterSnapshot and ClusterScalingConstraints.
 type ShootAccess interface {
+	// ListNodes fetches the nodes on a shoot cluster matching the given criteria.
 	ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Node, error)
+	// ListPods fetches the pods on a shoot cluster matching the given criteria.
 	ListPods(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Pod, error)
+	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
 	ListPriorityClasses(ctx context.Context) ([]schedulingv1.PriorityClass, error)
+	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
 	ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error)
+	// GetCSIDriverToVolCount returns a map of CSI driver names to maximum number of
+	// volumes managed by the driver on the nodes present on a shoot cluster.
 	GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, error)
+	// GetShootWorker fetches the extension worker objects present in the shoot
+	// namespace of the control (seed) cluster.
 	GetShootWorker(ctx context.Context) (map[string]any, error)
 }
 
@@ -76,6 +90,9 @@ type access struct {
 	controlClient client.Client
 }
 
+// ScalingScenario defines an input to the scaling service being benchmarked.
+// In incorporates all the data required to construct a scenario which can
+// be used to test a scaling service.
 // (TODO) look later into incorporating scalebench with this
 type ScalingScenario struct {
 	constraintsPath string
@@ -152,7 +169,7 @@ func init() {
 		"",
 		"gardener landscape name (required)",
 	)
-	gardenerCmd.MarkFlagRequired("landscape")
+	_ = gardenerCmd.MarkFlagRequired("landscape")
 
 	gardenerCmd.Flags().StringVarP(
 		&shootCoords.Project,
@@ -160,7 +177,7 @@ func init() {
 		"",
 		"gardener project name (required)",
 	)
-	gardenerCmd.MarkFlagRequired("project")
+	_ = gardenerCmd.MarkFlagRequired("project")
 
 	gardenerCmd.Flags().StringVarP(
 		&shootCoords.Shoot,
@@ -168,7 +185,7 @@ func init() {
 		"",
 		"gardener shoot name (required)",
 	)
-	gardenerCmd.MarkFlagRequired("shoot")
+	_ = gardenerCmd.MarkFlagRequired("shoot")
 }
 
 func (sc *ShootCoordinate) getFullyQualifiedName() string {
@@ -482,7 +499,6 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 		}
 		if labels, _, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
 			return nil, fmt.Errorf("error getting node pool labels: %v", err)
-
 		} else {
 			nodePool.Labels = labels
 		}
