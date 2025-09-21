@@ -14,9 +14,6 @@ import (
 	"strconv"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-
-	"k8s.io/apimachinery/pkg/util/validation/field"
-
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,6 +29,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )

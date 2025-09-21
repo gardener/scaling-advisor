@@ -6,7 +6,7 @@
     "namespace": "default",
     "labels": {
       "app.kubernetes.io/name": "pod-default",
-      "app.kubernetes.io/component": "minkapi"
+      "app.kubernetes.io/component": "minkapitest"
     }
   },
   "spec": {

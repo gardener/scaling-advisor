@@ -6,7 +6,7 @@
     "namespace": "test",
     "labels": {
       "app.kubernetes.io/name": "pod-test",
-      "app.kubernetes.io/component": "minkapi"
+      "app.kubernetes.io/component": "minkapitest"
     }
   },
   "spec": {

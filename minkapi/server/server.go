@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
