@@ -26,20 +26,24 @@ const (
 	ProgramName = "scadsvc"
 )
 
-// ActivityStatus represents the operational status of an activity
+// ActivityStatus represents the operational status of an activity.
 type ActivityStatus string
 
 const (
+	// ActivityStatusPending indicates the activity is pending execution.
 	ActivityStatusPending ActivityStatus = "Pending"
+	// ActivityStatusRunning indicates the activity is currently running.
 	ActivityStatusRunning ActivityStatus = "Running"
+	// ActivityStatusSuccess indicates the activity completed successfully.
 	ActivityStatusSuccess ActivityStatus = metav1.StatusSuccess
+	// ActivityStatusFailure indicates the activity failed.
 	ActivityStatusFailure ActivityStatus = metav1.StatusFailure
 )
 
 // ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
 type ScalingAdviceRequest struct {
 	ScalingAdviceRequestRef
-	// Constraint is the cluster scaling constraint using which the scaling advice is generated.
+	// Constraint represents the constraints using which the scaling advice is generated.
 	Constraint sacorev1alpha1.ClusterScalingConstraint
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
@@ -50,15 +54,17 @@ type ScalingAdviceRequest struct {
 	EnableDiagnostics bool
 }
 
+// ScalingAdviceRequestRef is the unique reference to a scaling advice request.
 type ScalingAdviceRequestRef struct {
 	// ID is the Request unique identifier for which this response is generated.
 	ID string
-	// CorrelationID is the correlation identifier for the request, used to correlate this response with the request.
+	// CorrelationID is the correlation identifier for the request. It can be used to correlate a response with a request.
 	CorrelationID string
 }
 
 // ScalingAdviceResponse encapsulates the response from the scaling advisor service.
 type ScalingAdviceResponse struct {
+	// RequestRef encapsulates the unique reference to a request for which this response is produced.
 	RequestRef ScalingAdviceRequestRef
 	// Message is a human-readable message providing additional context about the response.
 	Message string
@@ -68,7 +74,6 @@ type ScalingAdviceResponse struct {
 
 // ScalingAdvisorServiceConfig holds the configuration for the scaling advisor service.
 type ScalingAdvisorServiceConfig struct {
-	// ScalingAdvisorService also offers a HTTP server endpoint for scaling advice requests/responses
 	commontypes.ServerConfig
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor service.
 	MinKAPIConfig mkapi.Config
@@ -136,12 +141,15 @@ type ScalingAdvisorService interface {
 	GenerateAdvice(ctx context.Context, req ScalingAdviceRequest) <-chan ScalingAdviceEvent
 }
 
-// App represents an application process that wraps a ScalingAdvisorService, , an application context and application cancel func.
+// App represents an application process that wraps a ScalingAdvisorService, an application context and application cancel func.
 // `main` entry-point functions that embed scadsvc are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {
+	// Service is the scaling advisor service instance.
 	Service ScalingAdvisorService
-	Ctx     context.Context
-	Cancel  context.CancelFunc
+	// Ctx is the application context.
+	Ctx context.Context
+	// Cancel is the context cancellation function.
+	Cancel context.CancelFunc
 }
 
 // SchedulerLaunchParams holds the parameters required to launch a kube-scheduler instance.
@@ -181,6 +189,7 @@ type ClusterSnapshot struct {
 	RuntimeClasses []nodev1.RuntimeClass
 }
 
+// GetUnscheduledPods returns all pods in the cluster snapshot that are not scheduled to any node.
 func (c *ClusterSnapshot) GetUnscheduledPods() []PodInfo {
 	var unscheduledPods []PodInfo
 	for _, pod := range c.Pods {
@@ -191,6 +200,7 @@ func (c *ClusterSnapshot) GetUnscheduledPods() []PodInfo {
 	return unscheduledPods
 }
 
+// GetNodeCountByPlacement returns a map of node placements to their respective node counts in the cluster.
 func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlacement]int, error) {
 	nodeCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int)
 	for _, nodeInfo := range c.Nodes {
@@ -203,6 +213,7 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 	return nodeCountByPlacement, nil
 }
 
+// getNodePlacement extracts the node placement information from a NodeInfo using labels.
 func getNodePlacement(nodeInfo NodeInfo) (placement sacorev1alpha1.NodePlacement, err error) {
 	nodeTemplateName, ok := nodeInfo.Labels[commonconstants.LabelNodeTemplateName]
 	if !ok {
@@ -264,6 +275,7 @@ type PodInfo struct {
 	ResourceClaims            []corev1.PodResourceClaim
 }
 
+// GetResourceInfo returns the resource information for the pod.
 func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 	return PodResourceInfo{
 		UID:                p.UID,
@@ -292,6 +304,7 @@ type NodeInfo struct {
 	CSIDriverVolumeMaximums map[string]int32
 }
 
+// GetResourceInfo returns the resource information for the node.
 func (n *NodeInfo) GetResourceInfo() NodeResourceInfo {
 	return NodeResourceInfo{
 		Name:         n.Name,
@@ -301,6 +314,7 @@ func (n *NodeInfo) GetResourceInfo() NodeResourceInfo {
 	}
 }
 
+// ResourceMeta contains common metadata fields for Kubernetes resources.
 type ResourceMeta struct {
 	// UID is the unique identifier for the resource.
 	UID types.UID
@@ -315,31 +329,47 @@ type ResourceMeta struct {
 	OwnerReferences []metav1.OwnerReference
 }
 
+// InstancePriceInfo contains pricing and specification information for a cloud instance type.
 type InstancePriceInfo struct {
-	InstanceType string  `json:"instancetype"`
-	Region       string  `json:"region"`
-	VCPU         int32   `json:"VCPU"`
-	Memory       float64 `json:"memory"`
-	HourlyPrice  float64 `json:"hourlyPrice"`
-	OS           string  `json:"os"`
+	// InstanceType is the name of the instance type.
+	InstanceType string `json:"instancetype"`
+	// Region is the cloud region where the instance is available.
+	Region string `json:"region"`
+	// VCPU is the number of virtual CPUs for the instance type.
+	VCPU int32 `json:"VCPU"`
+	// Memory is the amount of memory in GB for the instance type.
+	Memory float64 `json:"memory"`
+	// HourlyPrice is the hourly cost for the instance type.
+	HourlyPrice float64 `json:"hourlyPrice"`
+	// OS is the operating system for the instance type.
+	OS string `json:"os"`
 }
 
 // PriceKey represents the key for a instance type price within a cloud provider.
 type PriceKey struct {
-	Name   string
+	// Name is the instance type name.
+	Name string
+	// Region is the cloud region.
 	Region string
 }
+
+// InstancePricingAccess defines an interface for accessing instance pricing information.
 type InstancePricingAccess interface {
 	// GetInfo gets the InstancePriceInfo (whicn includes price) for the given region and instance type.
 	// TODO: should we also pass OS name here ? if so, we need to need to change ClusterScalingConstraint.
 	GetInfo(region, instanceTypeName string) (InstancePriceInfo, error)
 }
+
+// GetProviderInstancePricingAccessFunc is a factory function for creating InstancePricingAccess implementations.
 type GetProviderInstancePricingAccessFunc func(provider commontypes.CloudProvider, instanceTypeInfoPath string) (InstancePricingAccess, error)
 
+// NodeScorer defines an interface for computing node scores for scaling decisions.
 type NodeScorer interface {
 	// Compute computes the node score given the NodeScorerArgs. On failure, it must return an error with the sentinel error api.ErrComputeNodeScore
 	Compute(args NodeScorerArgs) (NodeScore, error)
 }
+
+// NodeScorerArgs contains arguments for node scoring computation.
 type NodeScorerArgs struct {
 	// ID that must be given to the NodeScore produced by the NodeScorer
 	ID string
@@ -354,7 +384,7 @@ type NodeScorerArgs struct {
 	UnscheduledPods []types.NamespacedName
 }
 
-// NodeScore to be documented later.
+// NodeScore represents the scoring result for a node in scaling simulations.
 type NodeScore struct {
 	// ID uniquely identifies this NodeScore
 	ID string
@@ -366,12 +396,20 @@ type NodeScore struct {
 	ScaledNodeResource NodeResourceInfo
 }
 
+// GetWeightsFunc is a function type for retrieving resource weights for scoring.
 type GetWeightsFunc func(instanceType string) (map[corev1.ResourceName]float64, error)
+
+// GetNodeScorer is a factory function for creating NodeScorer implementations.
 type GetNodeScorer func(scoringStrategy commontypes.NodeScoringStrategy, instanceTypeInfoAccess InstancePricingAccess, weightsFn GetWeightsFunc) (NodeScorer, error)
+
+// GetNodeScoreSelector is a factory function for creating NodeScoreSelector implementations.
 type GetNodeScoreSelector func(scoringStrategy commontypes.NodeScoringStrategy) (NodeScoreSelector, error)
 
+// PodResourceInfo contains resource information for a pod used in scoring calculations.
 type PodResourceInfo struct {
+	// UID is the unique identifier for the pod.
 	UID types.UID
+	// NamespacedName contains the namespace and name of the pod.
 	types.NamespacedName
 	// AggregatedRequests is an aggregated resource requests for all containers of the Pod.
 	AggregatedRequests map[corev1.ResourceName]int64
@@ -380,7 +418,9 @@ type PodResourceInfo struct {
 // NodeResourceInfo represents the subset of NodeInfo such that NodeScorer can compute an effective NodeScore.
 // TODO think of a better name.
 type NodeResourceInfo struct {
-	Name         string
+	// Name is the node name.
+	Name string
+	// InstanceType is the cloud instance type of the node.
 	InstanceType string
 	// Capacity is the total resource capacity of the node.
 	Capacity map[corev1.ResourceName]int64
@@ -388,8 +428,11 @@ type NodeResourceInfo struct {
 	Allocatable map[corev1.ResourceName]int64
 }
 
+// NodePodAssignment represents the assignment of pods to a node for simulation purposes.
 type NodePodAssignment struct {
-	Node          NodeResourceInfo
+	// Node contains the resource information for the node.
+	Node NodeResourceInfo
+	// ScheduledPods contains the list of pods scheduled to this node.
 	ScheduledPods []PodResourceInfo
 }
 
@@ -418,6 +461,7 @@ type Simulation interface {
 	Result() (SimRunResult, error)
 }
 
+// SimRunResult contains the results of a completed simulation run.
 type SimRunResult struct {
 	// Name of the Simulation that produced this result.
 	Name string
@@ -428,12 +472,18 @@ type SimRunResult struct {
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.
 type SimulationArgs struct {
-	NodePool            *sacorev1alpha1.NodePool
-	AvailabilityZone    string
-	NodeTemplateName    string
+	// NodePool is the target node pool for the simulation.
+	NodePool *sacorev1alpha1.NodePool
+	// AvailabilityZone is the target availability zone for the simulation.
+	AvailabilityZone string
+	// NodeTemplateName is the name of the node template to use in the simulation.
+	NodeTemplateName string
+	// GroupRunPassCounter is an atomic counter for tracking simulation group passes.
 	GroupRunPassCounter *atomic.Uint32
-	SchedulerLauncher   SchedulerLauncher
-	View                mkapi.View
+	// SchedulerLauncher is used to launch scheduler instances for the simulation.
+	SchedulerLauncher SchedulerLauncher
+	// View is the MinKAPI view used for the simulation.
+	View mkapi.View
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view and reconciling simulation state
 	TrackPollInterval time.Duration
 	// Timeout is the simulation timeout
@@ -443,32 +493,15 @@ type SimulationArgs struct {
 // CreateSimulationFunc is a factory function for constructing a simulation instance
 type CreateSimulationFunc func(name string, args *SimulationArgs) (Simulation, error)
 
-// SimulationGroup is a group of simulations at the same priority level (ie a partition of simulations). We attempt to run simulations for the
-// given group and get a preferred NodeScore for simulations belonging to a group before moving to the group at the
-// next priority.
-//
-//	Example:1
-//		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
-//		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
-//
-//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c}
-//		p2: {PoolPriority: 1, NTPriority: 2, nt-b}
-//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
-//
-//	Example:2
-//		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
-//		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
-//		np-c: 1 {nt-x: 2, nt-y: 1}
-//
-//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
-//		p2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
-//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
+// SimulationGroup defines an interface for managing groups of simulations.
 type SimulationGroup interface {
+	// Name returns the name of the simulation group.
 	Name() string
+	// GetKey returns the simulation group key.
 	GetKey() SimGroupKey
+	// GetSimulations returns all simulations in this group.
 	GetSimulations() []Simulation
+	// Run executes all simulations in the group and returns the results.
 	Run(ctx context.Context) (SimGroupRunResult, error)
 }
 
@@ -477,25 +510,33 @@ type CreateSimulationGroupsFunc func(simulations []Simulation) ([]SimulationGrou
 
 // SimGroupKey represents the key for a SimulationGroup.
 type SimGroupKey struct {
-	NodePoolPriority     int32
+	// NodePoolPriority is the priority of the node pool.
+	NodePoolPriority int32
+	// NodeTemplatePriority is the priority of the node template.
 	NodeTemplatePriority int32
 }
 
+// String returns a string representation of the SimGroupKey.
 func (k SimGroupKey) String() string {
 	return fmt.Sprintf("(%d:%d)", k.NodePoolPriority, k.NodeTemplatePriority)
 }
 
+// SimGroupRunResult contains the results of running a simulation group.
 type SimGroupRunResult struct {
 	// Name of the group that produced this result.
 	Name string
 	// Key is the simulation group key (partition key)
-	Key               SimGroupKey
+	Key SimGroupKey
+	// SimulationResults contains the results from all simulations in the group.
 	SimulationResults []SimRunResult
 }
 
 // SimGroupScores represents the scoring results for the simulation group after running the NodeScorer against the SimGroupRunResult.
 type SimGroupScores struct {
-	AllNodeScores   []NodeScore
+	// AllNodeScores contains all computed node scores for the group.
+	AllNodeScores []NodeScore
+	// WinnerNodeScore is the highest scoring node in the group.
 	WinnerNodeScore *NodeScore
-	WinnerNode      *corev1.Node
+	// WinnerNode is the actual node corresponding to the winner score.
+	WinnerNode *corev1.Node
 }
