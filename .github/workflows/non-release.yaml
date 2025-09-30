@@ -6,6 +6,8 @@ on:
       - 'hotfix-**'
       - 'release-**'
   pull_request_target:
+    types:
+      - labeled
 
 jobs:
   build:
