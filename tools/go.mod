@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/common v0.0.0
+	github.com/gardener/scaling-advisor/minkapi v0.0.0
 	github.com/spf13/cobra v1.10.1
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
@@ -16,6 +17,7 @@ require (
 replace (
 	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/common => ../common
+	github.com/gardener/scaling-advisor/minkapi => ../minkapi
 )
 
 require (
