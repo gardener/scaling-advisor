@@ -152,7 +152,11 @@ var gardenerCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("error creating cluster scaling constraint: %v", err)
 		}
-		if err := saveDataToFile(csc, path.Join(scenarioDir, "cluster-scaling-constraints.json")); err != nil {
+		clusterScalingConstraintFileName := path.Join(
+			scenarioDir,
+			"cluster-scaling-constraints-"+time.Now().UTC().Format("020106-1504")+".json",
+		)
+		if err := saveDataToFile(csc, clusterScalingConstraintFileName); err != nil {
 			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
 		}
 		fmt.Println("Created cluster scaling constraints")
@@ -497,19 +501,19 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 		} else {
 			nodePool.Priority = int32(priority)
 		}
-		if labels, _, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
+		if labels, found, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
 			return nil, fmt.Errorf("error getting node pool labels: %v", err)
-		} else {
+		} else if found {
 			nodePool.Labels = labels
 		}
-		if annotations, _, err := unstructured.NestedStringMap(poolObj, "annotations"); err != nil {
+		if annotations, found, err := unstructured.NestedStringMap(poolObj, "annotations"); err != nil {
 			return nil, fmt.Errorf("error getting node pool annotations: %v", err)
-		} else {
+		} else if found {
 			nodePool.Annotations = annotations
 		}
-		if taints, _, err := unstructured.NestedSlice(poolObj, "taints"); err != nil {
+		if taints, found, err := unstructured.NestedSlice(poolObj, "taints"); err != nil {
 			return nil, fmt.Errorf("error getting node pool taints")
-		} else {
+		} else if found {
 			taintsJSON, err := json.Marshal(taints)
 			if err != nil {
 				return nil, fmt.Errorf("error getting the JSON encoding of taints slice: %v", err)
@@ -548,9 +552,9 @@ func constructNodeTemplate(pool map[string]any, name string, priority int32) (*a
 			return nil, fmt.Errorf("could not get capacity")
 		}
 	}
-	if kubeReservedObj, _, err := unstructured.NestedFieldNoCopy(pool, "kubeletConfig", "kubeReserved"); err != nil {
-		return nil, fmt.Errorf("error getting node template capacity: %v", err)
-	} else {
+	if kubeReservedObj, found, err := unstructured.NestedFieldCopy(pool, "kubeletConfig", "kubeReserved"); err != nil {
+		return nil, fmt.Errorf("error getting kubeletConfig kubeReserved: %v", err)
+	} else if found {
 		if kubeReserved, ok = kubeReservedObj.(map[string]any); !ok {
 			return nil, fmt.Errorf("could not get kubeReserved")
 		}
