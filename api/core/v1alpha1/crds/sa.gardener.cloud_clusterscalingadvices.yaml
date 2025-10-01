@@ -63,6 +63,8 @@ spec:
                     description: Items is the slice of scaling-in advice for a node
                       pool.
                     items:
+                      description: ScaleInItem is the unit of scaling-in advice for
+                        a specific node.
                       properties:
                         availabilityZone:
                           description: AvailabilityZone is the availability zone of

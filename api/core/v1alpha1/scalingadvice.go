@@ -72,6 +72,7 @@ type ScaleInPlan struct {
 	Items []ScaleInItem `json:"items"`
 }
 
+// ScaleInItem is the unit of scaling-in advice for a specific node.
 type ScaleInItem struct {
 	NodePlacement `json:",inline"`
 	// NodeName is the name of the node to be scaled in.

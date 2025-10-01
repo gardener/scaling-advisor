@@ -85,7 +85,7 @@ _Appears in:_
 | `host` _string_ | Host is the IP address on which to listen for the specified port. |  |  |
 | `port` _integer_ | Port is the port on which to serve requests. |  |  |
 | `kubeConfigPath` _string_ | KubeConfigPath is the path to master kube-config. |  |  |
-| `profilingEnabled` _boolean_ | ProfilingEnable indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/* |  |  |
+| `profilingEnabled` _boolean_ | ProfilingEnabled indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/* |  |  |
 | `gracefulShutdownTimeout` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | GracefulShutdownTimeout is the time given to the service to gracefully shutdown. |  |  |
 | `healthProbes` _[HostPort](#hostport)_ | HealthProbes is the host and port for serving the healthz and readyz endpoints. |  |  |
 | `metrics` _[HostPort](#hostport)_ | Metrics is the host and port for serving the metrics endpoint. |  |  |
@@ -106,8 +106,8 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `concurrentSyncs` _integer_ | ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller. |  |  |
-| `scoringStrategy` _[NodeScoringStrategy](#nodescoringstrategy)_ |  |  |  |
-| `cloudProvider` _[CloudProvider](#cloudprovider)_ |  |  |  |
+| `scoringStrategy` _[NodeScoringStrategy](#nodescoringstrategy)_ | ScoringStrategy defines the node scoring strategy to use for scaling decisions. |  |  |
+| `cloudProvider` _[CloudProvider](#cloudprovider)_ | CloudProvider specifies the cloud provider for which the scaling advisor is configured. |  |  |
 
 
 
@@ -374,7 +374,7 @@ _Appears in:_
 
 
 
-
+ScaleInItem is the unit of scaling-in advice for a specific node.
 
 
 

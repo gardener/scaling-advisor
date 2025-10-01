@@ -24,7 +24,7 @@ const (
 
 const (
 	// AnnotationEnableScalingDiagnostics is the annotation key to enable scaling diagnostics for a cluster.
-	// This is applied by a user/tool on the ClusterScalingConstraint object which produces diagnostics withing
+	// This is applied by a user/tool on the ClusterScalingConstraint object which produces diagnostics within
 	// the generated ClusterScalingAdvice.Status.
 	AnnotationEnableScalingDiagnostics = "sa.gardener.cloud/enable-scaling-diagnostics"
 )
@@ -45,10 +45,16 @@ const (
 )
 
 const (
-	DefaultOperatorServerPort      = 8080
+	// DefaultOperatorServerPort is the default port for the scaling advisor operator server.
+	DefaultOperatorServerPort = 8080
+	// DefaultOperatorHealthProbePort is the default port for the operator health probe endpoints.
 	DefaultOperatorHealthProbePort = 8081
-	DefaultOperatorMetricsPort     = 8082
-	DefaultOperatorProfilingPort   = 8083
-	DefaultAdvisorServicePort      = 8090
-	DefaultMinKAPIPort             = 8091
+	// DefaultOperatorMetricsPort is the default port for the operator metrics endpoint.
+	DefaultOperatorMetricsPort = 8082
+	// DefaultOperatorProfilingPort is the default port for the operator profiling endpoints.
+	DefaultOperatorProfilingPort = 8083
+	// DefaultAdvisorServicePort is the default port for the scaling advisor service.
+	DefaultAdvisorServicePort = 8090
+	// DefaultMinKAPIPort is the default port for the MinKAPI service.
+	DefaultMinKAPIPort = 8091
 )
