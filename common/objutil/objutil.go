@@ -8,12 +8,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
+
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
@@ -82,6 +83,8 @@ func WriteCoreRuntimeObjToYaml(obj runtime.Object, yamlPath string) error {
 	return nil
 }
 
+// SetMetaObjectGVK checks if the given object has missing Kind and Version.
+// If so, it sets the object's GVK to the gvk passed in the argument.
 func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	if runtimeObj, ok := obj.(runtime.Object); ok {
 		objGVK := runtimeObj.GetObjectKind().GroupVersionKind()
@@ -95,6 +98,8 @@ func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
 	}
 }
 
+// ResourceListToInt64Map converts the given ResourceList to a map from
+// ResourceName to ResourceValue expressed as an int64 number.
 func ResourceListToInt64Map(resources corev1.ResourceList) map[corev1.ResourceName]int64 {
 	result := make(map[corev1.ResourceName]int64, len(resources))
 	for resourceName, quantity := range resources {
@@ -103,10 +108,22 @@ func ResourceListToInt64Map(resources corev1.ResourceList) map[corev1.ResourceNa
 	return result
 }
 
+// Int64MapToResourceList converts the given map from ResourceName to
+// ResourceValue(int64) into a ResourceList object.
 func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.ResourceList {
 	result := make(corev1.ResourceList, len(intMap))
 	for resourceName, intValue := range intMap {
 		result[resourceName] = *resource.NewQuantity(intValue, resource.DecimalSI)
+	}
+	return result
+}
+
+// StringMapToResourceList converts the given map from ResourceName(string) to
+// ResourceValue(any) into a ResourceList object.
+func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
+	result := make(corev1.ResourceList, len(stringMap))
+	for resourceName, stringValue := range stringMap {
+		result[corev1.ResourceName(resourceName)] = resource.MustParse(stringValue.(string))
 	}
 	return result
 }

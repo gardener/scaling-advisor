@@ -5,12 +5,13 @@
 package podutil
 
 import (
+	"slices"
+
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"slices"
 )
 
 // UpdatePodCondition updates existing pod condition or creates a new one. Sets LastTransitionTime to now if the
@@ -139,4 +140,32 @@ func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string 
 		objectNames = append(objectNames, pod.NamespacedName.String())
 	}
 	return objectNames
+}
+
+// AsPodInfo converts a corev1.Pod to a svcapi.PodInfo object.
+func AsPodInfo(pod corev1.Pod) svcapi.PodInfo {
+	return svcapi.PodInfo{
+		ResourceMeta: svcapi.ResourceMeta{
+			UID:               pod.UID,
+			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
+			Labels:            pod.Labels,
+			Annotations:       pod.Annotations,
+			DeletionTimestamp: pod.DeletionTimestamp,
+			OwnerReferences:   pod.OwnerReferences,
+		},
+		AggregatedRequests:        AggregatePodRequests(&pod),
+		Volumes:                   pod.Spec.Volumes,
+		NodeSelector:              pod.Spec.NodeSelector,
+		NodeName:                  pod.Spec.NodeName,
+		Affinity:                  pod.Spec.Affinity,
+		SchedulerName:             pod.Spec.SchedulerName,
+		Tolerations:               pod.Spec.Tolerations,
+		PriorityClassName:         pod.Spec.PriorityClassName,
+		Priority:                  pod.Spec.Priority,
+		PreemptionPolicy:          pod.Spec.PreemptionPolicy,
+		RuntimeClassName:          pod.Spec.RuntimeClassName,
+		Overhead:                  objutil.ResourceListToInt64Map(pod.Spec.Overhead),
+		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
+		ResourceClaims:            pod.Spec.ResourceClaims,
+	}
 }
