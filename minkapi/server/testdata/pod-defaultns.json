@@ -2,12 +2,11 @@
   "apiVersion": "v1",
   "kind": "Pod",
   "metadata": {
-    "generateName": "b-",
-    "instanceType": "pod-default",
+    "name": "pod-default",
     "namespace": "default",
     "labels": {
       "app.kubernetes.io/name": "pod-default",
-      "app.kubernetes.io/component": "minkapi"
+      "app.kubernetes.io/component": "minkapitest"
     }
   },
   "spec": {
@@ -16,7 +15,7 @@
     "preemptionPolicy": "PreemptLowerPriority",
     "containers": [
       {
-        "instanceType": "pause",
+        "name": "pause",
         "image": "registry.k8s.io/pause:3.5",
         "resources": {
           "requests": {

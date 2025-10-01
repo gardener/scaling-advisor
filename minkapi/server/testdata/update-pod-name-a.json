@@ -3,11 +3,12 @@
     "kind": "Pod",
     "metadata": {
         "creationTimestamp": "2025-05-08T08:30:00Z",
+        "name": "pwned",
         "labels": {
             "app.kubernetes.io/component": "minkapitest",
             "app.kubernetes.io/name": "a"
         },
-        "resourceVersion": "1",
+        "namespace": "default",
         "uid": "d6d62038-d46c-4ee8-972e-a48ffa6fbc77"
     },
     "spec": {
