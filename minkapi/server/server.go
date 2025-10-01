@@ -7,7 +7,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -42,7 +41,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
-	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -381,7 +379,7 @@ func (k *InMemoryKAPI) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJsonResponse(w, r, &typeinfo.SupportedAPIGroups)
+	webutil.WriteJsonResponse(w, r, &typeinfo.SupportedAPIGroups)
 }
 
 // handleAPIVersions returns the list of versions for the core API group
@@ -390,7 +388,7 @@ func (k *InMemoryKAPI) handleAPIVersions(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJsonResponse(w, r, &typeinfo.SupportedAPIVersions)
+	webutil.WriteJsonResponse(w, r, &typeinfo.SupportedAPIVersions)
 }
 
 func (k *InMemoryKAPI) handleAPIResources(apiResourceList metav1.APIResourceList) http.HandlerFunc {
@@ -399,20 +397,20 @@ func (k *InMemoryKAPI) handleAPIResources(apiResourceList metav1.APIResourceList
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		writeJsonResponse(w, r, apiResourceList)
+		webutil.WriteJsonResponse(w, r, apiResourceList)
 	}
 }
 
 func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
 	viewName := r.PathValue("name")
 	if viewName == "" {
-		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
+		webutil.HandleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
 		return
 	}
 	log := logr.FromContextOrDiscard(r.Context())
 	_, err := k.GetSandboxView(log, viewName)
 	if err != nil {
-		handleInternalServerError(w, r, err)
+		webutil.HandleInternalServerError(w, r, err)
 		return
 	}
 	log.Info("sandbox view created and sandbox view API Server routes registered", "viewName", viewName)
@@ -422,7 +420,7 @@ func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Re
 		Code:     http.StatusCreated,
 		Message:  fmt.Sprintf("sandbox view %q created and routes registered", viewName),
 	}
-	writeJsonResponse(w, r, statusOK)
+	webutil.WriteJsonResponse(w, r, statusOK)
 }
 
 func handleGet(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
@@ -433,7 +431,7 @@ func handleGet(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			handleError(w, r, err)
 			return
 		}
-		writeJsonResponse(w, r, obj)
+		webutil.WriteJsonResponse(w, r, obj)
 	}
 }
 
@@ -446,11 +444,11 @@ func handleCreate(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 		mo, err = d.CreateObject()
 		if err != nil {
 			err = fmt.Errorf("cannot create object from objGvk %q: %v", d.GVK, err)
-			handleInternalServerError(w, r, err)
+			webutil.HandleInternalServerError(w, r, err)
 			return
 		}
 
-		if !readBodyIntoObj(w, r, mo) {
+		if !webutil.ReadBodyIntoObj(w, r, mo) {
 			return
 		}
 
@@ -464,7 +462,7 @@ func handleCreate(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			handleError(w, r, err)
 			return
 		}
-		writeJsonResponse(w, r, mo)
+		webutil.WriteJsonResponse(w, r, mo)
 	}
 }
 
@@ -478,7 +476,7 @@ func handlePut(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			handleError(w, r, err)
 			return
 		}
-		if !readBodyIntoObj(w, r, obj) {
+		if !webutil.ReadBodyIntoObj(w, r, obj) {
 			return
 		}
 		metaObj := obj.(metav1.Object)
@@ -487,7 +485,7 @@ func handlePut(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			handleError(w, r, err)
 			return
 		}
-		writeJsonResponse(w, r, obj)
+		webutil.WriteJsonResponse(w, r, obj)
 	}
 }
 
@@ -521,7 +519,7 @@ func handleDelete(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 				UID:  mo.GetUID(),
 			},
 		}
-		writeJsonResponse(w, r, &status)
+		webutil.WriteJsonResponse(w, r, &status)
 	}
 }
 
@@ -533,7 +531,7 @@ func handleListOrWatch(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc 
 
 		labelSelector, err := parseLabelSelector(r)
 		if err != nil {
-			handleBadRequest(w, r, err)
+			webutil.HandleBadRequest(w, r, err)
 			return
 		}
 
@@ -554,7 +552,7 @@ func handleList(d typeinfo.Descriptor, view mkapi.View, labelSelector labels.Sel
 		if err != nil {
 			return
 		}
-		writeJsonResponse(w, r, listObj)
+		webutil.WriteJsonResponse(w, r, listObj)
 	}
 }
 
@@ -564,7 +562,7 @@ func handlePatch(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" && contentType != "application/merge-patch+json" {
 			err := fmt.Errorf("unsupported content type %q for object %q", contentType, name)
-			handleBadRequest(w, r, err)
+			webutil.HandleBadRequest(w, r, err)
 			return
 		}
 		patchData, err := io.ReadAll(r.Body)
@@ -578,7 +576,7 @@ func handlePatch(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			handleError(w, r, err)
 			return
 		}
-		writeJsonResponse(w, r, patchedObj)
+		webutil.WriteJsonResponse(w, r, patchedObj)
 	}
 }
 
@@ -588,14 +586,14 @@ func handlePatchStatus(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc 
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/strategic-merge-patch+json" {
 			err := fmt.Errorf("unsupported content type %q for o %q", contentType, objName)
-			handleBadRequest(w, r, err)
+			webutil.HandleBadRequest(w, r, err)
 			return
 		}
 
 		patchData, err := io.ReadAll(r.Body)
 		if err != nil {
 			err = fmt.Errorf("failed to read patch body for o %q", objName)
-			handleInternalServerError(w, r, err)
+			webutil.HandleInternalServerError(w, r, err)
 			return
 		}
 
@@ -604,7 +602,7 @@ func handlePatchStatus(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc 
 			handleError(w, r, err)
 			return
 		}
-		writeJsonResponse(w, r, patchedObj)
+		webutil.WriteJsonResponse(w, r, patchedObj)
 	}
 }
 
@@ -636,7 +634,7 @@ func handleWatch(d typeinfo.Descriptor, view mkapi.View, labelSelector labels.Se
 			if err != nil {
 				return err
 			}
-			eventJson, err := buildWatchEventJsonAlt(log, &event)
+			eventJson, err := buildWatchEventJson(log, &event)
 			if err != nil {
 				err = fmt.Errorf("cannot  encode watch %q event for object name %q, namespace %q, resourceVersion %q: %w",
 					event.Type, metaObj.GetName(), metaObj.GetNamespace(), metaObj.GetResourceVersion(), err)
@@ -664,7 +662,7 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 		log := logr.FromContextOrDiscard(r.Context())
 		d := typeinfo.PodsDescriptor
 		binding := corev1.Binding{}
-		if !readBodyIntoObj(w, r, &binding) {
+		if !webutil.ReadBodyIntoObj(w, r, &binding) {
 			return
 		}
 		podName := GetObjectName(r, d)
@@ -692,35 +690,13 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 			Status:   metav1.StatusSuccess,
 			Code:     http.StatusCreated,
 		}
-		writeJsonResponse(w, r, statusOK)
+		webutil.WriteJsonResponse(w, r, statusOK)
 	}
 }
 
 func writeStatusError(w http.ResponseWriter, r *http.Request, statusError *apierrors.StatusError) {
 	w.WriteHeader(int(statusError.ErrStatus.Code))
-	writeJsonResponse(w, r, statusError.ErrStatus)
-}
-
-func readBodyIntoObj(w http.ResponseWriter, r *http.Request, obj any) (ok bool) {
-	log := logr.FromContextOrDiscard(r.Context())
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		handleBadRequest(w, r, err)
-		ok = false
-		return
-	}
-	if err := json.Unmarshal(data, obj); err != nil {
-		err = fmt.Errorf("cannot unmarshal JSON for request %q: %w", r.RequestURI, err)
-		log.Error(err, "cannot unmarshal JSON for request body", "payload", string(data))
-		handleBadRequest(w, r, err)
-		ok = false
-		return
-	}
-	if log.V(4).Enabled() {
-		log.V(4).Info("read payload into object", "payload", string(data))
-	}
-	ok = true
-	return
+	webutil.WriteJsonResponse(w, r, statusError.ErrStatus)
 }
 
 func getParseResourceVersion(w http.ResponseWriter, r *http.Request) (resourceVersion int64, ok bool) {
@@ -732,7 +708,7 @@ func getParseResourceVersion(w http.ResponseWriter, r *http.Request) (resourceVe
 	}
 	resourceVersion, err := objutil.ParseResourceVersion(paramValue)
 	if err != nil {
-		handleBadRequest(w, r, err)
+		webutil.HandleBadRequest(w, r, err)
 		return
 	}
 	ok = true
@@ -752,23 +728,7 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 	return flusher
 }
 
-func buildWatchEventJson(log logr.Logger, event *watch.Event) (string, error) {
-	// NOTE: Simple Json serialization does NOT work due to bug in Watch struct
-	//if err := json.NewEncoder(w).Encode(event); err != nil {
-	//	http.Error(w, fmt.Sprintf("Failed to encode watch event: %v", err), http.StatusInternalServerError)
-	//	s.removeWatch(gvr, namespace, ch)
-	//	return
-	//}
-	data, err := kjson.Marshal(event.Object)
-	if err != nil {
-		log.Error(err, "cannot encode watch event", "event", event)
-		return "", err
-	}
-	payload := fmt.Sprintf("{\"type\":\"%s\",\"object\":%s}", event.Type, string(data))
-	return payload, nil
-}
-
-func buildWatchEventJsonAlt(log logr.Logger, ev *watch.Event) (string, error) {
+func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
 	sch := typeinfo.SupportedScheme
 	s := runtimejson.NewSerializerWithOptions(
 		runtimejson.DefaultMetaFactory, sch, sch,
@@ -825,45 +785,8 @@ func setMinKAPIConfigDefaults(cfg *mkapi.Config) {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var statusErr *apierrors.StatusError
 	if errors.As(err, &statusErr) {
-		handleStatusError(w, r, statusErr)
+		webutil.HandleStatusError(w, r, statusErr)
 	} else {
-		handleInternalServerError(w, r, err)
-	}
-}
-
-func handleStatusError(w http.ResponseWriter, r *http.Request, statusErr *apierrors.StatusError) {
-	log := logr.FromContextOrDiscard(r.Context())
-	log.Error(statusErr, "status error", "gvk", statusErr.ErrStatus.GroupVersionKind, "code", statusErr.ErrStatus.Code, "reason", statusErr.ErrStatus.Reason, "message", statusErr.ErrStatus.Message)
-	w.WriteHeader(int(statusErr.ErrStatus.Code))
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(w, r, statusErr.ErrStatus)
-}
-
-func handleInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
-	log := logr.FromContextOrDiscard(r.Context())
-	statusErr := apierrors.NewInternalError(err)
-	log.Error(err, "internal server error")
-	w.WriteHeader(http.StatusInternalServerError)
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(w, r, statusErr.ErrStatus)
-}
-
-func handleBadRequest(w http.ResponseWriter, r *http.Request, err error) {
-	log := logr.FromContextOrDiscard(r.Context())
-	err = fmt.Errorf("cannot handle request %q: %w", r.Method+" "+r.RequestURI, err)
-	log.Error(err, "bad request", "method", r.Method, "requestURI", r.RequestURI)
-	statusErr := apierrors.NewBadRequest(err.Error())
-	w.WriteHeader(http.StatusBadRequest)
-	w.Header().Set("Content-Type", "application/json")
-	writeJsonResponse(w, r, statusErr.ErrStatus)
-}
-
-// writeJsonResponse sets Content-Type to application/json  and encodes the object to the response writer.
-func writeJsonResponse(w http.ResponseWriter, r *http.Request, obj any) {
-	log := logr.FromContextOrDiscard(r.Context())
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(obj); err != nil {
-		log.Error(err, "cannot  encode response", "obj", obj)
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		webutil.HandleInternalServerError(w, r, err)
 	}
 }

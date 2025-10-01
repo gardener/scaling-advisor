@@ -43,6 +43,8 @@ const (
 // ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
 type ScalingAdviceRequest struct {
 	ScalingAdviceRequestRef
+	// Timeout is the scaling advice generation timeout
+	Timeout time.Duration
 	// Constraint represents the constraints using which the scaling advice is generated.
 	Constraint sacorev1alpha1.ClusterScalingConstraint
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
@@ -64,6 +66,9 @@ type ScalingAdviceRequestRef struct {
 
 // ScalingAdviceResponse encapsulates the response from the scaling advisor service.
 type ScalingAdviceResponse struct {
+	// Number is an incremental number associated with this scaling advice response.
+	// Primarily of use for ScalingAdviceGenerationModeIncremental
+	Number int
 	// RequestRef encapsulates the unique reference to a request for which this response is produced.
 	RequestRef ScalingAdviceRequestRef
 	// Message is a human-readable message providing additional context about the response.
@@ -345,7 +350,7 @@ type InstancePriceInfo struct {
 	OS string `json:"os"`
 }
 
-// PriceKey represents the key for a instance type price within a cloud provider.
+// PriceKey represents the key for an instance type price within a cloud provider.
 type PriceKey struct {
 	// Name is the instance type name.
 	Name string

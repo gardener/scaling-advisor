@@ -59,14 +59,14 @@ func New(args *Args) (*Generator, error) {
 }
 
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
-	err := g.doGenerate(ctx, runArgs)
+	err := g.doRun(ctx, runArgs)
 	if err != nil {
 		SendError(runArgs.AdviceEventCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 }
 
-func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
+func (g *Generator) doRun(ctx context.Context, runArgs *RunArgs) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var groupRunPassCounter atomic.Uint32
 	groups, err := g.createSimulationGroups(log, runArgs, &groupRunPassCounter)
@@ -76,6 +76,7 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 	var (
 		allWinnerNodeScores []svcapi.NodeScore
 		unscheduledPods     []svcapi.PodResourceInfo
+		adviceNumber        int
 	)
 	for {
 		var passWinnerNodeScores []svcapi.NodeScore
@@ -95,10 +96,11 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
 		if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
-			err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
+			err = sendScalingAdvice(adviceNumber, runArgs.AdviceEventCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
 			if err != nil {
 				return
 			}
+			adviceNumber++
 		}
 		if len(unscheduledPods) == 0 {
 			log.Info("All pods have been scheduled in %d pass", groupRunPassNum)
@@ -113,12 +115,12 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		return
 	}
 	if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
-		err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
+		err = sendScalingAdvice(adviceNumber, runArgs.AdviceEventCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
 	}
 	return
 }
 
-func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
+func sendScalingAdvice(adviceNumber int, adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
 	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
 	if err != nil {
 		return err
@@ -132,6 +134,7 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi
 
 	adviceCh <- svcapi.ScalingAdviceEvent{
 		Response: &svcapi.ScalingAdviceResponse{
+			Number:        adviceNumber,
 			RequestRef:    request.ScalingAdviceRequestRef,
 			Message:       msg,
 			ScalingAdvice: scalingAdvice,

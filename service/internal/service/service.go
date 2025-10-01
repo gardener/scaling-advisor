@@ -5,11 +5,21 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	corev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/common/webutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"net"
+	"net/http"
 	"os"
 	"path"
+	"slices"
+	"strconv"
+	"time"
 
 	"github.com/gardener/scaling-advisor/service/cli"
 	"github.com/gardener/scaling-advisor/service/internal/scheduler"
@@ -33,15 +43,24 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	// DefaultMaxConcurrentRequests is the number of concurrent scaling advice requests accepted.
+	// TODO: Move me to svcapi
+	DefaultMaxConcurrentRequests = 5
+)
+
 var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 
 var defaultResourceWeights = createDefaultWeights()
 
 type defaultScalingAdvisor struct {
 	cfg               svcapi.ScalingAdvisorServiceConfig
+	rootMux           *http.ServeMux
+	server            *http.Server
 	minKAPIServer     mkapi.Server
 	schedulerLauncher svcapi.SchedulerLauncher
 	generator         *generator.Generator
+	activeExchanges   map[string]*exchange
 }
 
 func New(log logr.Logger,
@@ -91,43 +110,39 @@ func New(log logr.Logger,
 		minKAPIServer:     minKAPIServer,
 		schedulerLauncher: schedulerLauncher,
 		generator:         g,
+		rootMux:           http.NewServeMux(),
+		server: &http.Server{
+			Addr: net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		},
+		activeExchanges: make(map[string]*exchange),
 	}
 	return
 }
 
 func (d *defaultScalingAdvisor) Start(ctx context.Context) (err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			err = fmt.Errorf("%w: %w", svcapi.ErrStartFailed, err)
+		} else {
+			err = nil
 		}
 	}()
+	log := logr.FromContextOrDiscard(ctx)
+	d.server.BaseContext = func(_ net.Listener) context.Context {
+		return ctx
+	}
+	serverHandler := webutil.LoggerMiddleware(log, d.rootMux)
+	d.server.Handler = serverHandler
+	d.registerRoutes(log)
 	if err = d.minKAPIServer.Start(ctx); err != nil {
+		// minKAPIServer.Start does not return an error for normal closure.
+		return
+	}
+	err = d.server.ListenAndServe()
+	if err != nil {
 		return
 	}
 	return
-}
-
-func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
-	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
-	// the base view with the current state of the target cluster.
-	view.Reset()
-	for _, nodeInfo := range cs.Nodes {
-		if err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
-			return err
-		}
-	}
-	for _, pod := range cs.Pods {
-		if err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
-			return err
-		}
-	}
-	for _, pc := range cs.PriorityClasses {
-		if err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
-			return err
-		}
-	}
-	// TODO: also populate RuntimeClasses after support for the same is introduced in minkapi
-	return nil
 }
 
 func (d *defaultScalingAdvisor) Stop(ctx context.Context) (err error) {
@@ -154,6 +169,7 @@ func (d *defaultScalingAdvisor) Stop(ctx context.Context) (err error) {
 }
 
 func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svcapi.ScalingAdviceRequest) <-chan svcapi.ScalingAdviceEvent {
+	log := logr.FromContextOrDiscard(ctx)
 	adviceEventCh := make(chan svcapi.ScalingAdviceEvent)
 	go func() {
 		if len(request.Snapshot.GetUnscheduledPods()) == 0 {
@@ -175,6 +191,10 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svca
 			Request:       request, //TODO: backoff component should adjust the return depending on feedback before passing here
 			AdviceEventCh: adviceEventCh,
 		}
+		defer func() {
+			log.Info("closing ScalingAdviceEventCh", "id", request.ID, "correlationID", request.CorrelationID)
+			close(runArgs.AdviceEventCh)
+		}()
 		d.generator.Run(genCtx, runArgs)
 	}()
 	return adviceEventCh
@@ -272,7 +292,200 @@ func LaunchApp(ctx context.Context) (app svcapi.App, exitCode int) {
 	}
 	return
 }
+func (d *defaultScalingAdvisor) registerRoutes(log logr.Logger) {
+	log.Info(fmt.Sprintf("registering routes for %s", svcapi.ProgramName))
+	d.rootMux.HandleFunc("POST /api/scaling-advice", d.handleSubmitScalingAdviceRequest)
+	d.rootMux.HandleFunc("GET /api/scaling-advice/{requestID}", d.handleGetScalingAdvice)
+}
 
+func (d *defaultScalingAdvisor) handleSubmitScalingAdviceRequest(w http.ResponseWriter, r *http.Request) {
+	log := logr.FromContextOrDiscard(r.Context())
+	var requestPayload svcapi.ScalingAdviceRequest
+	if !webutil.ReadBodyIntoObj(w, r, &requestPayload) {
+		return
+	}
+	if requestPayload.Timeout == 0 {
+		// TODO: define as constant DefaultAdviceGenerationTimeout and move to svcapi
+		requestPayload.Timeout = 5 * time.Minute
+	}
+	errs := validateRequest(requestPayload)
+	if len(errs) > 0 {
+		webutil.HandleValidationErrors(w, r, errs)
+		return
+	}
+	_, ok := d.activeExchanges[requestPayload.ID]
+	if ok {
+		webutil.HandleConflict(w, r, fmt.Sprintf("already processing request with ID %q", requestPayload.ID))
+		return
+	}
+	if len(d.activeExchanges) > DefaultMaxConcurrentRequests { //TODO: move to DefaultMaxConcRequests
+		webutil.HandleTooManyRequests(w, r, fmt.Sprintf("requests exceeded limit %q", DefaultMaxConcurrentRequests))
+		return
+	}
+	ctx, cancelFunc := context.WithTimeout(context.Background(), requestPayload.Timeout)
+	evCh := d.GenerateAdvice(ctx, requestPayload)
+	exc := exchange{
+		Ctx:          ctx,
+		CancelFunc:   cancelFunc,
+		Request:      requestPayload,
+		EventChannel: evCh,
+	}
+	d.activeExchanges[requestPayload.ID] = &exc
+	log.Info("Accepted ScalingAdviceRequest", "id", requestPayload.ID, "correlationID", requestPayload.CorrelationID)
+	statusCreated := &metav1.Status{
+		TypeMeta: metav1.TypeMeta{Kind: "Status"},
+		Status:   metav1.StatusSuccess,
+		Code:     http.StatusCreated,
+	}
+	webutil.WriteJsonResponse(w, r, statusCreated)
+}
+
+func (d *defaultScalingAdvisor) handleGetScalingAdvice(w http.ResponseWriter, r *http.Request) {
+	requestID := r.PathValue("requestID")
+	if requestID == "" {
+		webutil.HandleBadRequest(w, r, fmt.Errorf("requestID is required"))
+		return
+	}
+	exc, ok := d.activeExchanges[requestID]
+	if !ok {
+		webutil.HandleNotFound(w, r, fmt.Sprintf("requestID %q not found", requestID))
+		return
+	}
+	select {
+	case ev := <-exc.EventChannel:
+		exc.AdviceEvents = append(exc.AdviceEvents, ev)
+	default:
+	}
+	if exc.Request.Constraint.Spec.AdviceGenerationMode == corev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
+		handleAllAtOnce(w, r, exc)
+	} else if exc.Request.Constraint.Spec.AdviceGenerationMode == corev1alpha1.ScalingAdviceGenerationModeIncremental {
+		handleIncremental(w, r, exc)
+	} else {
+		webutil.HandleInternalServerError(w, r, fmt.Errorf("unknown advice generation mode"))
+	}
+}
+
+type Payload struct {
+	Responses []svcapi.ScalingAdviceResponse
+	ErrStatus *metav1.Status
+}
+
+func handleIncremental(w http.ResponseWriter, r *http.Request, exc *exchange) {
+	var (
+		startNum int
+		err      error
+	)
+	startNumStr := r.URL.Query().Get("startNumber")
+	if startNumStr == "" {
+		startNum = 0
+	} else {
+		startNum, err = strconv.Atoi(startNumStr)
+		if err != nil {
+			webutil.HandleBadRequest(w, r, fmt.Errorf("startNumber must be an integer: %w", err))
+			return
+		}
+	}
+	if startNum > len(exc.AdviceEvents) {
+		webutil.HandleBadRequest(w, r, fmt.Errorf("startNumber greater than number of advices for request %q, correlationID %q", exc.Request.ID, exc.Request.CorrelationID))
+		return
+	}
+	slices.SortFunc(exc.AdviceEvents, func(a, b svcapi.ScalingAdviceEvent) int {
+		return cmp.Compare(a.Response.Number, b.Response.Number)
+	})
+	var payloadResponses []svcapi.ScalingAdviceResponse
+	for _, r := range exc.AdviceEvents[startNum:] {
+		if r.Response != nil {
+			payloadResponses = append(payloadResponses, *r.Response)
+		}
+	}
+	var payload Payload
+	payload.Responses = payloadResponses
+	if exc.GetError() != nil {
+		payload.ErrStatus = toStatusError(err)
+		w.WriteHeader(int(payload.ErrStatus.Code))
+	}
+	webutil.WriteJsonResponse(w, r, &payload)
+	return
+}
+
+func handleAllAtOnce(w http.ResponseWriter, r *http.Request, exc *exchange) {
+	switch len(exc.AdviceEvents) {
+	case 0:
+		webutil.HandleAccepted(w, r, fmt.Sprintf("scaling advice generation for request %q is in progress", exc.Request.ID))
+		return
+	case 1:
+		var payload Payload
+		err := exc.GetError()
+		if err != nil {
+			payload.ErrStatus = toStatusError(err)
+			w.WriteHeader(int(payload.ErrStatus.Code))
+		}
+		ev := exc.AdviceEvents[0]
+		if ev.Response != nil {
+			payload.Responses = []svcapi.ScalingAdviceResponse{*ev.Response}
+		}
+		webutil.WriteJsonResponse(w, r, &payload)
+	default:
+		webutil.HandleInternalServerError(w, r, fmt.Errorf("unexpected number of advice events %q for request %q, correlationID %q", len(exc.AdviceEvents), exc.Request.ID, exc.Request.CorrelationID))
+	}
+}
+
+var noScalingAdvice metav1.StatusReason = "NoScalingAdvice"
+
+func toStatusError(err error) *metav1.Status {
+	if errors.Is(err, svcapi.ErrNoScalingAdvice) {
+		return &metav1.Status{
+			Status: metav1.StatusFailure,
+			Code:   http.StatusOK,
+			Reason: noScalingAdvice,
+			Details: &metav1.StatusDetails{
+				Causes: []metav1.StatusCause{{Message: err.Error()}},
+			},
+			Message: err.Error(),
+		}
+	} else {
+		return &metav1.Status{
+			Status: metav1.StatusFailure,
+			Code:   http.StatusInternalServerError,
+			Reason: metav1.StatusReasonInternalError,
+			Details: &metav1.StatusDetails{
+				Causes: []metav1.StatusCause{{Message: err.Error()}},
+			},
+			Message: err.Error(),
+		}
+	}
+}
+
+func validateRequest(request svcapi.ScalingAdviceRequest) field.ErrorList {
+	var allErrs field.ErrorList
+	if request.ID == "" {
+		allErrs = append(allErrs, field.Required(field.NewPath("ID"), "ID is required"))
+	}
+	return allErrs
+}
+
+func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
+	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
+	// the base view with the current state of the target cluster.
+	view.Reset()
+	for _, nodeInfo := range cs.Nodes {
+		if err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
+			return err
+		}
+	}
+	for _, pod := range cs.Pods {
+		if err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+			return err
+		}
+	}
+	for _, pc := range cs.PriorityClasses {
+		if err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+			return err
+		}
+	}
+	// TODO: also populate RuntimeClasses after support for the same is introduced in minkapi
+	return nil
+}
 func setServiceConfigDefaults(cfg *svcapi.ScalingAdvisorServiceConfig) {
 	if cfg.Port == 0 {
 		cfg.Port = commonconstants.DefaultAdvisorServicePort
