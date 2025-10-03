@@ -493,7 +493,28 @@ type SimulationArgs struct {
 // CreateSimulationFunc is a factory function for constructing a simulation instance
 type CreateSimulationFunc func(name string, args *SimulationArgs) (Simulation, error)
 
-// SimulationGroup defines an interface for managing groups of simulations.
+// SimulationGroup is a group of simulations at the same priority level (ie a partition of simulations). We attempt to run simulations for the
+// given group and get a preferred NodeScore for simulations belonging to a group before moving to the group at the
+// next priority.
+//
+//	Example:1
+//		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
+//		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
+//
+//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c}
+//		p2: {PoolPriority: 1, NTPriority: 2, nt-b}
+//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
+//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
+//
+//	Example:2
+//		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
+//		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
+//		np-c: 1 {nt-x: 2, nt-y: 1}
+//
+//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
+//		p2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
+//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
+//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
 type SimulationGroup interface {
 	// Name returns the name of the simulation group.
 	Name() string
