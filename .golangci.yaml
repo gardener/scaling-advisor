@@ -12,6 +12,7 @@ linters:
     - unconvert
     - unparam
     - whitespace
+    - fieldalignment
   settings:
     loggercheck:
       logr: true

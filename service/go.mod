@@ -25,9 +25,6 @@ replace (
 
 // NOTE: Primarily needed for Goland/Intelij Go plugin to work correctly, not for the gopls or go compiler
 replace (
-	// These replacements are needed to ensure that only one version of sigs.k8s.io/structured-merge-diff/v4 is pulled in.
-	// DO-NOT-REMOVE these dependencies till apimachinery moves to using v6.x.y of sigs.k8s.io/structured-merge-diff.
-	github.com/google/gnostic-models => github.com/google/gnostic-models v0.6.9
 	k8s.io/api => k8s.io/api v0.34.1
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.34.1
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.34.1
@@ -46,8 +43,6 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.34.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.1
-	sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.6.0
-	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.5.0
 )
 
 require (
@@ -87,6 +82,7 @@ require (
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
