@@ -7,7 +7,7 @@ package inmclient
 import (
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	discovery "k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	clientadmissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	clientadmissionregistrationv1alpha1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1"
@@ -44,7 +44,6 @@ import (
 	clientflowcontrolv1beta2 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta2"
 	clientflowcontrolv1beta3 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta3"
 	clientnetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
-	clientnetworkingv1alpha1 "k8s.io/client-go/kubernetes/typed/networking/v1alpha1"
 	clientnetworkingv1beta1 "k8s.io/client-go/kubernetes/typed/networking/v1beta1"
 	clientnodev1 "k8s.io/client-go/kubernetes/typed/node/v1"
 	clientnodev1alpha1 "k8s.io/client-go/kubernetes/typed/node/v1alpha1"
@@ -54,6 +53,7 @@ import (
 	clientrbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	clientrbacv1alpha1 "k8s.io/client-go/kubernetes/typed/rbac/v1alpha1"
 	clientrbacv1beta1 "k8s.io/client-go/kubernetes/typed/rbac/v1beta1"
+	clientresourcev1 "k8s.io/client-go/kubernetes/typed/resource/v1"
 	clientresourcev1alpha3 "k8s.io/client-go/kubernetes/typed/resource/v1alpha3"
 	clientresourcev1beta1 "k8s.io/client-go/kubernetes/typed/resource/v1beta1"
 	clientresourcev1beta2 "k8s.io/client-go/kubernetes/typed/resource/v1beta2"
@@ -275,11 +275,6 @@ func (c *inMemClient) NetworkingV1() clientnetworkingv1.NetworkingV1Interface {
 	panic("not implemented")
 }
 
-// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
-func (c *inMemClient) NetworkingV1alpha1() clientnetworkingv1alpha1.NetworkingV1alpha1Interface {
-	panic("not implemented")
-}
-
 // NetworkingV1beta1 retrieves the NetworkingV1beta1Client
 func (c *inMemClient) NetworkingV1beta1() clientnetworkingv1beta1.NetworkingV1beta1Interface {
 	panic("not implemented")
@@ -318,6 +313,11 @@ func (c *inMemClient) RbacV1beta1() clientrbacv1beta1.RbacV1beta1Interface {
 // RbacV1alpha1 retrieves the RbacV1alpha1Client
 func (c *inMemClient) RbacV1alpha1() clientrbacv1alpha1.RbacV1alpha1Interface {
 	panic("not implemented")
+}
+
+func (c *inMemClient) ResourceV1() clientresourcev1.ResourceV1Interface {
+	//TODO implement me
+	panic("implement me")
 }
 
 // ResourceV1beta2 retrieves the ResourceV1beta2Client
