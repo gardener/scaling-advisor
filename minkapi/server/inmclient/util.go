@@ -7,6 +7,7 @@ package inmclient
 import (
 	"context"
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -55,6 +56,7 @@ func getObjectList[T metav1.ListInterface](ctx context.Context, view minkapi.Vie
 	}
 	return objutil.Cast[T](listObj)
 }
+
 func getWatcher(ctx context.Context, view minkapi.View, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
 	err = checkLogListOptions(ctx, opts)
 	if err != nil {
@@ -68,6 +70,7 @@ func checkLogListOptions(ctx context.Context, opts metav1.ListOptions) error {
 	logUnimplementedOptionalListOptions(log, opts)
 	return checkUnimplementedRequiredListOptions(log, opts)
 }
+
 func logUnimplementedOptionalListOptions(log logr.Logger, listOptions metav1.ListOptions) {
 	if listOptions.AllowWatchBookmarks {
 		log.V(4).Info("WatchBookmarks is unimplemented")
