@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// GetInstanceType returns the Instance Type of a node from the label present on it.
 func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }

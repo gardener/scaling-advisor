@@ -94,11 +94,11 @@ type access struct {
 // In incorporates all the data required to construct a scenario which can
 // be used to test a scaling service.
 // (TODO) look later into incorporating scalebench with this
-type ScalingScenario struct {
-	constraintsPath string
-	snapshotsPath   []string
-	feedback        apiv1alpha1.ClusterScalingFeedback
-}
+// type ScalingScenario struct {
+// 	constraintsPath string
+// 	snapshotsPath   []string
+// 	feedback        apiv1alpha1.ClusterScalingFeedback
+// }
 
 // gardenerCmd represents the gardener sub-command of genscenario
 // for generating scaling scenario(s) for a gardener cluster.
@@ -200,8 +200,9 @@ func (sc *ShootCoordinate) getFullyQualifiedName() string {
 // ---------------------------------------------------------------------------------
 // Shoot Access
 // ---------------------------------------------------------------------------------
+
 func createShootAccess(ctx context.Context) (*access, error) {
-	clientScheme := typeinfo.RegisterSchemes()
+	clientScheme := typeinfo.SupportedScheme
 
 	shootClient, err := getClient(ctx, shootCoords, clientScheme, DataPlane)
 	if err != nil {
@@ -241,12 +242,12 @@ func getClient(ctx context.Context, shootCoord ShootCoordinate, scheme *runtime.
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	cmd.Env = append(os.Environ(), "GCTL_SESSION_ID=dev")
 
-	capturedOut, err := invokeCommand(cmd)
+	capturedOutput, err := invokeCommand(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute gardenctl command: %w", err)
 	}
 
-	kubeConfigPath, err := extractKubeConfigPath(capturedOut)
+	kubeConfigPath, err := extractKubeConfigPath(capturedOutput)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +378,6 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
-	// TODO: consider removing managedFields from PC
 	snap.PriorityClasses, err = a.ListPriorityClasses(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list priority classes: %w", err)

@@ -71,6 +71,7 @@ func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
 	return
 }
 
+// WriteCoreRuntimeObjToYaml marshals the given k8s runtime.Object into YAML and writes it to the specified file path.
 func WriteCoreRuntimeObjToYaml(obj runtime.Object, yamlPath string) error {
 	data, err := sigyaml.Marshal(obj)
 	if err != nil {
@@ -128,6 +129,7 @@ func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
 	return result
 }
 
+// IsResourceListEqual compares the given resource lists and checks for equality.
 func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
 	for n, q1 := range r1 {
 		q2, ok := r2[n]
@@ -158,7 +160,7 @@ func SubtractResources(a, b corev1.ResourceList) {
 // TODO: Add unit test for this specific objutil method.
 func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {
 	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
+	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", name)
 	}
 	objInterface := objValuePtr.Interface()
@@ -189,9 +191,10 @@ func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.P
 	return nil
 }
 
+// PatchObjectStatus patches the given runtime object's status subresource with the given patchBytes.
 func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []byte) error {
 	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Ptr || objValuePtr.IsNil() {
+	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", objName)
 	}
 	statusField := objValuePtr.Elem().FieldByName("Status")
@@ -228,6 +231,7 @@ func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []
 	return nil
 }
 
+// SliceOfAnyToRuntimeObj converts a slice of generic objects to a slice of runtime.Objects.
 func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
 	result := make([]runtime.Object, 0, len(objs))
 	for _, item := range objs {
@@ -241,6 +245,7 @@ func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
 	return result, nil
 }
 
+// SliceOfMetaObjToRuntimeObj converts a slice of metav1.Objects to a slice of runtime.Objects.
 func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) {
 	result := make([]runtime.Object, 0, len(objs))
 	for _, item := range objs {
@@ -254,6 +259,7 @@ func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) 
 	return result, nil
 }
 
+// ParseObjectResourceVersion parses the resource version of a metav1.Object.
 func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err error) {
 	resourceVersion, err = ParseResourceVersion(obj.GetResourceVersion())
 	if err != nil {
@@ -262,6 +268,7 @@ func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err e
 	return
 }
 
+// ParseResourceVersion parses a string into an int64 representing a resource version.
 func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	if rvStr == "" {
 		resourceVersion = 0
@@ -274,6 +281,7 @@ func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	return
 }
 
+// MaxResourceVersion finds the maximum resource version among a list of metav1.Objects.
 func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 	var version int64
 	for _, o := range objs {
@@ -291,10 +299,12 @@ func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 	return
 }
 
+// CacheName returns the cache.ObjectName for a metav1.Object.
 func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
 
+// NamespacedName returns the types.NamespacedName for a metav1.Object.
 func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }
@@ -310,6 +320,7 @@ func GenerateName(base string) string {
 	return base + suffix
 }
 
+// Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
 func Cast[T any](obj any) (t T, err error) {
 	t, ok := obj.(T)
 	if !ok {
@@ -318,10 +329,11 @@ func Cast[T any](obj any) (t T, err error) {
 	return
 }
 
+// TypeName returns the fully qualified name of a type T.
 func TypeName[T any]() string {
 	var zero T
 	typ := reflect.TypeOf(zero)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()

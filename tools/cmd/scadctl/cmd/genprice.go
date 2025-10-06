@@ -39,12 +39,12 @@ var genpriceCmd = &cobra.Command{
 	Use:   "genprice <pricing-dir>",
 	Short: "obtain pricing data and write to <pricing-dir> for the given cloud provider",
 	Args:  cobra.ExactArgs(1),
-	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
+	PreRunE: func(_ *cobra.Command, _ []string) (err error) {
 		// Normalize providerStr into CloudProvider type
 		provider, err = commontypes.AsCloudProvider(providerStr)
 		return
 	},
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		pricingDir := args[0]
 		switch provider {
 		case commontypes.AWSCloudProvider:

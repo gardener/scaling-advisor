@@ -425,34 +425,6 @@ func buildNonCoreAPIResourceLists() []metav1.APIResourceList {
 	}
 }
 
-var (
-	schemeAdders = []func(scheme *runtime.Scheme) error{
-		metav1.AddMetaToScheme,
-		corev1.AddToScheme,
-		appsv1.AddToScheme,
-		coordinationv1.AddToScheme,
-		eventsv1.AddToScheme,
-		nodev1.AddToScheme,
-		rbacv1.AddToScheme,
-		schedulingv1.AddToScheme,
-		policyv1.AddToScheme,
-		storagev1.AddToScheme,
-	}
-
-	metaV1APIResourceList = metav1.TypeMeta{
-		Kind:       "APIResourceList",
-		APIVersion: "v1",
-	}
-)
-
-func RegisterSchemes() (scheme *runtime.Scheme) {
-	scheme = runtime.NewScheme()
-	for _, fn := range schemeAdders {
-		utilruntime.Must(fn(scheme))
-	}
-	return
-}
-
 func buildAPIGroupList() metav1.APIGroupList {
 	var groups = make(map[string]metav1.APIGroup)
 	for _, d := range SupportedDescriptors {
