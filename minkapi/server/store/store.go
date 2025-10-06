@@ -6,7 +6,6 @@ package store
 
 import (
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"math"
 	"reflect"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"

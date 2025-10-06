@@ -7,7 +7,6 @@ package view
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/watchutil"
 	"sync"
 	"sync/atomic"
 
@@ -18,6 +17,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"

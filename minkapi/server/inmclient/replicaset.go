@@ -6,6 +6,7 @@ package inmclient
 
 import (
 	"context"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"

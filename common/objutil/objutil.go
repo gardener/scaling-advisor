@@ -8,13 +8,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
 	"reflect"
 	"strconv"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +24,9 @@ import (
 	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )
@@ -244,6 +244,7 @@ func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err e
 	}
 	return
 }
+
 func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	if rvStr == "" {
 		resourceVersion = 0

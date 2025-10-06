@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/watch"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -266,7 +266,7 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 		if namePrefix == "" {
 			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
-		name = typeinfo.GenerateName(namePrefix)
+		name = objutil.GenerateName(namePrefix)
 	}
 	obj.SetName(name)
 

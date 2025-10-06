@@ -108,7 +108,25 @@ func initSuite(ctx context.Context) error {
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
-	<-time.After(1 * time.Second) // give some time for startup
+
+	// Wait for the MinKAPI server to fully initialize and create the config file
+	configPath := "/tmp/minkapi-kube-scheduler-config.yaml"
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+
+	deadline := time.Now().Add(maxWait)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(configPath); err == nil {
+			// Config file exists, proceed
+			break
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// Final check that the config file exists
+	if _, err := os.Stat(configPath); err != nil {
+		return fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
+	}
 
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
@@ -122,7 +140,7 @@ func initSuite(ctx context.Context) error {
 		return err
 	}
 
-	launcher, err := NewLauncher("/tmp/minkapi-kube-scheduler-config.yaml", 1)
+	launcher, err := NewLauncher(configPath, 1)
 	if err != nil {
 		return err
 	}
