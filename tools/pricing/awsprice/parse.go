@@ -156,7 +156,7 @@ func parseVCPU(s string) (int32, error) {
 	if val < 0 || val > math.MaxInt32 {
 		return 0, fmt.Errorf("vCPU value %d out of int32 range", val)
 	}
-	return int32(val), nil // #nosec G109 - value has been range-checked. If the value is greater than MaxInt32, an error is returned.
+	return int32(val), nil // #nosec G109 -- value has been range-checked. If the value is greater than MaxInt32, an error is returned.
 }
 
 // parseMemory converts a memory attribute string like "16 GiB" into
