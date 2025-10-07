@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -120,7 +121,7 @@ var gardenerCmd = &cobra.Command{
 			scenarioDir = path.Join(args[0], shootCoords.getFullyQualifiedName())
 		}
 		fmt.Printf("Generating scaling scenarios for shoot in %s\n", scenarioDir)
-		err = os.MkdirAll(scenarioDir, 0755)
+		err = os.MkdirAll(scenarioDir, 0750)
 		if err != nil {
 			return fmt.Errorf("error creating scenario directory: %v", err)
 		}
@@ -239,7 +240,7 @@ func getClient(ctx context.Context, shootCoord ShootCoordinate, scheme *runtime.
 	}
 
 	cmdStr := fmt.Sprintf("eval $(gardenctl kubectl-env bash) && %s > /dev/null && gardenctl kubectl-env bash", targetCmd)
-	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
+	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr) // #nosec G204 -- Command and arguments are used are standard ones to target a specific garden cluster
 	cmd.Env = append(os.Environ(), "GCTL_SESSION_ID=dev")
 
 	capturedOutput, err := invokeCommand(cmd)
@@ -499,7 +500,7 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 		if priority, _, err := unstructured.NestedInt64(poolObj, "priority"); err != nil {
 			return nil, fmt.Errorf("error getting node pool priority: %v", err)
 		} else {
-			nodePool.Priority = int32(priority)
+			nodePool.Priority = int32(priority) // #nosec G115 -- priority cannot be greater than max int32.
 		}
 		if labels, found, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
 			return nil, fmt.Errorf("error getting node pool labels: %v", err)
@@ -605,8 +606,8 @@ func invokeCommand(cmd *exec.Cmd) (string, error) {
 	return stdout.String(), nil
 }
 
-func saveDataToFile(data any, filepath string) error {
-	file, err := os.Create(filepath)
+func saveDataToFile(data any, path string) error {
+	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
