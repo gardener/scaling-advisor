@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
@@ -30,7 +31,6 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -485,6 +485,11 @@ func handlePut(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			return
 		}
 		metaObj := obj.(metav1.Object)
+		if err = objutil.CheckObjectNameAndNamespace(metaObj, name, d.GVK.GroupKind()); err != nil {
+			handleError(w, r, err)
+			return
+		}
+
 		err = view.UpdateObject(d.GVK, metaObj)
 		if err != nil {
 			handleError(w, r, err)
@@ -677,7 +682,7 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 		//	return
 		//}
 		//pod := obj.(*corev1.Pod)
-		//pod.Spec.NodeName = binding.Target.InstanceType
+		//pod.Spec.NodeName = binding.Target.Name
 		//podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
 		//	Type:   corev1.PodScheduled,
 		//	Status: corev1.ConditionTrue,
@@ -836,7 +841,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 func handleStatusError(w http.ResponseWriter, r *http.Request, statusErr *apierrors.StatusError) {
 	log := logr.FromContextOrDiscard(r.Context())
-	log.Error(statusErr, "status error", "gvk", statusErr.ErrStatus.GroupVersionKind, "code", statusErr.ErrStatus.Code, "reason", statusErr.ErrStatus.Reason, "message", statusErr.ErrStatus.Message)
+	log.Error(statusErr, "status error", "code", statusErr.ErrStatus.Code, "reason", statusErr.ErrStatus.Reason, "message", statusErr.ErrStatus.Message)
 	w.WriteHeader(int(statusErr.ErrStatus.Code))
 	w.Header().Set("Content-Type", "application/json")
 	writeJsonResponse(w, r, statusErr.ErrStatus)

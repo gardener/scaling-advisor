@@ -3,12 +3,11 @@
     "kind": "Pod",
     "metadata": {
         "creationTimestamp": "2025-05-08T08:30:00Z",
-        "generateName": "a-",
         "labels": {
             "app.kubernetes.io/component": "minkapitest",
             "app.kubernetes.io/name": "a"
         },
-        "instanceType": "bingo",
+        "name": "bingo",
         "namespace": "default",
         "uid": "d6d62038-d46c-4ee8-972e-a48ffa6fbc77"
     },
@@ -16,7 +15,7 @@
         "containers": [
             {
                 "image": "registry.k8s.io/pause:3.5",
-                "instanceType": "pause",
+                "name": "pause",
                 "resources": {
                     "requests": {
                         "cpu": "100m",
