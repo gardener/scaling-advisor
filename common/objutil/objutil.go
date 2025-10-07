@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 
@@ -46,7 +47,7 @@ func ToYAML(obj runtime.Object) (string, error) {
 // LoadYAMLIntoRuntimeObject deserializes the YAML reading it from the specified path into the given k8s runtime.Object.
 func LoadYAMLIntoRuntimeObject(yamlPath string, s *runtime.Scheme, obj runtime.Object) error {
 	configDecoder := serializer.NewCodecFactory(s).UniversalDecoder()
-	configBytes, err := os.ReadFile(yamlPath)
+	configBytes, err := os.ReadFile(filepath.Clean(yamlPath))
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,7 @@ func LoadYAMLIntoRuntimeObject(yamlPath string, s *runtime.Scheme, obj runtime.O
 
 // LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
 func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
-	data, err := os.ReadFile(yamlPath)
+	data, err := os.ReadFile(filepath.Clean(yamlPath))
 	if err != nil {
 		err = fmt.Errorf("failed to read %q: %w", yamlPath, err)
 		return
@@ -75,7 +76,7 @@ func WriteCoreRuntimeObjToYaml(obj runtime.Object, yamlPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal object to YAML: %w", err)
 	}
-	err = os.WriteFile(yamlPath, data, 0644)
+	err = os.WriteFile(yamlPath, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write YAML to %q: %w", yamlPath, err)
 	}

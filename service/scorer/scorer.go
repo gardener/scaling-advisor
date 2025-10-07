@@ -263,5 +263,6 @@ func SelectMinPrice(nodeScores []service.NodeScore, weightsFn service.GetWeights
 		}
 	}
 	//pick one winner at random from winners
-	return &nodeScores[rand.IntN(len(winners))], nil
+	randIndex := rand.IntN(len(winners)) // #nosec G404 - cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	return &nodeScores[randIndex], nil
 }

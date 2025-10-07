@@ -1,0 +1,10 @@
+go 1.25.1
+
+use (
+	./api
+	./common
+	./minkapi
+	./operator
+	./service
+	./tools
+)

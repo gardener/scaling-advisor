@@ -157,6 +157,9 @@ func NewInMemoryUsingViews(cfg mkapi.Config, baseView mkapi.View, sandboxViewCre
 		rootMux: rootMux,
 		server: &http.Server{
 			Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+			// G112 (CWE-400): Potential Slowloris Attack: kept it same as the one defined for http server started in the actual kube-apiserver.
+			// See: https://github.com/kubernetes/kubernetes/blob/ad82c3d39f5e9f21e173ffeb8aa57953a0da4601/staging/src/k8s.io/apiserver/pkg/server/secure_serving.go#L172
+			ReadHeaderTimeout: 32 * time.Second,
 		},
 		baseView:            baseView,
 		createSandboxViewFn: sandboxViewCreateFn,

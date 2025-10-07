@@ -76,7 +76,7 @@ func init() {
 
 // generateAWSPrices fetches EC2 instance pricing for the given regions and writes to file `aws_instance-type-infos.json` inside pricingDir.
 func generateAWSPrices(pricingDir string, regions []string) error {
-	if err := os.MkdirAll(pricingDir, 0o755); err != nil {
+	if err := os.MkdirAll(pricingDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create pricing dir: %w", err)
 	}
 
@@ -105,7 +105,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 }
 
 func writeInstanceTypeInfos(path string, infos []svcapi.InstancePriceInfo) error {
-	f, err := os.Create(path)
+	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}

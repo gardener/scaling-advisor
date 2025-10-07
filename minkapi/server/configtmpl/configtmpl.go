@@ -84,7 +84,7 @@ func GenKubeConfig(params KubeConfigParams) error {
 	if err != nil {
 		return fmt.Errorf("%w: cannot render %q template with params %q: %w", mkapi.ErrExecuteConfigTemplate, kubeConfigTemplate.Name(), params, err)
 	}
-	err = os.WriteFile(params.KubeConfigPath, buf.Bytes(), 0644)
+	err = os.WriteFile(params.KubeConfigPath, buf.Bytes(), 0600)
 	if err != nil {
 		return fmt.Errorf("%w: cannot write kubeconfig to %q: %w", mkapi.ErrExecuteConfigTemplate, params.KubeConfigPath, err)
 	}
@@ -101,7 +101,7 @@ func GenKubeSchedulerConfig(params KubeSchedulerTmplParams) error {
 	if err != nil {
 		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", mkapi.ErrExecuteConfigTemplate, kubeSchedulerConfigTemplate.Name(), params, err)
 	}
-	err = os.WriteFile(params.KubeSchedulerConfigPath, buf.Bytes(), 0644)
+	err = os.WriteFile(params.KubeSchedulerConfigPath, buf.Bytes(), 0600)
 	if err != nil {
 		return fmt.Errorf("%w: cannot write scheduler config to %q: %w", mkapi.ErrExecuteConfigTemplate, params.KubeSchedulerConfigPath, err)
 	}
