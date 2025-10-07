@@ -49,12 +49,12 @@ func createScalingAdvice(request svcapi.ScalingAdviceRequest, groupRunPassNum ui
 	}, nil
 }
 
-func createScaleOutPlan(winningNodeScores []svcapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int, pendingUnscheduledPods []svcapi.PodResourceInfo) sacorev1alpha1.ScaleOutPlan {
+func createScaleOutPlan(winningNodeScores []svcapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, pendingUnscheduledPods []svcapi.PodResourceInfo) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := groupByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {
-		delta := int32(len(nodeScores))
-		currentReplicas := int32(existingNodeCountByPlacement[placement])
+		delta := int32(len(nodeScores)) // #nosec G115 -- length of nodeScores cannot be greater than max int32.
+		currentReplicas := existingNodeCountByPlacement[placement]
 		scaleItems = append(scaleItems, sacorev1alpha1.ScaleOutItem{
 			NodePlacement:   placement,
 			CurrentReplicas: currentReplicas,

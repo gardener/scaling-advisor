@@ -201,8 +201,8 @@ func (c *ClusterSnapshot) GetUnscheduledPods() []PodInfo {
 }
 
 // GetNodeCountByPlacement returns a map of node placements to their respective node counts in the cluster.
-func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlacement]int, error) {
-	nodeCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int)
+func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlacement]int32, error) {
+	nodeCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
 	for _, nodeInfo := range c.Nodes {
 		p, err := getNodePlacement(nodeInfo)
 		if err != nil {

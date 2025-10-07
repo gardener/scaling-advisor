@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/go-logr/logr"
@@ -58,7 +59,7 @@ func loadSchedulerConfig(configPath string) (config *schedulerapiconfig.KubeSche
 		}
 	}()
 
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(filepath.Clean(configPath))
 	if err != nil {
 		return
 	}
