@@ -27,30 +27,31 @@ func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights
 	return nru
 }
 
+// addPodRequests adds the pod's requests to aggregateResources resource-wise
+func addPodRequests(podRequest, aggregateResources map[corev1.ResourceName]int64) {
+	for resourceName, request := range podRequest {
+		if value, ok := aggregateResources[resourceName]; ok {
+			aggregateResources[resourceName] = value + request
+		} else {
+			aggregateResources[resourceName] = request
+		}
+	}
+}
+
 // getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
 // map containing the sums for each resource type
 func getAggregatedScheduledPodsResources(scaledNodeAssignments *service.NodePodAssignment, otherAssignments []service.NodePodAssignment) (scheduledResources map[corev1.ResourceName]int64) {
 	scheduledResources = make(map[corev1.ResourceName]int64)
-	//add resources required by pods scheduled on scaled candidate node
-	for _, pod := range scaledNodeAssignments.ScheduledPods {
-		for resourceName, request := range pod.AggregatedRequests {
-			if value, ok := scheduledResources[resourceName]; ok {
-				scheduledResources[resourceName] = value + request
-			} else {
-				scheduledResources[resourceName] = request
-			}
+	if scaledNodeAssignments != nil {
+		//add resources required by pods scheduled on scaled candidate node
+		for _, pod := range scaledNodeAssignments.ScheduledPods {
+			addPodRequests(pod.AggregatedRequests, scheduledResources)
 		}
 	}
 	//add resources required by pods scheduled on existing nodes
 	for _, assignment := range otherAssignments {
 		for _, pod := range assignment.ScheduledPods {
-			for resourceName, request := range pod.AggregatedRequests {
-				if value, found := scheduledResources[resourceName]; found {
-					scheduledResources[resourceName] = value + request
-				} else {
-					scheduledResources[resourceName] = request
-				}
-			}
+			addPodRequests(pod.AggregatedRequests, scheduledResources)
 		}
 	}
 	return scheduledResources
@@ -78,10 +79,10 @@ type LeastCost struct {
 	weightsFn             service.GetWeightsFunc
 }
 
-// Compute uses the least-cost strategy to generate a score representing the number of resource units scheduled per unit cost.
-// Here, resource unit is an abstraction used to represent and operate upon multiple heterogeneous
+// Compute uses the least-cost strategy to generate a score representing the number of normalized resource units (NRU) scheduled per unit cost.
+// Here, NRU is an abstraction used to represent and operate upon multiple heterogeneous
 // resource requests.
-// Resource quantities of different resource types are reduced to a representation in terms of resource units
+// Resource quantities of different resource types are reduced to a representation in terms of NRU
 // based on pre-configured weights.
 func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore, err error) {
 	defer func() {

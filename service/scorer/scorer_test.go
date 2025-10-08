@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// Helper function to create mock nodes with allocatable
+// Helper function to create mock nodes
 func createMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
 	return service.NodeResourceInfo{
 		Name:         name,
@@ -49,7 +49,7 @@ func createMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 	}
 }
 
-// Helper function to create mock weights for instance type
+// mock weights fn for testing
 func mockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
