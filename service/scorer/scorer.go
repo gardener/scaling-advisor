@@ -64,7 +64,7 @@ func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instancePric
 	case commontypes.LeastCostNodeScoringStrategy:
 		return &LeastCost{instancePricingAccess: instancePricingAccess, weightsFn: weightsFn}, nil
 	case commontypes.LeastWasteNodeScoringStrategy:
-		return &LeastWaste{instancePricing: instancePricingAccess, weightsFn: weightsFn}, nil
+		return &LeastWaste{instancePricingAccess: instancePricingAccess, weightsFn: weightsFn}, nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported %q", service.ErrUnsupportedNodeScoringStrategy, scoringStrategy)
 	}
@@ -114,8 +114,8 @@ var _ service.NodeScorer = (*LeastWaste)(nil)
 
 // LeastWaste contains information required by the least-waste node scoring strategy
 type LeastWaste struct {
-	instancePricing service.InstancePricingAccess
-	weightsFn       service.GetWeightsFunc
+	instancePricingAccess service.InstancePricingAccess
+	weightsFn             service.GetWeightsFunc
 }
 
 // Compute returns the NodeScore for the least-waste strategy. Instead of calculating absolute wastage across the cluster,
