@@ -93,8 +93,14 @@ func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore
 	aggregatedPodsResources := getAggregatedScheduledPodsResources(args.ScaledAssignment, args.OtherAssignments)
 	//calculate total scheduledResources in terms of normalized resource units using weights
 	weights, err := l.weightsFn(args.Placement.InstanceType)
+	if err != nil {
+		return score, err
+	}
 	totalNormalizedResourceUnits := getNormalizedResourceUnits(aggregatedPodsResources, weights)
 	info, err := l.instancePricingAccess.GetInfo(args.Placement.Region, args.Placement.InstanceType)
+	if err != nil {
+		return score, err
+	}
 	return service.NodeScore{
 		ID:                 args.ID,
 		Placement:          args.Placement,
@@ -158,6 +164,9 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 	}
 	//calculate single score from wastage using weights
 	weights, err := l.weightsFn(args.Placement.InstanceType)
+	if err != nil {
+		return nodeScore, err
+	}
 	totalNormalizedResourceUnits := getNormalizedResourceUnits(wastage, weights)
 	nodeScore = service.NodeScore{
 		ID:                 args.ID,
