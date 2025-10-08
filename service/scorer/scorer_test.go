@@ -22,7 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func CreateMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
+// Helper function to create mock nodes with allocatable
+func createMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
 	return service.NodeResourceInfo{
 		Name:         name,
 		InstanceType: instanceType,
@@ -33,7 +34,8 @@ func CreateMockNode(name, instanceType string, cpu, memory int64) service.NodeRe
 	}
 }
 
-func CreateMockPod(name string, cpu, memory int64) service.PodResourceInfo {
+// Helper function to create mock pods with cpu and memory requests
+func createMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 	return service.PodResourceInfo{
 		UID: "pod-12345",
 		NamespacedName: types.NamespacedName{
@@ -48,7 +50,7 @@ func CreateMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 }
 
 // Helper function to create mock weights for instance type
-func NewMockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
+func newMockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
 
@@ -58,22 +60,22 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, NewMockWeightsFunc)
+	scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, newMockWeightsFunc)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 	assignment := service.NodePodAssignment{
-		Node: CreateMockNode("simNode1", "instance-a-1", 2, 4),
+		Node: createMockNode("simNode1", "instance-a-1", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
-			CreateMockPod("simPodA", 1, 2),
+			createMockPod("simPodA", 1, 2),
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := CreateMockPod("simStorage", 1, 2)
+	podWithStorage := createMockPod("simStorage", 2, 4)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          CreateMockNode("simNode1", "instance-a-2", 2, 4),
+		Node:          createMockNode("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
@@ -103,8 +105,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
-					Node:          CreateMockNode("exNode1", "instance-b-1", 2, 4),
-					ScheduledPods: []service.PodResourceInfo{CreateMockPod("simPodB", 1, 2)},
+					Node:          createMockNode("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
 			expectedErr: nil,
@@ -129,7 +131,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ID:                 "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
-				Value:              700,
+				Value:              0,
 				ScaledNodeResource: assignmentWithStorage.Node,
 			},
 		},
@@ -155,21 +157,21 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, access, NewMockWeightsFunc)
+	scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, access, newMockWeightsFunc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assignment := service.NodePodAssignment{
-		Node: CreateMockNode("simNode1", "instance-a-2", 2, 4),
+		Node: createMockNode("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
-			CreateMockPod("simPodA", 1, 2),
+			createMockPod("simPodA", 1, 2),
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := CreateMockPod("simStorage", 1, 2)
+	podWithStorage := createMockPod("simStorage", 1, 2)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          CreateMockNode("simNode1", "instance-a-2", 2, 4),
+		Node:          createMockNode("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
@@ -199,8 +201,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
-					Node:          CreateMockNode("exNode1", "instance-b-1", 2, 4),
-					ScheduledPods: []service.PodResourceInfo{CreateMockPod("simPodB", 1, 2)},
+					Node:          createMockNode("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
 			expectedErr: nil,
@@ -251,7 +253,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		return
 	}
 	selector, err := GetNodeScoreSelector(commontypes.LeastCostNodeScoringStrategy)
-	simNodeWithStorage := CreateMockNode("simNode1", "instance-a-1", 2, 4)
+	simNodeWithStorage := createMockNode("simNode1", "instance-a-1", 2, 4)
 	simNodeWithStorage.Allocatable["Storage"] = 10
 	if err != nil {
 		t.Fatal(err)
@@ -262,9 +264,9 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -278,13 +280,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
+					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 4, 8),
 				}},
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{{
@@ -292,7 +294,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              1,
-				ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
+				ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 4, 8),
 			}},
 		},
 		"identical allocatables": {
@@ -302,13 +304,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
+					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 2, 4),
 				},
 			},
 			expectedErr: nil,
@@ -318,13 +320,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
+					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 2, 4),
 				},
 			},
 		},
@@ -335,7 +337,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 4, 8)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 4, 8)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
@@ -349,13 +351,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 				UnscheduledPods:    nil,
 				Value:              1,
-				ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 4, 8),
+				ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 4, 8),
 			}},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, NewMockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, newMockWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -394,9 +396,9 @@ func TestSelectMinPrice(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -410,13 +412,13 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 1, 2),
+					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 1, 2),
 				},
 			},
 			expectedErr: nil,
@@ -426,7 +428,7 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"identical prices": {
 			input: []service.NodeScore{
@@ -435,13 +437,13 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),
+					ScaledNodeResource: createMockNode("simNode2", "instance-c-1", 1, 2),
 				},
 			},
 			expectedErr: nil,
@@ -451,20 +453,20 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),
+					ScaledNodeResource: createMockNode("simNode2", "instance-c-1", 1, 2),
 				},
 			},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, NewMockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, newMockWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
