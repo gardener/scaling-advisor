@@ -101,7 +101,7 @@ func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore
 		Value:              int(math.Round(totalNormalizedResourceUnits * 100 / info.HourlyPrice)),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 		UnscheduledPods:    args.UnscheduledPods,
-	}, nil
+	}, err
 }
 
 var _ service.NodeScorer = (*LeastWaste)(nil)
@@ -166,7 +166,7 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 		Value:              int(totalNormalizedResourceUnits * 100),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 	}
-	return nodeScore, nil
+	return nodeScore, err
 }
 
 var _ service.GetNodeScoreSelector = GetNodeScoreSelector
