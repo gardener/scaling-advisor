@@ -50,8 +50,17 @@ func createMockPod(name string, cpu, memory int64) service.PodResourceInfo {
 }
 
 // Helper function to create mock weights for instance type
-func newMockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
+func mockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
+}
+
+type mockInfoAccess struct {
+	err error
+}
+
+// Helper function to create mock instance pricing access that returns an error
+func (m mockInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
+	return service.InstancePriceInfo{}, m.err
 }
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
@@ -75,6 +84,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
+		access        service.InstancePricingAccess
 		weightsFn     service.GetWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
@@ -86,7 +96,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -106,7 +117,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -123,7 +135,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignmentWithStorage,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -140,6 +153,21 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			access: access,
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   service.ErrComputeNodeScore,
+			expectedScore: service.NodeScore{},
+		},
+		"pricingAccess.GetInfo() function returns an error": {
+			input: service.NodeScorerArgs{
+				ID:               "testing",
+				Placement:        sacorev1alpha1.NodePlacement{},
+				ScaledAssignment: &assignment,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			access: mockInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -149,7 +177,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, tc.access, tc.weightsFn)
 			if err != nil {
 				t.Fatal(err)
 				return
@@ -188,6 +216,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
+		access        service.InstancePricingAccess
 		weightsFn     service.GetWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
@@ -199,7 +228,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -219,7 +249,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -236,7 +267,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignmentWithStorage,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			weightsFn:   newMockWeightsFunc,
+			access:      access,
+			weightsFn:   mockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -252,6 +284,21 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			access: access,
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   service.ErrComputeNodeScore,
+			expectedScore: service.NodeScore{},
+		},
+		"pricingAccess.GetInfo() function returns an error": {
+			input: service.NodeScorerArgs{
+				ID:               "testing",
+				Placement:        sacorev1alpha1.NodePlacement{},
+				ScaledAssignment: &assignment,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			access: mockInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -261,7 +308,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, tc.access, tc.weightsFn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -389,7 +436,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, newMockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, mockWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -498,7 +545,7 @@ func TestSelectMinPrice(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, newMockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, mockWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -600,7 +647,7 @@ func TestGetNodeScorer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadTestInstancePricingAccess failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, newMockWeightsFunc)
+			got, err := GetNodeScorer(tc.input, access, mockWeightsFunc)
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
