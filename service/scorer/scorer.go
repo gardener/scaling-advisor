@@ -188,6 +188,8 @@ func GetNodeScoreSelector(scoringStrategy commontypes.NodeScoringStrategy) (serv
 	}
 }
 
+var _ service.NodeScoreSelector = SelectMaxAllocatable
+
 // SelectMaxAllocatable returns the index of the node score for the node with the highest allocatable resources.
 // This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
 // Larger instance types --> less fragmentation
@@ -238,6 +240,8 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 	randIndex := rand.IntN(len(winners)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
 	return &nodeScores[winners[randIndex]], nil
 }
+
+var _ service.NodeScoreSelector = SelectMinPrice
 
 // SelectMinPrice returns the index of the node score for the node with the lowest price.
 // if multiple node scores have instance types with the same price, an index is picked at random from them
