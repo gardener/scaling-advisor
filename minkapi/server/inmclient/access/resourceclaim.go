@@ -54,7 +54,7 @@ func (a *resourceClaimAccess) DeleteCollection(ctx context.Context, opts metav1.
 }
 
 func (a *resourceClaimAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*resourcev1.ResourceClaim, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceClaimAccess) List(ctx context.Context, opts metav1.ListOptions) (*resourcev1.ResourceClaimList, error) {

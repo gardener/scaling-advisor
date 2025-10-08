@@ -56,7 +56,7 @@ func (a *statefulSetAccess) DeleteCollection(ctx context.Context, opts metav1.De
 }
 
 func (a *statefulSetAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*appsv1.StatefulSet, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *statefulSetAccess) List(ctx context.Context, opts metav1.ListOptions) (*appsv1.StatefulSetList, error) {

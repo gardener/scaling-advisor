@@ -51,7 +51,7 @@ func (a *volumeAttributesClassAccess) DeleteCollection(ctx context.Context, opts
 }
 
 func (a *volumeAttributesClassAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.VolumeAttributesClass, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *volumeAttributesClassAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.VolumeAttributesClassList, error) {

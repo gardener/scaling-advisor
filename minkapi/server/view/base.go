@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,14 +95,20 @@ func (v *baseView) GetObjectChangeCount() int64 {
 	return v.changeCount.Load()
 }
 
-func (v *baseView) GetClientFacades() (clientFacades commontypes.ClientFacades, err error) {
+func (v *baseView) GetClientFacades(accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	// TODO: return instance of in-memory client.
-	return clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	if accessMode == commontypes.ClientAccessNetwork {
+		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	} else if accessMode == commontypes.ClientAccessInMemory {
+		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
+	} else {
+		err = fmt.Errorf("invalid access mode %q", accessMode)
+	}
+	return
 }
 
 func (v *baseView) GetEventSink() minkapi.EventSink {

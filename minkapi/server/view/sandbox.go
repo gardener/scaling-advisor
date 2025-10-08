@@ -7,6 +7,8 @@ package view
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"sync"
 	"sync/atomic"
 
@@ -94,14 +96,19 @@ func (v *sandboxView) GetObjectChangeCount() int64 {
 	return v.changeCount.Load()
 }
 
-func (v *sandboxView) GetClientFacades() (clientFacades commontypes.ClientFacades, err error) {
+func (v *sandboxView) GetClientFacades(accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	panic("inmem client type to be implemented")
-	return
+	if accessMode == commontypes.ClientAccessNetwork {
+		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	} else if accessMode == commontypes.ClientAccessInMemory {
+		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
+	} else {
+		err = fmt.Errorf("invalid access mode %q", accessMode)
+	}
 	return
 }
 

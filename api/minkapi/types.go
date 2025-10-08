@@ -133,9 +133,9 @@ type View interface {
 	GetName() string
 	// GetType returns the type of this view (base or sandbox).
 	GetType() ViewType
-	// GetClientFacades gets the in-memory implementation ClientFacades that can be used by code to interact with this view
+	// GetClientFacades gets a ClientFacades populated according to the given accessMode that can be used by code to interact with this view
 	// via standard k8s client and informer interfaces
-	GetClientFacades() (commontypes.ClientFacades, error)
+	GetClientFacades(accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
 	// GetResourceStore returns the resource store for the specified GroupVersionKind.
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	// GetEventSink returns the event sink for this view.

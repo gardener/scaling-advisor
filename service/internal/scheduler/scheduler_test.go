@@ -7,6 +7,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"os"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestMain(m *testing.M) {
 func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	clientFacades, err := state.baseView.GetClientFacades()
+	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
 	if err != nil {
 		t.Fatalf("failed to get client facades: %v", err)
 		return
@@ -144,7 +145,7 @@ func initSuite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	clientFacades, err := state.baseView.GetClientFacades()
+	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
 	if err != nil {
 		return err
 	}

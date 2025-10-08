@@ -52,7 +52,7 @@ func (a *storageClassAccess) DeleteCollection(ctx context.Context, opts metav1.D
 }
 
 func (a *storageClassAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.StorageClass, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *storageClassAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.StorageClassList, error) {

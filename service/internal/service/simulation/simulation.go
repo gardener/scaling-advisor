@@ -7,6 +7,7 @@ package simulation
 import (
 	"context"
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"maps"
 	"slices"
 	"time"
@@ -182,7 +183,7 @@ func (s *defaultSimulation) getScaledNodeAssignment() *svcapi.NodePodAssignment 
 }
 
 func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (svcapi.SchedulerHandle, error) {
-	clientFacades, err := simView.GetClientFacades()
+	clientFacades, err := simView.GetClientFacades(commontypes.ClientAccessInMemory)
 	if err != nil {
 		return nil, err
 	}

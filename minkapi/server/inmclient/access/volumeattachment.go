@@ -56,7 +56,7 @@ func (a *volumeAttachmentAccess) DeleteCollection(ctx context.Context, opts meta
 }
 
 func (a *volumeAttachmentAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.VolumeAttachment, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *volumeAttachmentAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.VolumeAttachmentList, error) {

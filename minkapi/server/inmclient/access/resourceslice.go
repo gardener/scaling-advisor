@@ -50,7 +50,7 @@ func (a *resourceSliceAccess) DeleteCollection(ctx context.Context, opts metav1.
 }
 
 func (a *resourceSliceAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*resourcev1.ResourceSlice, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceSliceAccess) List(ctx context.Context, opts metav1.ListOptions) (*resourcev1.ResourceSliceList, error) {
