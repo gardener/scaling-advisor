@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/watch"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -137,6 +137,10 @@ func (v *baseView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) 
 }
 
 func (v *baseView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error) {
+	// TODO:  podName should not be required, it should be sufficient to just pass binding and then use binding.Name. Check this.
+	if podName.Name == "" {
+		return nil, fmt.Errorf("%w: podName must not be empty", minkapi.ErrUpdateObject)
+	}
 	obj, err := v.GetObject(typeinfo.PodsDescriptor.GVK, podName)
 	if err != nil {
 		return nil, err
@@ -266,7 +270,7 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 		if namePrefix == "" {
 			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
-		name = typeinfo.GenerateName(namePrefix)
+		name = objutil.GenerateName(namePrefix)
 	}
 	obj.SetName(name)
 

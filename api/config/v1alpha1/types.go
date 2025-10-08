@@ -93,7 +93,9 @@ type ControllersConfiguration struct {
 // ScalingConstraintsControllerConfiguration is the configuration for then controller that reconciles ScalingConstraints.
 type ScalingConstraintsControllerConfiguration struct {
 	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
-	ConcurrentSyncs *int                            `json:"concurrentSyncs"`
+	ConcurrentSyncs *int `json:"concurrentSyncs"`
+	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
 	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
-	CloudProvider   commontypes.CloudProvider       `json:"cloudProvider"`
+	// CloudProvider specifies the cloud provider for which the scaling advisor is configured.
+	CloudProvider commontypes.CloudProvider `json:"cloudProvider"`
 }

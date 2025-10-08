@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package inmclient
 
 import (
@@ -36,18 +40,15 @@ func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
 }
 
 func (c *coreV1Impl) LimitRanges(namespace string) clientcorev1.LimitRangeInterface {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) Namespaces() clientcorev1.NamespaceInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewNamespaceAccess(c.view)
 }
 
 func (c *coreV1Impl) Nodes() clientcorev1.NodeInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewNodeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumes() clientcorev1.PersistentVolumeInterface {
@@ -59,18 +60,15 @@ func (c *coreV1Impl) PersistentVolumeClaims(namespace string) clientcorev1.Persi
 }
 
 func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewPodAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) PodTemplates(namespace string) clientcorev1.PodTemplateInterface {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) ReplicationControllers(namespace string) clientcorev1.ReplicationControllerInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewReplicationControllerAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) ResourceQuotas(namespace string) clientcorev1.ResourceQuotaInterface {
@@ -79,16 +77,13 @@ func (c *coreV1Impl) ResourceQuotas(namespace string) clientcorev1.ResourceQuota
 }
 
 func (c *coreV1Impl) Secrets(namespace string) clientcorev1.SecretInterface {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
-	//TODO implement me
-	panic("implement me")
+	return access.NewServiceAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) ServiceAccounts(namespace string) clientcorev1.ServiceAccountInterface {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }

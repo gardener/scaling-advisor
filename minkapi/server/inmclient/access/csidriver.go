@@ -52,7 +52,7 @@ func (a *csiDriverAccess) DeleteCollection(ctx context.Context, opts metav1.Dele
 }
 
 func (a *csiDriverAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.CSIDriver, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *csiDriverAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.CSIDriverList, error) {

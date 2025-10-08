@@ -5,8 +5,10 @@
 package inmclient
 
 import (
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	discovery "k8s.io/client-go/discovery"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	clientadmissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	clientadmissionregistrationv1alpha1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1"
@@ -43,7 +45,6 @@ import (
 	clientflowcontrolv1beta2 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta2"
 	clientflowcontrolv1beta3 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta3"
 	clientnetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
-	clientnetworkingv1alpha1 "k8s.io/client-go/kubernetes/typed/networking/v1alpha1"
 	clientnetworkingv1beta1 "k8s.io/client-go/kubernetes/typed/networking/v1beta1"
 	clientnodev1 "k8s.io/client-go/kubernetes/typed/node/v1"
 	clientnodev1alpha1 "k8s.io/client-go/kubernetes/typed/node/v1alpha1"
@@ -53,6 +54,7 @@ import (
 	clientrbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	clientrbacv1alpha1 "k8s.io/client-go/kubernetes/typed/rbac/v1alpha1"
 	clientrbacv1beta1 "k8s.io/client-go/kubernetes/typed/rbac/v1beta1"
+	clientresourcev1 "k8s.io/client-go/kubernetes/typed/resource/v1"
 	clientresourcev1alpha3 "k8s.io/client-go/kubernetes/typed/resource/v1alpha3"
 	clientresourcev1beta1 "k8s.io/client-go/kubernetes/typed/resource/v1beta1"
 	clientresourcev1beta2 "k8s.io/client-go/kubernetes/typed/resource/v1beta2"
@@ -71,6 +73,12 @@ var (
 
 type inMemClient struct {
 	view mkapi.View
+}
+
+type resourceAccessImpl struct {
+	view      mkapi.View
+	gvk       schema.GroupVersionKind
+	namespace string
 }
 
 // AppsV1 retrieves the AppsV1Client
@@ -115,17 +123,17 @@ func (c *inMemClient) StorageV1() clientstoragev1.StorageV1Interface {
 
 // AdmissionregistrationV1 retrieves the AdmissionregistrationV1Client
 func (c *inMemClient) AdmissionregistrationV1() clientadmissionregistrationv1.AdmissionregistrationV1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AdmissionregistrationV1alpha1 retrieves the AdmissionregistrationV1alpha1Client
 func (c *inMemClient) AdmissionregistrationV1alpha1() clientadmissionregistrationv1alpha1.AdmissionregistrationV1alpha1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AdmissionregistrationV1beta1 retrieves the AdmissionregistrationV1beta1Client
 func (c *inMemClient) AdmissionregistrationV1beta1() clientadmissionregistrationv1beta1.AdmissionregistrationV1beta1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // InternalV1alpha1 retrieves the InternalV1alpha1Client
@@ -135,7 +143,7 @@ func (c *inMemClient) InternalV1alpha1() internalv1alpha1.InternalV1alpha1Interf
 
 // AppsV1beta1 retrieves the AppsV1beta1Client
 func (c *inMemClient) AppsV1beta1() clientappsv1beta1.AppsV1beta1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AppsV1beta2 retrieves the AppsV1beta2Client
@@ -145,27 +153,27 @@ func (c *inMemClient) AppsV1beta2() clientappsv1beta2.AppsV1beta2Interface {
 
 // AuthenticationV1 retrieves the AuthenticationV1Client
 func (c *inMemClient) AuthenticationV1() clientauthenticationv1.AuthenticationV1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AuthenticationV1alpha1 retrieves the AuthenticationV1alpha1Client
 func (c *inMemClient) AuthenticationV1alpha1() clientauthenticationv1alpha1.AuthenticationV1alpha1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AuthenticationV1beta1 retrieves the AuthenticationV1beta1Client
 func (c *inMemClient) AuthenticationV1beta1() clientauthenticationv1beta1.AuthenticationV1beta1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AuthorizationV1 retrieves the AuthorizationV1Client
 func (c *inMemClient) AuthorizationV1() clientauthorizationv1.AuthorizationV1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AuthorizationV1beta1 retrieves the AuthorizationV1beta1Client
 func (c *inMemClient) AuthorizationV1beta1() clientauthorizationv1beta1.AuthorizationV1beta1Interface {
-	panic("not implemented")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 // AutoscalingV1 retrieves the AutoscalingV1Client
@@ -268,11 +276,6 @@ func (c *inMemClient) NetworkingV1() clientnetworkingv1.NetworkingV1Interface {
 	panic("not implemented")
 }
 
-// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
-func (c *inMemClient) NetworkingV1alpha1() clientnetworkingv1alpha1.NetworkingV1alpha1Interface {
-	panic("not implemented")
-}
-
 // NetworkingV1beta1 retrieves the NetworkingV1beta1Client
 func (c *inMemClient) NetworkingV1beta1() clientnetworkingv1beta1.NetworkingV1beta1Interface {
 	panic("not implemented")
@@ -295,7 +298,7 @@ func (c *inMemClient) NodeV1beta1() clientnodev1beta1.NodeV1beta1Interface {
 
 // PolicyV1 retrieves the PolicyV1Client
 func (c *inMemClient) PolicyV1() clientpolicyv1.PolicyV1Interface {
-	panic("not implemented")
+	return &policyV1Impl{c.view}
 }
 
 // PolicyV1beta1 retrieves the PolicyV1beta1Client
@@ -311,6 +314,11 @@ func (c *inMemClient) RbacV1beta1() clientrbacv1beta1.RbacV1beta1Interface {
 // RbacV1alpha1 retrieves the RbacV1alpha1Client
 func (c *inMemClient) RbacV1alpha1() clientrbacv1alpha1.RbacV1alpha1Interface {
 	panic("not implemented")
+}
+
+func (c *inMemClient) ResourceV1() clientresourcev1.ResourceV1Interface {
+	//TODO implement me
+	panic("implement me")
 }
 
 // ResourceV1beta2 retrieves the ResourceV1beta2Client

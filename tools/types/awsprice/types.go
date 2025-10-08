@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // Package awsprice provides utilities to fetch and parse AWS EC2 instance
 // pricing information from the AWS public price list JSON.
 //

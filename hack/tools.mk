@@ -9,6 +9,7 @@ GOLANGCI_LINT           := $(TOOLS_BIN_DIR)/golangci-lint
 GOIMPORTS_REVISER       := $(TOOLS_BIN_DIR)/goimports-reviser
 GO_ADD_LICENSE          := $(TOOLS_BIN_DIR)/addlicense
 CRD_REF_DOCS            := $(TOOLS_BIN_DIR)/crd-ref-docs
+GOSEC                   := $(TOOLS_BIN_DIR)/gosec
 
 # default tool versions
 GOLANGCI_LINT_VERSION     ?= v2.1.1
@@ -16,6 +17,7 @@ GOIMPORTS_REVISER_VERSION ?= v3.9.1
 GO_ADD_LICENSE_VERSION    ?= v1.1.1
 CONTROLLER_GEN_VERSION    ?= $(call version_gomod,sigs.k8s.io/controller-tools)
 CRD_REF_DOCS_VERSION      ?= v0.1.0
+GOSEC_VERSION             ?= v2.22.8
 
 export PATH := $(abspath $(TOOLS_BIN_DIR)):$(PATH)
 
@@ -42,3 +44,6 @@ $(GO_ADD_LICENSE):
 
 $(CRD_REF_DOCS):
 	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install github.com/elastic/crd-ref-docs@$(CRD_REF_DOCS_VERSION)
+
+$(GOSEC):
+	@GOSEC_VERSION=$(GOSEC_VERSION) bash $(TOOLS_DIR)/install-gosec.sh

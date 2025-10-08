@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/service"
@@ -16,7 +17,7 @@ import (
 var _ service.GetProviderInstancePricingAccessFunc = GetInstancePricingAccess
 
 func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPath string) (service.InstancePricingAccess, error) {
-	data, err := os.ReadFile(pricingDataPath)
+	data, err := os.ReadFile(filepath.Clean(pricingDataPath))
 	if err != nil {
 		return nil, err
 	}

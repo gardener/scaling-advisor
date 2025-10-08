@@ -68,7 +68,7 @@ func (a *eventAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOp
 }
 
 func (a *eventAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Event, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *eventAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.EventList, error) {

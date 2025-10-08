@@ -23,29 +23,33 @@ var (
 	ErrRunSimulation = errors.New("failed to run simulation")
 	// ErrRunSimulationGroup is a sentinel error indicating that a scaling simulation group failed
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
-
 	// ErrSimulationTimeout is a sentinel error indicating that the simulation timed out
 	ErrSimulationTimeout = errors.New("simulation timed out")
-	//ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
+	// ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore
 	ErrNoWinningNodeScore = errors.New("no winning node score")
-	//ErrSelectNodeScore is a sentinel error indicating that the NodeScoreSelector failed to select a score
+	// ErrSelectNodeScore is a sentinel error indicating that the NodeScoreSelector failed to select a score
 	ErrSelectNodeScore = errors.New("failed to select node score")
 	// ErrLoadSchedulerConfig is a sentinel error indicating that the service failed to load the scheduler configuration.
 	ErrLoadSchedulerConfig = errors.New("failed to load scheduler configuration")
 	// ErrLaunchScheduler is a sentinel error indicating that the service failed to launch the scheduler.
 	ErrLaunchScheduler = errors.New("failed to launch scheduler")
 	// ErrNoUnscheduledPods is a sentinel error indicating that the service was wrongly invoked with no unscheduled pods.
-	ErrNoUnscheduledPods              = errors.New("no unscheduled pods")
-	ErrNoScalingAdvice                = errors.New("no scaling advice")
+	ErrNoUnscheduledPods = errors.New("no unscheduled pods")
+	// ErrNoScalingAdvice is a sentinel error indicating that no scaling advice was generated.
+	ErrNoScalingAdvice = errors.New("no scaling advice")
+	// ErrUnsupportedNodeScoringStrategy is a sentinel error indicating an unsupported node scoring strategy was specified.
 	ErrUnsupportedNodeScoringStrategy = errors.New("unsupported node scoring strategy")
-	ErrUnsupportedCloudProvider       = errors.New("unsupported cloud provider")
-
+	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
+	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
+	// ErrLoadInstanceTypeInfo is a sentinel error indicating that instance type information could not be loaded.
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
+	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
 	ErrMissingRequiredLabel = errors.New("missing required label")
 )
 
+// AsGenerateError wraps an error with scaling advice request context information.
 func AsGenerateError(id string, correlationID string, err error) error {
 	if err == nil {
 		return nil

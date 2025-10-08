@@ -72,7 +72,7 @@ func (a *pvcAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOpti
 }
 
 func (a *pvcAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.PersistentVolumeClaim, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *pvcAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.PersistentVolumeClaimList, error) {
@@ -91,13 +91,11 @@ func (a *pvcAccess) Patch(ctx context.Context, name string, pt types.PatchType, 
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) Apply(ctx context.Context, pvc *v1.PersistentVolumeClaimApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {

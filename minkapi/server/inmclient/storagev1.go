@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package inmclient
 
 import (
@@ -38,4 +42,8 @@ func (a *storageV1Impl) StorageClasses() clientstoragev1.StorageClassInterface {
 
 func (a *storageV1Impl) VolumeAttachments() clientstoragev1.VolumeAttachmentInterface {
 	return access.NewVolumeAttachmentAccess(a.view)
+}
+
+func (a *storageV1Impl) VolumeAttributesClasses() clientstoragev1.VolumeAttributesClassInterface {
+	return access.NewVolumeAttributesClassAccess(a.view)
 }

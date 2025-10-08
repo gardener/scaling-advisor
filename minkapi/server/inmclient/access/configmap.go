@@ -52,7 +52,7 @@ func (a *configMapAccess) DeleteCollection(ctx context.Context, opts metav1.Dele
 }
 
 func (a *configMapAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.ConfigMap, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *configMapAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.ConfigMapList, error) {

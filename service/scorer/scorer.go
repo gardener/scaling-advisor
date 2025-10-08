@@ -229,7 +229,8 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 		}
 	}
 	//pick one winner at random from winners
-	return &nodeScores[winners[rand.IntN(len(winners))]], nil
+	randIndex := rand.IntN(len(winners)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	return &nodeScores[winners[randIndex]], nil
 }
 
 // SelectMinPrice returns the index of the node score for the node with the lowest price.
@@ -263,5 +264,6 @@ func SelectMinPrice(nodeScores []service.NodeScore, weightsFn service.GetWeights
 		}
 	}
 	//pick one winner at random from winners
-	return &nodeScores[rand.IntN(len(winners))], nil
+	randIndex := rand.IntN(len(winners)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	return &nodeScores[randIndex], nil
 }

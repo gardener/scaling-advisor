@@ -20,3 +20,4 @@ profiles:
       score:
         disabled:
           - name: NodeResourcesBalancedAllocation
+

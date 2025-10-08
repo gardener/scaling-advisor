@@ -26,9 +26,9 @@ type pvAccess struct {
 func NewPersistentVolumeAccess(view mkapi.View) clientcorev1.PersistentVolumeInterface {
 	return &pvAccess{
 		BasicResourceAccess[*corev1.PersistentVolume, *corev1.PersistentVolumeList]{
-			view: view,
-			gvk:  typeinfo.PersistentVolumesDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.PersistentVolumesDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &corev1.PersistentVolume{},
 			ResourceListPtr: &corev1.PersistentVolumeList{},
 		},
@@ -56,7 +56,7 @@ func (a *pvAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 }
 
 func (a *pvAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.PersistentVolume, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *pvAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.PersistentVolumeList, error) {

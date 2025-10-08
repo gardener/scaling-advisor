@@ -8,6 +8,8 @@ import (
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -38,7 +40,7 @@ func (a *BasicResourceAccess[T, L]) createObject(ctx context.Context, opts metav
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
 	return
 }
 func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
@@ -53,7 +55,7 @@ func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
 	return
 }
 
@@ -66,7 +68,7 @@ func (a *BasicResourceAccess[T, L]) updateObject(ctx context.Context, opts metav
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace())
+	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
 	return
 }
 
@@ -98,13 +100,21 @@ func (a *BasicResourceAccess[T, L]) deleteObjectCollection(ctx context.Context, 
 	return a.view.DeleteObjects(a.gvk, c)
 }
 
-func (a *BasicResourceAccess[T, L]) getObject(_ context.Context, namespace, name string) (t T, err error) {
+func (a *BasicResourceAccess[T, L]) getObject(_ context.Context, namespace, name string, opts metav1.GetOptions) (t T, err error) {
 	objName := cache.NewObjectName(namespace, name)
 	obj, err := a.view.GetObject(a.gvk, objName)
 	if err != nil {
 		return
 	}
-	return objutil.Cast[T](obj)
+	t, err = objutil.Cast[T](obj)
+	if err != nil {
+		return
+	}
+	if opts.ResourceVersion != "" && opts.ResourceVersion != t.GetResourceVersion() {
+		// TODO: FIXME: I need gvr inside BasicResourceAccess for this error, using gvk is bad.
+		err = errors.NewConflict(corev1.Resource(a.gvk.Kind), name, fmt.Errorf("requested ResourceVersion %s does not match current %s", opts.ResourceVersion, t.GetResourceVersion()))
+	}
+	return
 }
 
 func (a *BasicResourceAccess[T, L]) getObjectList(ctx context.Context, namespace string, opts metav1.ListOptions) (l L, err error) {
@@ -135,6 +145,15 @@ func (a *BasicResourceAccess[T, L]) patchObject(_ context.Context, name string, 
 		return
 	}
 	obj, err := a.view.PatchObject(a.gvk, cache.NewObjectName(a.Namespace, name), pt, patchData)
+	if err != nil {
+		return
+	}
+	t, err = objutil.Cast[T](obj)
+	return
+}
+
+func (a *BasicResourceAccess[T, L]) patchObjectStatus(_ context.Context, name string, patchData []byte) (t T, err error) {
+	obj, err := a.view.PatchObjectStatus(a.gvk, cache.NewObjectName(a.Namespace, name), patchData)
 	if err != nil {
 		return
 	}

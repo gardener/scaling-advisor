@@ -20,6 +20,7 @@ func ValidateScalingAdvisorConfiguration(config *configv1apha1.ScalingAdvisorCon
 	return allErrs
 }
 
+// validateClientConnectionConfiguration validates the client connection configuration.
 func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfiguration, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
 	if config.Burst < 0 {
@@ -28,6 +29,7 @@ func validateClientConnectionConfiguration(config configv1apha1.ClientConnection
 	return allErrs
 }
 
+// validateLeaderElectionConfiguration validates the leader election configuration.
 func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if !config.Enabled {
@@ -51,6 +53,7 @@ func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConf
 	return allErrs
 }
 
+// mustBeGreaterThanZeroDuration validates that a duration is greater than zero.
 func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if duration.Duration <= 0 {

@@ -1,0 +1,31 @@
+name: Build
+on:
+  push:
+    branches:
+      - main
+      - "hotfix-**"
+      - "release-**"
+  pull_request_target:
+
+jobs:
+  build:
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'reviewed/ok-to-test' }}
+    uses: ./.github/workflows/build.yaml
+    with:
+      mode: snapshot
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      pull-requests: write
+
+  component-descriptor:
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'reviewed/ok-to-test' }}
+    uses: gardener/cc-utils/.github/workflows/post-build.yaml@master
+    needs:
+      - build
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: write

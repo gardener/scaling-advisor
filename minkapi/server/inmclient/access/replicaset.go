@@ -55,7 +55,7 @@ func (a *replicaSetAccess) DeleteCollection(ctx context.Context, opts metav1.Del
 }
 
 func (a *replicaSetAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*appsv1.ReplicaSet, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *replicaSetAccess) List(ctx context.Context, opts metav1.ListOptions) (*appsv1.ReplicaSetList, error) {

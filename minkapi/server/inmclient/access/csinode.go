@@ -52,7 +52,7 @@ func (a *csiNodeAccess) DeleteCollection(ctx context.Context, opts metav1.Delete
 }
 
 func (a *csiNodeAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.CSINode, error) {
-	return a.getObject(ctx, a.Namespace, name)
+	return a.getObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *csiNodeAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.CSINodeList, error) {

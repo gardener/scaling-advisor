@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"io"
 	"net"
 	"net/http"
@@ -31,6 +30,7 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -157,6 +157,9 @@ func NewInMemoryUsingViews(cfg mkapi.Config, baseView mkapi.View, sandboxViewCre
 		rootMux: rootMux,
 		server: &http.Server{
 			Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+			// G112 (CWE-400): Potential Slowloris Attack: kept it same as the one defined for http server started in the actual kube-apiserver.
+			// See: https://github.com/kubernetes/kubernetes/blob/ad82c3d39f5e9f21e173ffeb8aa57953a0da4601/staging/src/k8s.io/apiserver/pkg/server/secure_serving.go#L172
+			ReadHeaderTimeout: 32 * time.Second,
 		},
 		baseView:            baseView,
 		createSandboxViewFn: sandboxViewCreateFn,
@@ -349,7 +352,7 @@ func (k *InMemoryKAPI) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo
 		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), handlePut(d, view))        // Update
 		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
 
-		if d.Kind == typeinfo.PodsDescriptor.Kind {
+		if d.GetKind() == typeinfo.PodsDescriptor.GetKind() {
 			viewMux.HandleFunc("POST /api/v1/namespaces/{namespace}/pods/{name}/binding", handleCreatePodBinding(view))
 		}
 

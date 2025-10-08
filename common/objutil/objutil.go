@@ -8,13 +8,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +25,9 @@ import (
 	apijson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )
@@ -46,7 +47,7 @@ func ToYAML(obj runtime.Object) (string, error) {
 // LoadYAMLIntoRuntimeObject deserializes the YAML reading it from the specified path into the given k8s runtime.Object.
 func LoadYAMLIntoRuntimeObject(yamlPath string, s *runtime.Scheme, obj runtime.Object) error {
 	configDecoder := serializer.NewCodecFactory(s).UniversalDecoder()
-	configBytes, err := os.ReadFile(yamlPath)
+	configBytes, err := os.ReadFile(filepath.Clean(yamlPath))
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,7 @@ func LoadYAMLIntoRuntimeObject(yamlPath string, s *runtime.Scheme, obj runtime.O
 
 // LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
 func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
-	data, err := os.ReadFile(yamlPath)
+	data, err := os.ReadFile(filepath.Clean(yamlPath))
 	if err != nil {
 		err = fmt.Errorf("failed to read %q: %w", yamlPath, err)
 		return
@@ -75,7 +76,7 @@ func WriteCoreRuntimeObjToYaml(obj runtime.Object, yamlPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal object to YAML: %w", err)
 	}
-	err = os.WriteFile(yamlPath, data, 0644)
+	err = os.WriteFile(yamlPath, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write YAML to %q: %w", yamlPath, err)
 	}
@@ -244,6 +245,7 @@ func ParseObjectResourceVersion(obj metav1.Object) (resourceVersion int64, err e
 	}
 	return
 }
+
 func ParseResourceVersion(rvStr string) (resourceVersion int64, err error) {
 	if rvStr == "" {
 		resourceVersion = 0
