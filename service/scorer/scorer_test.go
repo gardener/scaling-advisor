@@ -498,39 +498,47 @@ func TestGetNodeScoreSelector(t *testing.T) {
 	tests := map[string]struct {
 		input                commontypes.NodeScoringStrategy
 		expectedFunctionName string
-		expectedErrMsg       string
+		expectedError        error
 	}{
 		"least-cost strategy": {
 			input:                commontypes.LeastCostNodeScoringStrategy,
 			expectedFunctionName: getFunctionName(SelectMaxAllocatable),
-			expectedErrMsg:       "",
+			expectedError:        nil,
 		},
 		"least-waste strategy": {
 			input:                commontypes.LeastWasteNodeScoringStrategy,
 			expectedFunctionName: getFunctionName(SelectMinPrice),
-			expectedErrMsg:       "",
+			expectedError:        nil,
 		},
 		"invalid strategy": {
 			input:                "invalid",
 			expectedFunctionName: "",
-			expectedErrMsg:       "unsupported node scoring strategy: unsupported \"invalid\"",
+			expectedError:        service.ErrUnsupportedNodeScoringStrategy,
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			got, err := GetNodeScoreSelector(tc.input)
 			gotFunctionName := getFunctionName(got)
-			if gotFunctionName != tc.expectedFunctionName {
-				t.Fatalf("Expected function %s but got %s", tc.expectedFunctionName, gotFunctionName)
+			if tc.expectedError == nil {
+				if err != nil {
+					t.Fatalf("Expected error to be nil but got %v", err)
+				}
+			} else if tc.expectedError != nil {
+				if err != nil && !errors.Is(err, tc.expectedError) {
+					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
+				} else if err == nil {
+					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
+				}
 			}
-			if tc.expectedErrMsg == "" && err != nil {
-				t.Fatalf("Expected error to be nil but got %v", err)
-			} else if tc.expectedErrMsg != "" && err == nil {
-				t.Fatalf("Expected error to be %s but got nil", tc.expectedErrMsg)
-			} else if err != nil && tc.expectedErrMsg != "" {
-				errDiff := cmp.Diff(tc.expectedErrMsg, err.Error())
-				if errDiff != "" {
-					t.Fatalf("Difference:%s", errDiff)
+			if tc.expectedFunctionName != "" {
+				if got == nil {
+					t.Fatalf("Expected node score selector to be %s but got nil", gotFunctionName)
+				} else {
+					gotType := reflect.TypeOf(got).String()
+					if gotFunctionName != tc.expectedFunctionName {
+						t.Fatalf("Expected node score selector %s but got %s", tc.expectedFunctionName, gotType)
+					}
 				}
 			}
 		})
@@ -575,7 +583,7 @@ func TestGetNodeScorer(t *testing.T) {
 			}
 			if tc.expectedType != "" {
 				if got == nil {
-					t.Fatalf("Expected scorer to be %s but got nil", got)
+					t.Fatalf("Expected scorer to be %s but got nil", tc.expectedType)
 				} else {
 					gotType := reflect.TypeOf(got).String()
 					if gotType != tc.expectedType {
