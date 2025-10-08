@@ -6,6 +6,7 @@ package scorer
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 
@@ -13,6 +14,18 @@ import (
 	"github.com/gardener/scaling-advisor/api/service"
 	corev1 "k8s.io/api/core/v1"
 )
+
+// getNormalizedResourceUnits returns the aggregated sum of the resources in terms of normalized resource units
+func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights map[corev1.ResourceName]float64) (nru float64) {
+	for resourceName, quantity := range resources {
+		if weight, found := weights[resourceName]; !found {
+			continue
+		} else {
+			nru += weight * float64(quantity)
+		}
+	}
+	return nru
+}
 
 // getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
 // map containing the sums for each resource type
@@ -79,20 +92,9 @@ func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore
 	//add resources required by pods scheduled on scaled candidate node and existing nodes
 	aggregatedPodsResources := getAggregatedScheduledPodsResources(args.ScaledAssignment, args.OtherAssignments)
 	//calculate total scheduledResources in terms of normalized resource units using weights
-	var totalNormalizedResourceUnits float64
 	weights, err := l.weightsFn(args.Placement.InstanceType)
-	for resourceName, quantity := range aggregatedPodsResources {
-		if weight, found := weights[resourceName]; !found {
-			continue
-		} else {
-			totalNormalizedResourceUnits += weight * float64(quantity)
-		}
-	}
-	//divide total NormalizedResourceUnits by instance price to get score
+	totalNormalizedResourceUnits := getNormalizedResourceUnits(aggregatedPodsResources, weights)
 	info, err := l.instancePricingAccess.GetInfo(args.Placement.Region, args.Placement.InstanceType)
-	if err != nil {
-		return service.NodeScore{}, err
-	}
 	return service.NodeScore{
 		ID:                 args.ID,
 		Placement:          args.Placement,
@@ -137,11 +139,14 @@ type LeastWaste struct {
 //
 // Waste = 4 - (1+2+3) = -2
 func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.NodeScore, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: least-waste node scoring failed for simulation %q: %v", service.ErrComputeNodeScore, args.ID, err)
+		}
+	}()
 	var wastage = make(map[corev1.ResourceName]int64)
 	//start with allocatable of scaled candidate node
-	for resourceName, quantity := range args.ScaledAssignment.Node.Allocatable {
-		wastage[resourceName] = quantity
-	}
+	maps.Copy(wastage, args.ScaledAssignment.Node.Allocatable)
 	//subtract resource requests of pods scheduled on scaled node and existing nodes to find delta
 	aggregatedPodResources := getAggregatedScheduledPodsResources(args.ScaledAssignment, args.OtherAssignments)
 	for resourceName, request := range aggregatedPodResources {
@@ -153,17 +158,7 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 	}
 	//calculate single score from wastage using weights
 	weights, err := l.weightsFn(args.Placement.InstanceType)
-	if err != nil {
-		return service.NodeScore{}, err
-	}
-	var totalNormalizedResourceUnits float64
-	for resourceName, waste := range wastage {
-		if weight, found := weights[resourceName]; !found {
-			continue
-		} else {
-			totalNormalizedResourceUnits += weight * float64(waste)
-		}
-	}
+	totalNormalizedResourceUnits := getNormalizedResourceUnits(wastage, weights)
 	nodeScore = service.NodeScore{
 		ID:                 args.ID,
 		Placement:          args.Placement,
@@ -202,32 +197,18 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 		return &nodeScores[0], nil
 	}
 	var winners []int
-	var maxNormalizedAlloc float64
 	weights, err := weightsFn(nodeScores[0].Placement.InstanceType)
 	if err != nil {
 		return nil, err
 	}
-	for resourceName, quantity := range nodeScores[0].ScaledNodeResource.Allocatable {
-		if weight, ok := weights[resourceName]; !ok {
-			continue
-		} else {
-			maxNormalizedAlloc += weight * float64(quantity)
-		}
-	}
+	maxNormalizedAlloc := getNormalizedResourceUnits(nodeScores[0].ScaledNodeResource.Allocatable, weights)
 	winners = append(winners, 0)
 	for index, candidate := range nodeScores[1:] {
-		var normalizedAlloc float64
 		weights, err = weightsFn(candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
-		for resourceName, quantity := range candidate.ScaledNodeResource.Allocatable {
-			if weight, ok := weights[resourceName]; !ok {
-				continue
-			} else {
-				normalizedAlloc += weight * float64(quantity)
-			}
-		}
+		normalizedAlloc := getNormalizedResourceUnits(candidate.ScaledNodeResource.Allocatable, weights)
 		if maxNormalizedAlloc == normalizedAlloc {
 			winners = append(winners, index+1)
 		} else if maxNormalizedAlloc < normalizedAlloc {
