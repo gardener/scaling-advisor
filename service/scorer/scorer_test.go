@@ -14,7 +14,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/service"
-	testutil "github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -60,11 +60,6 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, newMockWeightsFunc)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
 	assignment := service.NodePodAssignment{
 		Node: createMockNode("simNode1", "instance-a-1", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
@@ -80,6 +75,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
+		weightsFn     service.GetWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
@@ -90,6 +86,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -109,6 +106,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -118,7 +116,6 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledNodeResource: assignment.Node,
 			},
 		},
-
 		"weights undefined for resource type": {
 			input: service.NodeScorerArgs{
 				ID:               "testing",
@@ -126,6 +123,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignmentWithStorage,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -135,12 +133,30 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledNodeResource: assignmentWithStorage.Node,
 			},
 		},
+		"weights function returns an error": {
+			input: service.NodeScorerArgs{
+				ID:               "testing",
+				Placement:        sacorev1alpha1.NodePlacement{},
+				ScaledAssignment: &assignment,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   service.ErrComputeNodeScore,
+			expectedScore: service.NodeScore{},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, tc.weightsFn)
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
 			got, err := scorer.Compute(tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
-			errDiff := cmp.Diff(tc.expectedErr, err)
+			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			if scoreDiff != "" {
 				t.Fatalf("Difference: %s", scoreDiff)
 			}
@@ -157,10 +173,6 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, access, newMockWeightsFunc)
-	if err != nil {
-		t.Fatal(err)
-	}
 	assignment := service.NodePodAssignment{
 		Node: createMockNode("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
@@ -176,6 +188,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
+		weightsFn     service.GetWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
@@ -186,6 +199,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -205,6 +219,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -221,6 +236,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignmentWithStorage,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
+			weightsFn:   newMockWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -229,13 +245,29 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				Value:              350,
 				ScaledNodeResource: assignmentWithStorage.Node,
 			},
+		}, "weights function returns an error": {
+			input: service.NodeScorerArgs{
+				ID:               "testing",
+				Placement:        sacorev1alpha1.NodePlacement{},
+				ScaledAssignment: &assignment,
+				OtherAssignments: nil,
+				UnscheduledPods:  nil},
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   service.ErrComputeNodeScore,
+			expectedScore: service.NodeScore{},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, access, tc.weightsFn)
+			if err != nil {
+				t.Fatal(err)
+			}
 			got, err := scorer.Compute(tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
-			errDiff := cmp.Diff(tc.expectedErr, err)
+			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			if scoreDiff != "" {
 				t.Fatalf("Difference: %s", scoreDiff)
 			}
@@ -564,7 +596,11 @@ func TestGetNodeScorer(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := GetNodeScorer(tc.input, nil, nil)
+			access, err := prtestutil.LoadTestInstancePricingAccess()
+			if err != nil {
+				t.Fatalf("LoadTestInstancePricingAccess failed with error: %v", err)
+			}
+			got, err := GetNodeScorer(tc.input, access, newMockWeightsFunc)
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
