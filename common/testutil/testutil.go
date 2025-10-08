@@ -55,6 +55,9 @@ func isNil(v any) bool {
 
 func GetFunctionName(t *testing.T, fn any) string {
 	t.Helper()
+	if fn == nil {
+		return "<nil>"
+	}
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 

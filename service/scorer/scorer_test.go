@@ -7,10 +7,10 @@ package scorer
 import (
 	"errors"
 	"reflect"
-	"runtime"
 	"testing"
 
-	"github.com/gardener/scaling-advisor/service/pricing/testutil"
+	testutil "github.com/gardener/scaling-advisor/common/testutil"
+	prtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
@@ -53,7 +53,7 @@ func NewMockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 }
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -150,7 +150,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -245,7 +245,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -379,7 +379,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.LoadTestInstancePricingAccess()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -487,13 +487,6 @@ func TestSelectMinPrice(t *testing.T) {
 	}
 }
 
-func getFunctionName(f interface{}) string {
-	if f == nil {
-		return "<nil>"
-	}
-	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
-}
-
 func TestGetNodeScoreSelector(t *testing.T) {
 	tests := map[string]struct {
 		input                commontypes.NodeScoringStrategy
@@ -502,12 +495,12 @@ func TestGetNodeScoreSelector(t *testing.T) {
 	}{
 		"least-cost strategy": {
 			input:                commontypes.LeastCostNodeScoringStrategy,
-			expectedFunctionName: getFunctionName(SelectMaxAllocatable),
+			expectedFunctionName: testutil.GetFunctionName(t, SelectMaxAllocatable),
 			expectedError:        nil,
 		},
 		"least-waste strategy": {
 			input:                commontypes.LeastWasteNodeScoringStrategy,
-			expectedFunctionName: getFunctionName(SelectMinPrice),
+			expectedFunctionName: testutil.GetFunctionName(t, SelectMinPrice),
 			expectedError:        nil,
 		},
 		"invalid strategy": {
@@ -519,7 +512,7 @@ func TestGetNodeScoreSelector(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			got, err := GetNodeScoreSelector(tc.input)
-			gotFunctionName := getFunctionName(got)
+			gotFunctionName := testutil.GetFunctionName(t, got)
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
