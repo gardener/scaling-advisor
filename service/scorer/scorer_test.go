@@ -9,12 +9,12 @@ import (
 	"reflect"
 	"testing"
 
-	testutil "github.com/gardener/scaling-advisor/common/testutil"
 	prtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/service"
+	testutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
