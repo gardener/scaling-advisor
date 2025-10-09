@@ -75,7 +75,10 @@ func (a *podAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.I
 
 func (a *podAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.Pod, err error) {
 	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for Pod", commonerrors.ErrInvalidOptVal, subresources)
+		if subresources[0] != "status" {
+			return nil, fmt.Errorf("%w: patch of subresources %q is invalid for Pod", commonerrors.ErrInvalidOptVal, subresources)
+		}
+		return a.patchObjectStatus(ctx, name, data)
 	}
 	return a.patchObject(ctx, name, pt, data, opts)
 }
