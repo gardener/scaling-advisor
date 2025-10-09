@@ -7,11 +7,11 @@ package simulation
 import (
 	"context"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"maps"
 	"slices"
 	"time"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"

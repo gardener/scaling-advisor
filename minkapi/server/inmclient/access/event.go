@@ -3,9 +3,11 @@ package access
 import (
 	"context"
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,9 +42,11 @@ func NewEventAccess(view mkapi.View, namespace string) clientcorev1.EventInterfa
 func (a *eventAccess) Create(ctx context.Context, event *corev1.Event, opts metav1.CreateOptions) (*corev1.Event, error) {
 	return a.createObjectWithAccessNamespace(ctx, opts, event)
 }
+
 func (a *eventAccess) CreateWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event) (*corev1.Event, error) {
 	return a.createObject(ctx, metav1.CreateOptions{}, event)
 }
+
 func (a *eventAccess) CreateWithEventNamespace(event *corev1.Event) (*corev1.Event, error) {
 	return a.createObject(context.Background(), metav1.CreateOptions{}, event)
 }
@@ -50,6 +54,7 @@ func (a *eventAccess) CreateWithEventNamespace(event *corev1.Event) (*corev1.Eve
 func (a *eventAccess) Update(ctx context.Context, event *corev1.Event, opts metav1.UpdateOptions) (*corev1.Event, error) {
 	return a.updateObject(ctx, opts, event)
 }
+
 func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event) (*corev1.Event, error) {
 	if event.Name == "" {
 		return nil, fmt.Errorf("event name must be specified")
@@ -73,6 +78,7 @@ func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, e
 	updateEventFields(updatedEvent, event)
 	return a.updateObject(ctx, metav1.UpdateOptions{}, updatedEvent)
 }
+
 func (a *eventAccess) UpdateWithEventNamespace(event *corev1.Event) (*corev1.Event, error) {
 	return a.UpdateWithEventNamespaceWithContext(context.Background(), event)
 }
@@ -125,6 +131,7 @@ func (a *eventAccess) Apply(ctx context.Context, event *v1.EventApplyConfigurati
 func (a *eventAccess) Search(scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
 	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
+
 func (a *eventAccess) SearchWithContext(ctx context.Context, scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
 	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

@@ -6,6 +6,7 @@ package inmclient
 
 import (
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"k8s.io/apimachinery/pkg/runtime/schema"

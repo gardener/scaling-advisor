@@ -3,9 +3,11 @@ package access
 import (
 	"context"
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,6 +35,7 @@ func NewResourceClaimAccess(view mkapi.View, namespace string) clientresourcev1.
 		},
 	}
 }
+
 func (a *resourceClaimAccess) Create(ctx context.Context, resourceClaim *resourcev1.ResourceClaim, opts metav1.CreateOptions) (*resourcev1.ResourceClaim, error) {
 	return a.createObjectWithAccessNamespace(ctx, opts, resourceClaim)
 }

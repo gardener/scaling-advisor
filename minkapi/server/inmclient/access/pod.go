@@ -3,10 +3,12 @@ package access
 import (
 	"context"
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"

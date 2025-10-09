@@ -5,9 +5,10 @@
 package inmclient
 
 import (
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 )
@@ -23,6 +24,7 @@ type coreV1Impl struct {
 func (c *coreV1Impl) RESTClient() rest.Interface {
 	panic(commonerrors.ErrUnimplemented)
 }
+
 func (c *coreV1Impl) ComponentStatuses() clientcorev1.ComponentStatusInterface {
 	panic(commonerrors.ErrUnimplemented)
 }

@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -43,6 +44,7 @@ func (a *BasicResourceAccess[T, L]) createObject(ctx context.Context, opts metav
 	t, err = a.getObject(ctx, createdObj.GetName(), createdObj.GetNamespace(), metav1.GetOptions{})
 	return
 }
+
 func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
 	if opts.DryRun != nil {
 		err = fmt.Errorf("%w: dry run not implemented for %T.Create", commonerrors.ErrUnimplemented, obj)
@@ -132,6 +134,7 @@ func (a *BasicResourceAccess[T, L]) getObjectList(ctx context.Context, namespace
 	}
 	return objutil.Cast[L](listObj)
 }
+
 func (a *BasicResourceAccess[T, L]) getWatcher(ctx context.Context, namespace string, opts metav1.ListOptions) (w watch.Interface, err error) {
 	err = checkLogListOptions(ctx, opts)
 	if err != nil {
@@ -139,6 +142,7 @@ func (a *BasicResourceAccess[T, L]) getWatcher(ctx context.Context, namespace st
 	}
 	return a.view.GetWatcher(ctx, a.gvk, namespace, opts)
 }
+
 func (a *BasicResourceAccess[T, L]) patchObject(_ context.Context, name string, pt types.PatchType, patchData []byte, opts metav1.PatchOptions) (t T, err error) {
 	if opts.DryRun != nil {
 		err = fmt.Errorf("%w: dry run not implemented for Patch of %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
@@ -166,6 +170,7 @@ func checkLogListOptions(ctx context.Context, opts metav1.ListOptions) error {
 	logUnimplementedOptionalListOptions(log, opts)
 	return checkUnimplementedRequiredListOptions(opts)
 }
+
 func logUnimplementedOptionalListOptions(log logr.Logger, listOptions metav1.ListOptions) {
 	if listOptions.AllowWatchBookmarks {
 		log.V(4).Info("WatchBookmarks is unimplemented")

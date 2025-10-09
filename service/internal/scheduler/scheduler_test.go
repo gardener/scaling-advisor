@@ -7,11 +7,11 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"os"
 	"testing"
 	"time"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"

@@ -7,17 +7,17 @@ package view
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/clientutil"
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"sync"
 	"sync/atomic"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/go-logr/logr"

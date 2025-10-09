@@ -8,13 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 

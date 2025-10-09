@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,6 +43,7 @@ func (a *pvcAccess) Create(ctx context.Context, pvc *corev1.PersistentVolumeClai
 func (a *pvcAccess) CreateWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return a.createObject(ctx, metav1.CreateOptions{}, pvc)
 }
+
 func (a *pvcAccess) CreateWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return a.createObject(context.Background(), metav1.CreateOptions{}, pvc)
 }
@@ -57,6 +59,7 @@ func (a *pvcAccess) UpdateStatus(ctx context.Context, pvc *corev1.PersistentVolu
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
+
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }

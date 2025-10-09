@@ -1,13 +1,14 @@
 package inmclient
 
 import (
+	"time"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
-	"time"
 )
 
 func NewInMemClientFacades(view mkapi.View, resyncPeriod time.Duration) commontypes.ClientFacades {

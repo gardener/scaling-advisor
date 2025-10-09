@@ -3,9 +3,11 @@ package access
 import (
 	"context"
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +37,7 @@ func NewReplicaSetAccess(view mkapi.View, namespace string) clientappsv1.Replica
 		},
 	}
 }
+
 func (a *replicaSetAccess) Create(ctx context.Context, replicaSet *appsv1.ReplicaSet, opts metav1.CreateOptions) (*appsv1.ReplicaSet, error) {
 	return a.createObjectWithAccessNamespace(ctx, opts, replicaSet)
 }
