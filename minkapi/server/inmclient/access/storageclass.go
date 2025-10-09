@@ -26,9 +26,9 @@ type storageClassAccess struct {
 func NewStorageClassAccess(view mkapi.View) clientstoragev1.StorageClassInterface {
 	return &storageClassAccess{
 		BasicResourceAccess[*storagev1.StorageClass, *storagev1.StorageClassList]{
-			view: view,
-			gvk:  typeinfo.StorageClassDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.StorageClassDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &storagev1.StorageClass{},
 			ResourceListPtr: &storagev1.StorageClassList{},
 		},
@@ -71,9 +71,9 @@ func (a *storageClassAccess) Patch(ctx context.Context, name string, pt types.Pa
 }
 
 func (a *storageClassAccess) Apply(ctx context.Context, storageClass *v1.StorageClassApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *storageClassAccess) ApplyStatus(ctx context.Context, storageClass *v1.StorageClassApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

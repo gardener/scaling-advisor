@@ -75,9 +75,9 @@ func (a *pvAccess) Patch(ctx context.Context, name string, pt types.PatchType, d
 }
 
 func (a *pvAccess) Apply(ctx context.Context, pv *v1.PersistentVolumeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolume, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *pvAccess) ApplyStatus(ctx context.Context, pv *v1.PersistentVolumeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolume, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

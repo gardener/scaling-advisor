@@ -25,9 +25,9 @@ type volumeAttributesClassAccess struct {
 func NewVolumeAttributesClassAccess(view mkapi.View) clientstoragev1.VolumeAttributesClassInterface {
 	return &volumeAttributesClassAccess{
 		BasicResourceAccess[*storagev1.VolumeAttributesClass, *storagev1.VolumeAttributesClassList]{
-			view: view,
-			gvk:  typeinfo.VolumeAttachmentDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.VolumeAttributesClassDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &storagev1.VolumeAttributesClass{},
 			ResourceListPtr: &storagev1.VolumeAttributesClassList{},
 		},
@@ -70,5 +70,5 @@ func (a *volumeAttributesClassAccess) Patch(ctx context.Context, name string, pt
 }
 
 func (a *volumeAttributesClassAccess) Apply(ctx context.Context, volumeAttributesClass *v1.VolumeAttributesClassApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.VolumeAttributesClass, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

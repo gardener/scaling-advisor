@@ -36,11 +36,11 @@ func (a *BasicResourceAccess[T, L]) createObject(ctx context.Context, opts metav
 		err = fmt.Errorf("%w: dry run not implemented for %T.Create", commonerrors.ErrUnimplemented, obj)
 		return
 	}
-	err = a.view.CreateObject(a.gvk, obj)
+	createdObj, err := a.view.CreateObject(a.gvk, obj)
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
+	t, err = a.getObject(ctx, createdObj.GetName(), createdObj.GetNamespace(), metav1.GetOptions{})
 	return
 }
 func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.Context, opts metav1.CreateOptions, obj T) (t T, err error) {
@@ -51,11 +51,11 @@ func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.
 	if obj.GetNamespace() != a.Namespace {
 		obj.SetNamespace(a.Namespace)
 	}
-	err = a.view.CreateObject(a.gvk, obj)
+	createdObj, err := a.view.CreateObject(a.gvk, obj)
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
+	t, err = a.getObject(ctx, createdObj.GetNamespace(), createdObj.GetName(), metav1.GetOptions{})
 	return
 }
 

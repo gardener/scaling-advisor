@@ -130,7 +130,7 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	s.state.status = svcapi.ActivityStatusRunning
 	s.state.groupRunPassNum = s.args.GroupRunPassCounter.Load()
 	s.state.simNode = s.buildSimulationNode()
-	err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
+	_, err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
 	if err != nil {
 		return
 	}

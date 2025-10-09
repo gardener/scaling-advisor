@@ -70,5 +70,5 @@ func (a *deviceClassAccess) Patch(ctx context.Context, name string, pt types.Pat
 }
 
 func (a *deviceClassAccess) Apply(ctx context.Context, deviceClass *v1.DeviceClassApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.DeviceClass, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

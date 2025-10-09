@@ -49,12 +49,10 @@ func (a *csiStorageCapacityAccess) Update(ctx context.Context, csiStorageCapacit
 	return a.updateObject(ctx, opts, csiStorageCapacity)
 }
 func (a *csiStorageCapacityAccess) UpdateWithCsiStorageCapacityNamespaceWithContext(ctx context.Context, csiStorageCapacity *storagev1.CSIStorageCapacity) (*storagev1.CSIStorageCapacity, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
 }
 func (a *csiStorageCapacityAccess) UpdateWithCsiStorageCapacityNamespace(csiStorageCapacity *storagev1.CSIStorageCapacity) (*storagev1.CSIStorageCapacity, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
@@ -84,15 +82,13 @@ func (a *csiStorageCapacityAccess) Patch(ctx context.Context, name string, pt ty
 	return a.patchObject(ctx, name, pt, data, opts)
 }
 func (a *csiStorageCapacityAccess) PatchWithCsiStorageCapacityNamespace(csiStorageCapacity *storagev1.CSIStorageCapacity, data []byte) (*storagev1.CSIStorageCapacity, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) PatchWithCsiStorageCapacityNamespaceWithContext(ctx context.Context, csiStorageCapacity *storagev1.CSIStorageCapacity, data []byte) (*storagev1.CSIStorageCapacity, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) Apply(ctx context.Context, csiStorageCapacity *v1.CSIStorageCapacityApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSIStorageCapacity, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
 }

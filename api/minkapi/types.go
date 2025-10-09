@@ -141,7 +141,7 @@ type View interface {
 	// GetEventSink returns the event sink for this view.
 	GetEventSink() EventSink
 	// CreateObject creates a new object of the specified GVK in this view.
-	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
 	// GetObject retrieves an object of the specified GVK by name.
 	GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
 	// UpdateObject updates an existing object of the specified GVK.

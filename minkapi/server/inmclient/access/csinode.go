@@ -26,9 +26,9 @@ type csiNodeAccess struct {
 func NewCSINodeAccess(view mkapi.View) clientstoragev1.CSINodeInterface {
 	return &csiNodeAccess{
 		BasicResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]{
-			view: view,
-			gvk:  typeinfo.CSINodeDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.CSINodeDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &storagev1.CSINode{},
 			ResourceListPtr: &storagev1.CSINodeList{},
 		},
@@ -71,9 +71,9 @@ func (a *csiNodeAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *csiNodeAccess) Apply(ctx context.Context, csiNode *v1.CSINodeApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", commonerrors.ErrUnimplemented)
 }
 
 func (a *csiNodeAccess) ApplyStatus(ctx context.Context, csiNode *v1.CSINodeApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", commonerrors.ErrUnimplemented)
 }

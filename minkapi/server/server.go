@@ -130,7 +130,7 @@ func NewDefaultInMemory(log logr.Logger, cfg mkapi.Config) (mkapi.Server, error)
 	if err != nil {
 		return nil, err
 	}
-	err = baseView.CreateObject(typeinfo.NamespacesDescriptor.GVK, &corev1.Namespace{
+	_, err = baseView.CreateObject(typeinfo.NamespacesDescriptor.GVK, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: corev1.NamespaceDefault,
 		},
@@ -462,7 +462,7 @@ func handleCreate(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
 		}
-		err = view.CreateObject(d.GVK, mo)
+		mo, err = view.CreateObject(d.GVK, mo)
 		if err != nil {
 			handleError(w, r, err)
 			return

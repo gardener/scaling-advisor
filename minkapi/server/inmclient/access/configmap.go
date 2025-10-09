@@ -71,5 +71,5 @@ func (a *configMapAccess) Patch(ctx context.Context, name string, pt types.Patch
 }
 
 func (a *configMapAccess) Apply(ctx context.Context, configMap *v1.ConfigMapApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ConfigMap, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of configmaps is not supported", commonerrors.ErrUnimplemented)
 }

@@ -26,9 +26,9 @@ type volumeAttachmentAccess struct {
 func NewVolumeAttachmentAccess(view mkapi.View) clientstoragev1.VolumeAttachmentInterface {
 	return &volumeAttachmentAccess{
 		BasicResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
-			view: view,
-			gvk:  typeinfo.VolumeAttachmentDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.VolumeAttachmentDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &storagev1.VolumeAttachment{},
 			ResourceListPtr: &storagev1.VolumeAttachmentList{},
 		},
@@ -75,9 +75,9 @@ func (a *volumeAttachmentAccess) Patch(ctx context.Context, name string, pt type
 }
 
 func (a *volumeAttachmentAccess) Apply(ctx context.Context, volumeAttachment *v1.VolumeAttachmentApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *volumeAttachmentAccess) ApplyStatus(ctx context.Context, volumeAttachment *v1.VolumeAttachmentApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

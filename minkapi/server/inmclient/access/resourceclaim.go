@@ -73,9 +73,9 @@ func (a *resourceClaimAccess) Patch(ctx context.Context, name string, pt types.P
 }
 
 func (a *resourceClaimAccess) Apply(ctx context.Context, resourceClaim *v1.ResourceClaimApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *resourceClaimAccess) ApplyStatus(ctx context.Context, resourceClaim *v1.ResourceClaimApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

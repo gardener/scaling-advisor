@@ -79,11 +79,11 @@ func (a *podAccess) Patch(ctx context.Context, name string, pt types.PatchType, 
 }
 
 func (a *podAccess) Apply(ctx context.Context, pod *v1.PodApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Pod, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podAccess) ApplyStatus(ctx context.Context, pod *v1.PodApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Pod, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podAccess) UpdateEphemeralContainers(ctx context.Context, podName string, pod *corev1.Pod, opts metav1.UpdateOptions) (*corev1.Pod, error) {
@@ -119,15 +119,15 @@ func (a *podAccess) Bind(ctx context.Context, binding *corev1.Binding, opts meta
 }
 
 func (a *podAccess) Evict(ctx context.Context, eviction *policyv1beta1.Eviction) error {
-	panic(commonerrors.ErrUnimplemented)
+	return fmt.Errorf("%w: Evict of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podAccess) EvictV1(ctx context.Context, eviction *policyv1.Eviction) error {
-	panic(commonerrors.ErrUnimplemented)
+	return fmt.Errorf("%w: EvictV1 of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podAccess) EvictV1beta1(ctx context.Context, eviction *policyv1beta1.Eviction) error {
-	panic(commonerrors.ErrUnimplemented)
+	return fmt.Errorf("%w: EvictV1beta1 of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podAccess) GetLogs(name string, opts *corev1.PodLogOptions) *rest.Request {

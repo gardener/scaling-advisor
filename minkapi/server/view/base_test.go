@@ -347,7 +347,7 @@ func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName s
 	if !ok {
 		return obj, err
 	}
-	err = view.CreateObject(gvk, metaObj)
+	_, err = view.CreateObject(gvk, metaObj)
 	if err != nil {
 		return obj, err
 	}

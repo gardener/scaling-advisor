@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"fmt"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
@@ -67,25 +68,25 @@ func (a *replicaSetAccess) Watch(ctx context.Context, opts metav1.ListOptions) (
 }
 
 func (a *replicaSetAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *appsv1.ReplicaSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return a.patchObject(ctx, name, pt, data, opts)
 }
 
 func (a *replicaSetAccess) Apply(ctx context.Context, replicaSet *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, opts metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicaSetAccess) ApplyStatus(ctx context.Context, replicaSet *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, opts metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicaSetAccess) GetScale(ctx context.Context, replicaSetName string, options metav1.GetOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicaSetAccess) UpdateScale(ctx context.Context, replicaSetName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicaSetAccess) ApplyScale(ctx context.Context, replicaSetName string, scale *clientapplyconfigurationsautoscalingv1.ScaleApplyConfiguration, opts metav1.ApplyOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

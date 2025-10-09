@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"fmt"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
@@ -23,7 +24,7 @@ type statefulSetAccess struct {
 	BasicResourceAccess[*appsv1.StatefulSet, *appsv1.StatefulSetList]
 }
 
-func NewStatefulSetAccess(view mkapi.View, namespace string) *statefulSetAccess {
+func NewStatefulSetAccess(view mkapi.View, namespace string) clientappsv1.StatefulSetInterface {
 	return &statefulSetAccess{
 		BasicResourceAccess[*appsv1.StatefulSet, *appsv1.StatefulSetList]{
 			view:            view,
@@ -68,25 +69,25 @@ func (a *statefulSetAccess) Watch(ctx context.Context, opts metav1.ListOptions) 
 }
 
 func (a *statefulSetAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *appsv1.StatefulSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return a.patchObject(ctx, name, pt, data, opts)
 }
 
 func (a *statefulSetAccess) Apply(ctx context.Context, statefulSet *clientapplyconfigurationsappsv1.StatefulSetApplyConfiguration, opts metav1.ApplyOptions) (result *appsv1.StatefulSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *statefulSetAccess) ApplyStatus(ctx context.Context, statefulSet *clientapplyconfigurationsappsv1.StatefulSetApplyConfiguration, opts metav1.ApplyOptions) (result *appsv1.StatefulSet, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *statefulSetAccess) GetScale(ctx context.Context, statefulSetName string, options metav1.GetOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *statefulSetAccess) UpdateScale(ctx context.Context, statefulSetName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *statefulSetAccess) ApplyScale(ctx context.Context, statefulSetName string, scale *clientapplyconfigurationsautoscalingv1.ScaleApplyConfiguration, opts metav1.ApplyOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

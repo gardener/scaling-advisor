@@ -71,11 +71,11 @@ func (a *serviceAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *serviceAccess) Apply(ctx context.Context, service *v1.ServiceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Service, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *serviceAccess) ApplyStatus(ctx context.Context, service *v1.ServiceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Service, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *serviceAccess) ProxyGet(scheme, name, port, path string, params map[string]string) rest.ResponseWrapper {

@@ -74,9 +74,9 @@ func (a *podDisruptionBudgetAccess) Patch(ctx context.Context, name string, pt t
 }
 
 func (a *podDisruptionBudgetAccess) Apply(ctx context.Context, podDisruptionBudget *v1.PodDisruptionBudgetApplyConfiguration, opts metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *podDisruptionBudgetAccess) ApplyStatus(ctx context.Context, podDisruptionBudget *v1.PodDisruptionBudgetApplyConfiguration, opts metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

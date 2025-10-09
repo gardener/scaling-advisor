@@ -40,6 +40,6 @@ func (a *appsV1Impl) ReplicaSets(namespace string) appsv1.ReplicaSetInterface {
 	return access.NewReplicaSetAccess(a.view, namespace)
 }
 
-func (a appsV1Impl) StatefulSets(namespace string) appsv1.StatefulSetInterface {
+func (a *appsV1Impl) StatefulSets(namespace string) appsv1.StatefulSetInterface {
 	return access.NewStatefulSetAccess(a.view, namespace)
 }

@@ -27,7 +27,7 @@ func NewNamespaceAccess(view mkapi.View) clientcorev1.NamespaceInterface {
 		BasicResourceAccess[*corev1.Namespace, *corev1.NamespaceList]{
 			view:            view,
 			gvk:             typeinfo.NamespacesDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone, //TODO: check if ok.
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &corev1.Namespace{},
 			ResourceListPtr: &corev1.NamespaceList{},
 		},
@@ -69,12 +69,12 @@ func (a *namespaceAccess) Patch(ctx context.Context, name string, pt types.Patch
 	return a.patchObject(ctx, name, pt, data, opts)
 }
 
-func (a namespaceAccess) Apply(ctx context.Context, namespace *v1.NamespaceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Namespace, err error) {
-	panic(commonerrors.ErrUnimplemented)
+func (a *namespaceAccess) Apply(ctx context.Context, namespace *v1.NamespaceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Namespace, err error) {
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
-func (a namespaceAccess) ApplyStatus(ctx context.Context, namespace *v1.NamespaceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Namespace, err error) {
-	panic(commonerrors.ErrUnimplemented)
+func (a *namespaceAccess) ApplyStatus(ctx context.Context, namespace *v1.NamespaceApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Namespace, err error) {
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *namespaceAccess) Finalize(ctx context.Context, item *corev1.Namespace, opts metav1.UpdateOptions) (*corev1.Namespace, error) {

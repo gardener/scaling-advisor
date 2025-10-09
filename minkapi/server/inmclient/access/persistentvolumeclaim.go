@@ -55,12 +55,10 @@ func (a *pvcAccess) UpdateStatus(ctx context.Context, pvc *corev1.PersistentVolu
 }
 
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
@@ -91,17 +89,17 @@ func (a *pvcAccess) Patch(ctx context.Context, name string, pt types.PatchType, 
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) Apply(ctx context.Context, pvc *v1.PersistentVolumeClaimApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) ApplyStatus(ctx context.Context, pvc *v1.PersistentVolumeClaimApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
 }

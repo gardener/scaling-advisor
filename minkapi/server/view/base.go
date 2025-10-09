@@ -125,7 +125,7 @@ func (v *baseView) GetResourceStore(gvk schema.GroupVersionKind) (minkapi.Resour
 	return s, nil
 }
 
-func (v *baseView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+func (v *baseView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error) {
 	return storeObject(v, gvk, obj, &v.changeCount)
 }
 
@@ -265,17 +265,17 @@ func (v *baseView) GetKubeConfigPath() string {
 	return v.args.KubeConfigPath
 }
 
-func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, counter *atomic.Int64) error {
+func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, counter *atomic.Int64) (metav1.Object, error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	name := obj.GetName()
 	namePrefix := obj.GetGenerateName()
 	if name == "" {
 		if namePrefix == "" {
-			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
+			return nil, apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
 		name = objutil.GenerateName(namePrefix)
 	}
@@ -294,10 +294,10 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 
 	err = s.Add(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	counter.Add(1)
-	return nil
+	return obj, nil
 }
 
 func updateObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, changeCount *atomic.Int64) error {

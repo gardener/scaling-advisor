@@ -75,11 +75,11 @@ func (a *replicationControllerAccess) Patch(ctx context.Context, name string, pt
 }
 
 func (a *replicationControllerAccess) Apply(ctx context.Context, replicationController *v1.ReplicationControllerApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicationControllerAccess) ApplyStatus(ctx context.Context, replicationController *v1.ReplicationControllerApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *replicationControllerAccess) GetScale(ctx context.Context, replicationControllerName string, opts metav1.GetOptions) (*autoscalingv1.Scale, error) {
@@ -118,5 +118,5 @@ func (a *replicationControllerAccess) GetScale(ctx context.Context, replicationC
 }
 
 func (a *replicationControllerAccess) UpdateScale(ctx context.Context, replicationControllerName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

@@ -27,7 +27,7 @@ func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
 		BasicResourceAccess[*corev1.Node, *corev1.NodeList]{
 			view:            view,
 			gvk:             typeinfo.NodesDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone, //TODO: check if ok.
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &corev1.Node{},
 			ResourceListPtr: &corev1.NodeList{},
 		},
@@ -78,9 +78,9 @@ func (a *nodeAccess) PatchStatus(ctx context.Context, nodeName string, data []by
 }
 
 func (a nodeAccess) Apply(ctx context.Context, node *v1.NodeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Node, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a nodeAccess) ApplyStatus(ctx context.Context, node *v1.NodeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Node, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

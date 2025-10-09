@@ -26,9 +26,9 @@ type csiDriverAccess struct {
 func NewCSIDriverAccess(view mkapi.View) clientstoragev1.CSIDriverInterface {
 	return &csiDriverAccess{
 		BasicResourceAccess[*storagev1.CSIDriver, *storagev1.CSIDriverList]{
-			view: view,
-			gvk:  typeinfo.CSIDriverDescriptor.GVK,
-			// Namespace:       namespace,
+			view:            view,
+			gvk:             typeinfo.CSIDriverDescriptor.GVK,
+			Namespace:       metav1.NamespaceNone,
 			ResourcePtr:     &storagev1.CSIDriver{},
 			ResourceListPtr: &storagev1.CSIDriverList{},
 		},
@@ -71,9 +71,9 @@ func (a *csiDriverAccess) Patch(ctx context.Context, name string, pt types.Patch
 }
 
 func (a *csiDriverAccess) Apply(ctx context.Context, csiDriver *v1.CSIDriverApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSIDriver, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for csiDrivers", commonerrors.ErrUnimplemented)
 }
 
 func (a *csiDriverAccess) ApplyStatus(ctx context.Context, csiDriver *v1.CSIDriverApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSIDriver, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiDrivers", commonerrors.ErrUnimplemented)
 }

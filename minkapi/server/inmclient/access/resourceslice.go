@@ -69,5 +69,5 @@ func (a *resourceSliceAccess) Patch(ctx context.Context, name string, pt types.P
 }
 
 func (a *resourceSliceAccess) Apply(ctx context.Context, resourceSlice *v1.ResourceSliceApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceSlice, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }

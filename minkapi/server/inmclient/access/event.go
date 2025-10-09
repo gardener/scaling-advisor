@@ -3,11 +3,11 @@ package access
 import (
 	"context"
 	"fmt"
-
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -51,12 +51,30 @@ func (a *eventAccess) Update(ctx context.Context, event *corev1.Event, opts meta
 	return a.updateObject(ctx, opts, event)
 }
 func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event) (*corev1.Event, error) {
-	//TODO implement me
-	panic("implement me")
+	if event.Name == "" {
+		return nil, fmt.Errorf("event name must be specified")
+	}
+	if event.Namespace == "" {
+		return nil, fmt.Errorf("event namespace must be specified")
+	}
+	e, err := a.Get(ctx, event.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if event.ResourceVersion != "" && event.ResourceVersion != e.ResourceVersion {
+		// TODO: I need to make a generic function for this check.
+		return nil, errors.NewConflict(
+			corev1.Resource("events"),
+			event.Name,
+			fmt.Errorf("requested ResourceVersion %s does not match current %s", event.ResourceVersion, e.ResourceVersion),
+		)
+	}
+	updatedEvent := e.DeepCopy()
+	updateEventFields(updatedEvent, event)
+	return a.updateObject(ctx, metav1.UpdateOptions{}, updatedEvent)
 }
 func (a *eventAccess) UpdateWithEventNamespace(event *corev1.Event) (*corev1.Event, error) {
-	//TODO implement me
-	panic("implement me")
+	return a.UpdateWithEventNamespaceWithContext(context.Background(), event)
 }
 
 func (a *eventAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
@@ -87,28 +105,58 @@ func (a *eventAccess) Patch(ctx context.Context, name string, pt types.PatchType
 }
 
 func (a *eventAccess) PatchWithEventNamespace(event *corev1.Event, data []byte) (*corev1.Event, error) {
-	//TODO implement me
-	panic("implement me")
+	return a.PatchWithEventNamespaceWithContext(context.Background(), event, data)
 }
 
 func (a *eventAccess) PatchWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event, data []byte) (*corev1.Event, error) {
-	//TODO implement me
-	panic("implement me")
+	if event.Name == "" {
+		return nil, fmt.Errorf("event name must be specified")
+	}
+	if event.Namespace == "" {
+		return nil, fmt.Errorf("event namespace must be specified")
+	}
+	return a.patchObject(ctx, event.Name, types.JSONPatchType, data, metav1.PatchOptions{})
 }
 
 func (a *eventAccess) Apply(ctx context.Context, event *v1.EventApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Event, err error) {
-	panic(commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *eventAccess) Search(scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 func (a *eventAccess) SearchWithContext(ctx context.Context, scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
 }
 
 func (a *eventAccess) GetFieldSelector(involvedObjectName, involvedObjectNamespace, involvedObjectKind, involvedObjectUID *string) fields.Selector {
-	panic(commonerrors.ErrUnimplemented)
+	return fields.SelectorFromSet(fields.Set{
+		"involvedObject.name":      *involvedObjectName,
+		"involvedObject.namespace": *involvedObjectNamespace,
+		"involvedObject.kind":      *involvedObjectKind,
+		"involvedObject.uid": func() string {
+			if involvedObjectUID != nil {
+				return *involvedObjectUID
+			}
+			return ""
+		}(),
+	})
+}
+
+// updateEventFields updates the relevant fields of the target event from the source event.
+func updateEventFields(target, source *corev1.Event) {
+	// Update fields that are typically modified in an event update
+	target.Reason = source.Reason
+	target.Message = source.Message
+	target.Count = source.Count
+	target.LastTimestamp = source.LastTimestamp
+	target.Type = source.Type
+	target.Source = source.Source
+	// Preserve fields like InvolvedObject and FirstTimestamp unless explicitly set
+	if source.InvolvedObject.Name != "" {
+		target.InvolvedObject = source.InvolvedObject
+	}
+	if !source.FirstTimestamp.IsZero() {
+		target.FirstTimestamp = source.FirstTimestamp
+	}
 }
