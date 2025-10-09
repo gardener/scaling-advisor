@@ -22,47 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// Helper function to create mock nodes
-func createMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
-	return service.NodeResourceInfo{
-		Name:         name,
-		InstanceType: instanceType,
-		Allocatable: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    cpu,
-			corev1.ResourceMemory: memory,
-		},
-	}
-}
-
-// Helper function to create mock pods with cpu and memory requests
-func createMockPod(name string, cpu, memory int64) service.PodResourceInfo {
-	return service.PodResourceInfo{
-		UID: "pod-12345",
-		NamespacedName: types.NamespacedName{
-			Name:      name,
-			Namespace: metav1.NamespaceDefault,
-		},
-		AggregatedRequests: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    cpu,
-			corev1.ResourceMemory: memory,
-		},
-	}
-}
-
-// mock weights fn for testing
-func mockWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
-	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
-}
-
-type mockInfoAccess struct {
-	err error
-}
-
-// Helper function to create mock instance pricing access that returns an error
-func (m mockInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
-	return service.InstancePriceInfo{}, m.err
-}
-
 func TestLeastWasteScoringStrategy(t *testing.T) {
 	access, err := prtestutil.LoadTestInstancePricingAccess()
 	if err != nil {
@@ -70,16 +29,16 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		return
 	}
 	assignment := service.NodePodAssignment{
-		Node: createMockNode("simNode1", "instance-a-1", 2, 4),
+		Node: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
-			createMockPod("simPodA", 1, 2),
+			createPodResourceInfo("simPodA", 1, 2),
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := createMockPod("simStorage", 2, 4)
+	podWithStorage := createPodResourceInfo("simStorage", 2, 4)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          createMockNode("simNode1", "instance-a-2", 2, 4),
+		Node:          createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
@@ -97,7 +56,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -113,12 +72,12 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				Placement:        sacorev1alpha1.NodePlacement{},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
-					Node:          createMockNode("exNode1", "instance-b-1", 2, 4),
-					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
+					Node:          createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []service.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -136,7 +95,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -167,7 +126,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			access: mockInfoAccess{err: errors.New("testing error")},
+			access: testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -202,16 +161,16 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		return
 	}
 	assignment := service.NodePodAssignment{
-		Node: createMockNode("simNode1", "instance-a-2", 2, 4),
+		Node: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
-			createMockPod("simPodA", 1, 2),
+			createPodResourceInfo("simPodA", 1, 2),
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := createMockPod("simStorage", 1, 2)
+	podWithStorage := createPodResourceInfo("simStorage", 1, 2)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          createMockNode("simNode1", "instance-a-2", 2, 4),
+		Node:          createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
@@ -229,7 +188,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -245,12 +204,12 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledAssignment: &assignment,
 				OtherAssignments: []service.NodePodAssignment{{
-					Node:          createMockNode("exNode1", "instance-b-1", 2, 4),
-					ScheduledPods: []service.PodResourceInfo{createMockPod("simPodB", 1, 2)},
+					Node:          createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []service.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
 				UnscheduledPods: nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -268,7 +227,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
 			access:      access,
-			weightsFn:   mockWeightsFunc,
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
 				ID:                 "testing",
@@ -298,7 +257,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			access: mockInfoAccess{err: errors.New("testing error")},
+			access: testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -332,7 +291,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		return
 	}
 	selector, err := GetNodeScoreSelector(commontypes.LeastCostNodeScoringStrategy)
-	simNodeWithStorage := createMockNode("simNode1", "instance-a-1", 2, 4)
+	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)
 	simNodeWithStorage.Allocatable["Storage"] = 10
 	if err != nil {
 		t.Fatal(err)
@@ -343,9 +302,9 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -359,13 +318,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 4, 8),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", 4, 8),
 				}},
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{{
@@ -373,7 +332,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              1,
-				ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 4, 8),
+				ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", 4, 8),
 			}},
 		},
 		"identical allocatables": {
@@ -383,13 +342,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 2, 4),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", 2, 4),
 				},
 			},
 			expectedErr: nil,
@@ -399,13 +358,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 2, 4),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", 2, 4),
 				},
 			},
 		},
@@ -416,7 +375,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 4, 8)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 4, 8)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
@@ -430,13 +389,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 				UnscheduledPods:    nil,
 				Value:              1,
-				ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 4, 8),
+				ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 4, 8),
 			}},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, mockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, testWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -475,9 +434,9 @@ func TestSelectMinPrice(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -491,13 +450,13 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-a-2", 1, 2),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", 1, 2),
 				},
 			},
 			expectedErr: nil,
@@ -507,7 +466,7 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)}},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"identical prices": {
 			input: []service.NodeScore{
@@ -516,13 +475,13 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-c-1", 1, 2),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", 1, 2),
 				},
 			},
 			expectedErr: nil,
@@ -532,20 +491,20 @@ func TestSelectMinPrice(t *testing.T) {
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode1", "instance-a-1", 2, 4)},
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
 					ID:                 "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
-					ScaledNodeResource: createMockNode("simNode2", "instance-c-1", 1, 2),
+					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", 1, 2),
 				},
 			},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, mockWeightsFunc, access)
+			winningNodeScore, err := selector(tc.input, testWeightsFunc, access)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -647,7 +606,7 @@ func TestGetNodeScorer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadTestInstancePricingAccess failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, mockWeightsFunc)
+			got, err := GetNodeScorer(tc.input, access, testWeightsFunc)
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
@@ -671,4 +630,45 @@ func TestGetNodeScorer(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Helper function to create mock nodes
+func createNodeResourceInfo(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
+	return service.NodeResourceInfo{
+		Name:         name,
+		InstanceType: instanceType,
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+// Helper function to create mock pods with cpu and memory requests
+func createPodResourceInfo(name string, cpu, memory int64) service.PodResourceInfo {
+	return service.PodResourceInfo{
+		UID: "pod-12345",
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: metav1.NamespaceDefault,
+		},
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+// mock weights fn for testing
+func testWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
+	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
+}
+
+type testInfoAccess struct {
+	err error
+}
+
+// Helper function to create mock instance pricing access that returns an error
+func (m testInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
+	return service.InstancePriceInfo{}, m.err
 }

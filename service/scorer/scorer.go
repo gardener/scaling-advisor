@@ -15,48 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// getNormalizedResourceUnits returns the aggregated sum of the resources in terms of normalized resource units
-func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights map[corev1.ResourceName]float64) (nru float64) {
-	for resourceName, quantity := range resources {
-		if weight, found := weights[resourceName]; !found {
-			continue
-		} else {
-			nru += weight * float64(quantity)
-		}
-	}
-	return nru
-}
-
-// addPodRequests adds the pod's requests to aggregateResources resource-wise
-func addPodRequests(podRequest, aggregateResources map[corev1.ResourceName]int64) {
-	for resourceName, request := range podRequest {
-		if value, ok := aggregateResources[resourceName]; ok {
-			aggregateResources[resourceName] = value + request
-		} else {
-			aggregateResources[resourceName] = request
-		}
-	}
-}
-
-// getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
-// map containing the sums for each resource type
-func getAggregatedScheduledPodsResources(scaledNodeAssignments *service.NodePodAssignment, otherAssignments []service.NodePodAssignment) (scheduledResources map[corev1.ResourceName]int64) {
-	scheduledResources = make(map[corev1.ResourceName]int64)
-	if scaledNodeAssignments != nil {
-		//add resources required by pods scheduled on scaled candidate node
-		for _, pod := range scaledNodeAssignments.ScheduledPods {
-			addPodRequests(pod.AggregatedRequests, scheduledResources)
-		}
-	}
-	//add resources required by pods scheduled on existing nodes
-	for _, assignment := range otherAssignments {
-		for _, pod := range assignment.ScheduledPods {
-			addPodRequests(pod.AggregatedRequests, scheduledResources)
-		}
-	}
-	return scheduledResources
-}
-
 var _ service.GetNodeScorer = GetNodeScorer
 
 // GetNodeScorer returns the NodeScorer based on the NodeScoringStrategy
@@ -95,20 +53,21 @@ func (l LeastCost) Compute(args service.NodeScorerArgs) (score service.NodeScore
 	//calculate total scheduledResources in terms of normalized resource units using weights
 	weights, err := l.weightsFn(args.Placement.InstanceType)
 	if err != nil {
-		return score, err
+		return
 	}
 	totalNormalizedResourceUnits := getNormalizedResourceUnits(aggregatedPodsResources, weights)
 	info, err := l.instancePricingAccess.GetInfo(args.Placement.Region, args.Placement.InstanceType)
 	if err != nil {
-		return score, err
+		return
 	}
-	return service.NodeScore{
+	score = service.NodeScore{
 		ID:                 args.ID,
 		Placement:          args.Placement,
 		Value:              int(math.Round(totalNormalizedResourceUnits * 100 / info.HourlyPrice)),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 		UnscheduledPods:    args.UnscheduledPods,
-	}, err
+	}
+	return
 }
 
 var _ service.NodeScorer = (*LeastWaste)(nil)
@@ -166,7 +125,7 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 	//calculate single score from wastage using weights
 	weights, err := l.weightsFn(args.Placement.InstanceType)
 	if err != nil {
-		return nodeScore, err
+		return
 	}
 	totalNormalizedResourceUnits := getNormalizedResourceUnits(wastage, weights)
 	nodeScore = service.NodeScore{
@@ -176,7 +135,7 @@ func (l LeastWaste) Compute(args service.NodeScorerArgs) (nodeScore service.Node
 		Value:              int(totalNormalizedResourceUnits * 100),
 		ScaledNodeResource: args.ScaledAssignment.Node,
 	}
-	return nodeScore, err
+	return
 }
 
 var _ service.GetNodeScoreSelector = GetNodeScoreSelector
@@ -199,20 +158,20 @@ var _ service.NodeScoreSelector = SelectMaxAllocatable
 // This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
 // Larger instance types --> less fragmentation
 // if multiple node scores have instance types with the same allocatable, an index is picked at random from them
-func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, _ service.InstancePricingAccess) (winner *service.NodeScore, err error) {
+func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetWeightsFunc, _ service.InstancePricingAccess) (*service.NodeScore, error) {
 	if len(nodeScores) == 0 {
 		return nil, service.ErrNoWinningNodeScore
 	}
 	if len(nodeScores) == 1 {
 		return &nodeScores[0], nil
 	}
-	var winners []int
+	var winnerIndices []int
 	weights, err := weightsFn(nodeScores[0].Placement.InstanceType)
 	if err != nil {
 		return nil, err
 	}
 	maxNormalizedAlloc := getNormalizedResourceUnits(nodeScores[0].ScaledNodeResource.Allocatable, weights)
-	winners = append(winners, 0)
+	winnerIndices = append(winnerIndices, 0)
 	for index, candidate := range nodeScores[1:] {
 		weights, err = weightsFn(candidate.Placement.InstanceType)
 		if err != nil {
@@ -220,36 +179,36 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 		}
 		normalizedAlloc := getNormalizedResourceUnits(candidate.ScaledNodeResource.Allocatable, weights)
 		if maxNormalizedAlloc == normalizedAlloc {
-			winners = append(winners, index+1)
+			winnerIndices = append(winnerIndices, index+1)
 		} else if maxNormalizedAlloc < normalizedAlloc {
-			winners = winners[:0]
-			winners = append(winners, index+1)
+			winnerIndices = winnerIndices[:0]
+			winnerIndices = append(winnerIndices, index+1)
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
-	//pick one winner at random from winners
-	randIndex := rand.IntN(len(winners)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
-	return &nodeScores[winners[randIndex]], nil
+	//pick one winner at random from winnerIndices
+	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	return &nodeScores[winnerIndices[randIndex]], nil
 }
 
 var _ service.NodeScoreSelector = SelectMinPrice
 
 // SelectMinPrice returns the index of the node score for the node with the lowest price.
 // if multiple node scores have instance types with the same price, an index is picked at random from them
-func SelectMinPrice(nodeScores []service.NodeScore, _ service.GetWeightsFunc, pricing service.InstancePricingAccess) (winner *service.NodeScore, err error) {
+func SelectMinPrice(nodeScores []service.NodeScore, _ service.GetWeightsFunc, pricing service.InstancePricingAccess) (*service.NodeScore, error) {
 	if len(nodeScores) == 0 {
 		return nil, service.ErrNoWinningNodeScore
 	}
 	if len(nodeScores) == 1 {
 		return &nodeScores[0], nil
 	}
-	var winners []int
+	var winnerIndices []int
 	info, err := pricing.GetInfo(nodeScores[0].Placement.Region, nodeScores[0].Placement.InstanceType)
 	if err != nil {
 		return nil, err
 	}
 	leastPrice := info.HourlyPrice
-	winners = append(winners, 0)
+	winnerIndices = append(winnerIndices, 0)
 	for index, candidate := range nodeScores[1:] {
 		info, err := pricing.GetInfo(candidate.Placement.Region, candidate.Placement.InstanceType)
 		if err != nil {
@@ -257,14 +216,57 @@ func SelectMinPrice(nodeScores []service.NodeScore, _ service.GetWeightsFunc, pr
 		}
 		price := info.HourlyPrice
 		if leastPrice == price {
-			winners = append(winners, index+1)
+			winnerIndices = append(winnerIndices, index+1)
 		} else if leastPrice > price {
-			winners = winners[:0]
-			winners = append(winners, index+1)
+			winnerIndices = winnerIndices[:0]
+			winnerIndices = append(winnerIndices, index+1)
 			leastPrice = price
 		}
 	}
-	//pick one winner at random from winners
-	randIndex := rand.IntN(len(winners)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	//pick one winner at random from winnerIndices
+	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
 	return &nodeScores[randIndex], nil
+}
+
+// getNormalizedResourceUnits returns the aggregated sum of the resources in terms of normalized resource units
+func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights map[corev1.ResourceName]float64) float64 {
+	nru := 0.0
+	for resourceName, quantity := range resources {
+		if weight, found := weights[resourceName]; !found {
+			continue
+		} else {
+			nru += weight * float64(quantity)
+		}
+	}
+	return nru
+}
+
+// getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
+// map containing the sums for each resource type
+func getAggregatedScheduledPodsResources(scaledNodeAssignments *service.NodePodAssignment, otherAssignments []service.NodePodAssignment) map[corev1.ResourceName]int64 {
+	var scheduledResources = make(map[corev1.ResourceName]int64)
+	if scaledNodeAssignments != nil {
+		//add resources required by pods scheduled on scaled candidate node
+		for _, pod := range scaledNodeAssignments.ScheduledPods {
+			addPodRequests(pod.AggregatedRequests, scheduledResources)
+		}
+	}
+	//add resources required by pods scheduled on existing nodes
+	for _, assignment := range otherAssignments {
+		for _, pod := range assignment.ScheduledPods {
+			addPodRequests(pod.AggregatedRequests, scheduledResources)
+		}
+	}
+	return scheduledResources
+}
+
+// addPodRequests adds the pod's requests to aggregateResources resource-wise
+func addPodRequests(podRequest, aggregateResources map[corev1.ResourceName]int64) {
+	for resourceName, request := range podRequest {
+		if value, ok := aggregateResources[resourceName]; ok {
+			aggregateResources[resourceName] = value + request
+		} else {
+			aggregateResources[resourceName] = request
+		}
+	}
 }
