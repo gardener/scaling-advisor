@@ -57,7 +57,7 @@ func (a *BasicResourceAccess[T, L]) createObjectWithAccessNamespace(ctx context.
 	if err != nil {
 		return
 	}
-	t, err = a.getObject(ctx, createdObj.GetNamespace(), createdObj.GetName(), metav1.GetOptions{})
+	t, err = objutil.Cast[T](createdObj)
 	return
 }
 
