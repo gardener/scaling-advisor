@@ -140,30 +140,3 @@ func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string 
 	}
 	return objectNames
 }
-
-// UpdatePodResources updates the resources of containers and init containers in the targetPod from the sourcePod.
-func UpdatePodResources(targetPod, sourcePod *corev1.Pod) {
-	// Create a map of container names to their updated resources for quick lookup
-	containerResources := make(map[string]corev1.ResourceRequirements)
-	for _, container := range sourcePod.Spec.Containers {
-		containerResources[container.Name] = container.Resources
-	}
-
-	// Update resources for regular containers
-	for i, container := range targetPod.Spec.Containers {
-		if resources, exists := containerResources[container.Name]; exists {
-			targetPod.Spec.Containers[i].Resources = resources
-		}
-	}
-
-	// Update resources for init containers (if provided)
-	initContainerResources := make(map[string]corev1.ResourceRequirements)
-	for _, initContainer := range sourcePod.Spec.InitContainers {
-		initContainerResources[initContainer.Name] = initContainer.Resources
-	}
-	for i, initContainer := range targetPod.Spec.InitContainers {
-		if resources, exists := initContainerResources[initContainer.Name]; exists {
-			targetPod.Spec.InitContainers[i].Resources = resources
-		}
-	}
-}
