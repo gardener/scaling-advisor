@@ -166,23 +166,18 @@ func SelectMaxAllocatable(nodeScores []service.NodeScore, weightsFn service.GetW
 		return &nodeScores[0], nil
 	}
 	var winnerIndices []int
-	weights, err := weightsFn(nodeScores[0].Placement.InstanceType)
-	if err != nil {
-		return nil, err
-	}
-	maxNormalizedAlloc := getNormalizedResourceUnits(nodeScores[0].ScaledNodeResource.Allocatable, weights)
-	winnerIndices = append(winnerIndices, 0)
-	for index, candidate := range nodeScores[1:] {
-		weights, err = weightsFn(candidate.Placement.InstanceType)
+	maxNormalizedAlloc := 0.0
+	for index, candidate := range nodeScores {
+		weights, err := weightsFn(candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
 		normalizedAlloc := getNormalizedResourceUnits(candidate.ScaledNodeResource.Allocatable, weights)
 		if maxNormalizedAlloc == normalizedAlloc {
-			winnerIndices = append(winnerIndices, index+1)
+			winnerIndices = append(winnerIndices, index)
 		} else if maxNormalizedAlloc < normalizedAlloc {
 			winnerIndices = winnerIndices[:0]
-			winnerIndices = append(winnerIndices, index+1)
+			winnerIndices = append(winnerIndices, index)
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
@@ -203,23 +198,18 @@ func SelectMinPrice(nodeScores []service.NodeScore, _ service.GetWeightsFunc, pr
 		return &nodeScores[0], nil
 	}
 	var winnerIndices []int
-	info, err := pricing.GetInfo(nodeScores[0].Placement.Region, nodeScores[0].Placement.InstanceType)
-	if err != nil {
-		return nil, err
-	}
-	leastPrice := info.HourlyPrice
-	winnerIndices = append(winnerIndices, 0)
-	for index, candidate := range nodeScores[1:] {
+	leastPrice := math.MaxFloat64
+	for index, candidate := range nodeScores {
 		info, err := pricing.GetInfo(candidate.Placement.Region, candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
 		price := info.HourlyPrice
 		if leastPrice == price {
-			winnerIndices = append(winnerIndices, index+1)
+			winnerIndices = append(winnerIndices, index)
 		} else if leastPrice > price {
 			winnerIndices = winnerIndices[:0]
-			winnerIndices = append(winnerIndices, index+1)
+			winnerIndices = append(winnerIndices, index)
 			leastPrice = price
 		}
 	}
