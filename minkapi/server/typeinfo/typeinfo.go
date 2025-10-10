@@ -142,6 +142,10 @@ const (
 	KindVolumeAttachment string = "VolumeAttachment"
 	// KindVolumeAttachmentList represents a list of Kubernetes VolumeAttachment resources.
 	KindVolumeAttachmentList string = "VolumeAttachmentList"
+	// KindVolumeAttributesClass represents a Kubernetes VolumeAttributesClass resource.
+	KindVolumeAttributesClass string = "VolumeAttributesClass"
+	// KindVolumeAttributesClassList represents a list of Kubernetes VolumeAttributesClass resources.
+	KindVolumeAttributesClassList string = "VolumeAttributesClassList"
 	// KindRuntimeClass represents a Kubernetes RuntimeClass resource.
 	KindRuntimeClass string = "RuntimeClass"
 	// KindRuntimeClassList represents a list of Kubernetes RuntimeClass resources.
@@ -195,9 +199,9 @@ func NewDescriptor(gvk schema.GroupVersionKind, listKind string, namespaced bool
 	return Descriptor{
 		GVK:     gvk,
 		GVR:     gvk.GroupVersion().WithResource(pluralName),
-		ListGVK: gvk.GroupVersion().WithKind(string(listKind)),
+		ListGVK: gvk.GroupVersion().WithKind(listKind),
 		ListTypeMeta: metav1.TypeMeta{
-			Kind:       string(listKind),
+			Kind:       listKind,
 			APIVersion: gvk.GroupVersion().String(),
 		},
 		APIResource: metav1.APIResource{
@@ -265,6 +269,8 @@ var (
 	CSINodeDescriptor = NewDescriptor(storagev1.SchemeGroupVersion.WithKind(KindCSINode), KindCSINodeList, false, "csinodes")
 	// VolumeAttachmentDescriptor is an aggregate holder of type information for VolumeAttachment resources.
 	VolumeAttachmentDescriptor = NewDescriptor(storagev1.SchemeGroupVersion.WithKind(KindVolumeAttachment), KindVolumeAttachmentList, false, "volumeattachments")
+	// VolumeAttributesClassDescriptor is an aggregate holder of type information for VolumeAttributesClass resources.
+	VolumeAttributesClassDescriptor = NewDescriptor(storagev1.SchemeGroupVersion.WithKind(KindVolumeAttributesClass), KindVolumeAttributesClassList, false, "volumeattributesclasses")
 	// RuntimeClassDescriptor is an aggregate holder of type information for RuntimeClass resources.
 	RuntimeClassDescriptor = NewDescriptor(nodev1.SchemeGroupVersion.WithKind(KindRuntimeClass), KindRuntimeClassList, false, "runtimeclasses")
 	// ResourceSliceDescriptor is an aggregate holder of type information for ResourceSlice resources (introduced as part of DRA).
@@ -298,6 +304,7 @@ var (
 		CSIStorageCapacityDescriptor,
 		CSINodeDescriptor,
 		VolumeAttachmentDescriptor,
+		VolumeAttributesClassDescriptor,
 		RuntimeClassDescriptor,
 		ResourceSliceDescriptor,
 		ResourceClaimDescriptor,
@@ -404,6 +411,7 @@ func buildNonCoreAPIResourceLists() []metav1.APIResourceList {
 				CSIStorageCapacityDescriptor.APIResource,
 				CSINodeDescriptor.APIResource,
 				VolumeAttachmentDescriptor.APIResource,
+				VolumeAttributesClassDescriptor.APIResource,
 			},
 		},
 		{

@@ -73,7 +73,6 @@ func TestBaseViewCreateGetNodes(t *testing.T) {
 		}
 		checkNodeIsSame(t, gotNode, createdNode)
 	})
-
 }
 
 type eventsHolder struct {
@@ -146,12 +145,10 @@ outer:
 				continue
 			}
 			objFullName := objutil.CacheName(mo)
-			objType, err := meta.TypeAccessor(ev.Object)
 			if err != nil {
 				t.Fatalf("failed to get TypeAccessor for event object %q: %v", objFullName, err)
 				return
 			}
-			corev1.SchemeGroupVersion.WithKind(objType.GetKind()).GroupVersion().WithKind(objType.GetKind())
 			t.Logf("received #%d event, Type: %s, ObjectName: %s", count, ev.Type, objFullName)
 			addEventFn(ev)
 		case <-ctx.Done():
@@ -181,7 +178,7 @@ func initSuite(ctx context.Context) error {
 	}
 	<-time.After(1 * time.Second) // give minmal time for startup
 
-	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades()
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(commontypes.ClientAccessNetwork)
 	if err != nil {
 		return err
 	}

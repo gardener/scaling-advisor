@@ -112,17 +112,17 @@ func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
 	// the base view with the current state of the target cluster.
 	view.Reset()
 	for _, nodeInfo := range cs.Nodes {
-		if err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
+		if _, err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
 			return err
 		}
 	}
 	for _, pod := range cs.Pods {
-		if err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+		if _, err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
 			return err
 		}
 	}
 	for _, pc := range cs.PriorityClasses {
-		if err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+		if _, err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
 			return err
 		}
 	}

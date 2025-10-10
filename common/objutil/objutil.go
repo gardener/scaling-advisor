@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -309,4 +310,13 @@ func TypeName[T any]() string {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()
+}
+
+// AsMeta converts an object to its metav1.Object representation, returning an error if the conversion fails.
+func AsMeta(o any) (mo metav1.Object, err error) {
+	mo, err = meta.Accessor(o)
+	if err != nil {
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
+	}
+	return
 }

@@ -7,7 +7,6 @@ package eventsink
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/go-logr/logr"
@@ -19,11 +18,13 @@ import (
 
 var _ mkapi.EventSink = (*InMemEventSink)(nil)
 
+// InMemEventSink is plain implementation of minkapi EventSink that holds events in a backing slice.
 type InMemEventSink struct {
 	log    logr.Logger
 	events []eventsv1.Event
 }
 
+// New constructs a minkapi event-sink that sinks events to a backing in-memory slice of events.
 func New(log logr.Logger) mkapi.EventSink {
 	return &InMemEventSink{
 		log:    log,
@@ -31,22 +32,25 @@ func New(log logr.Logger) mkapi.EventSink {
 	}
 }
 
-func (s *InMemEventSink) Create(ctx context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
+// Create appends the given event to the backing in-memory event slice.
+func (s *InMemEventSink) Create(_ context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
 	s.events = append(s.events, *event)
 	return event, nil
 }
 
-func (s *InMemEventSink) Update(ctx context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
+// Update updates the given event within the backing in-memory slice.
+func (s *InMemEventSink) Update(_ context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
 	for i, e := range s.events {
 		if e.Name == event.Name && e.Namespace == event.Namespace {
 			s.events[i] = *event
 			return event, nil
 		}
 	}
-	return nil, apierrors.NewNotFound(eventsv1.Resource("events"), event.Name) //TODO: is it plural events or singluar event ?
+	return nil, apierrors.NewNotFound(eventsv1.Resource("events"), event.Name)
 }
 
-func (s *InMemEventSink) Patch(ctx context.Context, oldEvent *eventsv1.Event, patchData []byte) (patched *eventsv1.Event, err error) {
+// Patch updates the given event within the backing in-memory slice.
+func (s *InMemEventSink) Patch(_ context.Context, oldEvent *eventsv1.Event, patchData []byte) (patched *eventsv1.Event, err error) {
 	for i, e := range s.events {
 		if e.Name == oldEvent.Name && e.Namespace == oldEvent.Namespace {
 			originalJSON, err := json.Marshal(e)
@@ -67,20 +71,15 @@ func (s *InMemEventSink) Patch(ctx context.Context, oldEvent *eventsv1.Event, pa
 			return &s.events[i], nil
 		}
 	}
-	return nil, apierrors.NewNotFound(eventsv1.Resource("events"), oldEvent.Name) //TODO: is it plural events or singluar event ?
+	return nil, apierrors.NewNotFound(eventsv1.Resource("events"), oldEvent.Name)
 }
 
-func (s *InMemEventSink) Delete(ctx context.Context, event *eventsv1.Event) error {
-	s.events = slices.DeleteFunc(s.events, func(event eventsv1.Event) bool {
-		return event.Name == event.Name && event.Namespace == event.Namespace
-	})
-	return nil
-}
-
+// List lists all the events in the backing in-memory slice.
 func (s *InMemEventSink) List() []eventsv1.Event {
 	return s.events
 }
 
+// Reset clears the backing in-memory slice.
 func (s *InMemEventSink) Reset() {
 	s.events = nil
 }
