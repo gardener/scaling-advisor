@@ -1,9 +1,10 @@
-package access
+package resourceaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -21,56 +22,52 @@ var (
 )
 
 type resourceSliceAccess struct {
-	BasicResourceAccess[*resourcev1.ResourceSlice, *resourcev1.ResourceSliceList]
+	access.GenericResourceAccess[*resourcev1.ResourceSlice, *resourcev1.ResourceSliceList]
 }
 
+// NewResourceSliceAccess creates an access facade for managing ResourceSlice resources using the given minkapi View.
 func NewResourceSliceAccess(view mkapi.View) clientresourcev1.ResourceSliceInterface {
 	return &resourceSliceAccess{
-		BasicResourceAccess[*resourcev1.ResourceSlice, *resourcev1.ResourceSliceList]{
-			view:            view,
-			gvk:             typeinfo.ResourceSliceDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone,
-			ResourcePtr:     &resourcev1.ResourceSlice{},
-			ResourceListPtr: &resourcev1.ResourceSliceList{},
+		access.GenericResourceAccess[*resourcev1.ResourceSlice, *resourcev1.ResourceSliceList]{
+			View:      view,
+			GVK:       typeinfo.ResourceSliceDescriptor.GVK,
+			Namespace: metav1.NamespaceNone,
 		},
 	}
 }
 
 func (a *resourceSliceAccess) Create(ctx context.Context, resourceSlice *resourcev1.ResourceSlice, opts metav1.CreateOptions) (*resourcev1.ResourceSlice, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, resourceSlice)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, resourceSlice)
 }
 
 func (a *resourceSliceAccess) Update(ctx context.Context, resourceSlice *resourcev1.ResourceSlice, opts metav1.UpdateOptions) (*resourcev1.ResourceSlice, error) {
-	return a.updateObject(ctx, opts, resourceSlice)
+	return a.UpdateObject(ctx, opts, resourceSlice)
 }
 
 func (a *resourceSliceAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceSliceAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *resourceSliceAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*resourcev1.ResourceSlice, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceSliceAccess) List(ctx context.Context, opts metav1.ListOptions) (*resourcev1.ResourceSliceList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *resourceSliceAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *resourceSliceAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *resourcev1.ResourceSlice, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for %q", commonerrors.ErrInvalidOptVal, subresources, a.gvk.Kind)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *resourceSliceAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *resourcev1.ResourceSlice, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *resourceSliceAccess) Apply(ctx context.Context, resourceSlice *v1.ResourceSliceApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceSlice, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *resourceSliceAccess) Apply(_ context.Context, _ *v1.ResourceSliceApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.ResourceSlice, err error) {
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }

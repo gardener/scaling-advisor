@@ -102,11 +102,12 @@ func (v *sandboxView) GetClientFacades(accessMode commontypes.ClientAccessMode) 
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	if accessMode == commontypes.ClientAccessNetwork {
+	switch accessMode {
+	case commontypes.ClientAccessNetwork:
 		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	} else if accessMode == commontypes.ClientAccessInMemory {
+	case commontypes.ClientAccessInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
-	} else {
+	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
 	}
 	return
@@ -187,6 +188,9 @@ func (v *sandboxView) UpdatePodNodeBinding(podName cache.ObjectName, binding cor
 	pod, ok = obj.(*corev1.Pod)
 	if !ok {
 		err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", minkapi.ErrUpdateObject, v.GetName(), obj, podName)
+		if err != nil {
+			return
+		}
 	}
 	// found in base so lets make a copy and store in sandbox
 	sandboxPod := pod.DeepCopy()
@@ -296,7 +300,6 @@ func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.Ob
 	}
 	v.changeCount.Add(1)
 	return nil
-
 }
 
 func (v *sandboxView) DeleteObjects(gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) error {
@@ -338,7 +341,6 @@ func (v *sandboxView) ListEvents(namespace string) (events []eventsv1.Event, err
 	}
 	events, _, err = asEvents(metaObjs)
 	return
-
 }
 
 func (v *sandboxView) GetKubeConfigPath() string {

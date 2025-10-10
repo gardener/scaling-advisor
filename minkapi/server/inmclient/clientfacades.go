@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/informers"
 )
 
+// NewInMemClientFacades returns ClientFacades populated with in-memory client and informer facades.
 func NewInMemClientFacades(view mkapi.View, resyncPeriod time.Duration) commontypes.ClientFacades {
 	client := &inMemClient{view: view}
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
@@ -30,18 +31,20 @@ var (
 type inMemDummyDynInformerFactory struct {
 }
 
-func (i *inMemDummyDynInformerFactory) Start(stopCh <-chan struct{}) {
-	return
+// Start is a no-op implementation
+func (i *inMemDummyDynInformerFactory) Start(_ <-chan struct{}) {
 }
 
-func (i *inMemDummyDynInformerFactory) ForResource(gvr schema.GroupVersionResource) informers.GenericInformer {
+// ForResource is not implemented and panics.
+func (i *inMemDummyDynInformerFactory) ForResource(_ schema.GroupVersionResource) informers.GenericInformer {
 	panic(commonerrors.ErrUnimplemented)
 }
 
-func (i *inMemDummyDynInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[schema.GroupVersionResource]bool {
+// WaitForCacheSync is a no-op implementation that returns an empty map.
+func (i *inMemDummyDynInformerFactory) WaitForCacheSync(_ <-chan struct{}) map[schema.GroupVersionResource]bool {
 	return map[schema.GroupVersionResource]bool{}
 }
 
+// Shutdown is a no-op implementation.
 func (i *inMemDummyDynInformerFactory) Shutdown() {
-	return
 }

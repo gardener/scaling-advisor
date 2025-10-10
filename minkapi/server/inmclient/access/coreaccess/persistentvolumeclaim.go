@@ -1,9 +1,10 @@
-package access
+package coreaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -12,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	v1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applyconfigv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -21,88 +22,84 @@ var (
 )
 
 type pvcAccess struct {
-	BasicResourceAccess[*corev1.PersistentVolumeClaim, *corev1.PersistentVolumeClaimList]
+	access.GenericResourceAccess[*corev1.PersistentVolumeClaim, *corev1.PersistentVolumeClaimList]
 }
 
+// NewPersistentVolumeClaimAccess creates a new access facade for managing PersistentVolumeClaim resources within a specific namespace using the given minkapi View.
 func NewPersistentVolumeClaimAccess(view mkapi.View, namespace string) clientcorev1.PersistentVolumeClaimInterface {
 	return &pvcAccess{
-		BasicResourceAccess[*corev1.PersistentVolumeClaim, *corev1.PersistentVolumeClaimList]{
-			view:            view,
-			gvk:             typeinfo.PersistentVolumeClaimsDescriptor.GVK,
-			Namespace:       namespace,
-			ResourcePtr:     &corev1.PersistentVolumeClaim{},
-			ResourceListPtr: &corev1.PersistentVolumeClaimList{},
+		access.GenericResourceAccess[*corev1.PersistentVolumeClaim, *corev1.PersistentVolumeClaimList]{
+			View:      view,
+			GVK:       typeinfo.PersistentVolumeClaimsDescriptor.GVK,
+			Namespace: namespace,
 		},
 	}
 }
 
 func (a *pvcAccess) Create(ctx context.Context, pvc *corev1.PersistentVolumeClaim, opts metav1.CreateOptions) (*corev1.PersistentVolumeClaim, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, pvc)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, pvc)
 }
 
 func (a *pvcAccess) CreateWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return a.createObject(ctx, metav1.CreateOptions{}, pvc)
+	return a.CreateObject(ctx, metav1.CreateOptions{}, pvc)
 }
 
 func (a *pvcAccess) CreateWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return a.createObject(context.Background(), metav1.CreateOptions{}, pvc)
+	return a.CreateObject(context.Background(), metav1.CreateOptions{}, pvc)
 }
 
 func (a *pvcAccess) Update(ctx context.Context, pvc *corev1.PersistentVolumeClaim, opts metav1.UpdateOptions) (*corev1.PersistentVolumeClaim, error) {
-	return a.updateObject(ctx, opts, pvc)
+	return a.UpdateObject(ctx, opts, pvc)
 }
 
 func (a *pvcAccess) UpdateStatus(ctx context.Context, pvc *corev1.PersistentVolumeClaim, opts metav1.UpdateOptions) (*corev1.PersistentVolumeClaim, error) {
-	return a.updateObject(ctx, opts, pvc)
+	return a.UpdateObject(ctx, opts, pvc)
 }
 
-func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespaceWithContext(_ context.Context, _ *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
-func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespace(_ *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
 func (a *pvcAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *pvcAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *pvcAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.PersistentVolumeClaim, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *pvcAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.PersistentVolumeClaimList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *pvcAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *pvcAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.PersistentVolumeClaim, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for pvcs", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *pvcAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *corev1.PersistentVolumeClaim, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespace(pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
+func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespace(_ *corev1.PersistentVolumeClaim, _ []byte) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
-func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespaceWithContext(ctx context.Context, pvc *corev1.PersistentVolumeClaim, data []byte) (*corev1.PersistentVolumeClaim, error) {
+func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespaceWithContext(_ context.Context, _ *corev1.PersistentVolumeClaim, _ []byte) (*corev1.PersistentVolumeClaim, error) {
 	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
 }
 
-func (a *pvcAccess) Apply(ctx context.Context, pvc *v1.PersistentVolumeClaimApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
+func (a *pvcAccess) Apply(_ context.Context, _ *applyconfigv1.PersistentVolumeClaimApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
 	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
 }
 
-func (a *pvcAccess) ApplyStatus(ctx context.Context, pvc *v1.PersistentVolumeClaimApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
+func (a *pvcAccess) ApplyStatus(_ context.Context, _ *applyconfigv1.PersistentVolumeClaimApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
 	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
 }

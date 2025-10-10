@@ -54,6 +54,7 @@ type baseView struct {
 	changeCount atomic.Int64
 }
 
+// New creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
 func New(log logr.Logger, args *minkapi.ViewArgs) (minkapi.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
 	for _, d := range typeinfo.SupportedDescriptors {
@@ -101,11 +102,12 @@ func (v *baseView) GetClientFacades(accessMode commontypes.ClientAccessMode) (cl
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	if accessMode == commontypes.ClientAccessNetwork {
+	switch accessMode {
+	case commontypes.ClientAccessNetwork:
 		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	} else if accessMode == commontypes.ClientAccessInMemory {
+	case commontypes.ClientAccessInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
-	} else {
+	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
 	}
 	return
@@ -506,9 +508,7 @@ func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object)
 		}
 		combined = append(combined, o)
 	}
-	for _, o := range primary {
-		combined = append(combined, o)
-	}
+	combined = append(combined, primary...)
 	return
 }
 

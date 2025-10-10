@@ -1,9 +1,10 @@
-package access
+package coreaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -21,68 +22,64 @@ var (
 )
 
 type nodeAccess struct {
-	BasicResourceAccess[*corev1.Node, *corev1.NodeList]
+	access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]
 }
 
+// NewNodeAccess creates a Node access facade for managing Node resources using the given minkapi View.
 func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
 	return &nodeAccess{
-		BasicResourceAccess[*corev1.Node, *corev1.NodeList]{
-			view:            view,
-			gvk:             typeinfo.NodesDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone,
-			ResourcePtr:     &corev1.Node{},
-			ResourceListPtr: &corev1.NodeList{},
+		access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]{
+			View:      view,
+			GVK:       typeinfo.NodesDescriptor.GVK,
+			Namespace: metav1.NamespaceNone,
 		},
 	}
 }
 
 func (a *nodeAccess) Create(ctx context.Context, node *corev1.Node, opts metav1.CreateOptions) (*corev1.Node, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, node)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, node)
 }
 
 func (a *nodeAccess) Update(ctx context.Context, node *corev1.Node, opts metav1.UpdateOptions) (*corev1.Node, error) {
-	return a.updateObject(ctx, opts, node)
+	return a.UpdateObject(ctx, opts, node)
 }
 
 func (a *nodeAccess) UpdateStatus(ctx context.Context, node *corev1.Node, opts metav1.UpdateOptions) (*corev1.Node, error) {
-	return a.updateObject(ctx, opts, node)
+	return a.UpdateObject(ctx, opts, node)
 }
 
 func (a *nodeAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *nodeAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *nodeAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Node, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *nodeAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.NodeList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *nodeAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *nodeAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.Node, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for node", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *nodeAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *corev1.Node, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
 func (a *nodeAccess) PatchStatus(ctx context.Context, nodeName string, data []byte) (*corev1.Node, error) {
-	return a.patchObjectStatus(ctx, nodeName, data)
+	return a.PatchObjectStatus(ctx, nodeName, data)
 }
 
-func (a nodeAccess) Apply(ctx context.Context, node *v1.NodeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Node, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a nodeAccess) Apply(_ context.Context, _ *v1.NodeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Node, err error) {
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a nodeAccess) ApplyStatus(ctx context.Context, node *v1.NodeApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Node, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a nodeAccess) ApplyStatus(_ context.Context, _ *v1.NodeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Node, err error) {
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }

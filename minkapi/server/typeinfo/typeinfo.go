@@ -199,9 +199,9 @@ func NewDescriptor(gvk schema.GroupVersionKind, listKind string, namespaced bool
 	return Descriptor{
 		GVK:     gvk,
 		GVR:     gvk.GroupVersion().WithResource(pluralName),
-		ListGVK: gvk.GroupVersion().WithKind(string(listKind)),
+		ListGVK: gvk.GroupVersion().WithKind(listKind),
 		ListTypeMeta: metav1.TypeMeta{
-			Kind:       string(listKind),
+			Kind:       listKind,
 			APIVersion: gvk.GroupVersion().String(),
 		},
 		APIResource: metav1.APIResource{

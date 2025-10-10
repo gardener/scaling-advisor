@@ -1,9 +1,10 @@
-package access
+package coreaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -24,35 +25,34 @@ var (
 )
 
 type eventAccess struct {
-	BasicResourceAccess[*corev1.Event, *corev1.EventList]
+	access.GenericResourceAccess[*corev1.Event, *corev1.EventList]
 }
 
+// NewEventAccess creates a new access facade for managing ReplicaSet resources within a specific namespace using the given minkapi View.
 func NewEventAccess(view mkapi.View, namespace string) clientcorev1.EventInterface {
 	return &eventAccess{
-		BasicResourceAccess[*corev1.Event, *corev1.EventList]{
-			view:            view,
-			gvk:             typeinfo.EventsDescriptor.GVK,
-			Namespace:       namespace,
-			ResourcePtr:     &corev1.Event{},
-			ResourceListPtr: &corev1.EventList{},
+		access.GenericResourceAccess[*corev1.Event, *corev1.EventList]{
+			View:      view,
+			GVK:       typeinfo.EventsDescriptor.GVK,
+			Namespace: namespace,
 		},
 	}
 }
 
 func (a *eventAccess) Create(ctx context.Context, event *corev1.Event, opts metav1.CreateOptions) (*corev1.Event, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, event)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, event)
 }
 
 func (a *eventAccess) CreateWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event) (*corev1.Event, error) {
-	return a.createObject(ctx, metav1.CreateOptions{}, event)
+	return a.CreateObject(ctx, metav1.CreateOptions{}, event)
 }
 
 func (a *eventAccess) CreateWithEventNamespace(event *corev1.Event) (*corev1.Event, error) {
-	return a.createObject(context.Background(), metav1.CreateOptions{}, event)
+	return a.CreateObject(context.Background(), metav1.CreateOptions{}, event)
 }
 
 func (a *eventAccess) Update(ctx context.Context, event *corev1.Event, opts metav1.UpdateOptions) (*corev1.Event, error) {
-	return a.updateObject(ctx, opts, event)
+	return a.UpdateObject(ctx, opts, event)
 }
 
 func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, event *corev1.Event) (*corev1.Event, error) {
@@ -76,7 +76,7 @@ func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, e
 	}
 	updatedEvent := e.DeepCopy()
 	updateEventFields(updatedEvent, event)
-	return a.updateObject(ctx, metav1.UpdateOptions{}, updatedEvent)
+	return a.UpdateObject(ctx, metav1.UpdateOptions{}, updatedEvent)
 }
 
 func (a *eventAccess) UpdateWithEventNamespace(event *corev1.Event) (*corev1.Event, error) {
@@ -84,30 +84,27 @@ func (a *eventAccess) UpdateWithEventNamespace(event *corev1.Event) (*corev1.Eve
 }
 
 func (a *eventAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *eventAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *eventAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Event, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *eventAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.EventList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *eventAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *eventAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.Event, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for events", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *eventAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *corev1.Event, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
 func (a *eventAccess) PatchWithEventNamespace(event *corev1.Event, data []byte) (*corev1.Event, error) {
@@ -121,19 +118,19 @@ func (a *eventAccess) PatchWithEventNamespaceWithContext(ctx context.Context, ev
 	if event.Namespace == "" {
 		return nil, fmt.Errorf("event namespace must be specified")
 	}
-	return a.patchObject(ctx, event.Name, types.JSONPatchType, data, metav1.PatchOptions{})
+	return a.PatchObject(ctx, event.Name, types.JSONPatchType, data)
 }
 
-func (a *eventAccess) Apply(ctx context.Context, event *v1.EventApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Event, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *eventAccess) Apply(_ context.Context, _ *v1.EventApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Event, err error) {
+	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a *eventAccess) Search(scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
-	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *eventAccess) Search(_ *runtime.Scheme, _ runtime.Object) (*corev1.EventList, error) {
+	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a *eventAccess) SearchWithContext(ctx context.Context, scheme *runtime.Scheme, objOrRef runtime.Object) (*corev1.EventList, error) {
-	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *eventAccess) SearchWithContext(_ context.Context, _ *runtime.Scheme, _ runtime.Object) (*corev1.EventList, error) {
+	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
 func (a *eventAccess) GetFieldSelector(involvedObjectName, involvedObjectNamespace, involvedObjectKind, involvedObjectUID *string) fields.Selector {

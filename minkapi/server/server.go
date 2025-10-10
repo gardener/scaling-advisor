@@ -23,7 +23,6 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
@@ -42,7 +41,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
-	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -100,6 +98,7 @@ func LaunchApp(ctx context.Context) (app mkapi.App, exitCode int) {
 	return
 }
 
+// ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
 func ShutdownApp(app *mkapi.App) (exitCode int) {
 	// Create a context with a 5-second timeout for shutdown
 	shutDownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -165,7 +164,7 @@ func NewInMemoryUsingViews(cfg mkapi.Config, baseView mkapi.View, sandboxViewCre
 		createSandboxViewFn: sandboxViewCreateFn,
 		sandboxViews:        make(map[string]mkapi.View),
 	}
-	// DO NOT REMOVE: Single route registration crap needed for kubectl compatability as it ignores server path prefixes
+	// DO NOT REMOVE: Single route registration crap needed for kubectl compatibility as it ignores server path prefixes
 	// and always makes a call to http://localhost:8084/api/v1/?timeout=32s
 	rootMux.HandleFunc("GET /api/v1/", s.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
 	rootMux.HandleFunc("POST /views/{name}", s.handleCreateSandboxView)
@@ -244,10 +243,12 @@ func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
 	return
 }
 
+// GetBaseView returns the foundational View of the KAPI Server.
 func (k *InMemoryKAPI) GetBaseView() mkapi.View {
 	return k.baseView
 }
 
+// GetSandboxView creates or returns a sandboxed KAPI View with the given name
 func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View, error) {
 	sandboxView, ok := k.sandboxViews[name] // TODO: protected with mutex.
 	if ok {
@@ -307,7 +308,7 @@ func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, v
 		viewMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		viewMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		viewMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-		viewMux.HandleFunc("/trigger-gc", func(w http.ResponseWriter, r *http.Request) {
+		viewMux.HandleFunc("/trigger-gc", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = fmt.Fprintln(w, "GC Triggering")
 			rt.GC() // force garbage collection
 			_, _ = fmt.Fprintln(w, "GC Triggered")
@@ -325,7 +326,6 @@ func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, v
 	}
 	// Register the view's mux under the pathPrefix, stripping the pathPrefix
 	k.rootMux.Handle("/"+view.GetName()+"/", http.StripPrefix("/"+view.GetName(), viewMux))
-
 }
 
 func (k *InMemoryKAPI) registerAPIGroups(viewMux *http.ServeMux) {
@@ -635,11 +635,11 @@ func handleWatch(d typeinfo.Descriptor, view mkapi.View, labelSelector labels.Se
 
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
-			metaObj, err := store.AsMeta(event.Object)
+			metaObj, err := objutil.AsMeta(event.Object)
 			if err != nil {
 				return err
 			}
-			eventJson, err := buildWatchEventJsonAlt(log, &event)
+			eventJson, err := buildWatchEventJson(log, &event)
 			if err != nil {
 				err = fmt.Errorf("cannot  encode watch %q event for object name %q, namespace %q, resourceVersion %q: %w",
 					event.Type, metaObj.GetName(), metaObj.GetNamespace(), metaObj.GetResourceVersion(), err)
@@ -755,23 +755,7 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 	return flusher
 }
 
-func buildWatchEventJson(log logr.Logger, event *watch.Event) (string, error) {
-	// NOTE: Simple Json serialization does NOT work due to bug in Watch struct
-	//if err := json.NewEncoder(w).Encode(event); err != nil {
-	//	http.Error(w, fmt.Sprintf("Failed to encode watch event: %v", err), http.StatusInternalServerError)
-	//	s.removeWatch(gvr, namespace, ch)
-	//	return
-	//}
-	data, err := kjson.Marshal(event.Object)
-	if err != nil {
-		log.Error(err, "cannot encode watch event", "event", event)
-		return "", err
-	}
-	payload := fmt.Sprintf("{\"type\":\"%s\",\"object\":%s}", event.Type, string(data))
-	return payload, nil
-}
-
-func buildWatchEventJsonAlt(log logr.Logger, ev *watch.Event) (string, error) {
+func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
 	sch := typeinfo.SupportedScheme
 	s := runtimejson.NewSerializerWithOptions(
 		runtimejson.DefaultMetaFactory, sch, sch,
@@ -793,6 +777,7 @@ func buildWatchEventJsonAlt(log logr.Logger, ev *watch.Event) (string, error) {
 	return payload, nil
 }
 
+// GetObjectName returns constructs the cache.ObjectName for an object contained in the given request corresponding to the given typeinfo.Descriptor
 func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
 	namespace := r.PathValue("namespace")
 	if namespace == "" && d.APIResource.Namespaced {

@@ -1,9 +1,10 @@
-package access
+package resourceaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -21,64 +22,60 @@ var (
 )
 
 type resourceClaimAccess struct {
-	BasicResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]
+	access.GenericResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]
 }
 
+// NewResourceClaimAccess creates a new access facade for managing ResourceClaim resources within a specific namespace using the given minkapi View.
 func NewResourceClaimAccess(view mkapi.View, namespace string) clientresourcev1.ResourceClaimInterface {
 	return &resourceClaimAccess{
-		BasicResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]{
-			view:            view,
-			gvk:             typeinfo.ResourceClaimDescriptor.GVK,
-			Namespace:       namespace,
-			ResourcePtr:     &resourcev1.ResourceClaim{},
-			ResourceListPtr: &resourcev1.ResourceClaimList{},
+		access.GenericResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]{
+			View:      view,
+			GVK:       typeinfo.ResourceClaimDescriptor.GVK,
+			Namespace: namespace,
 		},
 	}
 }
 
 func (a *resourceClaimAccess) Create(ctx context.Context, resourceClaim *resourcev1.ResourceClaim, opts metav1.CreateOptions) (*resourcev1.ResourceClaim, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, resourceClaim)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, resourceClaim)
 }
 
 func (a *resourceClaimAccess) Update(ctx context.Context, resourceClaim *resourcev1.ResourceClaim, opts metav1.UpdateOptions) (*resourcev1.ResourceClaim, error) {
-	return a.updateObject(ctx, opts, resourceClaim)
+	return a.UpdateObject(ctx, opts, resourceClaim)
 }
 
 func (a *resourceClaimAccess) UpdateStatus(ctx context.Context, resourceClaim *resourcev1.ResourceClaim, opts metav1.UpdateOptions) (*resourcev1.ResourceClaim, error) {
-	return a.updateObject(ctx, opts, resourceClaim)
+	return a.UpdateObject(ctx, opts, resourceClaim)
 }
 
 func (a *resourceClaimAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceClaimAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *resourceClaimAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*resourcev1.ResourceClaim, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *resourceClaimAccess) List(ctx context.Context, opts metav1.ListOptions) (*resourcev1.ResourceClaimList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *resourceClaimAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *resourceClaimAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *resourcev1.ResourceClaim, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for %q", commonerrors.ErrInvalidOptVal, subresources, a.gvk.Kind)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *resourceClaimAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *resourcev1.ResourceClaim, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *resourceClaimAccess) Apply(ctx context.Context, resourceClaim *v1.ResourceClaimApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *resourceClaimAccess) Apply(_ context.Context, _ *v1.ResourceClaimApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a *resourceClaimAccess) ApplyStatus(ctx context.Context, resourceClaim *v1.ResourceClaimApplyConfiguration, opts metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *resourceClaimAccess) ApplyStatus(_ context.Context, _ *v1.ResourceClaimApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }

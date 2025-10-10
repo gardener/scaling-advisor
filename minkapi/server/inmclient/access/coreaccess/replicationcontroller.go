@@ -1,9 +1,10 @@
-package access
+package coreaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -13,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	v1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applyconfigv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -22,66 +23,62 @@ var (
 )
 
 type replicationControllerAccess struct {
-	BasicResourceAccess[*corev1.ReplicationController, *corev1.ReplicationControllerList]
+	access.GenericResourceAccess[*corev1.ReplicationController, *corev1.ReplicationControllerList]
 }
 
+// NewReplicationControllerAccess creates a new access facade for managing ReplicationController resources within a specific namespace using the given minkapi View.
 func NewReplicationControllerAccess(view mkapi.View, namespace string) clientcorev1.ReplicationControllerInterface {
 	return &replicationControllerAccess{
-		BasicResourceAccess[*corev1.ReplicationController, *corev1.ReplicationControllerList]{
-			view:            view,
-			gvk:             typeinfo.ReplicationControllersDescriptor.GVK,
-			Namespace:       namespace,
-			ResourcePtr:     &corev1.ReplicationController{},
-			ResourceListPtr: &corev1.ReplicationControllerList{},
+		access.GenericResourceAccess[*corev1.ReplicationController, *corev1.ReplicationControllerList]{
+			View:      view,
+			GVK:       typeinfo.ReplicationControllersDescriptor.GVK,
+			Namespace: namespace,
 		},
 	}
 }
 
 func (a *replicationControllerAccess) Create(ctx context.Context, replicationController *corev1.ReplicationController, opts metav1.CreateOptions) (*corev1.ReplicationController, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, replicationController)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, replicationController)
 }
 
 func (a *replicationControllerAccess) Update(ctx context.Context, replicationController *corev1.ReplicationController, opts metav1.UpdateOptions) (*corev1.ReplicationController, error) {
-	return a.updateObject(ctx, opts, replicationController)
+	return a.UpdateObject(ctx, opts, replicationController)
 }
 
 func (a *replicationControllerAccess) UpdateStatus(ctx context.Context, replicationController *corev1.ReplicationController, opts metav1.UpdateOptions) (*corev1.ReplicationController, error) {
-	return a.updateObject(ctx, opts, replicationController)
+	return a.UpdateObject(ctx, opts, replicationController)
 }
 
 func (a *replicationControllerAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *replicationControllerAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *replicationControllerAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.ReplicationController, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *replicationControllerAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.ReplicationControllerList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *replicationControllerAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *replicationControllerAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.ReplicationController, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for %q", commonerrors.ErrInvalidOptVal, subresources, a.gvk.Kind)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *replicationControllerAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *corev1.ReplicationController, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *replicationControllerAccess) Apply(ctx context.Context, replicationController *v1.ReplicationControllerApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *replicationControllerAccess) Apply(_ context.Context, _ *applyconfigv1.ReplicationControllerApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a *replicationControllerAccess) ApplyStatus(ctx context.Context, replicationController *v1.ReplicationControllerApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *replicationControllerAccess) ApplyStatus(_ context.Context, _ *applyconfigv1.ReplicationControllerApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.ReplicationController, err error) {
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
 func (a *replicationControllerAccess) GetScale(ctx context.Context, replicationControllerName string, opts metav1.GetOptions) (*autoscalingv1.Scale, error) {
@@ -119,6 +116,6 @@ func (a *replicationControllerAccess) GetScale(ctx context.Context, replicationC
 	return scale, nil
 }
 
-func (a *replicationControllerAccess) UpdateScale(ctx context.Context, replicationControllerName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: UpdateScale of %q is not supported", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *replicationControllerAccess) UpdateScale(_ context.Context, _ string, _ *autoscalingv1.Scale, _ metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }

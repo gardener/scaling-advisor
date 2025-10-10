@@ -5,7 +5,7 @@
 package inmclient
 
 import (
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/policyaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -25,10 +25,10 @@ func (p *policyV1Impl) RESTClient() rest.Interface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
-func (p *policyV1Impl) Evictions(namespace string) clientpolicyv1.EvictionInterface {
+func (p *policyV1Impl) Evictions(_ string) clientpolicyv1.EvictionInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (p *policyV1Impl) PodDisruptionBudgets(namespace string) clientpolicyv1.PodDisruptionBudgetInterface {
-	return access.NewPodDisruptionBudgetAccess(p.view, namespace)
+	return policyaccess.NewPodDisruptionBudgetAccess(p.view, namespace)
 }

@@ -1,9 +1,10 @@
-package access
+package storageaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -12,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	v1 "k8s.io/client-go/applyconfigurations/storage/v1"
+	applyconfigstoragev1 "k8s.io/client-go/applyconfigurations/storage/v1"
 	clientstoragev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 )
 
@@ -21,60 +22,56 @@ var (
 )
 
 type csiNodeAccess struct {
-	BasicResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]
+	access.GenericResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]
 }
 
+// NewCSINodeAccess creates an access facade for managing CSINodeList resources using the given minkapi View.
 func NewCSINodeAccess(view mkapi.View) clientstoragev1.CSINodeInterface {
 	return &csiNodeAccess{
-		BasicResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]{
-			view:            view,
-			gvk:             typeinfo.CSINodeDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone,
-			ResourcePtr:     &storagev1.CSINode{},
-			ResourceListPtr: &storagev1.CSINodeList{},
+		access.GenericResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]{
+			View:      view,
+			GVK:       typeinfo.CSINodeDescriptor.GVK,
+			Namespace: metav1.NamespaceNone,
 		},
 	}
 }
 
 func (a *csiNodeAccess) Create(ctx context.Context, csiNode *storagev1.CSINode, opts metav1.CreateOptions) (*storagev1.CSINode, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, csiNode)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, csiNode)
 }
 
 func (a *csiNodeAccess) Update(ctx context.Context, csiNode *storagev1.CSINode, opts metav1.UpdateOptions) (*storagev1.CSINode, error) {
-	return a.updateObject(ctx, opts, csiNode)
+	return a.UpdateObject(ctx, opts, csiNode)
 }
 
 func (a *csiNodeAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *csiNodeAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *csiNodeAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.CSINode, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *csiNodeAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.CSINodeList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *csiNodeAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *csiNodeAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *storagev1.CSINode, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for csiNodes", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *csiNodeAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *storagev1.CSINode, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *csiNodeAccess) Apply(ctx context.Context, csiNode *v1.CSINodeApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
+func (a *csiNodeAccess) Apply(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
 	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", commonerrors.ErrUnimplemented)
 }
 
-func (a *csiNodeAccess) ApplyStatus(ctx context.Context, csiNode *v1.CSINodeApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
+func (a *csiNodeAccess) ApplyStatus(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
 	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", commonerrors.ErrUnimplemented)
 }

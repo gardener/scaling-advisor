@@ -5,7 +5,7 @@
 package inmclient
 
 import (
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
+	coreaccess2 "github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/coreaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -30,62 +30,62 @@ func (c *coreV1Impl) ComponentStatuses() clientcorev1.ComponentStatusInterface {
 }
 
 func (c *coreV1Impl) ConfigMaps(namespace string) clientcorev1.ConfigMapInterface {
-	return access.NewConfigMapAccess(c.view, namespace)
+	return coreaccess2.NewConfigMapAccess(c.view, namespace)
 }
 
-func (c *coreV1Impl) Endpoints(namespace string) clientcorev1.EndpointsInterface {
+func (c *coreV1Impl) Endpoints(_ string) clientcorev1.EndpointsInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
-	return access.NewEventAccess(c.view, namespace)
+	return coreaccess2.NewEventAccess(c.view, namespace)
 }
 
-func (c *coreV1Impl) LimitRanges(namespace string) clientcorev1.LimitRangeInterface {
+func (c *coreV1Impl) LimitRanges(_ string) clientcorev1.LimitRangeInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) Namespaces() clientcorev1.NamespaceInterface {
-	return access.NewNamespaceAccess(c.view)
+	return coreaccess2.NewNamespaceAccess(c.view)
 }
 
 func (c *coreV1Impl) Nodes() clientcorev1.NodeInterface {
-	return access.NewNodeAccess(c.view)
+	return coreaccess2.NewNodeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumes() clientcorev1.PersistentVolumeInterface {
-	return access.NewPersistentVolumeAccess(c.view)
+	return coreaccess2.NewPersistentVolumeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumeClaims(namespace string) clientcorev1.PersistentVolumeClaimInterface {
-	return access.NewPersistentVolumeClaimAccess(c.view, namespace)
+	return coreaccess2.NewPersistentVolumeClaimAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {
-	return access.NewPodAccess(c.view, namespace)
+	return coreaccess2.NewPodAccess(c.view, namespace)
 }
 
-func (c *coreV1Impl) PodTemplates(namespace string) clientcorev1.PodTemplateInterface {
+func (c *coreV1Impl) PodTemplates(_ string) clientcorev1.PodTemplateInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) ReplicationControllers(namespace string) clientcorev1.ReplicationControllerInterface {
-	return access.NewReplicationControllerAccess(c.view, namespace)
+	return coreaccess2.NewReplicationControllerAccess(c.view, namespace)
 }
 
-func (c *coreV1Impl) ResourceQuotas(namespace string) clientcorev1.ResourceQuotaInterface {
+func (c *coreV1Impl) ResourceQuotas(_ string) clientcorev1.ResourceQuotaInterface {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c *coreV1Impl) Secrets(namespace string) clientcorev1.SecretInterface {
+func (c *coreV1Impl) Secrets(_ string) clientcorev1.SecretInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
-	return access.NewServiceAccess(c.view, namespace)
+	return coreaccess2.NewServiceAccess(c.view, namespace)
 }
 
-func (c *coreV1Impl) ServiceAccounts(namespace string) clientcorev1.ServiceAccountInterface {
+func (c *coreV1Impl) ServiceAccounts(_ string) clientcorev1.ServiceAccountInterface {
 	panic(commonerrors.ErrUnimplemented)
 }

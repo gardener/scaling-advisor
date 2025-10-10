@@ -5,7 +5,7 @@
 package inmclient
 
 import (
-	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
+	resourceaccess2 "github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/resourceaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -26,17 +26,17 @@ func (r *resourceV1Impl) RESTClient() rest.Interface {
 }
 
 func (r *resourceV1Impl) DeviceClasses() clientresourcev1.DeviceClassInterface {
-	return access.NewDeviceClassAccess(r.view)
+	return resourceaccess2.NewDeviceClassAccess(r.view)
 }
 
 func (r *resourceV1Impl) ResourceClaims(namespace string) clientresourcev1.ResourceClaimInterface {
-	return access.NewResourceClaimAccess(r.view, namespace)
+	return resourceaccess2.NewResourceClaimAccess(r.view, namespace)
 }
 
-func (r *resourceV1Impl) ResourceClaimTemplates(namespace string) clientresourcev1.ResourceClaimTemplateInterface {
+func (r *resourceV1Impl) ResourceClaimTemplates(_ string) clientresourcev1.ResourceClaimTemplateInterface {
 	panic(commonerrors.ErrUnimplemented)
 }
 
 func (r *resourceV1Impl) ResourceSlices() clientresourcev1.ResourceSliceInterface {
-	return access.NewResourceSliceAccess(r.view)
+	return resourceaccess2.NewResourceSliceAccess(r.view)
 }

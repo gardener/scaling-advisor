@@ -1,9 +1,10 @@
-package access
+package coreaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -21,56 +22,52 @@ var (
 )
 
 type configMapAccess struct {
-	BasicResourceAccess[*corev1.ConfigMap, *corev1.ConfigMapList]
+	access.GenericResourceAccess[*corev1.ConfigMap, *corev1.ConfigMapList]
 }
 
+// NewConfigMapAccess creates a new access facade for managing ConfigMap resources within a specific namespace using the given minkapi View.
 func NewConfigMapAccess(view mkapi.View, namespace string) clientcorev1.ConfigMapInterface {
 	return &configMapAccess{
-		BasicResourceAccess[*corev1.ConfigMap, *corev1.ConfigMapList]{
-			view:            view,
-			gvk:             typeinfo.ConfigMapsDescriptor.GVK,
-			Namespace:       namespace,
-			ResourcePtr:     &corev1.ConfigMap{},
-			ResourceListPtr: &corev1.ConfigMapList{},
+		access.GenericResourceAccess[*corev1.ConfigMap, *corev1.ConfigMapList]{
+			View:      view,
+			GVK:       typeinfo.ConfigMapsDescriptor.GVK,
+			Namespace: namespace,
 		},
 	}
 }
 
 func (a *configMapAccess) Create(ctx context.Context, configMap *corev1.ConfigMap, opts metav1.CreateOptions) (*corev1.ConfigMap, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, configMap)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, configMap)
 }
 
 func (a *configMapAccess) Update(ctx context.Context, configMap *corev1.ConfigMap, opts metav1.UpdateOptions) (*corev1.ConfigMap, error) {
-	return a.updateObject(ctx, opts, configMap)
+	return a.UpdateObject(ctx, opts, configMap)
 }
 
 func (a *configMapAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *configMapAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *configMapAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.ConfigMap, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *configMapAccess) List(ctx context.Context, opts metav1.ListOptions) (*corev1.ConfigMapList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *configMapAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *configMapAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *corev1.ConfigMap, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for configmaps", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *configMapAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *corev1.ConfigMap, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *configMapAccess) Apply(ctx context.Context, configMap *v1.ConfigMapApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.ConfigMap, err error) {
+func (a *configMapAccess) Apply(_ context.Context, _ *v1.ConfigMapApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.ConfigMap, err error) {
 	return nil, fmt.Errorf("%w: apply of configmaps is not supported", commonerrors.ErrUnimplemented)
 }

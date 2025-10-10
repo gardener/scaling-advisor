@@ -1,9 +1,10 @@
-package access
+package storageaccess
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -21,64 +22,60 @@ var (
 )
 
 type volumeAttachmentAccess struct {
-	BasicResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]
+	access.GenericResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]
 }
 
+// NewVolumeAttachmentAccess creates an access facade for managing VolumeAttachmentList resources using the given minkapi View.
 func NewVolumeAttachmentAccess(view mkapi.View) clientstoragev1.VolumeAttachmentInterface {
 	return &volumeAttachmentAccess{
-		BasicResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
-			view:            view,
-			gvk:             typeinfo.VolumeAttachmentDescriptor.GVK,
-			Namespace:       metav1.NamespaceNone,
-			ResourcePtr:     &storagev1.VolumeAttachment{},
-			ResourceListPtr: &storagev1.VolumeAttachmentList{},
+		access.GenericResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
+			View:      view,
+			GVK:       typeinfo.VolumeAttachmentDescriptor.GVK,
+			Namespace: metav1.NamespaceNone,
 		},
 	}
 }
 
 func (a *volumeAttachmentAccess) Create(ctx context.Context, volumeAttachment *storagev1.VolumeAttachment, opts metav1.CreateOptions) (*storagev1.VolumeAttachment, error) {
-	return a.createObjectWithAccessNamespace(ctx, opts, volumeAttachment)
+	return a.CreateObjectWithAccessNamespace(ctx, opts, volumeAttachment)
 }
 
 func (a *volumeAttachmentAccess) Update(ctx context.Context, volumeAttachment *storagev1.VolumeAttachment, opts metav1.UpdateOptions) (*storagev1.VolumeAttachment, error) {
-	return a.updateObject(ctx, opts, volumeAttachment)
+	return a.UpdateObject(ctx, opts, volumeAttachment)
 }
 
 func (a *volumeAttachmentAccess) UpdateStatus(ctx context.Context, volumeAttachment *storagev1.VolumeAttachment, opts metav1.UpdateOptions) (*storagev1.VolumeAttachment, error) {
-	return a.updateObject(ctx, opts, volumeAttachment)
+	return a.UpdateObject(ctx, opts, volumeAttachment)
 }
 
 func (a *volumeAttachmentAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return a.deleteObject(ctx, opts, a.Namespace, name)
+	return a.DeleteObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *volumeAttachmentAccess) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	return a.deleteObjectCollection(ctx, a.Namespace, opts, listOpts)
+	return a.DeleteObjectCollection(ctx, a.Namespace, opts, listOpts)
 }
 
 func (a *volumeAttachmentAccess) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.VolumeAttachment, error) {
-	return a.getObject(ctx, a.Namespace, name, opts)
+	return a.GetObject(ctx, a.Namespace, name, opts)
 }
 
 func (a *volumeAttachmentAccess) List(ctx context.Context, opts metav1.ListOptions) (*storagev1.VolumeAttachmentList, error) {
-	return a.getObjectList(ctx, a.Namespace, opts)
+	return a.GetObjectList(ctx, a.Namespace, opts)
 }
 
 func (a *volumeAttachmentAccess) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return a.getWatcher(ctx, a.Namespace, opts)
+	return a.GetWatcher(ctx, a.Namespace, opts)
 }
 
-func (a *volumeAttachmentAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *storagev1.VolumeAttachment, err error) {
-	if len(subresources) > 0 {
-		return nil, fmt.Errorf("%w: patch of subresources %q is invalid for volumeAttachments", commonerrors.ErrInvalidOptVal, subresources)
-	}
-	return a.patchObject(ctx, name, pt, data, opts)
+func (a *volumeAttachmentAccess) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, _ metav1.PatchOptions, subResources ...string) (result *storagev1.VolumeAttachment, err error) {
+	return a.PatchObject(ctx, name, pt, data, subResources...)
 }
 
-func (a *volumeAttachmentAccess) Apply(ctx context.Context, volumeAttachment *v1.VolumeAttachmentApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *volumeAttachmentAccess) Apply(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }
 
-func (a *volumeAttachmentAccess) ApplyStatus(ctx context.Context, volumeAttachment *v1.VolumeAttachmentApplyConfiguration, opts metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.gvk.Kind)
+func (a *volumeAttachmentAccess) ApplyStatus(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
 }

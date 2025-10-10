@@ -9,7 +9,6 @@ import (
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	clientadmissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
@@ -75,12 +74,6 @@ var (
 
 type inMemClient struct {
 	view mkapi.View
-}
-
-type resourceAccessImpl struct {
-	view      mkapi.View
-	gvk       schema.GroupVersionKind
-	namespace string
 }
 
 // AppsV1 retrieves the AppsV1Client
