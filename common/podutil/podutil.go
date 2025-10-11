@@ -5,12 +5,13 @@
 package podutil
 
 import (
+	"slices"
+
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"slices"
 )
 
 // UpdatePodCondition updates existing pod condition or creates a new one. Sets LastTransitionTime to now if the
@@ -92,6 +93,9 @@ func AsPod(info svcapi.PodInfo) *corev1.Pod {
 		},
 	}
 }
+
+// PodResourceInfosFromPodInfo extracts the AggregatedRequests for each pod
+// from podInfos alongwith its identification into a PodResourceInfo slice.
 func PodResourceInfosFromPodInfo(podInfos []svcapi.PodInfo) []svcapi.PodResourceInfo {
 	podResourceInfos := make([]svcapi.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
@@ -104,6 +108,8 @@ func PodResourceInfosFromPodInfo(podInfos []svcapi.PodInfo) []svcapi.PodResource
 	return podResourceInfos
 }
 
+// PodResourceInfosFromCoreV1Pods extracts the AggregatedRequests for each pod
+// from a corev1 Pod slice alongwith its identification into a PodResourceInfo slice.
 func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []svcapi.PodResourceInfo {
 	podResourceInfos := make([]svcapi.PodResourceInfo, 0, len(pods))
 	for _, p := range pods {
@@ -112,6 +118,8 @@ func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []svcapi.PodResourceInfo 
 	return podResourceInfos
 }
 
+// PodResourceInfoFromCoreV1Pod extracts the AggregatedRequests for a single
+// corev1 pod resource alongwith its identification into a PodResourceInfo object.
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) svcapi.PodResourceInfo {
 	return svcapi.PodResourceInfo{
 		UID:                p.UID,
@@ -120,6 +128,8 @@ func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) svcapi.PodResourceInfo {
 	}
 }
 
+// AggregatePodRequests computes the sum of resource requirements
+// for all the init containers and containers present in a pod.
 func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
 	aggregate := map[corev1.ResourceName]int64{}
 	containers := slices.AppendSeq(p.Spec.InitContainers, slices.Values(p.Spec.Containers))
@@ -136,7 +146,35 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
 func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		objectNames = append(objectNames, pod.NamespacedName.String())
+		objectNames = append(objectNames, pod.String())
 	}
 	return objectNames
+}
+
+// AsPodInfo converts a corev1.Pod to a svcapi.PodInfo object.
+func AsPodInfo(pod corev1.Pod) svcapi.PodInfo {
+	return svcapi.PodInfo{
+		ResourceMeta: svcapi.ResourceMeta{
+			UID:               pod.UID,
+			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
+			Labels:            pod.Labels,
+			Annotations:       pod.Annotations,
+			DeletionTimestamp: pod.DeletionTimestamp,
+			OwnerReferences:   pod.OwnerReferences,
+		},
+		AggregatedRequests:        AggregatePodRequests(&pod),
+		Volumes:                   pod.Spec.Volumes,
+		NodeSelector:              pod.Spec.NodeSelector,
+		NodeName:                  pod.Spec.NodeName,
+		Affinity:                  pod.Spec.Affinity,
+		SchedulerName:             pod.Spec.SchedulerName,
+		Tolerations:               pod.Spec.Tolerations,
+		PriorityClassName:         pod.Spec.PriorityClassName,
+		Priority:                  pod.Spec.Priority,
+		PreemptionPolicy:          pod.Spec.PreemptionPolicy,
+		RuntimeClassName:          pod.Spec.RuntimeClassName,
+		Overhead:                  objutil.ResourceListToInt64Map(pod.Spec.Overhead),
+		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
+		ResourceClaims:            pod.Spec.ResourceClaims,
+	}
 }

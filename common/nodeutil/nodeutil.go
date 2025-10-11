@@ -6,16 +6,19 @@ package nodeutil
 
 import (
 	"fmt"
+	"maps"
+	"time"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"maps"
-	"time"
+	"k8s.io/apimachinery/pkg/types"
 )
 
+// GetInstanceType returns the Instance Type of a node from the label present on it.
 func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
@@ -27,7 +30,7 @@ func AsNode(info svcapi.NodeInfo) *corev1.Node {
 			Name:              info.Name,
 			Labels:            info.Labels,
 			Annotations:       info.Annotations,
-			DeletionTimestamp: &metav1.Time{Time: info.DeletionTimestamp},
+			DeletionTimestamp: info.DeletionTimestamp,
 		},
 		Spec: corev1.NodeSpec{
 			Taints:        info.Taints,
@@ -74,4 +77,28 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels[corev1.LabelHostname] = nodeName
 
 	return nodeLabels
+}
+
+// AsNodeInfo converts a corev1.Node into a svcapi.NodeInfo object.
+// It additionally takes in csiDriverVolumeMaximums which is a map
+// of CSI driver names to the maximum number of volumes managed by
+// the driver on the node.
+func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) svcapi.NodeInfo {
+	return svcapi.NodeInfo{
+		ResourceMeta: svcapi.ResourceMeta{
+			UID:               node.UID,
+			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
+			Labels:            node.Labels,
+			Annotations:       node.Annotations,
+			DeletionTimestamp: node.DeletionTimestamp,
+			OwnerReferences:   node.OwnerReferences,
+		},
+		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
+		Unschedulable:           node.Spec.Unschedulable,
+		Taints:                  node.Spec.Taints,
+		Capacity:                objutil.ResourceListToInt64Map(node.Status.Capacity),
+		Allocatable:             objutil.ResourceListToInt64Map(node.Status.Allocatable),
+		Conditions:              node.Status.Conditions,
+		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
+	}
 }

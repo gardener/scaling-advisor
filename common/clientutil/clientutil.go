@@ -5,6 +5,9 @@
 package clientutil
 
 import (
+	"net/http"
+	"time"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/dynamic"
@@ -12,8 +15,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"net/http"
-	"time"
 )
 
 // BuildClients currently constructs static and dynamic client-go clients given a kubeconfig file.
@@ -40,12 +41,17 @@ func BuildClients(log logr.Logger, kubeConfigPath string) (client kubernetes.Int
 	return
 }
 
+// BuildInformerFactories creates shared informer factories for both static and dynamic clients.
+// It returns the static informer factory and dynamic informer factory with the specified resync period.
 func BuildInformerFactories(client kubernetes.Interface, dyncClient dynamic.Interface, resyncPeriod time.Duration) (informerFactory informers.SharedInformerFactory, dynInformerFactory dynamicinformer.DynamicSharedInformerFactory) {
 	informerFactory = informers.NewSharedInformerFactory(client, resyncPeriod)
 	dynInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(dyncClient, resyncPeriod)
 	return
 }
 
+// CreateNetworkClientFacades creates client facades for network access mode.
+// It builds clients and informer factories using the provided kubeconfig path and resync period,
+// then returns a client facade containing all necessary client components for network operations.
 func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPeriod time.Duration) (clientFacades commontypes.ClientFacades, err error) {
 	client, dynClient, err := BuildClients(log, kubeConfigPath)
 	if err != nil {

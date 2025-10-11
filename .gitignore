@@ -20,6 +20,9 @@
 # env file
 .env
 
+# gosec
+gosec-report.sarif
+
 # code editor ignores
 .vscode
 .idea
@@ -27,3 +30,4 @@
 
 # hack tools binaries and generated configurations
 **/bin/
+gen/
