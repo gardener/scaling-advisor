@@ -5,15 +5,13 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,8 +29,11 @@ import (
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,17 +52,12 @@ var (
 	scenarioDir string
 )
 
-// GardenerPlane defines which gardener cluster to the target for a shoot
-type GardenerPlane int
-
-const (
-	// DataPlane referes to the shoot cluster
-	DataPlane GardenerPlane = 0
-	// ControlPlane refers to the control (seed) cluster
-	ControlPlane GardenerPlane = 1
-	// VirtualGardenPlane refers to the virtual garden cluster
-	VirtualGardenPlane GardenerPlane = 2
-)
+// shootGVR is the GroupVersionResource of a gardener shoot
+var shootGVR = schema.GroupVersionResource{
+	Group:    "core.gardener.cloud",
+	Version:  "v1beta1",
+	Resource: "shoots",
+}
 
 // ShootAccess defines methods used to fetch and access resources needed
 // for creating ClusterSnapshot and ClusterScalingConstraints.
@@ -85,10 +81,11 @@ type ShootAccess interface {
 var _ ShootAccess = (*access)(nil)
 
 type access struct {
-	shootCoord    ShootCoordinate
-	scheme        *runtime.Scheme
-	shootClient   client.Client
-	controlClient client.Client
+	shootCoord      ShootCoordinate
+	scheme          *runtime.Scheme
+	landscapeClient *dynamic.DynamicClient
+	seedClient      client.Client
+	shootClient     client.Client
 }
 
 // ScalingScenario defines an input to the scaling service being benchmarked.
@@ -105,11 +102,17 @@ type access struct {
 // for generating scaling scenario(s) for a gardener cluster.
 var gardenerCmd = &cobra.Command{
 	Use:   "gardener <scenario-dir>",
-	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager (needs 'gardenctl' to be present on the system)",
+	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager (needs landscape oidc-kubeconfig to be present on the system)",
 	PreRunE: func(_ *cobra.Command, _ []string) (err error) {
-		_, err = exec.LookPath("gardenctl")
+		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			return fmt.Errorf("'gardenctl' is a requirement for running 'genscenario gardener': %v", err)
+			return err
+		}
+		trimmedLandscape := strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-")
+		landscapeKubeconfigPath := path.Join(homeDir, ".garden", "landscapes", trimmedLandscape, "oidc-kubeconfig.yaml")
+		_, err = os.Stat(landscapeKubeconfigPath)
+		if err != nil {
+			return fmt.Errorf("cannot find kubeconfig for landscape %q: %w", shootCoords.Landscape, err)
 		}
 		return
 	},
@@ -205,54 +208,124 @@ func (sc *ShootCoordinate) getFullyQualifiedName() string {
 func createShootAccess(ctx context.Context) (*access, error) {
 	clientScheme := typeinfo.SupportedScheme
 
-	shootClient, err := getClient(ctx, shootCoords, clientScheme, DataPlane)
+	landscapeClient, err := createLandscapeDynamicClient(shootCoords)
 	if err != nil {
 		return nil, err
 	}
 
-	controlClient, err := getClient(ctx, shootCoords, clientScheme, ControlPlane)
+	seedName, err := getSeedName(ctx, landscapeClient, shootCoords)
+	if err != nil {
+		return nil, err
+	}
+	seedCoords := ShootCoordinate{
+		Landscape: strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-"),
+		Project:   "garden",
+		Shoot:     seedName,
+	}
+	seedViewerKubeconfig, err := getViewerKubeconfig(ctx, landscapeClient, seedCoords)
+	if err != nil {
+		return nil, err
+	}
+	seedClient, err := getClient(seedViewerKubeconfig, clientScheme)
+	if err != nil {
+		return nil, err
+	}
+
+	targetShootCoords := ShootCoordinate{
+		Landscape: strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-"),
+		Project:   "garden-" + shootCoords.Project,
+		Shoot:     shootCoords.Shoot,
+	}
+	shootViewerKubeconfig, err := getViewerKubeconfig(ctx, landscapeClient, targetShootCoords)
+	if err != nil {
+		return nil, err
+	}
+	shootClient, err := getClient(shootViewerKubeconfig, clientScheme)
 	if err != nil {
 		return nil, err
 	}
 
 	return &access{
-		shootCoord:    shootCoords,
-		scheme:        clientScheme,
-		shootClient:   shootClient,
-		controlClient: controlClient,
+		shootCoord:      shootCoords,
+		scheme:          clientScheme,
+		landscapeClient: landscapeClient,
+		seedClient:      seedClient,
+		shootClient:     shootClient,
 	}, nil
 }
 
-func getClient(ctx context.Context, shootCoord ShootCoordinate, scheme *runtime.Scheme, plane GardenerPlane) (client.Client, error) {
-	var targetCmd string
-
-	switch plane {
-	case VirtualGardenPlane:
-		targetCmd = fmt.Sprintf("gardenctl target --garden %s", shootCoord.Landscape)
-	case DataPlane:
-		targetCmd = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s",
-			shootCoord.Landscape, shootCoord.Project, shootCoord.Shoot)
-	case ControlPlane:
-		targetCmd = fmt.Sprintf("gardenctl target --garden %s --project %s --shoot %s --control-plane",
-			shootCoord.Landscape, shootCoord.Project, shootCoord.Shoot)
-	default:
-		return nil, fmt.Errorf("unsupported gardener plane: %d", plane)
-	}
-
-	cmdStr := fmt.Sprintf("eval $(gardenctl kubectl-env bash) && %s > /dev/null && gardenctl kubectl-env bash", targetCmd)
-	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr) // #nosec G204 -- Command and arguments are used are standard ones to target a specific garden cluster
-	cmd.Env = append(os.Environ(), "GCTL_SESSION_ID=dev")
-
-	capturedOutput, err := invokeCommand(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute gardenctl command: %w", err)
-	}
-
-	kubeConfigPath, err := extractKubeConfigPath(capturedOutput)
+func createLandscapeDynamicClient(shootCoord ShootCoordinate) (*dynamic.DynamicClient, error) {
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
 
+	landscapeKubeconfigPath := path.Join(homeDir, ".garden", "landscapes", shootCoord.Landscape, "oidc-kubeconfig.yaml")
+
+	restCfg, err := clientcmd.BuildConfigFromFlags("", landscapeKubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rest.Config from kubeconfig %q: %w", landscapeKubeconfigPath, err)
+	}
+
+	return dynamic.NewForConfig(restCfg)
+}
+
+func getViewerKubeconfig(ctx context.Context, landscapeClient *dynamic.DynamicClient, shootCoords ShootCoordinate) (string, error) {
+	expirationSecs := 600
+	viewerKubeconfigObject := unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "authentication.gardener.cloud/v1alpha1",
+			"metadata": map[string]any{
+				"name": shootCoords.Shoot,
+			},
+			"kind": "ViewerKubeconfigRequest",
+			"spec": map[string]any{
+				"expirationSeconds": expirationSecs,
+			},
+		},
+	}
+
+	result, err := landscapeClient.Resource(shootGVR).
+		Namespace(shootCoords.Project).
+		Create(ctx, &viewerKubeconfigObject, metav1.CreateOptions{}, "viewerkubeconfig")
+	if err != nil {
+		return "", fmt.Errorf("could not create viewerkubeconfig request: %w", err)
+	}
+
+	status, found, err := unstructured.NestedStringMap(result.Object, "status")
+	if found {
+		kubeconfigBytes, err := base64.StdEncoding.DecodeString(status["kubeconfig"])
+		if err != nil {
+			return "", fmt.Errorf("error decoding kubeconfig: %w", err)
+		}
+
+		kubeConfigPath := "/tmp/" + shootCoords.Landscape + "_" + shootCoords.Project + "_" + shootCoords.Shoot + "_viewerKubeconfig" + ".yaml"
+		err = os.WriteFile(kubeConfigPath, kubeconfigBytes, 0600)
+		if err != nil {
+			return "", err
+		}
+		fmt.Printf("Saving shoot %q viewerkubeconfig at %q\n", shootCoords.Shoot, kubeConfigPath)
+		return kubeConfigPath, nil
+	}
+	return "", fmt.Errorf("kubeconfig not found: %w", err)
+}
+
+func getSeedName(ctx context.Context, landscapeClient *dynamic.DynamicClient, shootCoord ShootCoordinate) (string, error) {
+	shoot, err := landscapeClient.Resource(shootGVR).
+		Namespace("garden-"+shootCoord.Project).
+		Get(ctx, shootCoord.Shoot, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("error fetching the shoot object: %w", err)
+	}
+
+	shootSpec, found, err := unstructured.NestedMap(shoot.Object, "spec")
+	if found {
+		return shootSpec["seedName"].(string), nil
+	}
+	return "", fmt.Errorf("seedName not found: %w", err)
+}
+
+func getClient(kubeConfigPath string, scheme *runtime.Scheme) (client.Client, error) {
 	restCfg, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rest.Config from kubeconfig %q: %w", kubeConfigPath, err)
@@ -455,7 +528,7 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 		Namespace: fmt.Sprintf("shoot--%s--%s", a.shootCoord.Project, a.shootCoord.Shoot),
 	}
 
-	if err := a.controlClient.Get(ctx, key, &worker); err != nil {
+	if err := a.seedClient.Get(ctx, key, &worker); err != nil {
 		return nil, fmt.Errorf("failed to get required Worker: %w", err)
 	}
 
@@ -568,7 +641,6 @@ func constructNodeTemplate(pool map[string]any, name string, priority int32) (*a
 		Capacity:     objutil.StringMapToResourceList(capacity),
 		KubeReserved: objutil.StringMapToResourceList(kubeReserved),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
-
 		// TODO:
 		// MaxVolumes:     0,
 	}
@@ -578,33 +650,6 @@ func constructNodeTemplate(pool map[string]any, name string, priority int32) (*a
 // ---------------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------------
-
-func extractKubeConfigPath(output string) (string, error) {
-	kubeConfigRe := regexp.MustCompile(`export KUBECONFIG='([^']+)'`)
-	matches := kubeConfigRe.FindStringSubmatch(output)
-	if len(matches) <= 1 {
-		return "", fmt.Errorf("cannot extract kubeconfig path from gardenctl output: %s", output)
-	}
-	return matches[1], nil
-}
-
-// TODO: Move to commons/toolutil.go
-func invokeCommand(cmd *exec.Cmd) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// fmt.Printf("Executing command: %s", cmd.String())
-	if err := cmd.Run(); err != nil {
-		capturedError := strings.TrimSpace(stderr.String())
-		if capturedError != "" {
-			return "", fmt.Errorf("command failed: %s (stderr: %s)", err, capturedError)
-		}
-		return "", fmt.Errorf("command failed: %w", err)
-	}
-
-	return stdout.String(), nil
-}
 
 func saveDataToFile(data any, path string) error {
 	file, err := os.Create(filepath.Clean(path))
