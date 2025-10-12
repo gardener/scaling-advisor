@@ -5,7 +5,7 @@
 package inmclient
 
 import (
-	coreaccess2 "github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/coreaccess"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/coreaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -30,7 +30,7 @@ func (c *coreV1Impl) ComponentStatuses() clientcorev1.ComponentStatusInterface {
 }
 
 func (c *coreV1Impl) ConfigMaps(namespace string) clientcorev1.ConfigMapInterface {
-	return coreaccess2.NewConfigMapAccess(c.view, namespace)
+	return coreaccess.NewConfigMapAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) Endpoints(_ string) clientcorev1.EndpointsInterface {
@@ -38,7 +38,7 @@ func (c *coreV1Impl) Endpoints(_ string) clientcorev1.EndpointsInterface {
 }
 
 func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
-	return coreaccess2.NewEventAccess(c.view, namespace)
+	return coreaccess.NewEventAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) LimitRanges(_ string) clientcorev1.LimitRangeInterface {
@@ -46,23 +46,23 @@ func (c *coreV1Impl) LimitRanges(_ string) clientcorev1.LimitRangeInterface {
 }
 
 func (c *coreV1Impl) Namespaces() clientcorev1.NamespaceInterface {
-	return coreaccess2.NewNamespaceAccess(c.view)
+	return coreaccess.NewNamespaceAccess(c.view)
 }
 
 func (c *coreV1Impl) Nodes() clientcorev1.NodeInterface {
-	return coreaccess2.NewNodeAccess(c.view)
+	return coreaccess.NewNodeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumes() clientcorev1.PersistentVolumeInterface {
-	return coreaccess2.NewPersistentVolumeAccess(c.view)
+	return coreaccess.NewPersistentVolumeAccess(c.view)
 }
 
 func (c *coreV1Impl) PersistentVolumeClaims(namespace string) clientcorev1.PersistentVolumeClaimInterface {
-	return coreaccess2.NewPersistentVolumeClaimAccess(c.view, namespace)
+	return coreaccess.NewPersistentVolumeClaimAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {
-	return coreaccess2.NewPodAccess(c.view, namespace)
+	return coreaccess.NewPodAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) PodTemplates(_ string) clientcorev1.PodTemplateInterface {
@@ -70,7 +70,7 @@ func (c *coreV1Impl) PodTemplates(_ string) clientcorev1.PodTemplateInterface {
 }
 
 func (c *coreV1Impl) ReplicationControllers(namespace string) clientcorev1.ReplicationControllerInterface {
-	return coreaccess2.NewReplicationControllerAccess(c.view, namespace)
+	return coreaccess.NewReplicationControllerAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) ResourceQuotas(_ string) clientcorev1.ResourceQuotaInterface {
@@ -83,7 +83,7 @@ func (c *coreV1Impl) Secrets(_ string) clientcorev1.SecretInterface {
 }
 
 func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
-	return coreaccess2.NewServiceAccess(c.view, namespace)
+	return coreaccess.NewServiceAccess(c.view, namespace)
 }
 
 func (c *coreV1Impl) ServiceAccounts(_ string) clientcorev1.ServiceAccountInterface {

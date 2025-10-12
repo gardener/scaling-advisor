@@ -5,10 +5,9 @@
 package inmclient
 
 import (
-	appaccess2 "github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/appaccess"
-
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/appaccess"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/client-go/rest"
 )
@@ -38,9 +37,9 @@ func (a *appsV1Impl) Deployments(_ string) appsv1.DeploymentInterface {
 }
 
 func (a *appsV1Impl) ReplicaSets(namespace string) appsv1.ReplicaSetInterface {
-	return appaccess2.NewReplicaSetAccess(a.view, namespace)
+	return appaccess.NewReplicaSetAccess(a.view, namespace)
 }
 
 func (a *appsV1Impl) StatefulSets(namespace string) appsv1.StatefulSetInterface {
-	return appaccess2.NewStatefulSetAccess(a.view, namespace)
+	return appaccess.NewStatefulSetAccess(a.view, namespace)
 }

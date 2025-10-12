@@ -5,7 +5,7 @@
 package inmclient
 
 import (
-	storageaccess2 "github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/storageaccess"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/storageaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -26,25 +26,25 @@ func (a *storageV1Impl) RESTClient() rest.Interface {
 }
 
 func (a *storageV1Impl) CSIDrivers() clientstoragev1.CSIDriverInterface {
-	return storageaccess2.NewCSIDriverAccess(a.view)
+	return storageaccess.NewCSIDriverAccess(a.view)
 }
 
 func (a *storageV1Impl) CSINodes() clientstoragev1.CSINodeInterface {
-	return storageaccess2.NewCSINodeAccess(a.view)
+	return storageaccess.NewCSINodeAccess(a.view)
 }
 
 func (a *storageV1Impl) CSIStorageCapacities(namespace string) clientstoragev1.CSIStorageCapacityInterface {
-	return storageaccess2.NewCSIStorageCapacityAccess(a.view, namespace)
+	return storageaccess.NewCSIStorageCapacityAccess(a.view, namespace)
 }
 
 func (a *storageV1Impl) StorageClasses() clientstoragev1.StorageClassInterface {
-	return storageaccess2.NewStorageClassAccess(a.view)
+	return storageaccess.NewStorageClassAccess(a.view)
 }
 
 func (a *storageV1Impl) VolumeAttachments() clientstoragev1.VolumeAttachmentInterface {
-	return storageaccess2.NewVolumeAttachmentAccess(a.view)
+	return storageaccess.NewVolumeAttachmentAccess(a.view)
 }
 
 func (a *storageV1Impl) VolumeAttributesClasses() clientstoragev1.VolumeAttributesClassInterface {
-	return storageaccess2.NewVolumeAttributesClassAccess(a.view)
+	return storageaccess.NewVolumeAttributesClassAccess(a.view)
 }
