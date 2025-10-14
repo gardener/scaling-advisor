@@ -26,13 +26,13 @@ type Service interface {
 
 // ServerConfig is the common configuration for a server.
 type ServerConfig struct {
-	HostPort `json:",inline"`
 	// KubeConfigPath is the path to master kube-config.
 	KubeConfigPath string `json:"kubeConfigPath"`
-	// ProfilingEnabled indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/*
-	ProfilingEnabled bool `json:"profilingEnabled"`
+	HostPort       `json:",inline"`
 	// GracefulShutdownTimeout is the time given to the service to gracefully shutdown.
 	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
+	// ProfilingEnabled indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/*
+	ProfilingEnabled bool `json:"profilingEnabled"`
 }
 
 // HostPort contains information for service host and port.
@@ -117,8 +117,6 @@ const (
 
 // ClientFacades is a holder for the primary k8s client and informer interfaces.
 type ClientFacades struct {
-	// Mode indicates the access mode of the Kubernetes client.
-	Mode ClientAccessMode
 	// Client is the standard Kubernetes clientset for accessing core APIs.
 	Client kubernetes.Interface
 	// DynClient is the dynamic client for accessing arbitrary Kubernetes resources.
@@ -127,4 +125,6 @@ type ClientFacades struct {
 	InformerFactory informers.SharedInformerFactory
 	// DynInformerFactory provides shared informers for dynamic Kubernetes resources.
 	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	// Mode indicates the access mode of the Kubernetes client.
+	Mode ClientAccessMode
 }
