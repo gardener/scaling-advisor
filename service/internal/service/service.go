@@ -38,10 +38,10 @@ var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 var defaultResourceWeights = createDefaultWeights()
 
 type defaultScalingAdvisor struct {
-	cfg               svcapi.ScalingAdvisorServiceConfig
 	minKAPIServer     mkapi.Server
 	schedulerLauncher svcapi.SchedulerLauncher
 	generator         *generator.Generator
+	cfg               svcapi.ScalingAdvisorServiceConfig
 }
 
 func New(log logr.Logger,
