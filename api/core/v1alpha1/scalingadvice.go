@@ -38,13 +38,13 @@ type ClusterScalingAdviceList struct {
 
 // ClusterScalingAdviceSpec defines the desired state of ClusterScalingAdvice.
 type ClusterScalingAdviceSpec struct {
-	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 	// ScaleOutPlan is the plan for scaling out across node pools.
 	// +optional
 	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
 	// ScaleInPlan is the plan for scaling in across node pools.
 	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
+	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
+	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 }
 
 // ClusterScalingAdviceStatus defines the observed state of ClusterScalingAdvice.
@@ -104,10 +104,10 @@ type NodePlacement struct {
 
 // ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
 type ScalingAdviceDiagnostic struct {
-	// SimRunResults is the list of simulation run results for the scaling advice.
-	SimRunResults []ScalingSimRunResult `json:"simRunResults"`
 	// TraceLogURL is the URL to the transient trace log for the scaling simulation run.
 	TraceLogURL string `json:"traceLogURL"`
+	// SimRunResults is the list of simulation run results for the scaling advice.
+	SimRunResults []ScalingSimRunResult `json:"simRunResults"`
 }
 
 // ScalingSimRunResult is the result of a simulation run in the scaling advisor.
@@ -118,10 +118,10 @@ type ScalingSimRunResult struct {
 	NodeTemplateName string `json:"nodeTemplateName"`
 	// AvailabilityZone is the availability zone of the node pool.
 	AvailabilityZone string `json:"availabilityZone"`
-	// NodeScore is the score of the node in the simulation run.
-	NodeScore int64 `json:"nodeScore"`
 	// ScheduledPodNames is the list of pod names that were scheduled in this simulation run.
 	ScheduledPodNames []string `json:"scheduledPodNames"`
+	// NodeScore is the score of the node in the simulation run.
+	NodeScore int64 `json:"nodeScore"`
 	// NumUnscheduledPods is the number of pods that could not be scheduled in this simulation run.
 	NumUnscheduledPods int32 `json:"numUnscheduledPods"`
 }
