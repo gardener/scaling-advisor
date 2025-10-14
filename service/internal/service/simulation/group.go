@@ -18,8 +18,8 @@ var _ svcapi.SimulationGroup = (*defaultSimulationGroup)(nil)
 
 type defaultSimulationGroup struct {
 	name        string
-	key         svcapi.SimGroupKey
 	simulations []svcapi.Simulation
+	key         svcapi.SimGroupKey
 }
 
 // CreateSimulationGroups groups the given Simulation instances into one or more SimulationGroups

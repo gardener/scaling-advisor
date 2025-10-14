@@ -33,10 +33,10 @@ import (
 var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 
 type defaultScalingAdvisor struct {
-	cfg               svcapi.ScalingAdvisorServiceConfig
 	minKAPIServer     mkapi.Server
 	schedulerLauncher svcapi.SchedulerLauncher
 	generator         *generator.Generator
+	cfg               svcapi.ScalingAdvisorServiceConfig
 }
 
 // New initializes and returns a ScalingAdvisorService based on the provided dependencies.

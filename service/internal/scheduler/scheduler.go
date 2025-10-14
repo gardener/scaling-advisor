@@ -34,10 +34,10 @@ var _ svcapi.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context
-	name      string
 	scheduler *scheduler.Scheduler
 	cancelFn  context.CancelFunc
 	params    *svcapi.SchedulerLaunchParams
+	name      string
 }
 
 // NewLauncher initializes and returns a SchedulerLauncher using a scheduler config file and a maximum parallelism limit.

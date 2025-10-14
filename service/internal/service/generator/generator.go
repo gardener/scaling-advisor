@@ -49,8 +49,8 @@ type Args struct {
 // RunArgs is used to run the generator and generate scaling advice
 // TODO: follow Args, RunArgs convention for all other components too (which have more than 3 parameters) for structural consistency
 type RunArgs struct {
-	Request   svcapi.ScalingAdviceRequest
 	ResultsCh chan<- svcapi.ScalingAdviceResult
+	Request   svcapi.ScalingAdviceRequest
 	Timeout   time.Duration
 }
 

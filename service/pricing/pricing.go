@@ -55,8 +55,8 @@ func parseInstanceTypeInfos(data []byte) (map[service.PriceKey]service.InstanceP
 var _ service.InstancePricingAccess = (*infoAccess)(nil)
 
 type infoAccess struct {
-	CloudProvider   commontypes.CloudProvider
 	infosByPriceKey map[service.PriceKey]service.InstancePriceInfo
+	CloudProvider   commontypes.CloudProvider
 }
 
 func (a infoAccess) GetInfo(region, instanceType string) (info service.InstancePriceInfo, err error) {
