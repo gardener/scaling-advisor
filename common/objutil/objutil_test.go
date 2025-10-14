@@ -23,9 +23,9 @@ import (
 
 func TestResourceListToInt64MapAndBack(t *testing.T) {
 	tests := []struct {
-		name           string
 		src            corev1.ResourceList
 		expectedTarget map[corev1.ResourceName]int64
+		name           string
 	}{
 		{
 			name: "simple-cpu_mem_ephemeral-storage",
@@ -58,8 +58,8 @@ func TestResourceListToInt64MapAndBack(t *testing.T) {
 
 func TestLoadYamlIntoCoreRuntimeObj(t *testing.T) {
 	tests := map[string]struct {
-		filePath string
 		retErr   error
+		filePath string
 	}{
 		"valid yaml":        {filePath: "../../minkapi/server/testdata/pod-a.yaml", retErr: nil},
 		"corrupt yaml":      {filePath: "../../minkapi/server/testdata/corrupt-pod-a.yaml", retErr: fmt.Errorf("failed to unmarshal object")},
@@ -148,9 +148,9 @@ func TestPatchPodStatus(t *testing.T) {
 }`
 
 	tests := map[string]struct {
+		patchErr   error
 		patch      string
 		key        string
-		patchErr   error
 		passNilObj bool
 	}{
 		"correct patch": {
@@ -229,9 +229,9 @@ func TestPatchObjectUsingEvent(t *testing.T) {
 	var corruptedPatch = `{}}`
 	var invalidPatch = `{ "metadata": "abcdefgh"}`
 	contentTypeTests := map[string]struct {
+		patchErr    error
 		contentType string
 		patchData   string
-		patchErr    error
 		passNilObj  bool
 	}{
 		"Strategic Merge Patch": {
