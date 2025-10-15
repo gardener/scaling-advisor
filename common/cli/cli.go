@@ -55,10 +55,13 @@ func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig
 }
 
 const (
-	DefaultQPS   = 50.0
+	// DefaultQPS used when talking to kubernetes apiserver
+	DefaultQPS = 50.0
+	// DefaultBurst used when talking to kubernetes apiserver
 	DefaultBurst = 100
 )
 
+// MapQPSBurstFlags adds the QPS and Burst values to the passed FlagSet.
 func MapQPSBurstFlags(flagSet *pflag.FlagSet, opts *commontypes.QPSBurst) {
 	flagSet.Float32Var(&opts.QPS, "kube-api-qps", DefaultQPS, "QPS to use while talking with kubernetes apiserver")
 	flagSet.IntVar(&opts.Burst, "kube-api-burst", DefaultBurst, "Burst to use while talking with kubernetes apiserver")

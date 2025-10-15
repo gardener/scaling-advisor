@@ -1,6 +1,7 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package cmd
 
 import (
@@ -18,7 +19,7 @@ Generate scaling scenario(s) for the gardener cluster identified by the given ga
 and gardener shoot name and write the scenario(s) to the scenario-dir.
 	 genscenario gardener -l <landscape> -p <project> -t <shoot-name> -d <scenario-dir>
 `,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Println("genscenario called")
 	},
 }
