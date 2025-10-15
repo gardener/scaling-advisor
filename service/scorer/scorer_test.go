@@ -558,7 +558,7 @@ func TestGetNodeScoreSelector(t *testing.T) {
 					t.Fatalf("Expected error to be nil but got %v", err)
 				}
 			} else if tc.expectedError != nil {
-				if err != nil && !errors.Is(err, tc.expectedError) {
+				if !errors.Is(err, tc.expectedError) {
 					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
 				} else if err == nil {
 					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
@@ -612,7 +612,7 @@ func TestGetNodeScorer(t *testing.T) {
 					t.Fatalf("Expected error to be nil but got %v", err)
 				}
 			} else if tc.expectedError != nil {
-				if err != nil && !errors.Is(err, tc.expectedError) {
+				if !errors.Is(err, tc.expectedError) {
 					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
 				} else if err == nil {
 					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
