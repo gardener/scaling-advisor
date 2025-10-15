@@ -438,7 +438,6 @@ func validateAPIResponse(t *testing.T, target string, want any, responseData []b
 	} else {
 		t.Logf("Got expected output")
 	}
-
 }
 
 func TestPatchPutHTTPHandlers(t *testing.T) {
@@ -777,7 +776,6 @@ func TestNoObject(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestWatch(t *testing.T) {
@@ -945,11 +943,10 @@ func handlePodBindingResponse(t *testing.T, s *InMemoryKAPI, responseData, wantD
 	if len(p) == 0 {
 		return fmt.Errorf("Pod not found")
 	}
-	if p[0].Spec.NodeName == wantPodBind.Target.Name {
-		t.Logf("Pod binding successful: nodeName is %s", p[0].Spec.NodeName)
-	} else {
+	if p[0].Spec.NodeName != wantPodBind.Target.Name {
 		return fmt.Errorf("Pod binding unsuccessful")
 	}
+	t.Logf("Pod binding successful: nodeName is %s", p[0].Spec.NodeName)
 	return nil
 }
 

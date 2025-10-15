@@ -350,6 +350,8 @@ func AsMeta(o any) (mo metav1.Object, err error) {
 	return
 }
 
+// CheckObjectNameAndNamespace checks if the passed metaObj's name or namespace have been changed
+// It returns an error if those immutable fields have been change.
 func CheckObjectNameAndNamespace(metaObj metav1.Object, name cache.ObjectName, gk schema.GroupKind) (err error) { // TODO: rename this function
 	if metaObj.GetName() != name.Name {
 		fieldErr := field.Error{
