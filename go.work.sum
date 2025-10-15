@@ -363,4 +363,5 @@ sigs.k8s.io/kustomize/kustomize/v5 v5.7.1 h1:sYJsarwy/SDJfjjLMUqwFDGPwzUtMOQ1i1E
 sigs.k8s.io/kustomize/kustomize/v5 v5.7.1/go.mod h1:+5/SrBcJ4agx1SJknGuR/c9thwRSKLxnKoI5BzXFaLU=
 sigs.k8s.io/kustomize/kyaml v0.20.1 h1:PCMnA2mrVbRP3NIB6v9kYCAc38uvFLVs8j/CD567A78=
 sigs.k8s.io/kustomize/kyaml v0.20.1/go.mod h1:0EmkQHRUsJxY8Ug9Niig1pUMSCGHxQ5RklbpV/Ri6po=
+sigs.k8s.io/structured-merge-diff/v4 v4.6.0 h1:IUA9nvMmnKWcj5jl84xn+T5MnlZKThmUW1TdblaLVAc=
 sigs.k8s.io/structured-merge-diff/v4 v4.6.0/go.mod h1:dDy58f92j70zLsuZVuUX5Wp9vtxXpaZnkPGWeqDfCps=
