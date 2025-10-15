@@ -92,58 +92,11 @@ type ControllersConfiguration struct {
 	ScalingConstraints ScalingConstraintsControllerConfiguration `json:"scalingConstraints"`
 }
 
-// LeaderElectionConfig defines the configuration for the leader election.
-type LeaderElectionConfig struct {
-	// ResourceLock determines which resource lock to use for leader election.
-	// This is only applicable if leader election is enabled.
-	ResourceLock string `json:"resourceLock"`
-	// ResourceName determines the name of the resource that leader election
-	// will use for holding the leader lock.
-	// This is only applicable if leader election is enabled.
-	ResourceName string `json:"resourceName"`
-	// ResourceNamespace determines the namespace in which the leader
-	// election resource will be created.
-	// This is only applicable if leader election is enabled.
-	ResourceNamespace string `json:"resourceNamespace"`
-	// LeaseDuration is the duration that non-leader candidates will wait
-	// after observing a leadership renewal until attempting to acquire
-	// leadership of the occupied but un-renewed leader slot. This is effectively the
-	// maximum duration that a leader can be stopped before it is replaced
-	// by another candidate. This is only applicable if leader election is
-	// enabled.
-	LeaseDuration metav1.Duration `json:"leaseDuration"`
-	// RenewDeadline is the interval between attempts by the acting leader to
-	// renew its leadership before it stops leading. This must be less than or
-	// equal to the lease duration.
-	// This is only applicable if leader election is enabled.
-	RenewDeadline metav1.Duration `json:"renewDeadline"`
-	// RetryPeriod is the duration leader elector clients should wait
-	// between attempting acquisition and renewal of leadership.
-	// This is only applicable if leader election is enabled.
-	RetryPeriod metav1.Duration `json:"retryPeriod"`
-	// Enabled specifies whether leader election is enabled. Set this
-	// to true when running replicated instances of the operator for high availability.
-	Enabled bool `json:"enabled"`
-}
-
-// ScalingAdvisorServerConfig is the configuration for Scaling Advisor server.
-type ScalingAdvisorServerConfig struct {
-	// HealthProbesBindAddress is the host and port for serving health probes.
-	HealthProbeBindAddress string `json:"healthProbeBindAddress,omitempty"`
-	// Metrics is the host and port for serving metrics.
-	MetricsBindAddress string `json:"metricsBindAddress,omitempty"`
-	// ProfilingBindAddress is the host and port for serving profiling data.
-	ProfilingBindAddress string `json:"profilingBindAddress,omitempty"`
-	// ProfilingEnable indicates whether profiling is enabled.
-	ProfilingEnabled bool `json:"profilingEnabled"`
-}
-
-// ScalingAdviceGenerationConfig contains configuration for scaling advice generation.
-type ScalingAdviceGenerationConfig struct {
-	// Mode defines the mode in which scaling advice is generated.
-	Mode commontypes.ScalingAdviceGenerationMode `json:"mode"`
-	// SimulatorStrategy defines the simulator strategy used by the ScaleOutSimulator implementation.
-	SimulatorStrategy commontypes.SimulatorStrategy `json:"simulatorStrategy"`
+// ScalingConstraintsControllerConfiguration is the configuration for then controller that reconciles ScalingConstraints.
+// TODO: unhappy with this name
+type ScalingConstraintsControllerConfiguration struct {
+	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
+	ConcurrentSyncs *int `json:"concurrentSyncs"`
 	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
 	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
 }

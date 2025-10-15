@@ -23,7 +23,7 @@ type Reconciler struct {
 }
 
 // NewReconciler creates a new instance of Reconciler with the provided manager and configuration.
-func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControllerConfig) *Reconciler {
+func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControllerConfiguration) *Reconciler {
 	return &Reconciler{
 		config: config,
 		client: mgr.GetClient(),
@@ -31,7 +31,7 @@ func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControlle
 	}
 }
 
-// Reconcile handles reconciliation for ScalingConstraint objects and produces ScalingAdvice
+// Reconcile handles reconciliation for ClusterScalingConstraint objects and produces ClusterScalingAdvice
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.log.WithValues("namespace", req.Namespace, "name", req.Name)
 

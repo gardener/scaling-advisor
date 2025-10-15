@@ -17,6 +17,7 @@ import (
 	testutils "github.com/gardener/scaling-advisor/minkapi/test/utils"
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -218,7 +219,7 @@ func TestDelete(t *testing.T) {
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 
-			mo, _ := AsMeta(gotObj)
+			mo, _ := objutil.AsMeta(gotObj)
 			if !reflect.DeepEqual(mo.GetDeletionTimestamp().Time, time.Time{}) { // FIXME
 				t.Errorf("Expected deletionTimestamp to be set for object that's successfully deleted, got: %v", mo.GetDeletionTimestamp())
 				return
@@ -502,7 +503,7 @@ func TestWatch(t *testing.T) {
 			)
 
 			eventCallback := func(event watch.Event) error {
-				evt, err := AsMeta(event.Object)
+				evt, err := objutil.AsMeta(event.Object)
 				if err != nil {
 					return err
 				}

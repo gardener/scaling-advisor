@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
@@ -52,6 +53,7 @@ type baseView struct {
 	changeCount atomic.Int64
 }
 
+// New creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
 func New(log logr.Logger, args *minkapi.ViewArgs) (minkapi.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
 	for _, d := range typeinfo.SupportedDescriptors {
@@ -93,14 +95,21 @@ func (v *baseView) GetObjectChangeCount() int64 {
 	return v.changeCount.Load()
 }
 
-func (v *baseView) GetClientFacades() (clientFacades commontypes.ClientFacades, err error) {
+func (v *baseView) GetClientFacades(accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	// TODO: return instance of in-memory client.
-	return clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	switch accessMode {
+	case commontypes.ClientAccessNetwork:
+		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	case commontypes.ClientAccessInMemory:
+		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
+	default:
+		err = fmt.Errorf("invalid access mode %q", accessMode)
+	}
+	return
 }
 
 func (v *baseView) GetEventSink() minkapi.EventSink {
@@ -117,7 +126,7 @@ func (v *baseView) GetResourceStore(gvk schema.GroupVersionKind) (minkapi.Resour
 	return s, nil
 }
 
-func (v *baseView) StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+func (v *baseView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error) {
 	return storeObject(v, gvk, obj, &v.changeCount)
 }
 
@@ -136,6 +145,10 @@ func (v *baseView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) 
 }
 
 func (v *baseView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error) {
+	// TODO:  podName should not be required, it should be sufficient to just pass binding and then use binding.Name. Check this.
+	if podName.Name == "" {
+		return nil, fmt.Errorf("%w: podName must not be empty", minkapi.ErrUpdateObject)
+	}
 	obj, err := v.GetObject(typeinfo.PodsDescriptor.GVK, podName)
 	if err != nil {
 		return nil, err
@@ -245,17 +258,17 @@ func (v *baseView) GetKubeConfigPath() string {
 	return v.args.KubeConfigPath
 }
 
-func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, counter *atomic.Int64) error {
+func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, counter *atomic.Int64) (metav1.Object, error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	name := obj.GetName()
 	namePrefix := obj.GetGenerateName()
 	if name == "" {
 		if namePrefix == "" {
-			return apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
+			return nil, apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
 		name = typeinfo.GenerateName(namePrefix)
 	}
@@ -274,10 +287,10 @@ func storeObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object,
 
 	err = s.Add(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	counter.Add(1)
-	return nil
+	return obj, nil
 }
 
 func updateObject(v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, changeCount *atomic.Int64) error {
@@ -486,9 +499,7 @@ func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object)
 		}
 		combined = append(combined, o)
 	}
-	for _, o := range primary {
-		combined = append(combined, o)
-	}
+	combined = append(combined, primary...)
 	return
 }
 

@@ -15,6 +15,7 @@ import (
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -262,4 +263,32 @@ func GenerateName(base string) string {
 		base = base[:m-len(suffix)]
 	}
 	return base + suffix
+}
+
+// Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
+func Cast[T any](obj any) (t T, err error) {
+	t, ok := obj.(T)
+	if !ok {
+		err = fmt.Errorf("%w: obj has type %T, expected %T", commonerrors.ErrUnexpectedType, obj, TypeName[T]())
+	}
+	return
+}
+
+// TypeName returns the fully qualified name of a type T.
+func TypeName[T any]() string {
+	var zero T
+	typ := reflect.TypeOf(zero)
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ.PkgPath() + "." + typ.Name()
+}
+
+// AsMeta converts an object to its metav1.Object representation, returning an error if the conversion fails.
+func AsMeta(o any) (mo metav1.Object, err error) {
+	mo, err = meta.Accessor(o)
+	if err != nil {
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
+	}
+	return
 }

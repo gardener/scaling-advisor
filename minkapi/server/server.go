@@ -36,7 +36,6 @@ import (
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
@@ -54,7 +53,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
-	kjson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -112,6 +110,7 @@ func LaunchApp(ctx context.Context) (app mkapi.App, exitCode int) {
 	return
 }
 
+// ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
 func ShutdownApp(app *mkapi.App) (exitCode int) {
 	// Create a context with a 5-second timeout for shutdown
 	shutDownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -137,6 +136,15 @@ func NewDefaultInMemory(log logr.Logger, cfg mkapi.Config) (mkapi.Server, error)
 		KubeConfigPath: cfg.KubeConfigPath,
 		Scheme:         typeinfo.SupportedScheme,
 		WatchConfig:    cfg.WatchConfig,
+	})
+	// TODO: wrap errors with sentinel error code here.
+	if err != nil {
+		return nil, err
+	}
+	_, err = baseView.CreateObject(typeinfo.NamespacesDescriptor.GVK, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: corev1.NamespaceDefault,
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -246,10 +254,12 @@ func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
 	return
 }
 
+// GetBaseView returns the foundational View of the KAPI Server.
 func (k *InMemoryKAPI) GetBaseView() mkapi.View {
 	return k.baseView
 }
 
+// GetSandboxView creates or returns a sandboxed KAPI View with the given name
 func (k *InMemoryKAPI) GetSandboxView(log logr.Logger, name string) (mkapi.View, error) {
 	sandboxView, ok := k.sandboxViews[name] // TODO: protected with mutex.
 	if ok {
@@ -456,7 +466,7 @@ func handleCreate(d typeinfo.Descriptor, view mkapi.View) http.HandlerFunc {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
 		}
-		err = view.CreateObject(d.GVK, mo)
+		mo, err = view.CreateObject(d.GVK, mo)
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -629,11 +639,11 @@ func handleWatch(d typeinfo.Descriptor, view mkapi.View, labelSelector labels.Se
 
 		log := logr.FromContextOrDiscard(r.Context())
 		err := view.WatchObjects(r.Context(), d.GVK, startVersion, namespace, labelSelector, func(event watch.Event) error {
-			metaObj, err := store.AsMeta(event.Object)
+			metaObj, err := objutil.AsMeta(event.Object)
 			if err != nil {
 				return err
 			}
-			eventJson, err := buildWatchEventJsonAlt(log, &event)
+			eventJson, err := buildWatchEventJson(log, &event)
 			if err != nil {
 				err = fmt.Errorf("cannot  encode watch %q event for object name %q, namespace %q, resourceVersion %q: %w",
 					event.Type, metaObj.GetName(), metaObj.GetNamespace(), metaObj.GetResourceVersion(), err)
@@ -665,7 +675,7 @@ func handleCreatePodBinding(view mkapi.View) http.HandlerFunc {
 			return
 		}
 		podName := GetObjectName(r, d)
-		//obj, err := view.GetObject(d.GVK, objName)
+		//obj, err := view.getObject(d.GVK, objName)
 		//if err != nil {
 		//	handleError(w, r, err)
 		//	return
@@ -782,28 +792,6 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 
 func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
 	sch := typeinfo.SupportedScheme
-	s := kjson.NewSerializerWithOptions(
-		kjson.DefaultMetaFactory, sch, sch,
-		kjson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
-
-	mev := &metav1.WatchEvent{
-		Type: string(ev.Type),
-		Object: runtime.RawExtension{
-			Object: ev.Object,
-		},
-	}
-	var buf bytes.Buffer
-	err := s.Encode(mev, &buf)
-	if err != nil {
-		log.Error(err, "cannot encode watch event", "event", ev)
-		return "", err
-	}
-	payload := buf.String()
-	return payload, nil
-}
-
-func buildWatchEventJsonAlt(log logr.Logger, ev *watch.Event) (string, error) {
-	sch := typeinfo.SupportedScheme
 	s := runtimejson.NewSerializerWithOptions(
 		runtimejson.DefaultMetaFactory, sch, sch,
 		runtimejson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
@@ -824,6 +812,7 @@ func buildWatchEventJsonAlt(log logr.Logger, ev *watch.Event) (string, error) {
 	return payload, nil
 }
 
+// GetObjectName returns constructs the cache.ObjectName for an object contained in the given request corresponding to the given typeinfo.Descriptor
 func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
 	namespace := r.PathValue("namespace")
 	if namespace == "" && d.APIResource.Namespaced {

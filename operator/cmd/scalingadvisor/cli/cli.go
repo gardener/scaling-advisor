@@ -39,7 +39,7 @@ func ParseLaunchOptions(cliArgs []string) (*LaunchOptions, error) {
 }
 
 // LoadAndValidateOperatorConfig loads and validates the scaling-advisor operator configuration from the specified path in the launch options.
-func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.OperatorConfig, error) {
+func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.ScalingAdvisorConfiguration, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}

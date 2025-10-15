@@ -287,7 +287,6 @@ func TestCombinePrimarySecondary(t *testing.T) {
 	if nodeCCategory != "secondary" {
 		t.Errorf("Expected node-c to have category secondary, got %s", nodeCCategory)
 	}
-	return
 }
 
 func createBaseView(t *testing.T) (minkapi.View, error) {
@@ -347,7 +346,7 @@ func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName s
 	if !ok {
 		return obj, err
 	}
-	err = view.CreateObject(gvk, metaObj)
+	_, err = view.CreateObject(gvk, metaObj)
 	if err != nil {
 		return obj, err
 	}

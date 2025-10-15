@@ -25,7 +25,7 @@ var (
 	}{}
 )
 
-func LoadKubeConfigTemplate() error {
+func loadKubeConfigTemplate() error {
 	if kubeConfigTemplate != nil {
 		return nil
 	}
@@ -37,7 +37,7 @@ func LoadKubeConfigTemplate() error {
 	return nil
 }
 
-func LoadKubeSchedulerConfigTemplate() error {
+func loadKubeSchedulerConfigTemplate() error {
 	if kubeSchedulerConfigTemplate != nil {
 		return nil
 	}
@@ -64,6 +64,7 @@ func loadTemplateConfig(templateConfigPath string) (*template.Template, error) {
 	return templateConfig, nil
 }
 
+// KubeSchedulerTmplParams encapsulates Go template parameters for generating a very simple kube-scheduler configuration that utilizes a minkapi server.
 type KubeSchedulerTmplParams struct {
 	KubeConfigPath          string
 	KubeSchedulerConfigPath string
@@ -71,7 +72,7 @@ type KubeSchedulerTmplParams struct {
 	Burst                   int
 }
 
-// KubeConfigParams encapsulates Go template parameters for generating a plain kubeconfig file that can be used by a k8s client to connect to a minkapi server.
+// KubeConfigParams encapsulates Go template parametes for generating a plain kubeconfig file that can be used by a k8s client to connect to a minkapi server.
 type KubeConfigParams struct {
 	Name           string
 	KubeConfigPath string

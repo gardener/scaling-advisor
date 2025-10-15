@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
@@ -55,7 +56,12 @@ func TestMain(m *testing.M) {
 func TestPodNodeAssignment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	client := state.clientFacades.Client
+	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
+	if err != nil {
+		t.Fatalf("failed to get client facades: %v", err)
+		return
+	}
+	client := clientFacades.Client
 
 	createdNode, err := client.CoreV1().Nodes().Create(ctx, &state.nodeA, metav1.CreateOptions{})
 	if err != nil {
@@ -81,13 +87,18 @@ func TestPodNodeAssignment(t *testing.T) {
 		t.Logf("got event| Type: %q, ReprotingController: %q, ReportingInstance: %q, Action: %q, Reason: %q, Regarding: %q, Note: %q",
 			ev.Type, ev.ReportingController, ev.ReportingInstance, ev.Action, ev.Reason, ev.Regarding, ev.Note)
 	}
-	bindingEvent := evList[0]
-	t.Logf("binding event note: %q", bindingEvent.Note)
-	if bindingEvent.Action != "Binding" {
-		t.Errorf("got event Action %v, want %v", bindingEvent.Action, "Binding")
+	foundBinding := false
+	for _, ev := range evList {
+		if ev.Action == "Binding" {
+			foundBinding = true
+			if ev.Reason != "Scheduled" {
+				t.Errorf("got event reason %v, want %v", ev.Reason, "Scheduled")
+				return
+			}
+		}
 	}
-	if bindingEvent.Reason != "Scheduled" {
-		t.Errorf("got event reason %v, want %v", bindingEvent.Reason, "Scheduled")
+	if !foundBinding {
+		t.Errorf("got no Binding event, want at least one")
 	}
 }
 
@@ -118,7 +129,7 @@ func initSuite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	clientFacades, err := state.baseView.GetClientFacades()
+	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
 	if err != nil {
 		return err
 	}

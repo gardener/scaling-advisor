@@ -111,12 +111,15 @@ type View interface {
 	io.Closer
 	GetName() string
 	GetType() ViewType
-	// GetClientFacades gets the in-memory implementation ClientFacades that can be used by code to interact with this view
+	// GetClientFacades gets a ClientFacades populated according to the given accessMode that can be used by code to interact with this view
 	// via standard k8s client and informer interfaces
-	GetClientFacades() (commontypes.ClientFacades, error)
+	GetClientFacades(accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
+	// GetResourceStore returns the resource store for the specified GroupVersionKind.
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	GetEventSink() EventSink
-	StoreObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	// CreateObject creates a new object of the specified GVK in this view.
+	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
+	// GetObject retrieves an object of the specified GVK by name.
 	GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
 	UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
 	UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
