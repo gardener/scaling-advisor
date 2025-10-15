@@ -126,7 +126,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			access: testInfoAccess{err: errors.New("testing error")},
+			access: &testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -257,7 +257,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledAssignment: &assignment,
 				OtherAssignments: nil,
 				UnscheduledPods:  nil},
-			access: testInfoAccess{err: errors.New("testing error")},
+			access: &testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
@@ -668,7 +668,7 @@ type testInfoAccess struct {
 	err error
 }
 
-// Helper function to create mock instance pricing access that returns an error
-func (m testInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
+// Helper function to create stub instance pricing access that returns an error
+func (m *testInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
 	return service.InstancePriceInfo{}, m.err
 }
