@@ -38,12 +38,12 @@ import (
 var _ minkapi.View = (*sandboxView)(nil)
 
 type sandboxView struct {
-	log          logr.Logger
 	delegateView minkapi.View
+	eventSink    minkapi.EventSink
 	args         *minkapi.ViewArgs
 	mu           *sync.RWMutex
 	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
-	eventSink    minkapi.EventSink
+	log          logr.Logger
 	changeCount  atomic.Int64
 }
 

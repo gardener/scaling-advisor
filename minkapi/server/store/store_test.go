@@ -39,9 +39,9 @@ var testPod = corev1.Pod{
 
 func TestAdd(t *testing.T) {
 	tests := map[string]struct {
-		typeMeta                         metav1.TypeMeta
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
+		typeMeta                         metav1.TypeMeta
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -88,10 +88,10 @@ func TestAdd(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	tests := map[string]struct {
-		name                             string
-		typeMeta                         metav1.TypeMeta
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
+		typeMeta                         metav1.TypeMeta
+		name                             string
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -170,10 +170,10 @@ func TestUpdate(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	tests := map[string]struct {
-		name                      string
 		retErr                    error
-		createObjectBeforeTesting bool
+		name                      string
 		expectedNumberOfObjects   int
+		createObjectBeforeTesting bool
 	}{
 		"correct deletion": {
 			name:                      testPod.Name,
@@ -229,8 +229,8 @@ func TestDelete(t *testing.T) {
 
 func TestGetByKey(t *testing.T) {
 	tests := map[string]struct {
-		key                       string
 		errorCheckFunc            func(error) bool
+		key                       string
 		objectFound               bool
 		createObjectBeforeTesting bool
 	}{
@@ -286,9 +286,9 @@ func TestList(t *testing.T) {
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
-		namespace               string
 		labelSelector           labels.Selector
 		retErr                  error
+		namespace               string
 		expectedNumberOfObjects int
 	}{
 		"base": {
@@ -347,10 +347,10 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
-		namespace               string
 		labelSelector           labels.Selector
-		startVersion            int64
 		retErr                  error
+		namespace               string
+		startVersion            int64
 		expectedNumberOfObjects int
 	}{
 		"base": {
@@ -429,10 +429,10 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	tests := map[string]struct {
-		namespace               string
 		labelSelector           labels.Selector
-		startVersion            int64
 		retErr                  error
+		namespace               string
+		startVersion            int64
 		expectedNumberOfObjects int
 		modifyObjectAfterWatch  bool
 	}{

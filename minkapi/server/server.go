@@ -49,14 +49,14 @@ var _ mkapi.Server = (*InMemoryKAPI)(nil)
 
 // InMemoryKAPI holds the in-memory stores, watch channels, and version tracking for simple implementation of mkapi.APIServer
 type InMemoryKAPI struct {
-	cfg                 mkapi.Config
 	listenerAddr        net.Addr
+	baseView            mkapi.View
 	scheme              *runtime.Scheme
 	rootMux             *http.ServeMux
 	server              *http.Server
-	baseView            mkapi.View
 	createSandboxViewFn mkapi.CreateSandboxViewFunc
 	sandboxViews        map[string]mkapi.View
+	cfg                 mkapi.Config
 }
 
 // LaunchApp is a helper function used to parse cli args, construct, and start the MinKAPI server,
