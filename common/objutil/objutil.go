@@ -17,6 +17,7 @@ import (
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -337,4 +338,13 @@ func TypeName[T any]() string {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()
+}
+
+// AsMeta converts an object to its metav1.Object representation, returning an error if the conversion fails.
+func AsMeta(o any) (mo metav1.Object, err error) {
+	mo, err = meta.Accessor(o)
+	if err != nil {
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
+	}
+	return
 }

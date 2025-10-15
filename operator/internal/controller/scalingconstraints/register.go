@@ -20,6 +20,7 @@ import (
 
 const controllerName = "scaling-constraints-controller"
 
+// SetupWithManager sets up the Reconciler with the given Controller Manager to reconcile ClusterScalingConstraint resources.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return builder.ControllerManagedBy(mgr).
 		Named(controllerName).

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
@@ -129,7 +130,7 @@ func (s *defaultSimulation) Run(ctx context.Context) (err error) {
 	s.state.status = svcapi.ActivityStatusRunning
 	s.state.groupRunPassNum = s.args.GroupRunPassCounter.Load()
 	s.state.simNode = s.buildSimulationNode()
-	err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
+	_, err = s.args.View.CreateObject(typeinfo.NodesDescriptor.GVK, s.state.simNode)
 	if err != nil {
 		return
 	}
@@ -182,7 +183,7 @@ func (s *defaultSimulation) getScaledNodeAssignment() *svcapi.NodePodAssignment 
 }
 
 func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (svcapi.SchedulerHandle, error) {
-	clientFacades, err := simView.GetClientFacades()
+	clientFacades, err := simView.GetClientFacades(commontypes.ClientAccessInMemory)
 	if err != nil {
 		return nil, err
 	}

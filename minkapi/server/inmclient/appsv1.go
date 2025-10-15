@@ -5,6 +5,9 @@
 package inmclient
 
 import (
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient/access/appaccess"
+
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/client-go/rest"
@@ -19,35 +22,25 @@ type appsV1Impl struct {
 }
 
 func (a *appsV1Impl) RESTClient() rest.Interface {
-	//TODO implement me
-	panic("implement me")
+	panic(commonerrors.ErrUnimplemented) //TODO: provide a common implementation of rest.Interface for any resource
 }
 
-func (a *appsV1Impl) ControllerRevisions(namespace string) appsv1.ControllerRevisionInterface {
-	//TODO implement me
-	panic("implement me")
+func (a *appsV1Impl) ControllerRevisions(_ string) appsv1.ControllerRevisionInterface {
+	panic(commonerrors.ErrUnimplemented)
 }
 
-func (a *appsV1Impl) DaemonSets(namespace string) appsv1.DaemonSetInterface {
-	//TODO implement me
-	panic("implement me")
+func (a *appsV1Impl) DaemonSets(_ string) appsv1.DaemonSetInterface {
+	panic(commonerrors.ErrUnimplemented)
 }
 
-func (a *appsV1Impl) Deployments(namespace string) appsv1.DeploymentInterface {
-	//TODO implement me
-	panic("implement me")
+func (a *appsV1Impl) Deployments(_ string) appsv1.DeploymentInterface {
+	panic(commonerrors.ErrUnimplemented)
 }
 
 func (a *appsV1Impl) ReplicaSets(namespace string) appsv1.ReplicaSetInterface {
-	return &replicaSetAccessImpl{
-		resourceAccessImpl: resourceAccessImpl{
-			view:      a.view,
-			namespace: namespace,
-		},
-	}
+	return appaccess.NewReplicaSetAccess(a.view, namespace)
 }
 
-func (a appsV1Impl) StatefulSets(namespace string) appsv1.StatefulSetInterface {
-	//TODO implement me
-	panic("implement me")
+func (a *appsV1Impl) StatefulSets(namespace string) appsv1.StatefulSetInterface {
+	return appaccess.NewStatefulSetAccess(a.view, namespace)
 }

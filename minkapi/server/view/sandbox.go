@@ -11,11 +11,13 @@ import (
 	"sync/atomic"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/server/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/server/store"
 	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/go-logr/logr"
@@ -94,14 +96,20 @@ func (v *sandboxView) GetObjectChangeCount() int64 {
 	return v.changeCount.Load()
 }
 
-func (v *sandboxView) GetClientFacades() (clientFacades commontypes.ClientFacades, err error) {
+func (v *sandboxView) GetClientFacades(accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
 		}
 	}()
-	panic("inmem client type to be implemented")
-	return
+	switch accessMode {
+	case commontypes.ClientAccessNetwork:
+		clientFacades, err = clientutil.CreateNetworkClientFacades(v.log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
+	case commontypes.ClientAccessInMemory:
+		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
+	default:
+		err = fmt.Errorf("invalid access mode %q", accessMode)
+	}
 	return
 }
 
@@ -119,7 +127,7 @@ func (v *sandboxView) GetEventSink() minkapi.EventSink {
 	return v.eventSink
 }
 
-func (v *sandboxView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) error {
+func (v *sandboxView) CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error) {
 	return storeObject(v, gvk, obj, &v.changeCount)
 }
 
@@ -152,7 +160,8 @@ func (v *sandboxView) UpdateObject(gvk schema.GroupVersionKind, obj metav1.Objec
 		return updateObject(v, gvk, obj, &v.changeCount)
 	}
 	// The object is in base view and should not be modified - store in sandbox view now.
-	return v.CreateObject(gvk, obj)
+	_, err = v.CreateObject(gvk, obj)
+	return err
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
@@ -179,10 +188,13 @@ func (v *sandboxView) UpdatePodNodeBinding(podName cache.ObjectName, binding cor
 	pod, ok = obj.(*corev1.Pod)
 	if !ok {
 		err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", minkapi.ErrUpdateObject, v.GetName(), obj, podName)
+		if err != nil {
+			return
+		}
 	}
 	// found in base so lets make a copy and store in sandbox
 	sandboxPod := pod.DeepCopy()
-	err = v.CreateObject(gvk, sandboxPod)
+	_, err = v.CreateObject(gvk, sandboxPod)
 	if err != nil {
 		return
 	}
@@ -288,7 +300,6 @@ func (v *sandboxView) DeleteObject(gvk schema.GroupVersionKind, objName cache.Ob
 	}
 	v.changeCount.Add(1)
 	return nil
-
 }
 
 func (v *sandboxView) DeleteObjects(gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) error {
@@ -330,7 +341,6 @@ func (v *sandboxView) ListEvents(namespace string) (events []eventsv1.Event, err
 	}
 	events, _, err = asEvents(metaObjs)
 	return
-
 }
 
 func (v *sandboxView) GetKubeConfigPath() string {

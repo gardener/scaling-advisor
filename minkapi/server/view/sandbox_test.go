@@ -293,7 +293,6 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 	if b.GetObjectChangeCount() != baseChangeCountAfterPodStore {
 		t.Errorf("expected base view to not have changed, want %d, got %d", baseChangeCountAfterPodStore, b.GetObjectChangeCount())
 	}
-
 }
 
 func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
@@ -394,7 +393,7 @@ func createBinding(p *corev1.Pod, n *corev1.Node) corev1.Binding {
 
 func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 	t.Helper()
-	err := v.CreateObject(typeinfo.PodsDescriptor.GVK, p)
+	_, err := v.CreateObject(typeinfo.PodsDescriptor.GVK, p)
 	if err != nil {
 		t.Fatalf("failed to store pod: %v", err)
 		return err
@@ -404,7 +403,7 @@ func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 
 func storeNode(t *testing.T, v mkapi.View, n *corev1.Node) error {
 	t.Helper()
-	err := v.CreateObject(typeinfo.NodesDescriptor.GVK, n)
+	_, err := v.CreateObject(typeinfo.NodesDescriptor.GVK, n)
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", v.GetName(), err)
 		return err
@@ -448,7 +447,7 @@ func getPod(t *testing.T, v mkapi.View, namespace, name string) (p *corev1.Pod, 
 	return
 }
 
-func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) (diff string) {
+func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) {
 	t.Helper()
 	nAFromView, err := getNode(t, v, n.GetName())
 	if err != nil {
@@ -458,9 +457,8 @@ func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) (diff str
 	if n.GetName() != nAFromView.GetName() {
 		t.Errorf("From view %q, expected node %q, got %q", v.GetName(), n.GetName(), nAFromView.GetName())
 	}
-	diff = gocmp.Diff(n, nAFromView)
+	diff := gocmp.Diff(n, nAFromView)
 	if diff != "" {
 		t.Errorf("From view %q, expected node spec for %q to be same, got diff: %s", v.GetName(), n.GetName(), diff)
 	}
-	return diff
 }

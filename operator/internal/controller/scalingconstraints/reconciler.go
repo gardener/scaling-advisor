@@ -15,12 +15,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Reconciler is the operator controller type responsible for reconciling ClusterScalingConstraints to produce ScalingAdvice for a cluster.
 type Reconciler struct {
 	config v1alpha1.ScalingConstraintsControllerConfiguration
 	client client.Client
 	log    logr.Logger
 }
 
+// NewReconciler creates a new instance of Reconciler with the provided manager and configuration.
 func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControllerConfiguration) *Reconciler {
 	return &Reconciler{
 		config: config,
@@ -29,6 +31,7 @@ func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControlle
 	}
 }
 
+// Reconcile handles reconciliation for ClusterScalingConstraint objects and produces ClusterScalingAdvice
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.log.WithValues("namespace", req.Namespace, "name", req.Name)
 

@@ -77,9 +77,9 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 			o := &LaunchOptions{
 				ConfigFile: tt.configFile,
 			}
-			got, err := o.ValidateAndLoadOperatorConfig()
+			got, err := o.LoadAndValidateOperatorConfig()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateAndLoadOperatorConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("LoadAndValidateOperatorConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(configv1alpha1.ScalingAdvisorConfiguration{})); diff != "" {
