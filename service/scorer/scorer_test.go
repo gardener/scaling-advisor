@@ -659,7 +659,7 @@ func createPodResourceInfo(name string, cpu, memory int64) service.PodResourceIn
 	}
 }
 
-// mock weights fn for testing
+// Helper weights function for testing
 func testWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
