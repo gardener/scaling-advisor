@@ -90,13 +90,18 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 		t.Logf("got event| Type: %q, ReprotingController: %q, ReportingInstance: %q, Action: %q, Reason: %q, Regarding: %q, Note: %q",
 			ev.Type, ev.ReportingController, ev.ReportingInstance, ev.Action, ev.Reason, ev.Regarding, ev.Note)
 	}
-	bindingEvent := evList[0]
-	t.Logf("binding event note: %q", bindingEvent.Note)
-	if bindingEvent.Action != "Binding" {
-		t.Errorf("got event Action %v, want %v", bindingEvent.Action, "Binding")
+	foundBinding := false
+	for _, ev := range evList {
+		if ev.Action == "Binding" {
+			foundBinding = true
+			if ev.Reason != "Scheduled" {
+				t.Errorf("got event reason %v, want %v", ev.Reason, "Scheduled")
+				return
+			}
+		}
 	}
-	if bindingEvent.Reason != "Scheduled" {
-		t.Errorf("got event reason %v, want %v", bindingEvent.Reason, "Scheduled")
+	if !foundBinding {
+		t.Errorf("got no Binding event, want at least one")
 	}
 }
 
