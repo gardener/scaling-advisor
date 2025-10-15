@@ -8,18 +8,21 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	corev1 "k8s.io/api/core/v1"
 	"reflect"
 	"runtime"
-	sigyaml "sigs.k8s.io/yaml"
 	"strings"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	sigyaml "sigs.k8s.io/yaml"
 )
-import _ "embed"
 
 //go:embed testdata/*
 var testDataFS embed.FS
 
+// AssertError compares the received error with the wanted one and
+// checks for equality first by comparing them otherwise by checking
+// if the received error is a substring of the wanted error.
 func AssertError(t *testing.T, got error, want error) {
 	t.Helper()
 	if isNil(got) && isNil(want) {
@@ -53,11 +56,13 @@ func isNil(v any) bool {
 	}
 }
 
+// GetFunctionName returns the name of the passed function as a string
 func GetFunctionName(t *testing.T, fn any) string {
 	t.Helper()
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 
+// LoadTestNodes returns the node object from the node resource file
 func LoadTestNodes() (nodes []corev1.Node, err error) {
 	var nodeA corev1.Node
 	data, err := testDataFS.ReadFile("testdata/node-a.yaml")
@@ -72,6 +77,8 @@ func LoadTestNodes() (nodes []corev1.Node, err error) {
 	nodes = append(nodes, nodeA)
 	return
 }
+
+// LoadTestPods returns the pod object from the pod resource file
 func LoadTestPods() (pods []corev1.Pod, err error) {
 	var podA corev1.Pod
 	data, err := testDataFS.ReadFile("testdata/pod-a.yaml")
