@@ -16,8 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// ErrLoadOperatorConfig is a sentinel error representing a problem loading the scaling-advisor operator configuration
 var ErrLoadOperatorConfig = fmt.Errorf("cannot load %q operator config", constants.OperatorName)
 
+// LaunchOptions defines options for launching the operator, including the operator config file path and version flag.
 type LaunchOptions struct {
 	ConfigFile string
 	Version    bool
@@ -35,7 +37,8 @@ func ParseLaunchOptions(cliArgs []string) (*LaunchOptions, error) {
 	return launchOpts, nil
 }
 
-func (o *LaunchOptions) ValidateAndLoadOperatorConfig() (*configv1alpha1.ScalingAdvisorConfiguration, error) {
+// LoadAndValidateOperatorConfig loads and validates the scaling-advisor operator configuration from the specified path in the launch options.
+func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.ScalingAdvisorConfiguration, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}

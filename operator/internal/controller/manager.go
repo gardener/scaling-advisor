@@ -70,7 +70,7 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 func getRestConfig(operatorCfg *configv1alpha1.ScalingAdvisorConfiguration) *rest.Config {
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg != nil {
-		restCfg.Burst = int(operatorCfg.ClientConnection.Burst)
+		restCfg.Burst = operatorCfg.ClientConnection.Burst
 		restCfg.QPS = operatorCfg.ClientConnection.QPS
 		restCfg.AcceptContentTypes = operatorCfg.ClientConnection.AcceptContentTypes
 		restCfg.ContentType = operatorCfg.ClientConnection.ContentType

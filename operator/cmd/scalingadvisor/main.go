@@ -29,7 +29,7 @@ func main() {
 		os.Exit(commoncli.ExitSuccess)
 	}
 
-	operatorConfig, err := launchOpts.ValidateAndLoadOperatorConfig()
+	operatorConfig, err := launchOpts.LoadAndValidateOperatorConfig()
 	if err != nil {
 		commoncli.HandleErrorAndExit(err)
 	}
