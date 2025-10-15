@@ -39,10 +39,10 @@ var _ minkapi.View = (*sandboxView)(nil)
 
 type sandboxView struct {
 	delegateView minkapi.View
+	eventSink    minkapi.EventSink
 	args         *minkapi.ViewArgs
 	mu           *sync.RWMutex
 	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
-	eventSink    minkapi.EventSink
 	changeCount  atomic.Int64
 }
 

@@ -26,9 +26,9 @@ import (
 
 func TestNodeCreation(t *testing.T) {
 	objCreationTests := map[string]struct {
-		fileName string
 		gvk      schema.GroupVersionKind
 		retErr   error
+		fileName string
 	}{
 		"No error": {
 			fileName: "testdata/node-a.json",
@@ -79,10 +79,10 @@ func TestNodeCreation(t *testing.T) {
 
 func TestPodListing(t *testing.T) {
 	matchCriteria := map[string]struct {
+		retErr    error
 		c         minkapi.MatchCriteria
 		namespace string
 		names     []string
-		retErr    error
 	}{
 		"No criteria (need ns)":    {retErr: fmt.Errorf("cannot list pods without namespace")},
 		"test namespace":           {namespace: "test", retErr: nil},
@@ -120,9 +120,9 @@ func TestPodListing(t *testing.T) {
 // TODO test matching when deleting
 func TestEventDeletion(t *testing.T) {
 	matchCriteria := map[string]struct {
-		c      minkapi.MatchCriteria
-		gvk    schema.GroupVersionKind
 		retErr error
+		gvk    schema.GroupVersionKind
+		c      minkapi.MatchCriteria
 	}{
 		"No criteria": {
 			c:      minkapi.MatchCriteria{},
