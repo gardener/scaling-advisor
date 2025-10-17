@@ -23,8 +23,8 @@ func RegisterDefaults(scheme *runtime.Scheme) error {
 }
 
 func SetObjectDefaults_ScalingAdvisorConfiguration(in *ScalingAdvisorConfiguration) {
-	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
-	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
-	SetDefaults_ScalingAdvisorServerConfiguration(&in.Server)
 	SetDefaults_ScalingConstraintsControllerConfiguration(&in.Controllers.ScalingConstraints)
+	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
+	SetDefaults_ScalingAdvisorServerConfiguration(&in.Server)
+	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
 }

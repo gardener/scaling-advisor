@@ -14,36 +14,44 @@ import (
 
 // ScalingAdvisorConfiguration defines the configuration for the scalingadvisor operator.
 type ScalingAdvisorConfiguration struct {
+	// Controllers defines the configuration for controllers.
+	Controllers     ControllersConfiguration `json:"controllers"`
 	metav1.TypeMeta `json:",inline"`
 	// ClientConnection defines the configuration for constructing a kube client.
 	ClientConnection ClientConnectionConfiguration `json:"clientConnection"`
-	// LeaderElection defines the configuration for leader election.
-	LeaderElection LeaderElectionConfiguration `json:"leaderElection"`
 	// Server is basic server configuration for the scaling advisor.
 	Server ScalingAdvisorServerConfiguration `json:"server"`
-	// Controllers defines the configuration for controllers.
-	Controllers ControllersConfiguration `json:"controllers"`
+	// LeaderElection defines the configuration for leader election.
+	LeaderElection LeaderElectionConfiguration `json:"leaderElection"`
 }
 
 // ClientConnectionConfiguration contains details for constructing a client.
 type ClientConnectionConfiguration struct {
-	// QPS controls the number of queries per second allowed for this connection.
-	QPS float32 `json:"qps"`
-	// Burst allows extra queries to accumulate when a client is exceeding its rate.
-	Burst int `json:"burst"`
 	// ContentType is the content type used when sending data to the server from this client.
 	ContentType string `json:"contentType"`
 	// AcceptContentTypes defines the Accept header sent by clients when connecting to the server,
 	// overriding the default value of 'application/json'. This field will control all connections
 	// to the server used by a particular client.
 	AcceptContentTypes string `json:"acceptContentTypes"`
+	// Burst allows extra queries to accumulate when a client is exceeding its rate.
+	Burst int `json:"burst"`
+	// QPS controls the number of queries per second allowed for this connection.
+	QPS float32 `json:"qps"`
 }
 
 // LeaderElectionConfiguration defines the configuration for the leader election.
 type LeaderElectionConfiguration struct {
-	// Enabled specifies whether leader election is enabled. Set this
-	// to true when running replicated instances of the operator for high availability.
-	Enabled bool `json:"enabled"`
+	// ResourceLock determines which resource lock to use for leader election.
+	// This is only applicable if leader election is enabled.
+	ResourceLock string `json:"resourceLock"`
+	// ResourceName determines the name of the resource that leader election
+	// will use for holding the leader lock.
+	// This is only applicable if leader election is enabled.
+	ResourceName string `json:"resourceName"`
+	// ResourceNamespace determines the namespace in which the leader
+	// election resource will be created.
+	// This is only applicable if leader election is enabled.
+	ResourceNamespace string `json:"resourceNamespace"`
 	// LeaseDuration is the duration that non-leader candidates will wait
 	// after observing a leadership renewal until attempting to acquire
 	// leadership of the occupied but un-renewed leader slot. This is effectively the
@@ -60,28 +68,20 @@ type LeaderElectionConfiguration struct {
 	// between attempting acquisition and renewal of leadership.
 	// This is only applicable if leader election is enabled.
 	RetryPeriod metav1.Duration `json:"retryPeriod"`
-	// ResourceLock determines which resource lock to use for leader election.
-	// This is only applicable if leader election is enabled.
-	ResourceLock string `json:"resourceLock"`
-	// ResourceName determines the name of the resource that leader election
-	// will use for holding the leader lock.
-	// This is only applicable if leader election is enabled.
-	ResourceName string `json:"resourceName"`
-	// ResourceNamespace determines the namespace in which the leader
-	// election resource will be created.
-	// This is only applicable if leader election is enabled.
-	ResourceNamespace string `json:"resourceNamespace"`
+	// Enabled specifies whether leader election is enabled. Set this
+	// to true when running replicated instances of the operator for high availability.
+	Enabled bool `json:"enabled"`
 }
 
 // ScalingAdvisorServerConfiguration is the configuration for Scaling Advisor server.
 type ScalingAdvisorServerConfiguration struct {
-	commontypes.ServerConfig `json:",inline"`
 	// HealthProbes is the host and port for serving the healthz and readyz endpoints.
 	HealthProbes commontypes.HostPort `json:"healthProbes,omitempty"`
 	// Metrics is the host and port for serving the metrics endpoint.
 	Metrics commontypes.HostPort `json:"metrics,omitempty"`
 	// Profiling is the host and port for serving the profiling endpoints.
-	Profiling commontypes.HostPort `json:"profiling,omitempty"`
+	Profiling                commontypes.HostPort `json:"profiling,omitempty"`
+	commontypes.ServerConfig `json:",inline"`
 }
 
 // ControllersConfiguration defines the configuration for controllers that are run as part of the scaling-advisor.

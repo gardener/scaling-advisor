@@ -22,12 +22,12 @@ import (
 
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
-	commontypes.ServerConfig
-	commontypes.QPSBurst
-	WatchConfig         minkapi.WatchConfig
 	InstancePricingPath string
 	// CloudProvider is the cloud provider for which the scaling advisor service is initialized.
-	CloudProvider          string
+	CloudProvider string
+	commontypes.ServerConfig
+	commontypes.QPSBurst
+	WatchConfig            minkapi.WatchConfig
 	MaxParallelSimulations int
 }
 

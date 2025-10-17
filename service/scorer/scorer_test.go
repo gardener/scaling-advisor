@@ -529,9 +529,9 @@ func TestSelectMinPrice(t *testing.T) {
 
 func TestGetNodeScoreSelector(t *testing.T) {
 	tests := map[string]struct {
+		expectedError        error
 		input                commontypes.NodeScoringStrategy
 		expectedFunctionName string
-		expectedError        error
 	}{
 		"least-cost strategy": {
 			input:                commontypes.LeastCostNodeScoringStrategy,
@@ -580,9 +580,9 @@ func TestGetNodeScoreSelector(t *testing.T) {
 
 func TestGetNodeScorer(t *testing.T) {
 	tests := map[string]struct {
+		expectedError error
 		input         commontypes.NodeScoringStrategy
 		expectedType  string
-		expectedError error
 	}{
 		"least-cost strategy": {
 			input:         commontypes.LeastCostNodeScoringStrategy,

@@ -46,11 +46,11 @@ var (
 )
 
 type baseView struct {
-	log         logr.Logger
+	eventSink   minkapi.EventSink
 	args        *minkapi.ViewArgs
 	mu          *sync.RWMutex
 	stores      map[schema.GroupVersionKind]*store.InMemResourceStore
-	eventSink   minkapi.EventSink
+	log         logr.Logger
 	changeCount atomic.Int64
 }
 

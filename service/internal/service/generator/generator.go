@@ -41,8 +41,8 @@ type Args struct {
 type RunArgs struct {
 	BaseView      mkapi.View
 	SandboxViewFn SandBoxViewFunc
-	Request       svcapi.ScalingAdviceRequest
 	AdviceEventCh chan<- svcapi.ScalingAdviceEvent
+	Request       svcapi.ScalingAdviceRequest
 }
 
 type SandBoxViewFunc func(log logr.Logger, name string) (mkapi.View, error)

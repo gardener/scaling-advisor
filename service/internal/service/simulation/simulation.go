@@ -28,10 +28,10 @@ import (
 )
 
 type defaultSimulation struct {
-	name         string
 	args         *svcapi.SimulationArgs
 	nodeTemplate *sacorev1alpha1.NodeTemplate
 	state        *trackState
+	name         string
 }
 
 var _ svcapi.CreateSimulationFunc = New
@@ -263,13 +263,13 @@ func (s *defaultSimulation) getOtherAssignments() ([]svcapi.NodePodAssignment, e
 
 // traceState is regularly populated when simulation is running.
 type trackState struct {
-	groupRunPassNum     uint32
-	status              svcapi.ActivityStatus
+	err                 error
 	simNode             *corev1.Node
 	unscheduledPods     map[types.NamespacedName]svcapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
 	scheduledPodsByNode map[string][]svcapi.PodResourceInfo             // map of node names to PodReosurceInfo
+	status              svcapi.ActivityStatus
 	result              svcapi.SimRunResult
-	err                 error
+	groupRunPassNum     uint32
 }
 
 func (t *trackState) reconcile(log logr.Logger, view mkapi.View, events []eventsv1.Event) error {

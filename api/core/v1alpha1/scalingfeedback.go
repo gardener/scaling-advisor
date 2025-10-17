@@ -60,10 +60,10 @@ type ScaleOutErrorInfo struct {
 	AvailabilityZone string `json:"availabilityZone"`
 	// InstanceType is the instance type of the node pool.
 	InstanceType string `json:"instanceType"`
-	// FailCount is the number of nodes that have failed creation.
-	FailCount int32 `json:"failCount"`
 	// ErrorType is the type of error that occurred during scale-out.
 	ErrorType ScalingErrorType `json:"errorType"`
+	// FailCount is the number of nodes that have failed creation.
+	FailCount int32 `json:"failCount"`
 }
 
 // ScaleInErrorInfo is the information about nodes that could not be deleted for scale-in.
