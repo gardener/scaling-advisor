@@ -72,6 +72,9 @@ func NewInMemResourceStore(log logr.Logger, args *mkapi.ResourceStoreArgs) *InMe
 func (s *InMemResourceStore) Reset() {
 	s.log.V(4).Info("resetting store", "kind", s.args.ObjectGVK.Kind)
 	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	if s.broadcaster != nil {
+		s.broadcaster.Shutdown()
+	}
 	s.broadcaster = watch.NewBroadcaster(s.args.WatchConfig.QueueSize, watch.WaitIfChannelFull)
 }
 

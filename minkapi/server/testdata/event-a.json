@@ -4,9 +4,8 @@
   "eventTime": "2025-05-08T09:09:29.472279Z",
   "kind": "Event",
   "metadata": {
-    "generateName": "e-",
     "creationTimestamp": "2025-05-08T09:09:29Z",
-    "instanceType": "a-bingo.aaabbb",
+    "name": "a-bingo.aaabbb",
     "namespace": "default",
     "resourceVersion": "1",
     "uid": "58d73789-6d07-4293-ac3e-b764cd0a9acd"

@@ -7,6 +7,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"sync"
@@ -105,13 +106,13 @@ func TestUpdate(t *testing.T) {
 			retErr:                  fmt.Errorf("does not match expected objGVK"),
 			expectedNumberOfObjects: 1,
 		},
-		//"update non-existent object": { // If object doesn't exist, it creates one
-		//	name:                             "abcd",
-		//	typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
-		//	ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "InstanceType", "ResourceVersion"),
-		//	retErr:                           nil,
-		//	expectedNumberOfObjects:          2,
-		//},
+		"update non-existent object": { // If object doesn't exist, it creates one
+			name:                             "abcd",
+			typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "Name", "ResourceVersion"),
+			retErr:                           nil,
+			expectedNumberOfObjects:          2,
+		},
 	}
 
 	for name, tc := range tests {
@@ -228,9 +229,17 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGetByKey(t *testing.T) {
+	notFoundStatusErr := apierrors.StatusError{
+		ErrStatus: metav1.Status{
+			Status: metav1.StatusFailure,
+			Code:   http.StatusNotFound,
+			Reason: metav1.StatusReasonNotFound,
+		},
+	}
+
 	tests := map[string]struct {
 		key                       string
-		errorCheckFunc            func(error) bool
+		expectedErr               apierrors.StatusError
 		objectFound               bool
 		createObjectBeforeTesting bool
 	}{
@@ -243,13 +252,13 @@ func TestGetByKey(t *testing.T) {
 			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
 			objectFound:               false,
 			createObjectBeforeTesting: false,
-			errorCheckFunc:            apierrors.IsNotFound,
+			expectedErr:               notFoundStatusErr,
 		},
 		"fetch object with wrong key": {
 			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, "abcd"),
 			objectFound:               false,
 			createObjectBeforeTesting: true,
-			errorCheckFunc:            apierrors.IsNotFound,
+			expectedErr:               notFoundStatusErr,
 		},
 	}
 
@@ -269,12 +278,29 @@ func TestGetByKey(t *testing.T) {
 
 			_, err := s.GetByKey(tc.key)
 			if err != nil {
-				if !tc.errorCheckFunc(err) {
-					t.Errorf("Expected error to be %s, got: %v",
-						testutil.GetFunctionName(t, tc.errorCheckFunc), err,
-					)
+				statusErr, ok := err.(*apierrors.StatusError)
+				if !ok {
+					t.Errorf("Expected error to be a statuserr")
 					return
 				}
+				if statusErr.Status().Status != tc.expectedErr.Status().Status {
+					t.Errorf("Expected Error Status to be %s, got %s",
+						tc.expectedErr.Status().Status, statusErr.Status().Status,
+					)
+				}
+
+				if statusErr.Status().Reason != tc.expectedErr.Status().Reason {
+					t.Errorf("Expected Error Reason to be %s, got %s",
+						tc.expectedErr.Status().Reason, statusErr.Status().Reason,
+					)
+				}
+
+				if statusErr.Status().Code != tc.expectedErr.Status().Code {
+					t.Errorf("Expected ErrorCode to be %d, got %d",
+						tc.expectedErr.Status().Code, statusErr.Status().Code,
+					)
+				}
+
 				return
 			}
 		})

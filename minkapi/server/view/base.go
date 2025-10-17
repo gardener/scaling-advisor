@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -343,24 +342,8 @@ func patchObject(v minkapi.View, gvk schema.GroupVersionKind, objName cache.Obje
 		err = fmt.Errorf("stored object with key %q is not metav1.Object: %w", objName, err)
 		return
 	}
-	if mo.GetName() != objName.Name {
-		fieldErr := field.Error{
-			Type:     field.ErrorTypeInvalid,
-			BadValue: mo.GetName(),
-			Field:    "metadata.name",
-			Detail:   fmt.Sprintf("Invalid value: %q: field is immutable", mo.GetName()),
-		}
-		err = apierrors.NewInvalid(gvk.GroupKind(), objName.Name, field.ErrorList{&fieldErr})
-		return
-	}
-	if mo.GetNamespace() != objName.Namespace {
-		fieldErr := field.Error{
-			Type:     field.ErrorTypeInvalid,
-			Field:    "metadata.namespace",
-			BadValue: mo.GetNamespace(),
-			Detail:   fmt.Sprintf("Invalid value: %q: field is immutable", mo.GetNamespace()),
-		}
-		err = apierrors.NewInvalid(gvk.GroupKind(), objName.Name, field.ErrorList{&fieldErr})
+
+	if err = objutil.CheckObjectNameAndNamespace(mo, objName, gvk.GroupKind()); err != nil {
 		return
 	}
 

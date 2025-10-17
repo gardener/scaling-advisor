@@ -16,8 +16,8 @@ var genscenarioCmd = &cobra.Command{
 	Short: "Generate scaling scenarios for the given cluster-manager",
 	Long: `genscenario generates scaling scenarios for the given cluster-manager.
 Generate scaling scenario(s) for the gardener cluster identified by the given gardener landscape, gardener project
-and gardener shoot name and write the scenario(s) to the scenario-dir.
-	 genscenario gardener -l <landscape> -p <project> -t <shoot-name> -d <scenario-dir>
+and gardener shoot name and write the scenario(s) to the scenario-dir (defaults to "/tmp/" if unspecified).
+	 genscenario gardener -l <landscape> -p <project> -t <shoot-name> <scenario-dir>
 `,
 	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Println("genscenario called")
