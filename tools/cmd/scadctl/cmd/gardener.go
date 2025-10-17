@@ -48,8 +48,9 @@ type ShootCoordinate struct {
 }
 
 var (
-	shootCoords ShootCoordinate
-	scenarioDir string
+	shootCoords           ShootCoordinate
+	scenarioDir           string
+	excludeKubeSystemPods bool
 )
 
 // shootGVR is the GroupVersionResource of a gardener shoot
@@ -65,7 +66,7 @@ type ShootAccess interface {
 	// ListNodes fetches the nodes on a shoot cluster matching the given criteria.
 	ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Node, error)
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
-	ListPods(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Pod, error)
+	ListPods(ctx context.Context, criteria mkapi.MatchCriteria, excludeKubeSystemPods bool) ([]corev1.Pod, error)
 	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
 	ListPriorityClasses(ctx context.Context) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
@@ -158,7 +159,7 @@ var gardenerCmd = &cobra.Command{
 		}
 		clusterScalingConstraintFileName := path.Join(
 			scenarioDir,
-			"cluster-scaling-constraints-"+time.Now().UTC().Format("020106-1504")+".json",
+			"cluster-scaling-constraints-"+time.Now().UTC().Format("20060102T150405Z")+".json",
 		)
 		if err := saveDataToFile(csc, clusterScalingConstraintFileName); err != nil {
 			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
@@ -194,6 +195,12 @@ func init() {
 		"gardener shoot name (required)",
 	)
 	_ = gardenerCmd.MarkFlagRequired("shoot")
+	gardenerCmd.Flags().BoolVar(
+		&excludeKubeSystemPods,
+		"exclude-kube-system-pods",
+		false,
+		"exclude kube-system pods from the snapshot",
+	)
 }
 
 func (sc *ShootCoordinate) getFullyQualifiedName() string {
@@ -299,7 +306,10 @@ func getViewerKubeconfig(ctx context.Context, landscapeClient *dynamic.DynamicCl
 			return "", fmt.Errorf("error decoding kubeconfig: %w", err)
 		}
 
-		kubeConfigPath := "/tmp/" + shootCoords.Landscape + "_" + shootCoords.Project + "_" + shootCoords.Shoot + "_viewerKubeconfig" + ".yaml"
+		kubeConfigFileName := fmt.Sprintf("%s_%s_%s_viewer-kubeconfig.yaml",
+			shootCoords.Landscape, shootCoords.Project, shootCoords.Shoot,
+		)
+		kubeConfigPath := path.Join("/tmp/" + kubeConfigFileName)
 		err = os.WriteFile(kubeConfigPath, kubeconfigBytes, 0600)
 		if err != nil {
 			return "", err
@@ -357,7 +367,7 @@ func (a *access) ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) (n
 	return nodes, err
 }
 
-func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria) (pods []corev1.Pod, err error) {
+func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria, excludeKubeSystemPods bool) (pods []corev1.Pod, err error) {
 	var podList corev1.PodList
 	err = a.shootClient.List(ctx, &podList, &client.ListOptions{
 		Namespace:     criteria.Namespace,
@@ -374,6 +384,10 @@ func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria) (po
 		}
 		// pod name doesn't match the required names
 		if checkPodName && !criteria.Names.Has(p.Name) {
+			continue
+		}
+
+		if excludeKubeSystemPods && p.Namespace == metav1.NamespaceSystem {
 			continue
 		}
 
@@ -443,7 +457,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
 	}
 
-	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{})
+	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{}, excludeKubeSystemPods)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -470,8 +484,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 // unbinds the pods scheduled on those nodes. This is useful to compare
 // the removed nodes with the nodes scaled up by autoscaling component.
 func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
-	formattedTime := time.Now().UTC().Format("020106-1504") // DDMMYY-HHMM
-
+	formattedTime := time.Now().UTC().Format("20060102T150405Z")
 	incrementalSnapshotFileName := path.Join(dir, "snapshot-"+formattedTime+"-incremental.json")
 	if err := saveDataToFile(snap, incrementalSnapshotFileName); err != nil {
 		return err
