@@ -8,13 +8,12 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	corev1 "k8s.io/api/core/v1"
 	"reflect"
 	"runtime"
+	sigyaml "sigs.k8s.io/yaml"
 	"strings"
 	"testing"
-
-	corev1 "k8s.io/api/core/v1"
-	sigyaml "sigs.k8s.io/yaml"
 )
 
 //go:embed testdata/*

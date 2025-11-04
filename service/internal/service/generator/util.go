@@ -24,11 +24,11 @@ func SendError(adviceEventCh chan<- svcapi.ScalingAdviceEvent, requestRef svcapi
 }
 
 func createScalingAdvice(request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winningNodeScores []svcapi.NodeScore, pendingUnscheduledPods []svcapi.PodResourceInfo) (*sacorev1alpha1.ClusterScalingAdvice, error) {
-	nodeCountByPlacement, err := request.Snapshot.GetNodeCountByPlacement()
+	existingNodeCountByPlacement, err := request.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
 		return nil, err
 	}
-	scaleOutPlan := createScaleOutPlan(winningNodeScores, nodeCountByPlacement, pendingUnscheduledPods)
+	scaleOutPlan := createScaleOutPlan(winningNodeScores, existingNodeCountByPlacement, pendingUnscheduledPods)
 	return &sacorev1alpha1.ClusterScalingAdvice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%d", objutil.GenerateName("advice"), groupRunPassNum),

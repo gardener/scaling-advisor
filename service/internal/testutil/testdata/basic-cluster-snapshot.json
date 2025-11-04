@@ -1,0 +1,150 @@
+{
+  "Pods": [
+    {
+      "UID": "7854d99d-4d4a-41ba-9acc-bc9e539aa9b5",
+      "Namespace": "default",
+      "Name": "nginx-7r552",
+      "AggregatedRequests": {
+        "memory": 5662310400
+      },
+      "NodeName": "ip-10-180-25-137.eu-west-1.compute.internal",
+      "SchedulerName": "default-scheduler",
+      "Tolerations": [
+        {
+          "key": "node.kubernetes.io/not-ready",
+          "operator": "Exists",
+          "effect": "NoExecute",
+          "tolerationSeconds": 300
+        },
+        {
+          "key": "node.kubernetes.io/unreachable",
+          "operator": "Exists",
+          "effect": "NoExecute",
+          "tolerationSeconds": 300
+        }
+      ],
+      "Priority": 0,
+      "PreemptionPolicy": "PreemptLowerPriority"
+    },
+    {
+      "UID": "d85f610a-ee11-4670-b807-bde9e1c0929d",
+      "Namespace": "default",
+      "Name": "nginx-w4hnm",
+      "AggregatedRequests": {
+        "memory": 5662310400
+      },
+      "NodeName": "",
+      "SchedulerName": "default-scheduler",
+      "Tolerations": [
+        {
+          "key": "node.kubernetes.io/not-ready",
+          "operator": "Exists",
+          "effect": "NoExecute",
+          "tolerationSeconds": 300
+        },
+        {
+          "key": "node.kubernetes.io/unreachable",
+          "operator": "Exists",
+          "effect": "NoExecute",
+          "tolerationSeconds": 300
+        }
+      ],
+      "Priority": 0,
+      "PreemptionPolicy": "PreemptLowerPriority"
+    }
+  ],
+  "Nodes": [
+    {
+      "UID": "61869f8b-ad8a-4e42-ba15-a7fe07366952",
+      "Name": "ip-10-180-25-137.eu-west-1.compute.internal",
+      "Labels": {
+        "kubernetes.io/arch": "amd64",
+        "kubernetes.io/hostname": "ip-10-180-25-137.eu-west-1.compute.internal",
+        "kubernetes.io/os": "linux",
+        "networking.gardener.cloud/node-local-dns-enabled": "true",
+        "node.kubernetes.io/instance-type": "m5.large",
+        "node.kubernetes.io/role": "node",
+        "topology.ebs.csi.aws.com/zone": "eu-west-1a",
+        "topology.k8s.aws/zone-id": "euw1-az3",
+        "topology.kubernetes.io/region": "eu-west-1",
+        "topology.kubernetes.io/zone": "eu-west-1a",
+        "worker.garden.sapcloud.io/group": "p",
+        "worker.gardener.cloud/cri-name": "containerd",
+        "worker.gardener.cloud/kubernetes-version": "1.33.4",
+        "worker.gardener.cloud/pool": "p",
+        "worker.gardener.cloud/system-components": "true"
+      },
+      "InstanceType": "m5.large",
+      "Unschedulable": false,
+      "Capacity": {
+        "cpu": 2,
+        "ephemeral-storage": 51371081728,
+        "hugepages-1Gi": 0,
+        "hugepages-2Mi": 0,
+        "memory": 8119189504,
+        "pods": 110
+      },
+      "Allocatable": {
+        "cpu": 2,
+        "ephemeral-storage": 48802527604,
+        "hugepages-1Gi": 0,
+        "hugepages-2Mi": 0,
+        "memory": 6940590080,
+        "pods": 110
+      },
+      "Conditions": [
+        {
+          "type": "KernelDeadlock",
+          "status": "False",
+          "lastHeartbeatTime": "2025-11-05T07:30:54Z",
+          "lastTransitionTime": "2025-11-05T02:35:15Z",
+          "reason": "KernelHasNoDeadlock",
+          "message": "kernel has no deadlock"
+        },
+        {
+          "type": "ReadonlyFilesystem",
+          "status": "False",
+          "lastHeartbeatTime": "2025-11-05T07:30:54Z",
+          "lastTransitionTime": "2025-11-05T02:35:15Z",
+          "reason": "FilesystemIsNotReadOnly",
+          "message": "Filesystem is not read-only"
+        },
+        {
+          "type": "MemoryPressure",
+          "status": "False",
+          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
+          "lastTransitionTime": "2025-11-05T02:34:17Z",
+          "reason": "KubeletHasSufficientMemory",
+          "message": "kubelet has sufficient memory available"
+        },
+        {
+          "type": "DiskPressure",
+          "status": "False",
+          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
+          "lastTransitionTime": "2025-11-05T02:34:17Z",
+          "reason": "KubeletHasNoDiskPressure",
+          "message": "kubelet has no disk pressure"
+        },
+        {
+          "type": "PIDPressure",
+          "status": "False",
+          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
+          "lastTransitionTime": "2025-11-05T02:34:17Z",
+          "reason": "KubeletHasSufficientPID",
+          "message": "kubelet has sufficient PID available"
+        },
+        {
+          "type": "Ready",
+          "status": "True",
+          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
+          "lastTransitionTime": "2025-11-05T02:34:56Z",
+          "reason": "KubeletReady",
+          "message": "kubelet is posting ready status"
+        }
+      ],
+      "CSIDriverVolumeMaximums": {
+        "ebs.csi.aws.com": 26
+      }
+    }
+  ]
+}

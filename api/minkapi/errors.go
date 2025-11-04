@@ -35,6 +35,6 @@ var (
 	ErrListObjects = errors.New("cannot list objects")
 	// ErrUpdateObject is a sentinel error indicating that object update failed.
 	ErrUpdateObject = errors.New("cannot update object")
-	// ErrCreateSandbox is a sentinel error indicating that sandbox creation failed.
-	ErrCreateSandbox = errors.New("cannot create sandbox")
+	// ErrCreateView is a sentinel error indicating that view creation failed.
+	ErrCreateView = errors.New("cannot create view")
 )

@@ -24,7 +24,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"

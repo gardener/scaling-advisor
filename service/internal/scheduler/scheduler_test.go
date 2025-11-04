@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
 		t.Fatalf("failed to get client facades: %v", err)
 		return
@@ -116,13 +116,13 @@ func initSuite(ctx context.Context) error {
 	}
 
 	// Wait for the MinKAPI server to fully initialize and create the config file
-	configPath := "/tmp/minkapi-kube-scheduler-config.yaml"
+	configPath := "/tmp/kube-scheduler-config.yaml"
 	maxWait := 30 * time.Second
 	checkInterval := 500 * time.Millisecond
 
 	deadline := time.Now().Add(maxWait)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(configPath); err == nil {
+		if _, err = os.Stat(configPath); err == nil {
 			// Config file exists, proceed
 			break
 		}
@@ -130,18 +130,18 @@ func initSuite(ctx context.Context) error {
 	}
 
 	// Final check that the config file exists
-	if _, err := os.Stat(configPath); err != nil {
+	if _, err = os.Stat(configPath); err != nil {
 		return fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
 	}
 
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
 	state.baseView = app.Server.GetBaseView()
-	state.wamView, err = app.Server.GetSandboxView(log, "wam")
+	state.wamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "wam")
 	if err != nil {
 		return err
 	}
-	state.bamView, err = app.Server.GetSandboxView(log, "bam")
+	state.bamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "bam")
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func initSuite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(state.ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
 		return err
 	}

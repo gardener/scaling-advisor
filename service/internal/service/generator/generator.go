@@ -7,10 +7,11 @@ package generator
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"sync/atomic"
 	"time"
-
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -20,42 +21,35 @@ import (
 )
 
 type Generator struct {
-	args              *Args
-	schedulerLauncher svcapi.SchedulerLauncher
+	args *Args
 }
 
 // Args is used to construct a new instance of the Generator
 type Args struct {
-	PricingAccess          svcapi.InstancePricingAccess
-	WeightsFn              svcapi.GetWeightsFunc
-	NodeScorer             svcapi.NodeScorer
-	Selector               svcapi.NodeScoreSelector
-	CreateSimFn            svcapi.CreateSimulationFunc
-	CreateSimGroupsFn      svcapi.CreateSimulationGroupsFunc
-	SchedulerConfigPath    string
-	MaxParallelSimulations int
+	ViewAccess        mkapi.ViewAccess
+	PricingAccess     svcapi.InstancePricingAccess
+	WeightsFn         svcapi.GetWeightsFunc
+	NodeScorer        svcapi.NodeScorer
+	Selector          svcapi.NodeScoreSelector
+	SimulationCreator svcapi.SimulationCreator
+	SimulationGrouper svcapi.SimulationGrouper
+	SchedulerLauncher svcapi.SchedulerLauncher
 }
 
 // RunArgs is used to run the generator and generate scaling advice
 // TODO: follow Args, RunArgs convention for all other components too (which have more than 3 parameters) for structural consistency
 type RunArgs struct {
-	BaseView      mkapi.View
-	SandboxViewFn SandBoxViewFunc
 	Request       svcapi.ScalingAdviceRequest
 	AdviceEventCh chan<- svcapi.ScalingAdviceEvent
+	Timeout       time.Duration
 }
 
 type SandBoxViewFunc func(log logr.Logger, name string) (mkapi.View, error)
 
-func New(args *Args) (*Generator, error) {
-	launcher, err := scheduler.NewLauncher(args.SchedulerConfigPath, args.MaxParallelSimulations)
-	if err != nil {
-		return nil, err
-	}
+func New(args *Args) *Generator {
 	return &Generator{
-		args:              args,
-		schedulerLauncher: launcher,
-	}, nil
+		args: args,
+	}
 }
 
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
@@ -68,8 +62,15 @@ func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 
 func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
+
+	baseView := g.args.ViewAccess.GetBaseView()
+	err = synchronizeBaseView(ctx, baseView, runArgs.Request.Snapshot)
+	if err != nil {
+		return
+	}
+
 	var groupRunPassCounter atomic.Uint32
-	groups, err := g.createSimulationGroups(log, runArgs, &groupRunPassCounter)
+	groups, err := g.createSimulationGroups(ctx, runArgs, &groupRunPassCounter)
 	if err != nil {
 		return
 	}
@@ -77,6 +78,7 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		allWinnerNodeScores []svcapi.NodeScore
 		unscheduledPods     []svcapi.PodResourceInfo
 	)
+
 	for {
 		var passWinnerNodeScores []svcapi.NodeScore
 		groupRunPassNum := groupRunPassCounter.Load()
@@ -116,6 +118,34 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
 	}
 	return
+}
+
+func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.ClusterSnapshot) error {
+	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
+	// the base view with the current state of the target cluster.
+	view.Reset()
+	for _, nodeInfo := range cs.Nodes {
+		if _, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
+			return err
+		}
+	}
+	for _, pod := range cs.Pods {
+		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+			return err
+		}
+	}
+	for _, pc := range cs.PriorityClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+			return err
+		}
+	}
+	for _, rc := range cs.RuntimeClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.RuntimeClassDescriptor.GVK, &rc); err != nil {
+			return err
+		}
+	}
+	return nil
+
 }
 
 func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
@@ -209,7 +239,7 @@ func getScaledNodeOfWinner(results []svcapi.SimRunResult, winnerNodeScore *svcap
 }
 
 // createSimulationGroups creates a slice of SimulationGroup based on priorities that are defined at the NodePool and NodeTemplate level.
-func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
+func (g *Generator) createSimulationGroups(ctx context.Context, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
 	request := runArgs.Request
 	var (
 		allSimulations []svcapi.Simulation
@@ -218,7 +248,8 @@ func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs, gr
 		for _, nodeTemplate := range nodePool.NodeTemplates {
 			for _, zone := range nodePool.AvailabilityZones {
 				simulationName := fmt.Sprintf("%s_%s_%s", nodePool.Name, nodeTemplate.Name, zone)
-				sim, err := g.createSimulation(log, runArgs.SandboxViewFn, simulationName, &nodePool, nodeTemplate.Name, zone, groupRunPassCounter)
+
+				sim, err := g.createSimulation(ctx, simulationName, &nodePool, nodeTemplate.Name, zone, groupRunPassCounter)
 				if err != nil {
 					return nil, err
 				}
@@ -226,11 +257,11 @@ func (g *Generator) createSimulationGroups(log logr.Logger, runArgs *RunArgs, gr
 			}
 		}
 	}
-	return g.args.CreateSimGroupsFn(allSimulations)
+	return g.args.SimulationGrouper.Group(allSimulations)
 }
 
-func (g *Generator) createSimulation(log logr.Logger, sandboxViewFn SandBoxViewFunc, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
-	simView, err := sandboxViewFn(log, simulationName)
+func (g *Generator) createSimulation(ctx context.Context, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
+	simView, err := g.args.ViewAccess.GetOrCreateSandboxView(ctx, simulationName)
 	if err != nil {
 		return nil, err
 	}
@@ -239,9 +270,9 @@ func (g *Generator) createSimulation(log logr.Logger, sandboxViewFn SandBoxViewF
 		AvailabilityZone:    zone,
 		NodePool:            nodePool,
 		NodeTemplateName:    nodeTemplateName,
-		SchedulerLauncher:   g.schedulerLauncher,
+		SchedulerLauncher:   g.args.SchedulerLauncher,
 		View:                simView,
-		TrackPollInterval:   3 * time.Second,
+		TrackPollInterval:   10 * time.Millisecond,
 	}
-	return g.args.CreateSimFn(simulationName, simArgs)
+	return g.args.SimulationCreator.Create(simulationName, simArgs)
 }

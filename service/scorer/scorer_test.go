@@ -23,7 +23,7 @@ import (
 )
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := prtestutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -155,7 +155,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := prtestutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -285,7 +285,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := prtestutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -419,7 +419,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := prtestutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -602,9 +602,9 @@ func TestGetNodeScorer(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			access, err := prtestutil.LoadTestInstancePricingAccess()
+			access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 			if err != nil {
-				t.Fatalf("LoadTestInstancePricingAccess failed with error: %v", err)
+				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}
 			got, err := GetNodeScorer(tc.input, access, testWeightsFunc)
 			if tc.expectedError == nil {

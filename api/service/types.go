@@ -45,7 +45,7 @@ const (
 type ScalingAdviceRequest struct {
 	ScalingAdviceRequestRef
 	// Constraint represents the constraints using which the scaling advice is generated.
-	Constraint sacorev1alpha1.ClusterScalingConstraint
+	Constraint *sacorev1alpha1.ClusterScalingConstraint
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
@@ -333,13 +333,17 @@ type ResourceMeta struct {
 // InstancePriceInfo contains pricing and specification information for a cloud instance type.
 type InstancePriceInfo struct {
 	// InstanceType is the name of the instance type.
-	InstanceType string `json:"instancetype"`
+	InstanceType string `json:"instanceType"`
 	// Region is the cloud region where the instance is available.
 	Region string `json:"region"`
 	// VCPU is the number of virtual CPUs for the instance type.
 	VCPU int32 `json:"VCPU"`
 	// Memory is the amount of memory in GB for the instance type.
-	Memory float64 `json:"memory"`
+	Memory int64 `json:"memory"`
+	// GPU is the number of GPUs for the instance type.
+	GPU int32 `json:"GPU"`
+	// GPUMemory is the amount of GPU memory in GB for the instance type.
+	GPUMemory int64 `json:"GPUMemory"`
 	// HourlyPrice is the hourly cost for the instance type.
 	HourlyPrice float64 `json:"hourlyPrice"`
 	// OS is the operating system for the instance type.
@@ -487,12 +491,21 @@ type SimulationArgs struct {
 	View mkapi.View
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view and reconciling simulation state
 	TrackPollInterval time.Duration
-	// Timeout is the simulation timeout
-	Timeout time.Duration
 }
 
-// CreateSimulationFunc is a factory function for constructing a simulation instance
-type CreateSimulationFunc func(name string, args *SimulationArgs) (Simulation, error)
+type SimulationCreator interface {
+	// Create creates a simulation instance with the given name and arguments.
+	Create(name string, args *SimulationArgs) (Simulation, error)
+}
+
+// SimulationCreatorFunc is a factory function for constructing a simulation instance.
+// It implements the SimulationCreator interface.
+type SimulationCreatorFunc func(name string, args *SimulationArgs) (Simulation, error)
+
+// CreateSimulation creates a simulation instance with the given name and arguments.
+func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simulation, error) {
+	return f(name, args)
+}
 
 // SimulationGroup is a group of simulations at the same priority level (ie a partition of simulations). We attempt to run simulations for the
 // given group and get a preferred NodeScore for simulations belonging to a group before moving to the group at the
@@ -527,8 +540,16 @@ type SimulationGroup interface {
 	Run(ctx context.Context) (SimGroupRunResult, error)
 }
 
-// CreateSimulationGroupsFunc represents a factory function for partitioning Simulation instances into one or more SimulationGroups
-type CreateSimulationGroupsFunc func(simulations []Simulation) ([]SimulationGroup, error)
+type SimulationGrouper interface {
+	Group(simulations []Simulation) ([]SimulationGroup, error)
+}
+
+// SimulationGrouperFunc represents a factory function for partitioning Simulation instances into one or more SimulationGroups
+type SimulationGrouperFunc func(simulations []Simulation) ([]SimulationGroup, error)
+
+func (f SimulationGrouperFunc) Group(simulations []Simulation) ([]SimulationGroup, error) {
+	return f(simulations)
+}
 
 // SimGroupKey represents the key for a SimulationGroup.
 type SimGroupKey struct {

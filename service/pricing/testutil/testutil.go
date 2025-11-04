@@ -17,13 +17,26 @@ import (
 //go:embed testdata/*
 var testDataFS embed.FS
 
-func LoadTestInstancePricingAccess() (access service.InstancePricingAccess, err error) {
+func GetInstancePricingAccessWithFakeData() (access service.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", service.ErrLoadInstanceTypeInfo, err)
 		}
 	}()
 	testData, err := testDataFS.ReadFile("testdata/instance_price_infos.json")
+	if err != nil {
+		return
+	}
+	return pricing.GetInstancePricingFromData(commontypes.AWSCloudProvider, testData)
+}
+
+func GetInstancePricingAccessWithFilteredAWSData() (access service.InstancePricingAccess, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", service.ErrLoadInstanceTypeInfo, err)
+		}
+	}()
+	testData, err := testDataFS.ReadFile("testdata/aws_eu-west-1_top20_instance_pricing.json")
 	if err != nil {
 		return
 	}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/service/internal/service/weights"
 	"os"
 	"path"
 
@@ -23,19 +24,13 @@ import (
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/minkapi/server/typeinfo"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
-	corev1 "k8s.io/api/core/v1"
 )
 
 var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
-
-var defaultResourceWeights = createDefaultWeights()
 
 type defaultScalingAdvisor struct {
 	cfg               svcapi.ScalingAdvisorServiceConfig
@@ -44,7 +39,7 @@ type defaultScalingAdvisor struct {
 	generator         *generator.Generator
 }
 
-func New(log logr.Logger,
+func New(ctx context.Context,
 	config svcapi.ScalingAdvisorServiceConfig,
 	pricingAccess svcapi.InstancePricingAccess,
 	weightsFn svcapi.GetWeightsFunc,
@@ -56,7 +51,7 @@ func New(log logr.Logger,
 		}
 	}()
 	setServiceConfigDefaults(&config)
-	minKAPIServer, err := mkcore.NewDefaultInMemory(log, config.MinKAPIConfig)
+	minKAPIServer, err := mkcore.NewDefaultInMemory(ctx, config.MinKAPIConfig)
 	if err != nil {
 		return
 	}
@@ -74,18 +69,16 @@ func New(log logr.Logger,
 	if err != nil {
 		return
 	}
-	g, err := generator.New(&generator.Args{
-		PricingAccess:          pricingAccess,
-		WeightsFn:              weightsFn,
-		NodeScorer:             nodeScorer,
-		Selector:               selector,
-		CreateSimFn:            simulation.New,
-		CreateSimGroupsFn:      simulation.CreateSimulationGroups,
-		MaxParallelSimulations: config.MaxParallelSimulations,
+	g := generator.New(&generator.Args{
+		ViewAccess:        minKAPIServer,
+		PricingAccess:     pricingAccess,
+		WeightsFn:         weightsFn,
+		NodeScorer:        nodeScorer,
+		Selector:          selector,
+		SimulationCreator: svcapi.SimulationCreatorFunc(simulation.New),
+		SimulationGrouper: svcapi.SimulationGrouperFunc(simulation.CreateSimulationGroups),
+		SchedulerLauncher: schedulerLauncher,
 	})
-	if err != nil {
-		return
-	}
 	svc = &defaultScalingAdvisor{
 		cfg:               config,
 		minKAPIServer:     minKAPIServer,
@@ -105,29 +98,6 @@ func (d *defaultScalingAdvisor) Start(ctx context.Context) (err error) {
 		return
 	}
 	return
-}
-
-func synchronizeBaseView(view mkapi.View, cs *svcapi.ClusterSnapshot) error {
-	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
-	// the base view with the current state of the target cluster.
-	view.Reset()
-	for _, nodeInfo := range cs.Nodes {
-		if _, err := view.CreateObject(typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
-			return err
-		}
-	}
-	for _, pod := range cs.Pods {
-		if _, err := view.CreateObject(typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
-			return err
-		}
-	}
-	for _, pc := range cs.PriorityClasses {
-		if _, err := view.CreateObject(typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
-			return err
-		}
-	}
-	// TODO: also populate RuntimeClasses after support for the same is introduced in minkapi
-	return nil
 }
 
 func (d *defaultScalingAdvisor) Stop(ctx context.Context) (err error) {
@@ -160,19 +130,9 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svca
 			generator.SendError(adviceEventCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
 			return
 		}
-		baseView := d.minKAPIServer.GetBaseView()
-		err := synchronizeBaseView(baseView, request.Snapshot)
-		if err != nil {
-			generator.SendError(adviceEventCh, request.ScalingAdviceRequestRef, err)
-			return
-		}
 		genCtx := logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", request.ID, "correlationID", request.CorrelationID))
 		runArgs := &generator.RunArgs{
-			BaseView: d.minKAPIServer.GetBaseView(),
-			SandboxViewFn: func(log logr.Logger, name string) (mkapi.View, error) {
-				return d.minKAPIServer.GetSandboxView(log, name)
-			},
-			Request:       request, //TODO: backoff component should adjust the return depending on feedback before passing here
+			Request:       request,
 			AdviceEventCh: adviceEventCh,
 		}
 		d.generator.Run(genCtx, runArgs)
@@ -241,9 +201,7 @@ func LaunchApp(ctx context.Context) (app svcapi.App, exitCode int) {
 		exitCode = commoncli.ExitErrStart
 		return
 	}
-	weightsFn := func(instanceType string) (map[corev1.ResourceName]float64, error) {
-		return defaultResourceWeights, nil
-	}
+	weightsFn := weights.GetDefaultWeightsFn()
 	nodeScorer, err := scorer.GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, pricingAccess, weightsFn)
 	if err != nil {
 		exitCode = commoncli.ExitErrStart
@@ -255,7 +213,7 @@ func LaunchApp(ctx context.Context) (app svcapi.App, exitCode int) {
 		exitCode = commoncli.ExitErrStart
 		return
 	}
-	app.Service, err = New(log, cfg, pricingAccess, weightsFn, nodeScorer, nodeSelector)
+	app.Service, err = New(app.Ctx, cfg, pricingAccess, weightsFn, nodeScorer, nodeSelector)
 	if err != nil {
 		exitCode = commoncli.ExitErrStart
 		return
@@ -291,16 +249,4 @@ func ShutdownApp(app *svcapi.App) (exitCode int) {
 	log.Info(fmt.Sprintf("%s shutdown gracefully.", mkapi.ProgramName))
 	exitCode = commoncli.ExitSuccess
 	return
-}
-
-// createDefaultWeights returns default weights.
-// TODO: This is invalid. One must give specific weights for different instance families
-// TODO: solve the normalized unit weight linear optimization problem
-func createDefaultWeights() map[corev1.ResourceName]float64 {
-	return map[corev1.ResourceName]float64{
-		//corev1.ResourceEphemeralStorage: 1, // TODO: what should be weight for this ?
-		corev1.ResourceMemory: 1,
-		corev1.ResourceCPU:    9,
-		"nvidia.com/gpu":      20,
-	}
 }

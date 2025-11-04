@@ -72,23 +72,23 @@ type ResourceStore interface {
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
 	// Add adds a new object to the store.
-	Add(mo metav1.Object) error
+	Add(ctx context.Context, mo metav1.Object) error
 	// GetByKey retrieves an object from the store by its key.
-	GetByKey(key string) (o runtime.Object, err error)
+	GetByKey(ctx context.Context, key string) (o runtime.Object, err error)
 	// Get retrieves an object from the store by its name.
-	Get(objName cache.ObjectName) (o runtime.Object, err error)
+	Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error)
 	// Update updates an existing object in the store.
-	Update(mo metav1.Object) error
+	Update(ctx context.Context, mo metav1.Object) error
 	// DeleteByKey deletes an object from the store by its key.
-	DeleteByKey(key string) error
+	DeleteByKey(ctx context.Context, key string) error
 	// Delete deletes an object from the store by its name.
-	Delete(objName cache.ObjectName) error
+	Delete(ctx context.Context, objName cache.ObjectName) error
 	// DeleteObjects deletes objects matching the given criteria and returns the count of deleted objects.
-	DeleteObjects(c MatchCriteria) (delCount int, err error)
+	DeleteObjects(ctx context.Context, c MatchCriteria) (delCount int, err error)
 	// List lists objects matching the given criteria.
-	List(c MatchCriteria) (listObj runtime.Object, err error)
+	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
 	// ListMetaObjects lists metadata objects matching the given criteria.
-	ListMetaObjects(c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	ListMetaObjects(ctx context.Context, c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
 	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
@@ -133,44 +133,46 @@ type View interface {
 	GetName() string
 	// GetType returns the type of this view (base or sandbox).
 	GetType() ViewType
+	// SetKubeConfigPath sets the path to the kubeconfig file for this view used to create network client facades.
+	SetKubeConfigPath(path string)
 	// GetClientFacades gets a ClientFacades populated according to the given accessMode that can be used by code to interact with this view
 	// via standard k8s client and informer interfaces
-	GetClientFacades(accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
+	GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
 	// GetResourceStore returns the resource store for the specified GroupVersionKind.
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	// GetEventSink returns the event sink for this view.
 	GetEventSink() EventSink
 	// CreateObject creates a new object of the specified GVK in this view.
-	CreateObject(gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
+	CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
 	// GetObject retrieves an object of the specified GVK by name.
-	GetObject(gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
+	GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
 	// UpdateObject updates an existing object of the specified GVK.
-	UpdateObject(gvk schema.GroupVersionKind, obj metav1.Object) error
+	UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) error
 	// UpdatePodNodeBinding updates a pod's node binding and returns the updated pod.
-	UpdatePodNodeBinding(podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
+	UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
 	// PatchObject applies a patch to an object of the specified GVK.
-	PatchObject(gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
+	PatchObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName, patchType types.PatchType, patchData []byte) (patchedObj runtime.Object, err error)
 	// PatchObjectStatus applies a patch to an object's status subresource.
-	PatchObjectStatus(gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
+	PatchObjectStatus(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName, patchData []byte) (patchedObj runtime.Object, err error)
 	// ListMetaObjects lists metadata objects matching the given criteria.
-	ListMetaObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	ListMetaObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
 	// ListObjects lists objects in the store while matching the criteria and returns the matching objects as a runtime.Object which is actually a *<Kind>List. Ex: *PodList
 	// TODO: consider better name for this method.
-	ListObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
+	ListObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) (runtime.Object, error)
 	// WatchObjects watches for changes to objects of the specified GVK.
 	WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	// GetWatcher returns a watcher for objects of the specified GVK.
 	GetWatcher(ctx context.Context, gvk schema.GroupVersionKind, namespace string, opts metav1.ListOptions) (watch.Interface, error)
 	// DeleteObject deletes an object of the specified GVK by name.
-	DeleteObject(gvk schema.GroupVersionKind, objName cache.ObjectName) error
+	DeleteObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) error
 	// DeleteObjects deletes objects of the specified GVK matching the criteria.
-	DeleteObjects(gvk schema.GroupVersionKind, criteria MatchCriteria) error
+	DeleteObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria MatchCriteria) error
 	// ListNodes returns nodes matching the specified node names, or all nodes if none specified.
-	ListNodes(matchingNodeNames ...string) ([]corev1.Node, error)
+	ListNodes(ctx context.Context, matchingNodeNames ...string) ([]corev1.Node, error)
 	// ListPods returns pods matching the specified criteria.
-	ListPods(criteria MatchCriteria) ([]corev1.Pod, error)
+	ListPods(ctx context.Context, criteria MatchCriteria) ([]corev1.Pod, error)
 	// ListEvents returns events in the specified namespace.
-	ListEvents(namespace string) ([]eventsv1.Event, error)
+	ListEvents(ctx context.Context, namespace string) ([]eventsv1.Event, error)
 	// GetObjectChangeCount returns the current change count made to objects through this view.
 	GetObjectChangeCount() int64
 	// GetKubeConfigPath returns the path to the kubeconfig file for this view.
@@ -202,18 +204,23 @@ type ViewArgs struct {
 	WatchConfig WatchConfig
 }
 
+// ViewAccess is a facade to get or create KAPI Views.
+type ViewAccess interface {
+	io.Closer
+	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
+	GetBaseView() View
+	// GetOrCreateSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
+	// at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig named `minkapi-<name>.yaml` is also generated
+	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
+	// TODO: discuss whether the above is OK.
+	GetOrCreateSandboxView(ctx context.Context, name string) (View, error)
+}
+
 // Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) service accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
 	commontypes.Service
-	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
-	GetBaseView() View
-	// GetSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
-	// at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig named `minkapi-<name>.yaml` is also generated
-	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
-	//
-	// TODO: discuss whether the above is OK.
-	GetSandboxView(log logr.Logger, name string) (View, error)
+	ViewAccess
 }
 
 // App represents an application process that wraps a minkapi Server, an application context and application cancel func.

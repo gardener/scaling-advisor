@@ -33,6 +33,8 @@ type Attributes struct {
 	InstanceType string `json:"instanceType"`
 	VCPU         string `json:"vcpu"`
 	Memory       string `json:"memory"`
+	GPU          string `json:"gpu"`
+	GPUMemory    string `json:"gpuMemory"`
 	OperatingSys string `json:"operatingSystem"`
 	Tenancy      string `json:"tenancy"`
 }

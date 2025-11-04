@@ -42,7 +42,15 @@ type schedulerHandle struct {
 
 func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
-	scheduledConfig, err := loadSchedulerConfig(schedulerConfigPath)
+	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", svcapi.ErrLoadSchedulerConfig, err)
+	}
+	return NewLauncherFromConfig(configBytes, maxParallel)
+}
+
+func NewLauncherFromConfig(configBytes []byte, maxParallel int) (svcapi.SchedulerLauncher, error) {
+	scheduledConfig, err := parseSchedulerConfig(configBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -52,17 +60,13 @@ func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerL
 	}, nil
 }
 
-func loadSchedulerConfig(configPath string) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
+func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", svcapi.ErrLoadSchedulerConfig, err)
+			err = fmt.Errorf("%w: %w", svcapi.ErrParseSchedulerConfig, err)
 		}
 	}()
 
-	data, err := os.ReadFile(filepath.Clean(configPath))
-	if err != nil {
-		return
-	}
 	scheme := runtime.NewScheme()
 	if err = schedulerapiconfig.AddToScheme(scheme); err != nil {
 		return
@@ -71,7 +75,7 @@ func loadSchedulerConfig(configPath string) (config *schedulerapiconfig.KubeSche
 		return
 	}
 	codecs := serializer.NewCodecFactory(scheme)
-	obj, _, err := codecs.UniversalDecoder(schedulerapiconfig.SchemeGroupVersion).Decode(data, nil, nil)
+	obj, _, err := codecs.UniversalDecoder(schedulerapiconfig.SchemeGroupVersion).Decode(configBytes, nil, nil)
 	if err != nil {
 		return
 	}

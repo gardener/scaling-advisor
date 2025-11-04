@@ -8,6 +8,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"io"
+	"io/fs"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +38,17 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 )
 
+// ScalingAdvisorScheme is the runtime.Scheme for Scaling Advisor types.
+var ScalingAdvisorScheme = runtime.NewScheme()
+
+func init() {
+	localSchemeBuilder := runtime.NewSchemeBuilder(
+		sacorev1alpha1.AddToScheme,
+		saconfigv1alpha1.AddToScheme,
+	)
+	utilruntime.Must(localSchemeBuilder.AddToScheme(ScalingAdvisorScheme))
+}
+
 // ToYAML serializes the given k8s runtime.Object to YAML.
 func ToYAML(obj runtime.Object) (string, error) {
 	scheme := runtime.NewScheme()
@@ -45,17 +61,39 @@ func ToYAML(obj runtime.Object) (string, error) {
 	return buf.String(), nil
 }
 
-// LoadYAMLIntoRuntimeObject deserializes the YAML reading it from the specified path into the given k8s runtime.Object.
-func LoadYAMLIntoRuntimeObject(yamlPath string, s *runtime.Scheme, obj runtime.Object) error {
-	configDecoder := serializer.NewCodecFactory(s).UniversalDecoder()
-	configBytes, err := os.ReadFile(filepath.Clean(yamlPath))
+// LoadUsingSchemeIntoRuntimeObject deserializes the object at objPath into the given k8s runtime.Object.
+func LoadUsingSchemeIntoRuntimeObject(dirFS fs.FS, objPath string, s *runtime.Scheme, obj runtime.Object) error {
+	objDecoder := serializer.NewCodecFactory(s).UniversalDecoder()
+	objFile, err := dirFS.Open(objPath)
 	if err != nil {
 		return err
 	}
-	if err := runtime.DecodeInto(configDecoder, configBytes, obj); err != nil {
+	objBytes, err := io.ReadAll(objFile)
+	if err != nil {
+		return err
+	}
+	if err = runtime.DecodeInto(objDecoder, objBytes, obj); err != nil {
 		return err
 	}
 	return nil
+}
+
+// LoadIntoRuntimeObj deserializes the object at objPath into the given k8s runtime.Object using the ScalingAdvisorScheme.
+func LoadIntoRuntimeObj(dirFS fs.FS, objPath string, obj runtime.Object) (err error) {
+	return LoadUsingSchemeIntoRuntimeObject(dirFS, objPath, ScalingAdvisorScheme, obj)
+}
+
+// LoadJSONIntoObject deserializes the JSON object at objPath into the given object using standard json.Unmarshal.
+func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
+	objFile, err := dirFS.Open(objPath)
+	if err != nil {
+		return err
+	}
+	objBytes, err := io.ReadAll(objFile)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(objBytes, obj)
 }
 
 // LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
