@@ -253,27 +253,27 @@ func getNodePlacement(nodeInfo NodeInfo) (placement sacorev1alpha1.NodePlacement
 type PodInfo struct {
 	ResourceMeta
 	// AggregatedRequests is an aggregated resource requests for all containers of the Pod.
-	AggregatedRequests map[corev1.ResourceName]int64
+	AggregatedRequests map[corev1.ResourceName]int64 `json:"aggregatedRequests,omitempty"`
 	// Volumes are the volumes that are attached to the Pod.
-	Volumes []corev1.Volume `json:"volumes"`
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
 	// NodeSelector is the node selector for the Pod.
-	NodeSelector map[string]string
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// NodeName is the name of the node where the Pod is scheduled.
-	NodeName string
+	NodeName string `json:"nodeName,omitempty"`
 	// Affinity is the affinity rules for the Pod.
-	Affinity *corev1.Affinity
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// SchedulerName is the name of the scheduler that should be used to schedule the Pod.
-	SchedulerName string
+	SchedulerName string `json:"schedulerName,omitempty"`
 	// Tolerations are the tolerations for the Pod.
-	Tolerations []corev1.Toleration
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// PriorityClassName is the name of the priority class that should be used to schedule the Pod.
-	PriorityClassName         string
-	Priority                  *int32
-	PreemptionPolicy          *corev1.PreemptionPolicy
-	RuntimeClassName          *string
-	Overhead                  map[corev1.ResourceName]int64
-	TopologySpreadConstraints []corev1.TopologySpreadConstraint
-	ResourceClaims            []corev1.PodResourceClaim
+	PriorityClassName         string                            `json:"priorityClassName,omitempty"`
+	Priority                  *int32                            `json:"priority,omitempty"`
+	PreemptionPolicy          *corev1.PreemptionPolicy          `json:"preemptionPolicy,omitempty"`
+	RuntimeClassName          *string                           `json:"runtimeClassName,omitempty"`
+	Overhead                  map[corev1.ResourceName]int64     `json:"overhead,omitempty"`
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	ResourceClaims            []corev1.PodResourceClaim         `json:"resourceClaims,omitempty"`
 }
 
 // GetResourceInfo returns the resource information for the pod.
@@ -289,20 +289,20 @@ func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 type NodeInfo struct {
 	ResourceMeta
 	// InstanceType is the instance type for the Node.
-	InstanceType string
+	InstanceType string `json:"instanceType"`
 	// Unschedulable indicates whether the node is unschedulable.
-	Unschedulable bool
+	Unschedulable bool `json:"unschedulable"`
 	// Taints are the node's taints.
-	Taints []corev1.Taint
+	Taints []corev1.Taint `json:"taints,omitempty"`
 	// Capacity is the total resource capacity of the node.
-	Capacity map[corev1.ResourceName]int64
+	Capacity map[corev1.ResourceName]int64 `json:"capacity,omitempty"`
 	// Allocatable is the allocatable resource capacity of the node.
-	Allocatable map[corev1.ResourceName]int64
+	Allocatable map[corev1.ResourceName]int64 `json:"allocatable,omitempty"`
 	// Conditions are the node's conditions.
-	Conditions []corev1.NodeCondition
+	Conditions []corev1.NodeCondition `json:"conditions,omitempty"`
 	// CSIDriverVolumeMaximums is a map of CSI driver names to the maximum number of unique volumes managed by the
 	// CSI driver that can be used on a node.
-	CSIDriverVolumeMaximums map[string]int32
+	CSIDriverVolumeMaximums map[string]int32 `json:"csiDriverVolumeMaximums,omitempty"`
 }
 
 // GetResourceInfo returns the resource information for the node.
@@ -318,16 +318,16 @@ func (n *NodeInfo) GetResourceInfo() NodeResourceInfo {
 // ResourceMeta contains common metadata fields for Kubernetes resources.
 type ResourceMeta struct {
 	// UID is the unique identifier for the resource.
-	UID types.UID
+	UID types.UID `json:"uid,omitempty"`
 	types.NamespacedName
 	// Labels are the labels associated with the resource.
-	Labels map[string]string
+	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations are the annotations associated with the resource.
-	Annotations map[string]string
+	Annotations map[string]string `json:"annotations,omitempty"`
 	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
-	DeletionTimestamp *metav1.Time
+	DeletionTimestamp *metav1.Time `json:"deletionTimestamp,omitempty"`
 	// OwnerReferences are the owner references associated with the resource.
-	OwnerReferences []metav1.OwnerReference
+	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
 }
 
 // InstancePriceInfo contains pricing and specification information for a cloud instance type.

@@ -78,24 +78,24 @@ type NodePool struct {
 	// Region is the name of the region.
 	Region string `json:"region"`
 	// Priority is the priority of the node pool.
-	Priority int32 `json:"priority"`
+	Priority int32 `json:"priority,omitempty"`
 	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
-	Labels map[string]string `json:"labels"`
+	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
-	Annotations map[string]string `json:"annotations"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
-	Taints []corev1.Taint `json:"taints"`
+	Taints []corev1.Taint `json:"taints,omitempty"`
 	// AvailabilityZones is a list of availability zones for the node pool.
 	AvailabilityZones []string `json:"availabilityZones"`
 	// NodeTemplates is a slice of NodeTemplate.
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 	// Quota defines the quota for the node pool.
-	Quota corev1.ResourceList `json:"quota"`
+	Quota corev1.ResourceList `json:"quota,omitempty"`
 	// ScaleInPolicy defines the scale in policy for this node pool.
 	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
+	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
 	// BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool.
-	BackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
+	BackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
 }
 
 // NodeTemplate defines a node template configuration for an instance type.
@@ -108,7 +108,7 @@ type NodeTemplate struct {
 	// InstanceType is the instance type of the node template.
 	InstanceType string `json:"instanceType"`
 	// Priority is the priority of the node template. The lower the number, the higher the priority.
-	Priority int32 `json:"priority"`
+	Priority int32 `json:"priority,omitempty"`
 	// Capacity defines the capacity of resources that are available for this instance type.
 	Capacity corev1.ResourceList `json:"capacity"`
 	// KubeReserved defines the capacity for kube reserved resources.
