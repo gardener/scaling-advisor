@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -68,7 +69,7 @@ type ShootAccess interface {
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
 	ListPods(ctx context.Context, criteria mkapi.MatchCriteria, excludeKubeSystemPods bool) ([]corev1.Pod, error)
 	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
-	ListPriorityClasses(ctx context.Context) ([]schedulingv1.PriorityClass, error)
+	ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
 	ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error)
 	// GetCSIDriverToVolCount returns a map of CSI driver names to maximum number of
@@ -164,7 +165,7 @@ var gardenerCmd = &cobra.Command{
 		if err := saveDataToFile(csc, clusterScalingConstraintFileName); err != nil {
 			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
 		}
-		fmt.Println("Created cluster scaling constraints")
+		fmt.Printf("Created cluster scaling constraints at %s\n", clusterScalingConstraintFileName)
 		return nil
 	},
 }
@@ -396,10 +397,20 @@ func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria, exc
 	return pods, err
 }
 
-func (a *access) ListPriorityClasses(ctx context.Context) ([]schedulingv1.PriorityClass, error) {
+func (a *access) ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error) {
 	var priorityClassList schedulingv1.PriorityClassList
 	err := a.shootClient.List(ctx, &priorityClassList)
-	return priorityClassList.Items, err
+	if err != nil {
+		return nil, err
+	}
+	if excludeKubeSystemPods {
+		priorityClassList.Items = slices.DeleteFunc(priorityClassList.Items,
+			func(pc schedulingv1.PriorityClass) bool {
+				return strings.HasPrefix(pc.Name, "gardener-shoot-system")
+			},
+		)
+	}
+	return priorityClassList.Items, nil
 }
 
 func (a *access) ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error) {
@@ -436,7 +447,6 @@ func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, 
 	return volMap, nil
 }
 
-// TODO: Add name obfuscation logic toggled via a flag maybe
 func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapshot, error) {
 	var snap svcapi.ClusterSnapshot
 
@@ -454,6 +464,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		return snap, fmt.Errorf("failed to create volume map: %w", err)
 	}
 	for _, node := range nodes {
+		sanitizeNode(&node)
 		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
 	}
 
@@ -462,13 +473,17 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
 	snap.Pods = make([]svcapi.PodInfo, 0, len(pods))
-	for _, pod := range pods {
+	for i, pod := range pods {
+		sanitizePod(&pod, i)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
-	snap.PriorityClasses, err = a.ListPriorityClasses(ctx)
+	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeKubeSystemPods)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list priority classes: %w", err)
+	}
+	for i := range snap.PriorityClasses {
+		sanitizePriorityClass(&snap.PriorityClasses[i])
 	}
 
 	snap.RuntimeClasses, err = a.ListRuntimeClasses(ctx)
@@ -476,6 +491,10 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		return snap, fmt.Errorf("failed to list runtime classes: %w", err)
 	}
 
+	err = obfuscateNodeNames(&snap)
+	if err != nil {
+		return snap, fmt.Errorf("failed to obfuscate node names: %w", err)
+	}
 	return snap, nil
 }
 
@@ -485,11 +504,11 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 // the removed nodes with the nodes scaled up by autoscaling component.
 func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
 	formattedTime := time.Now().UTC().Format("20060102T150405Z")
-	incrementalSnapshotFileName := path.Join(dir, "snapshot-"+formattedTime+"-incremental.json")
-	if err := saveDataToFile(snap, incrementalSnapshotFileName); err != nil {
+	baseSnapshotFileName := path.Join(dir, "snapshot-"+formattedTime+"-baseline.json")
+	if err := saveDataToFile(snap, baseSnapshotFileName); err != nil {
 		return err
 	}
-	fmt.Printf("> Generated snapshot at %s\n", incrementalSnapshotFileName)
+	fmt.Printf("> Generated snapshot at %s\n", baseSnapshotFileName)
 
 	for _, numNodesToRemove := range []int{1, 5, 10, 20} {
 		numNodesToRemove = min(numNodesToRemove, len(snap.Nodes))
@@ -674,4 +693,74 @@ func saveDataToFile(data any, path string) error {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
+}
+
+func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
+	snapData, err := json.Marshal(snap)
+	if err != nil {
+		return fmt.Errorf("Could not marshal snapshot: %w", err)
+	}
+	snapStr := string(snapData)
+
+	for i, node := range snap.Nodes {
+		originalName := node.Name
+		newName := "node-" + strconv.Itoa(i)
+		snapStr = strings.ReplaceAll(snapStr, originalName, newName)
+	}
+	err = json.Unmarshal([]byte(snapStr), snap)
+	if err != nil {
+		return fmt.Errorf("Could not unmarshal snapshot string to snapshot object: %w", err)
+	}
+
+	return nil
+}
+
+func sanitizePod(pod *corev1.Pod, index int) {
+	pod.Name = "pod-" + strconv.Itoa(index)
+	maps.DeleteFunc(pod.Labels, sanitizeDeleteFunc)
+	maps.DeleteFunc(pod.Annotations, sanitizeDeleteFunc)
+	pod.ManagedFields = nil
+	for i := range pod.Spec.Volumes {
+		pod.Spec.Volumes[i].Projected = nil
+	}
+}
+
+func sanitizeNode(node *corev1.Node) {
+	node.Namespace = ""
+	maps.DeleteFunc(node.Labels, sanitizeDeleteFunc)
+	maps.DeleteFunc(node.Annotations, sanitizeDeleteFunc)
+	node.ManagedFields = nil
+	requiredConditions := []corev1.NodeConditionType{
+		corev1.NodeReady, corev1.NodeDiskPressure, corev1.NodePIDPressure, corev1.NodeMemoryPressure,
+		// Node Problem Detector conditions
+		"ReadonlyFilesystem", "KernelDeadlock",
+	}
+	node.Status.Conditions = slices.DeleteFunc(node.Status.Conditions,
+		func(cond corev1.NodeCondition) bool {
+			return !slices.Contains(requiredConditions, cond.Type)
+		})
+}
+
+func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
+	pc.ManagedFields = nil
+	maps.DeleteFunc(pc.Labels, sanitizeDeleteFunc)
+	maps.DeleteFunc(pc.Annotations, sanitizeDeleteFunc)
+}
+
+// TODO Can this removal cause issues with selectors?
+func sanitizeDeleteFunc(k, v string) bool {
+	removePrefixes := []string{
+		"beta.", "failure-domain.beta.", "node.alpha.kubernetes.io", "checksum/",
+		"node-agent.gardener.cloud", "worker.gardener.cloud/gardener-node-agent-secret-name",
+		"resources.gardener.cloud", "shoot.gardener.cloud", "node.gardener.cloud/machine-name",
+		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
+	}
+
+	for _, prefix := range removePrefixes {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
