@@ -1,8 +1,9 @@
 package v1alpha1
 
 import (
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 // ValidateNodePool validates a NodePool object.

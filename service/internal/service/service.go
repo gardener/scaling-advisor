@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/service/internal/service/weights"
 	"os"
 	"path"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 	"github.com/gardener/scaling-advisor/service/internal/service/generator"
 	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
+	"github.com/gardener/scaling-advisor/service/internal/service/weights"
 	"github.com/gardener/scaling-advisor/service/pricing"
 	"github.com/gardener/scaling-advisor/service/scorer"
 

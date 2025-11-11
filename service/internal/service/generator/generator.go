@@ -7,17 +7,17 @@ package generator
 import (
 	"context"
 	"fmt"
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )

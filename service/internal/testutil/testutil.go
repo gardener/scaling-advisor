@@ -3,6 +3,7 @@ package testutil
 import (
 	"embed"
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	svcapi "github.com/gardener/scaling-advisor/api/service"

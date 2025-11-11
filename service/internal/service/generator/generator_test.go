@@ -3,18 +3,20 @@ package generator
 import (
 	"context"
 	"encoding/json"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/minkapi/view"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"testing"
+
 	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
 	"github.com/gardener/scaling-advisor/service/internal/service/weights"
 	"github.com/gardener/scaling-advisor/service/internal/testutil"
 	pricingtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 	"github.com/gardener/scaling-advisor/service/scorer"
-	"testing"
+
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/minkapi/view"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 )
 
 func TestGenerateBasicScalingAdvise(t *testing.T) {

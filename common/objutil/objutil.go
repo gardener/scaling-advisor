@@ -8,17 +8,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"io"
 	"io/fs"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
@@ -94,20 +93,6 @@ func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
 		return err
 	}
 	return json.Unmarshal(objBytes, obj)
-}
-
-// LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
-func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
-	data, err := os.ReadFile(filepath.Clean(yamlPath))
-	if err != nil {
-		err = fmt.Errorf("failed to read %q: %w", yamlPath, err)
-		return
-	}
-	err = sigyaml.Unmarshal(data, obj)
-	if err != nil {
-		err = fmt.Errorf("failed to unmarshal object from dataq: %w", err)
-	}
-	return
 }
 
 // WriteCoreRuntimeObjToYaml marshals the given k8s runtime.Object into YAML and writes it to the specified file path.

@@ -7,12 +7,12 @@ package view
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
-	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
-	"github.com/gardener/scaling-advisor/minkapi/view/store"
 	"sync"
 	"sync/atomic"
 
+	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
+	"github.com/gardener/scaling-advisor/minkapi/view/store"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"

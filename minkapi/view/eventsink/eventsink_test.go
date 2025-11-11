@@ -13,7 +13,7 @@ import (
 var log = klog.NewKlogr()
 
 func TestCreateListReset(t *testing.T) {
-	sink := New(log)
+	sink := New()
 	var err error
 	var e1, e2 *eventsv1.Event
 	e1 = &eventsv1.Event{

@@ -7,7 +7,6 @@ package simulation
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"maps"
 	"slices"
 	"time"
@@ -25,6 +24,7 @@ import (
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/tools/cache"
 )
 

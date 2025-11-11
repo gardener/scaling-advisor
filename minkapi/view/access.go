@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/api/minkapi"
+	"sync"
+
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sync"
 )
 
 var _ minkapi.ViewAccess = (*viewAccess)(nil)

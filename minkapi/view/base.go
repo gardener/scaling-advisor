@@ -8,21 +8,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
-	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
-	"github.com/gardener/scaling-advisor/minkapi/view/store"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	"github.com/go-logr/logr"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
+	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
+	"github.com/gardener/scaling-advisor/minkapi/view/store"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -45,11 +46,12 @@ var (
 )
 
 type baseView struct {
-	args        *minkapi.ViewArgs
-	mu          *sync.RWMutex
-	stores      map[schema.GroupVersionKind]*store.InMemResourceStore
-	eventSink   minkapi.EventSink
-	changeCount atomic.Int64
+	args            *minkapi.ViewArgs
+	mu              *sync.Mutex
+	stores          map[schema.GroupVersionKind]*store.InMemResourceStore
+	eventSink       minkapi.EventSink
+	changeCount     atomic.Int64
+	kubeConfigReady *sync.Cond
 }
 
 // NewBase creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
@@ -60,11 +62,13 @@ func NewBase(args *minkapi.ViewArgs) (minkapi.View, error) {
 		stores[d.GVK] = createInMemStore(d, versionCounter, args)
 	}
 	eventSink := eventsink.New()
+	mu := sync.Mutex{}
 	return &baseView{
-		args:      args,
-		stores:    stores,
-		eventSink: eventSink,
-		mu:        &sync.RWMutex{},
+		args:            args,
+		stores:          stores,
+		eventSink:       eventSink,
+		mu:              &mu,
+		kubeConfigReady: sync.NewCond(&mu),
 	}, nil
 }
 
@@ -76,8 +80,8 @@ func (v *baseView) Reset() {
 }
 
 func (v *baseView) Close() error {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	return closeStores(v.stores)
 }
 
@@ -94,11 +98,15 @@ func (v *baseView) GetObjectChangeCount() int64 {
 }
 
 func (v *baseView) SetKubeConfigPath(path string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	v.args.KubeConfigPath = path
+	v.kubeConfigReady.Broadcast()
 }
 
 func (v *baseView) GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
 	log := logr.FromContextOrDiscard(ctx)
+
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
@@ -124,8 +132,8 @@ func (v *baseView) GetEventSink() minkapi.EventSink {
 }
 
 func (v *baseView) GetResourceStore(gvk schema.GroupVersionKind) (minkapi.ResourceStore, error) {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	s, exists := v.stores[gvk]
 	if !exists {
 		return nil, fmt.Errorf("%w: store not found for GVK %q", minkapi.ErrStoreNotFound, gvk)
@@ -270,6 +278,11 @@ func (v *baseView) ListEvents(ctx context.Context, namespace string) ([]eventsv1
 }
 
 func (v *baseView) GetKubeConfigPath() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.args.KubeConfigPath == "" {
+		v.kubeConfigReady.Wait()
+	}
 	return v.args.KubeConfigPath
 }
 
