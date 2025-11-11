@@ -85,14 +85,14 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 	tmpDir := os.TempDir()
 	for _, region := range regions {
 		regionJSONPath := path.Join(tmpDir, "aws_"+region+".json")
-		data, err := os.ReadFile(regionJSONPath)
+		data, err := os.ReadFile(filepath.Clean(regionJSONPath)) // #nosec G304 -- regionJSONPath is cleaned.
 		if err != nil {
 			fmt.Printf("Fetching AWS pricing for region: %s\n", region)
 			data, err = awsprice.FetchRegionJSON(region)
 			if err != nil {
 				return fmt.Errorf("failed to fetch region %s: %w", region, err)
 			}
-			if err = os.WriteFile(regionJSONPath, data, 0o640); err != nil {
+			if err = os.WriteFile(regionJSONPath, data, 0o600); err != nil {
 				return fmt.Errorf("failed to write temp region file %s: %w", regionJSONPath, err)
 			}
 			fmt.Printf("Written pricing info for region %q to file %s\n", region, regionJSONPath)
