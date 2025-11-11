@@ -62,7 +62,7 @@ var genpriceCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(genpriceCmd)
+	RootCmd.AddCommand(genpriceCmd)
 	genpriceCmd.Flags().StringVarP(
 		&providerStr,
 		"provider", "p",

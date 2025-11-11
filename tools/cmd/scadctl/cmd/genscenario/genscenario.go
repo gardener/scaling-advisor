@@ -2,10 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cmd
+package genscenario
 
 import (
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/tools/cmd/scadctl/cmd"
 
 	"github.com/spf13/cobra"
 )
@@ -25,15 +27,5 @@ and gardener shoot name and write the scenario(s) to the scenario-dir.
 }
 
 func init() {
-	rootCmd.AddCommand(genscenarioCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// genscenarioCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// genscenarioCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	cmd.RootCmd.AddCommand(genscenarioCmd)
 }

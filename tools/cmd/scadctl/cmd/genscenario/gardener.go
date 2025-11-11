@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cmd
+package genscenario
 
 import (
 	"context"
@@ -90,15 +90,39 @@ type access struct {
 	shootClient     client.Client
 }
 
-// ScalingScenario defines an input to the scaling service being benchmarked.
-// In incorporates all the data required to construct a scenario which can
-// be used to test a scaling service.
-// (TODO) look later into incorporating scalebench with this
-// type ScalingScenario struct {
-// 	constraintsPath string
-// 	snapshotsPath   []string
-// 	feedback        apiv1alpha1.ClusterScalingFeedback
-// }
+func init() {
+	genscenarioCmd.AddCommand(gardenerCmd)
+
+	gardenerCmd.Flags().StringVarP(
+		&shootCoords.Landscape,
+		"landscape", "l",
+		"",
+		"gardener landscape name (required)",
+	)
+	_ = gardenerCmd.MarkFlagRequired("landscape")
+
+	gardenerCmd.Flags().StringVarP(
+		&shootCoords.Project,
+		"project", "p",
+		"",
+		"gardener project name (required)",
+	)
+	_ = gardenerCmd.MarkFlagRequired("project")
+
+	gardenerCmd.Flags().StringVarP(
+		&shootCoords.Shoot,
+		"shoot", "s",
+		"",
+		"gardener shoot name (required)",
+	)
+	_ = gardenerCmd.MarkFlagRequired("shoot")
+	gardenerCmd.Flags().BoolVar(
+		&excludeKubeSystemPods,
+		"exclude-kube-system-pods",
+		false,
+		"exclude kube-system pods from the snapshot",
+	)
+}
 
 // gardenerCmd represents the gardener sub-command of genscenario
 // for generating scaling scenario(s) for a gardener cluster.
@@ -168,40 +192,6 @@ var gardenerCmd = &cobra.Command{
 		fmt.Printf("Created cluster scaling constraints at %s\n", clusterScalingConstraintFileName)
 		return nil
 	},
-}
-
-func init() {
-	genscenarioCmd.AddCommand(gardenerCmd)
-
-	gardenerCmd.Flags().StringVarP(
-		&shootCoords.Landscape,
-		"landscape", "l",
-		"",
-		"gardener landscape name (required)",
-	)
-	_ = gardenerCmd.MarkFlagRequired("landscape")
-
-	gardenerCmd.Flags().StringVarP(
-		&shootCoords.Project,
-		"project", "p",
-		"",
-		"gardener project name (required)",
-	)
-	_ = gardenerCmd.MarkFlagRequired("project")
-
-	gardenerCmd.Flags().StringVarP(
-		&shootCoords.Shoot,
-		"shoot", "s",
-		"",
-		"gardener shoot name (required)",
-	)
-	_ = gardenerCmd.MarkFlagRequired("shoot")
-	gardenerCmd.Flags().BoolVar(
-		&excludeKubeSystemPods,
-		"exclude-kube-system-pods",
-		false,
-		"exclude kube-system pods from the snapshot",
-	)
 }
 
 func (sc *ShootCoordinate) getFullyQualifiedName() string {
@@ -463,11 +453,6 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 	if err != nil {
 		return snap, fmt.Errorf("failed to create volume map: %w", err)
 	}
-	for _, node := range nodes {
-		sanitizeNode(&node)
-		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
-	}
-
 	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{}, excludeKubeSystemPods)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
@@ -476,6 +461,11 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 	for i, pod := range pods {
 		sanitizePod(&pod, i)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
+	}
+
+	for _, node := range nodes {
+		sanitizeNode(&node)
+		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
 	}
 
 	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeKubeSystemPods)
@@ -723,6 +713,11 @@ func sanitizePod(pod *corev1.Pod, index int) {
 	for i := range pod.Spec.Volumes {
 		pod.Spec.Volumes[i].Projected = nil
 	}
+	pod.OwnerReferences = nil
+}
+
+func sanitizePods(pods []*corev1.Pod) {
+
 }
 
 func sanitizeNode(node *corev1.Node) {
@@ -749,18 +744,21 @@ func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
 
 // TODO Can this removal cause issues with selectors?
 func sanitizeDeleteFunc(k, v string) bool {
-	removePrefixes := []string{
-		"beta.", "failure-domain.beta.", "node.alpha.kubernetes.io", "checksum/",
-		"node-agent.gardener.cloud", "worker.gardener.cloud/gardener-node-agent-secret-name",
-		"resources.gardener.cloud", "shoot.gardener.cloud", "node.gardener.cloud/machine-name",
-		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
-	}
-
 	for _, prefix := range removePrefixes {
 		if strings.HasPrefix(k, prefix) {
 			return true
 		}
 	}
-
 	return false
 }
+
+var (
+	removePrefixes = []string{
+		"beta.", "failure-domain.beta.", "node.alpha.kubernetes.io", "checksum/",
+		"node-agent.gardener.cloud", "worker.gardener.cloud/gardener-node-agent-secret-name",
+		"resources.gardener.cloud", "shoot.gardener.cloud", "node.gardener.cloud/machine-name",
+		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
+		"controller-revision-hash", "gardener.cloud/role", "networking.gardener.cloud/", "node.gardener.cloud/critical-component",
+		"pod-template-generation", "reference.resources.gardener.cloud/",
+	}
+)
