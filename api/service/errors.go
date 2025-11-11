@@ -49,6 +49,8 @@ var (
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
 	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
 	ErrMissingRequiredLabel = errors.New("missing required label")
+	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
+	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
 )
 
 // AsGenerateError wraps an error with scaling advice request context information.

@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"encoding/json"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
@@ -43,20 +44,39 @@ func TestGenerateBasicScalingAdvise(t *testing.T) {
 		Snapshot:   snapshot,
 	}
 
-	advEventCh := make(chan svcapi.ScalingAdviceEvent, 1)
+	resultCh := make(chan svcapi.ScalingAdviceResult, 1)
 	runArgs := RunArgs{
-		Request:       req,
-		AdviceEventCh: advEventCh,
+		Request:   req,
+		ResultsCh: resultCh,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	g.Run(ctx, &runArgs)
-	adv := <-advEventCh
+	adv := <-resultCh
 	if adv.Err != nil {
 		t.Errorf("failed to generate scaling advice: %v", adv.Err)
 		return
 	}
-	t.Logf("generated scaling advice: %+v", adv.Response)
+	scalingAdvice := adv.Response.ScalingAdvice
+	scalingAdviceBytes, err := json.Marshal(scalingAdvice)
+	if err != nil {
+		t.Errorf("failed to marshal scaling advice: %v", err)
+		return
+	}
+	t.Logf("generated scaling advice: %+v", string(scalingAdviceBytes))
+
+	if len(scalingAdvice.Spec.ScaleOutPlan.Items) != 1 {
+		t.Errorf("expected 1 scale out item, got %d", len(scalingAdvice.Spec.ScaleOutPlan.Items))
+		return
+	}
+	if scalingAdvice.Spec.ScaleOutPlan.Items[0].Delta != 1 {
+		t.Errorf("expected scale out delta of 1, got %d", scalingAdvice.Spec.ScaleOutPlan.Items[0].Delta)
+		return
+	}
+	if scalingAdvice.Spec.ScaleOutPlan.Items[0].NodeTemplateName != constraints.Spec.NodePools[0].NodeTemplates[0].Name {
+		t.Errorf("expected node template name %q, got %q", constraints.Spec.NodePools[0].NodeTemplates[0].Name, scalingAdvice.Spec.ScaleOutPlan.Items[0].NodeTemplateName)
+		return
+	}
 }
 
 func createTestGenerator() (*Generator, error) {

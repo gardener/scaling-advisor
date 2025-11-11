@@ -123,21 +123,21 @@ func (d *defaultScalingAdvisor) Stop(ctx context.Context) (err error) {
 	return
 }
 
-func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svcapi.ScalingAdviceRequest) <-chan svcapi.ScalingAdviceEvent {
-	adviceEventCh := make(chan svcapi.ScalingAdviceEvent)
+func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svcapi.ScalingAdviceRequest) <-chan svcapi.ScalingAdviceResult {
+	resultsCh := make(chan svcapi.ScalingAdviceResult)
 	go func() {
 		if len(request.Snapshot.GetUnscheduledPods()) == 0 {
-			generator.SendError(adviceEventCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
+			generator.SendError(resultsCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
 			return
 		}
 		genCtx := logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", request.ID, "correlationID", request.CorrelationID))
 		runArgs := &generator.RunArgs{
-			Request:       request,
-			AdviceEventCh: adviceEventCh,
+			Request:   request,
+			ResultsCh: resultsCh,
 		}
 		d.generator.Run(genCtx, runArgs)
 	}()
-	return adviceEventCh
+	return resultsCh
 }
 
 // LaunchApp is a helper function used to parse cli args, construct, and start the ScalingAdvisorService,

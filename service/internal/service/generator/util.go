@@ -16,9 +16,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func SendError(adviceEventCh chan<- svcapi.ScalingAdviceEvent, requestRef svcapi.ScalingAdviceRequestRef, err error) {
+func SendError(resultsCh chan<- svcapi.ScalingAdviceResult, requestRef svcapi.ScalingAdviceRequestRef, err error) {
 	err = svcapi.AsGenerateError(requestRef.ID, requestRef.CorrelationID, err)
-	adviceEventCh <- svcapi.ScalingAdviceEvent{
+	resultsCh <- svcapi.ScalingAdviceResult{
 		Err: err,
 	}
 }

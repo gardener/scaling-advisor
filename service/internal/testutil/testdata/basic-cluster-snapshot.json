@@ -71,8 +71,9 @@
         "worker.garden.sapcloud.io/group": "p",
         "worker.gardener.cloud/cri-name": "containerd",
         "worker.gardener.cloud/kubernetes-version": "1.33.4",
-        "worker.gardener.cloud/pool": "p",
-        "worker.gardener.cloud/system-components": "true"
+        "sa.gardener.cloud/node-pool-name": "p",
+        "worker.gardener.cloud/system-components": "true",
+        "sa.gardener.cloud/node-template-name": "m5l"
       },
       "InstanceType": "m5.large",
       "Unschedulable": false,

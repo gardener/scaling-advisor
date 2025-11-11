@@ -7,9 +7,11 @@ package generator
 import (
 	"context"
 	"fmt"
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -39,9 +41,9 @@ type Args struct {
 // RunArgs is used to run the generator and generate scaling advice
 // TODO: follow Args, RunArgs convention for all other components too (which have more than 3 parameters) for structural consistency
 type RunArgs struct {
-	Request       svcapi.ScalingAdviceRequest
-	AdviceEventCh chan<- svcapi.ScalingAdviceEvent
-	Timeout       time.Duration
+	Request   svcapi.ScalingAdviceRequest
+	ResultsCh chan<- svcapi.ScalingAdviceResult
+	Timeout   time.Duration
 }
 
 type SandBoxViewFunc func(log logr.Logger, name string) (mkapi.View, error)
@@ -55,13 +57,17 @@ func New(args *Args) *Generator {
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 	err := g.doGenerate(ctx, runArgs)
 	if err != nil {
-		SendError(runArgs.AdviceEventCh, runArgs.Request.ScalingAdviceRequestRef, err)
+		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 }
 
 func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
+
+	if err = validateRequest(runArgs.Request); err != nil {
+		return
+	}
 
 	baseView := g.args.ViewAccess.GetBaseView()
 	err = synchronizeBaseView(ctx, baseView, runArgs.Request.Snapshot)
@@ -97,7 +103,7 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
 		if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
-			err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
+			err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
 			if err != nil {
 				return
 			}
@@ -115,9 +121,39 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		return
 	}
 	if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
-		err = sendScalingAdvice(runArgs.AdviceEventCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
+		err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
 	}
 	return
+}
+
+func validateRequest(request svcapi.ScalingAdviceRequest) error {
+	if err := validateConstraint(request.Constraint); err != nil {
+		return err
+	}
+	if err := validateClusterSnapshot(request.Snapshot); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateConstraint(constraint *sacorev1alpha1.ClusterScalingConstraint) error {
+	if strings.TrimSpace(constraint.Name) == "" {
+		return fmt.Errorf("%w: constraint name must not be empty", svcapi.ErrInvalidScalingConstraint)
+	}
+	if strings.TrimSpace(constraint.Namespace) == "" {
+		return fmt.Errorf("%w: constraint namespace must not be empty", svcapi.ErrInvalidScalingConstraint)
+	}
+	return nil
+}
+
+func validateClusterSnapshot(cs *svcapi.ClusterSnapshot) error {
+	// Check if all nodes have the required label commonconstants.LabelNodeTemplateName
+	for _, nodeInfo := range cs.Nodes {
+		if _, ok := nodeInfo.Labels[commonconstants.LabelNodeTemplateName]; !ok {
+			return fmt.Errorf("%w: node %q has no label %q", svcapi.ErrMissingRequiredLabel, nodeInfo.Name, commonconstants.LabelNodeTemplateName)
+		}
+	}
+	return nil
 }
 
 func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.ClusterSnapshot) error {
@@ -148,7 +184,7 @@ func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.Cluste
 
 }
 
-func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
+func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
 	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
 	if err != nil {
 		return err
@@ -160,7 +196,7 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceEvent, request svcapi
 		msg = fmt.Sprintf("%s scaling advice for pass %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
 	}
 
-	adviceCh <- svcapi.ScalingAdviceEvent{
+	adviceCh <- svcapi.ScalingAdviceResult{
 		Response: &svcapi.ScalingAdviceResponse{
 			RequestRef:    request.ScalingAdviceRequestRef,
 			Message:       msg,

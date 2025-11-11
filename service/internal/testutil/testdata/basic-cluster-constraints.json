@@ -1,5 +1,8 @@
 {
-  "metadata": {},
+  "metadata": {
+    "name": "basic-cluster-constraints",
+    "namespace": "default"
+  },
   "spec": {
     "consumerID": "",
     "adviceGenerationMode": "AllAtOnce",
