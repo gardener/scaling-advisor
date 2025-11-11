@@ -9,6 +9,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -22,16 +23,19 @@ type viewAccess struct {
 	mu           sync.Mutex
 }
 
-func NewAccess(baseViewArgs *minkapi.ViewArgs) (va minkapi.ViewAccess, err error) {
+// NewAccess creates a new ViewAccess instance with a default base minkapi.View using the provided context and ViewArgs.
+func NewAccess(ctx context.Context, baseViewArgs *minkapi.ViewArgs) (va minkapi.ViewAccess, err error) {
+	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrCreateView, err)
 		}
 	}()
-	bv, err := createBaseView(context.Background(), baseViewArgs)
+	bv, err := createBaseView(ctx, baseViewArgs)
 	if err != nil {
 		return nil, err
 	}
+	log.Info("created base view", "name", bv.GetName())
 	va = &viewAccess{
 		baseView:     bv,
 		baseViewArgs: baseViewArgs,

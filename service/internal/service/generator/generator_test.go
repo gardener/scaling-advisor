@@ -15,12 +15,14 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
+	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 )
 
-func TestGenerateBasicScalingAdvise(t *testing.T) {
-	g, err := createTestGenerator()
+func TestGenerateBasicScalingAdvice(t *testing.T) {
+	ctx := commontestutil.LoggerContext(t.Context())
+	g, err := createTestGenerator(ctx)
 	if err != nil {
 		t.Errorf("failed to create test generator: %v", err)
 		return
@@ -81,8 +83,11 @@ func TestGenerateBasicScalingAdvise(t *testing.T) {
 	}
 }
 
-func createTestGenerator() (*Generator, error) {
-	pricingAccess, err := pricingtestutil.GetInstancePricingAccessWithFilteredAWSData()
+func createTestGenerator(ctx context.Context) (*Generator, error) {
+	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
+	if err != nil {
+		return nil, err
+	}
 	weightsFn := weights.GetDefaultWeightsFn()
 	nodeScorer, err := scorer.GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, pricingAccess, weightsFn)
 	if err != nil {
@@ -92,7 +97,7 @@ func createTestGenerator() (*Generator, error) {
 	if err != nil {
 		return nil, err
 	}
-	viewAccess, err := view.NewAccess(&minkapi.ViewArgs{
+	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
 		Name:   minkapi.DefaultBasePrefix,
 		Scheme: typeinfo.SupportedScheme,
 		WatchConfig: minkapi.WatchConfig{

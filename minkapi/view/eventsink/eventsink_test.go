@@ -7,10 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 )
-
-var log = klog.NewKlogr()
 
 func TestCreateListReset(t *testing.T) {
 	sink := New()

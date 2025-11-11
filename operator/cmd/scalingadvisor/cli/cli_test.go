@@ -57,7 +57,7 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 	}{
 		{
 			name:       "ShouldLoadMinimalScalingAdvisorConfig",
-			configFile: "./testdata/basic-operator-config.yaml",
+			configFile: "testdata/basic-operator-config.yaml",
 			want: updateOperatorConfigWithDefaults(&configv1alpha1.ScalingAdvisorConfiguration{
 				Server: configv1alpha1.ScalingAdvisorServerConfiguration{
 					ServerConfig: commontypes.ServerConfig{

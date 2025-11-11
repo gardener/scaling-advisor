@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -174,8 +175,7 @@ type SchedulerLauncher interface {
 
 // SchedulerHandle defines the interface for managing a kube-scheduler instance.
 type SchedulerHandle interface {
-	// Stop stops the scheduler instance.
-	Stop()
+	io.Closer
 	// GetParams returns the parameters used to launch the scheduler instance.
 	GetParams() SchedulerLaunchParams
 }
@@ -496,16 +496,17 @@ type SimulationArgs struct {
 	TrackPollInterval time.Duration
 }
 
+// SimulationCreatorFunc is a factory function for constructing a simulation instance.
+// It implements the SimulationCreator interface.
+type SimulationCreatorFunc func(name string, args *SimulationArgs) (Simulation, error)
+
+// SimulationCreator is an interface that wraps a method that satisfied SimulationCreatorFunc
 type SimulationCreator interface {
 	// Create creates a simulation instance with the given name and arguments.
 	Create(name string, args *SimulationArgs) (Simulation, error)
 }
 
-// SimulationCreatorFunc is a factory function for constructing a simulation instance.
-// It implements the SimulationCreator interface.
-type SimulationCreatorFunc func(name string, args *SimulationArgs) (Simulation, error)
-
-// CreateSimulation creates a simulation instance with the given name and arguments.
+// Create constructs a new simulation instance with the given name and arguments. Satisfies SimulationCreatorFunc
 func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simulation, error) {
 	return f(name, args)
 }
@@ -528,10 +529,10 @@ func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simula
 //		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
 //		np-c: 1 {nt-x: 2, nt-y: 1}
 //
-//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
-//		p2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
-//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
+//		g1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
+//		g2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
+//		g3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
+//		g4: {PoolPriority: 2, NTPriority: 2, nt-q}
 type SimulationGroup interface {
 	// Name returns the name of the simulation group.
 	Name() string
@@ -543,13 +544,15 @@ type SimulationGroup interface {
 	Run(ctx context.Context) (SimGroupRunResult, error)
 }
 
+// SimulationGrouperFunc represents a factory function for grouping Simulation instances into one or more SimulationGroups
+type SimulationGrouperFunc func(simulations []Simulation) ([]SimulationGroup, error)
+
+// SimulationGrouper is an interface that wraps a method that satisfies SimulationGrouperFunc
 type SimulationGrouper interface {
 	Group(simulations []Simulation) ([]SimulationGroup, error)
 }
 
-// SimulationGrouperFunc represents a factory function for partitioning Simulation instances into one or more SimulationGroups
-type SimulationGrouperFunc func(simulations []Simulation) ([]SimulationGroup, error)
-
+// Group groups Simulation instances into one or more SimulationGroups. Satisfies SimulationGrouperFunc
 func (f SimulationGrouperFunc) Group(simulations []Simulation) ([]SimulationGroup, error) {
 	return f(simulations)
 }

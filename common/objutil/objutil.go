@@ -333,6 +333,15 @@ func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }
 
+// GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
+func GetFullNames(nsNames []types.NamespacedName) []string {
+	names := make([]string, 0, len(nsNames))
+	for _, nsName := range nsNames {
+		names = append(names, nsName.String())
+	}
+	return names
+}
+
 // GenerateName generates a name by appending a random suffix to the given base name.
 func GenerateName(base string) string {
 	const suffixLen = 5

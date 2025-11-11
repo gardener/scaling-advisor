@@ -39,6 +39,7 @@ type defaultScalingAdvisor struct {
 	generator         *generator.Generator
 }
 
+// New initializes and returns a ScalingAdvisorService based on the provided dependencies.
 func New(ctx context.Context,
 	config svcapi.ScalingAdvisorServiceConfig,
 	pricingAccess svcapi.InstancePricingAccess,
@@ -237,6 +238,7 @@ func setServiceConfigDefaults(cfg *svcapi.ScalingAdvisorServiceConfig) {
 	}
 }
 
+// ShutdownApp gracefully stops the App process wrapping the ScalingAdvisorService and returns an exit code.
 func ShutdownApp(app *svcapi.App) (exitCode int) {
 	log := logr.FromContextOrDiscard(app.Ctx)
 	ctx, cancel := context.WithCancel(context.Background())

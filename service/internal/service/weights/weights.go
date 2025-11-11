@@ -9,7 +9,7 @@ var defaultResourceWeights = createDefaultWeights()
 
 // GetDefaultWeightsFn returns a GetWeightsFunc which provides default resource weights	.
 func GetDefaultWeightsFn() service.GetWeightsFunc {
-	return func(instanceType string) (map[corev1.ResourceName]float64, error) {
+	return func(_ string) (map[corev1.ResourceName]float64, error) {
 		return defaultResourceWeights, nil
 	}
 }

@@ -20,7 +20,6 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 )
 
@@ -36,7 +35,6 @@ type suiteState struct {
 	wamView         mkapi.View
 	bamView         mkapi.View
 	schedulerHandle svcapi.SchedulerHandle
-	dynClient       dynamic.Interface
 }
 
 var log = klog.NewKlogr()
@@ -51,9 +49,12 @@ func TestMain(m *testing.M) {
 	defer state.cancel()
 	// Run integration tests
 	exitCode := m.Run()
-	shutdownSuite()
+	err = shutdownSuite()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to stop suite state: %v\n", err)
+		os.Exit(commoncli.ExitErrShutdown)
+	}
 	os.Exit(exitCode)
-
 }
 
 func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
@@ -116,7 +117,7 @@ func initSuite(ctx context.Context) error {
 	}
 
 	// Wait for the MinKAPI server to fully initialize and create the config file
-	configPath := "/tmp/kube-scheduler-config.yaml"
+	configPath := "/tmp/minkapi-kube-scheduler-config.yaml"
 	maxWait := 30 * time.Second
 	checkInterval := 500 * time.Millisecond
 
@@ -176,7 +177,8 @@ func initSuite(ctx context.Context) error {
 	return nil
 }
 
-func shutdownSuite() {
-	state.schedulerHandle.Stop()
+func shutdownSuite() error {
+	var err = state.schedulerHandle.Close()
 	_ = mkserver.ShutdownApp(state.app)
+	return err
 }

@@ -40,6 +40,10 @@ type schedulerHandle struct {
 	params    *svcapi.SchedulerLaunchParams
 }
 
+// NewLauncher initializes and returns a SchedulerLauncher using a scheduler config file and a maximum parallelism limit.
+// It reads the scheduler configuration from the provided file path and validates it.
+// Returns an error if the configuration file cannot be read or parsed.
+// Then delegates to NewLauncherFromConfig
 func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
 	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
@@ -49,6 +53,11 @@ func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerL
 	return NewLauncherFromConfig(configBytes, maxParallel)
 }
 
+// NewLauncherFromConfig initializes and returns a SchedulerLauncher using the scheduler config bytes (YAML) and a maximum parallelism limit.
+// It parses the scheduler configuration and validates it. Returns an error if the configuration file cannot be
+// parsed.
+// maxParallel represents the maximum number of parallel embedded scheduler instances that are launchable via SchedulerLauncher.Launch.
+// Once crossed, further calls to SchedulerLauncher.Launch will block until previously obtained SchedulerHandle's are stopped.
 func NewLauncherFromConfig(configBytes []byte, maxParallel int) (svcapi.SchedulerLauncher, error) {
 	scheduledConfig, err := parseSchedulerConfig(configBytes)
 	if err != nil {
@@ -151,10 +160,11 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 	return
 }
 
-func (s *schedulerHandle) Stop() {
+func (s *schedulerHandle) Close() error {
 	log := logr.FromContextOrDiscard(s.ctx)
 	log.Info("Stopping scheduler", "name", s.name)
 	s.cancelFn()
+	return nil
 }
 
 func (s *schedulerHandle) GetParams() svcapi.SchedulerLaunchParams {

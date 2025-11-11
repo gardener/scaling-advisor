@@ -51,7 +51,6 @@ var _ minkapi.Server = (*InMemoryKAPI)(nil)
 type InMemoryKAPI struct {
 	cfg          minkapi.Config
 	listenerAddr net.Addr
-	scheme       *runtime.Scheme
 	rootMux      *http.ServeMux
 	server       *http.Server
 	viewAccess   minkapi.ViewAccess
@@ -116,7 +115,7 @@ func ShutdownApp(app *minkapi.App) (exitCode int) {
 
 // NewDefaultInMemory constructs a KAPI server with default implementations of sub-components.
 func NewDefaultInMemory(ctx context.Context, cfg minkapi.Config) (minkapi.Server, error) {
-	viewAccess, err := view.NewAccess(&minkapi.ViewArgs{
+	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
 		Name:           minkapi.DefaultBasePrefix,
 		KubeConfigPath: cfg.KubeConfigPath,
 		Scheme:         typeinfo.SupportedScheme,
@@ -125,11 +124,12 @@ func NewDefaultInMemory(ctx context.Context, cfg minkapi.Config) (minkapi.Server
 	if err != nil {
 		return nil, err
 	}
-	return NewInMemoryUsingViews(cfg, viewAccess)
+	return NewInMemoryUsingViews(ctx, cfg, viewAccess)
 }
 
 // NewInMemoryUsingViews constructs a KAPI server with the given base view and the sandbox view creation function.
-func NewInMemoryUsingViews(cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k minkapi.Server, err error) {
+func NewInMemoryUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k minkapi.Server, err error) {
+	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", minkapi.ErrInitFailed, err)
@@ -152,6 +152,7 @@ func NewInMemoryUsingViews(cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k
 	// and always makes a call to http://localhost:8084/api/v1/?timeout=32s
 	rootMux.HandleFunc("GET /api/v1/", s.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
 	rootMux.HandleFunc("POST /views/{name}", s.handleCreateSandboxView)
+	log.Info("initialized MinKAPI server", "address", s.server.Addr)
 	k = s
 	return
 }
@@ -228,6 +229,7 @@ func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
 	return
 }
 
+// Close gracefully shuts down the server and closes associated resources, essentially wrapping the Stop method using the background context.
 func (k *InMemoryKAPI) Close() error {
 	return k.Stop(context.Background())
 }

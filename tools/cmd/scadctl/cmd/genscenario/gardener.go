@@ -688,7 +688,7 @@ func saveDataToFile(data any, path string) error {
 func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
 	snapData, err := json.Marshal(snap)
 	if err != nil {
-		return fmt.Errorf("Could not marshal snapshot: %w", err)
+		return fmt.Errorf("could not marshal snapshot: %w", err)
 	}
 	snapStr := string(snapData)
 
@@ -699,7 +699,7 @@ func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
 	}
 	err = json.Unmarshal([]byte(snapStr), snap)
 	if err != nil {
-		return fmt.Errorf("Could not unmarshal snapshot string to snapshot object: %w", err)
+		return fmt.Errorf("could not unmarshal snapshot string to snapshot object: %w", err)
 	}
 
 	return nil
@@ -714,10 +714,6 @@ func sanitizePod(pod *corev1.Pod, index int) {
 		pod.Spec.Volumes[i].Projected = nil
 	}
 	pod.OwnerReferences = nil
-}
-
-func sanitizePods(pods []*corev1.Pod) {
-
 }
 
 func sanitizeNode(node *corev1.Node) {
@@ -743,7 +739,7 @@ func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
 }
 
 // TODO Can this removal cause issues with selectors?
-func sanitizeDeleteFunc(k, v string) bool {
+func sanitizeDeleteFunc(k, _ string) bool {
 	for _, prefix := range removePrefixes {
 		if strings.HasPrefix(k, prefix) {
 			return true

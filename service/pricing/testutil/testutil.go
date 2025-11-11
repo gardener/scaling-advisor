@@ -17,6 +17,9 @@ import (
 //go:embed testdata/*
 var testDataFS embed.FS
 
+// GetInstancePricingAccessWithFakeData loads and parses fake instance pricing data from testdata for testing purposes.
+// Returns an implementation of service.InstancePricingAccess or an error if loading or parsing the data fails.
+// Errors are wrapped with service.ErrLoadInstanceTypeInfo sentinel error.
 func GetInstancePricingAccessWithFakeData() (access service.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
@@ -30,7 +33,10 @@ func GetInstancePricingAccessWithFakeData() (access service.InstancePricingAcces
 	return pricing.GetInstancePricingFromData(commontypes.AWSCloudProvider, testData)
 }
 
-func GetInstancePricingAccessWithFilteredAWSData() (access service.InstancePricingAccess, err error) {
+// GetInstancePricingAccessForTop20AWSInstanceTypes loads pricing data for the top 20 AWS instance types in eu-west-1 region and
+// Returns an implementation of service.InstancePricingAccess or an error if loading or parsing the data fails.
+// Errors are wrapped with service.ErrLoadInstanceTypeInfo sentinel error.
+func GetInstancePricingAccessForTop20AWSInstanceTypes() (access service.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", service.ErrLoadInstanceTypeInfo, err)

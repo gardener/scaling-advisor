@@ -18,11 +18,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 )
 
 var (
-	log          = klog.NewKlogr()
 	baseViewArgs = mkapi.ViewArgs{
 		Name:           "base",
 		KubeConfigPath: "base",

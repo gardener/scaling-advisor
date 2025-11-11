@@ -20,8 +20,10 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
+// Generator is responsible for creating and managing simulations to generate scaling advice.
 type Generator struct {
 	args *Args
 }
@@ -46,14 +48,15 @@ type RunArgs struct {
 	Timeout   time.Duration
 }
 
-type SandBoxViewFunc func(log logr.Logger, name string) (mkapi.View, error)
-
+// New creates a new instance of Generator using the provided Args. It initializes the Generator struct.
 func New(args *Args) *Generator {
 	return &Generator{
 		args: args,
 	}
 }
 
+// Run executes the scaling advice generation process using the provided context and runArgs.
+// The results of the generation process are sent as one more ScalingAdviceResult's on the RunArgs.ResultsCh channel.
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 	err := g.doGenerate(ctx, runArgs)
 	if err != nil {
@@ -64,11 +67,9 @@ func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 
 func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
-
 	if err = validateRequest(runArgs.Request); err != nil {
 		return
 	}
-
 	baseView := g.args.ViewAccess.GetBaseView()
 	err = synchronizeBaseView(ctx, baseView, runArgs.Request.Snapshot)
 	if err != nil {
@@ -80,43 +81,12 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 	if err != nil {
 		return
 	}
-	var (
-		allWinnerNodeScores []svcapi.NodeScore
-		unscheduledPods     []svcapi.PodResourceInfo
-	)
-
-	for {
-		var passWinnerNodeScores []svcapi.NodeScore
-		groupRunPassNum := groupRunPassCounter.Load()
-		log := log.WithValues("groupRunPass", groupRunPassNum) // purposefully shadowed.
-		passCtx := logr.NewContext(ctx, log)
-		passWinnerNodeScores, unscheduledPods, err = g.RunPass(passCtx, groups)
-		if err != nil {
-			return
-		}
-		// If there are no winning nodes produced by a pass for the pending unscheduled pods, then abort the loop.
-		// This means that we could not identify any node from the node pool and node template combinations (as specified in the constraint)
-		// that could accommodate any unscheduled pods. It is fruitless to continue further.
-		if len(passWinnerNodeScores) == 0 {
-			log.Info("Aborting loop since no node scores produced in %d pass.", groupRunPassNum)
-			break
-		}
-		allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
-		if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
-			err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
-			if err != nil {
-				return
-			}
-		}
-		if len(unscheduledPods) == 0 {
-			log.Info("All pods have been scheduled in %d pass", groupRunPassNum)
-			break
-		}
-		groupRunPassCounter.Add(1)
+	allWinnerNodeScores, unscheduledPods, err := g.runPasses(ctx, runArgs, groups, &groupRunPassCounter)
+	if err != nil {
+		return
 	}
-
-	// If there is no scaling advice, then return an error indicating the same.
 	if len(allWinnerNodeScores) == 0 {
+		log.Info("No scaling advice generated. No winning nodes produced by any simulation group.")
 		err = svcapi.ErrNoScalingAdvice
 		return
 	}
@@ -124,6 +94,46 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
 	}
 	return
+}
+
+func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+	log := logr.FromContextOrDiscard(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			log.Info("Generator context done. Aborting pass loop", "err", err)
+			return
+		default:
+			var passWinnerNodeScores []svcapi.NodeScore
+			groupRunPassNum := groupRunPassCounter.Load()
+			log := log.WithValues("groupRunPass", groupRunPassNum) // purposefully shadowed.
+			passCtx := logr.NewContext(ctx, log)
+			passWinnerNodeScores, unscheduledPods, err = g.runPass(passCtx, groups)
+			if err != nil {
+				return
+			}
+			// If there are no winning nodes produced by a pass for the pending unscheduled pods, then abort the loop.
+			// This means that we could not identify any node from the node pool and node template combinations (as specified in the constraint)
+			// that could accommodate any unscheduled pods. It is fruitless to continue further.
+			if len(passWinnerNodeScores) == 0 {
+				log.Info("Aborting loop since no node scores produced in pass.", "groupRunPass", groupRunPassNum)
+				return
+			}
+			allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
+			if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
+				err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
+				if err != nil {
+					return
+				}
+			}
+			if len(unscheduledPods) == 0 {
+				log.Info("All pods have been scheduled in pass", "groupRunPass", groupRunPassNum)
+				return
+			}
+			groupRunPassCounter.Add(1)
+		}
+	}
 }
 
 func validateRequest(request svcapi.ScalingAdviceRequest) error {
@@ -181,10 +191,9 @@ func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.Cluste
 		}
 	}
 	return nil
-
 }
 
-func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo) error {
+func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName) error {
 	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
 	if err != nil {
 		return err
@@ -206,7 +215,7 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcap
 	return nil
 }
 
-func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []svcapi.PodResourceInfo, err error) {
+func (g *Generator) runPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
 		groupRunResult svcapi.SimGroupRunResult
@@ -226,6 +235,7 @@ func (g *Generator) RunPass(ctx context.Context, groups []svcapi.SimulationGroup
 			continue
 		}
 		winnerNodeScores = append(winnerNodeScores, *groupScores.WinnerNodeScore)
+		unscheduledPods = groupScores.WinnerNodeScore.UnscheduledPods
 		if len(groupScores.WinnerNodeScore.UnscheduledPods) == 0 {
 			log.Info("simulation group winner has left NO unscheduled pods. No need to continue to next group", "simulationGroupName", groupRunResult.Name)
 			break
@@ -261,12 +271,12 @@ func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcap
 	}, nil
 }
 
-func getScaledNodeOfWinner(results []svcapi.SimRunResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
+func getScaledNodeOfWinner(simRunResults []svcapi.SimRunResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
 	var (
 		winnerNode *corev1.Node
 	)
-	for _, sr := range results {
-		if sr.NodeScorerArgs.ID == winnerNodeScore.ID {
+	for _, sr := range simRunResults {
+		if sr.ID == winnerNodeScore.ID {
 			winnerNode = sr.ScaledNode
 			break
 		}

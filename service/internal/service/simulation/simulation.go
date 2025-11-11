@@ -39,6 +39,7 @@ type defaultSimulation struct {
 
 var _ svcapi.SimulationCreatorFunc = New
 
+// New creates a new Simulation instance with the specified name and using the given arguments after validation.
 func New(name string, args *svcapi.SimulationArgs) (svcapi.Simulation, error) {
 	var nodeTemplate *sacorev1alpha1.NodeTemplate
 	for _, nt := range args.NodePool.NodeTemplates {
@@ -62,6 +63,7 @@ func New(name string, args *svcapi.SimulationArgs) (svcapi.Simulation, error) {
 	return sim, nil
 }
 
+// IsUnscheduledPod determines if a given pod is unscheduled by checking if the NodeName in its spec is empty.
 func IsUnscheduledPod(pod *corev1.Pod) bool {
 	return pod.Spec.NodeName == ""
 }
@@ -119,7 +121,7 @@ func (s *defaultSimulation) Run(simCtx context.Context) (err error) {
 	if err != nil {
 		return
 	}
-	defer schedulerHandle.Stop()
+	defer schedulerHandle.Close()
 
 	err = s.trackUntilStabilized(simCtx)
 	if err != nil {

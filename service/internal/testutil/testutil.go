@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	// BasicCluster is the name of a very basic test cluster.
 	BasicCluster = "basic-cluster"
 )
 
