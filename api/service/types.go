@@ -87,6 +87,8 @@ type ScalingAdvisorServiceConfig struct {
 	CloudProvider commontypes.CloudProvider
 	// MaxParallelSimulations is the maximum number of parallel simulations that can be run by the scaling advisor service.
 	MaxParallelSimulations int
+	// LogBaseDir is the base directory for storing log files used by the scaling advisor service.
+	LogBaseDir string
 }
 
 // ScalingAdviceResponseFn is a callback function which is invoked by the scaling advisor service when generating scaling advice.

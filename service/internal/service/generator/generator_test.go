@@ -21,8 +21,8 @@ import (
 )
 
 func TestGenerateBasicScalingAdvice(t *testing.T) {
-	ctx := commontestutil.LoggerContext(t.Context())
-	g, err := createTestGenerator(ctx)
+	runCtx := commontestutil.LoggerContext(t.Context())
+	g, err := createTestGenerator(runCtx)
 	if err != nil {
 		t.Errorf("failed to create test generator: %v", err)
 		return
@@ -44,8 +44,9 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 			ID:            t.Name(),
 			CorrelationID: t.Name(),
 		},
-		Constraint: constraints,
-		Snapshot:   snapshot,
+		Constraint:        constraints,
+		Snapshot:          snapshot,
+		EnableDiagnostics: true,
 	}
 
 	resultCh := make(chan svcapi.ScalingAdviceResult, 1)
@@ -53,12 +54,16 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 		Request:   req,
 		ResultsCh: resultCh,
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	runCtx, cancel := context.WithCancel(runCtx)
 	defer cancel()
-	g.Run(ctx, &runArgs)
+	g.Run(runCtx, &runArgs)
 	adv := <-resultCh
 	if adv.Err != nil {
 		t.Errorf("failed to generate scaling advice: %v", adv.Err)
+		return
+	}
+	if adv.Response.Diagnostics == nil {
+		t.Errorf("expected diagnostics to be set, got nil")
 		return
 	}
 	scalingAdvice := adv.Response.ScalingAdvice
