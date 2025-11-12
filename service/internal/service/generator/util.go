@@ -12,31 +12,32 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-func SendError(adviceEventCh chan<- svcapi.ScalingAdviceEvent, requestRef svcapi.ScalingAdviceRequestRef, err error) {
+// SendError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.
+func SendError(resultsCh chan<- svcapi.ScalingAdviceResult, requestRef svcapi.ScalingAdviceRequestRef, err error) {
 	err = svcapi.AsGenerateError(requestRef.ID, requestRef.CorrelationID, err)
-	adviceEventCh <- svcapi.ScalingAdviceEvent{
+	resultsCh <- svcapi.ScalingAdviceResult{
 		Err: err,
 	}
 }
 
-func createScalingAdvice(request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winningNodeScores []svcapi.NodeScore, pendingUnscheduledPods []svcapi.PodResourceInfo) (*sacorev1alpha1.ClusterScalingAdvice, error) {
-	nodeCountByPlacement, err := request.Snapshot.GetNodeCountByPlacement()
+func createScalingAdvice(request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winningNodeScores []svcapi.NodeScore, pendingUnscheduledPods []types.NamespacedName) (*sacorev1alpha1.ClusterScalingAdvice, error) {
+	existingNodeCountByPlacement, err := request.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
 		return nil, err
 	}
-	scaleOutPlan := createScaleOutPlan(winningNodeScores, nodeCountByPlacement, pendingUnscheduledPods)
+	scaleOutPlan := createScaleOutPlan(winningNodeScores, existingNodeCountByPlacement, pendingUnscheduledPods)
 	return &sacorev1alpha1.ClusterScalingAdvice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%d", objutil.GenerateName("advice"), groupRunPassNum),
 			Namespace: request.Constraint.Namespace,
 			Labels: map[string]string{
 				commonconstants.LabelSimulationGroupPassNum: fmt.Sprintf("%d", groupRunPassNum),
-				commonconstants.LabelRequestID:              request.ScalingAdviceRequestRef.ID,
-				commonconstants.LabelCorrelationID:          request.ScalingAdviceRequestRef.CorrelationID,
+				commonconstants.LabelRequestID:              request.ID,
+				commonconstants.LabelCorrelationID:          request.CorrelationID,
 			},
 		},
 		Spec: sacorev1alpha1.ClusterScalingAdviceSpec{
@@ -49,7 +50,7 @@ func createScalingAdvice(request svcapi.ScalingAdviceRequest, groupRunPassNum ui
 	}, nil
 }
 
-func createScaleOutPlan(winningNodeScores []svcapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, pendingUnscheduledPods []svcapi.PodResourceInfo) sacorev1alpha1.ScaleOutPlan {
+func createScaleOutPlan(winningNodeScores []svcapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, pendingUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := groupByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {
@@ -62,7 +63,7 @@ func createScaleOutPlan(winningNodeScores []svcapi.NodeScore, existingNodeCountB
 		})
 	}
 	return sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: podutil.GetObjectNamesFromPodResourceInfos(pendingUnscheduledPods),
+		UnsatisfiedPodNames: objutil.GetFullNames(pendingUnscheduledPods),
 		Items:               scaleItems,
 	}
 }

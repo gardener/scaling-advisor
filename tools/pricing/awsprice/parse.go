@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -55,17 +56,37 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 		if attrs.OperatingSys != osName {
 			continue
 		}
+		// TODO : Support Dedicated tenancy if needed
 		if attrs.Tenancy != "" && attrs.Tenancy != "Shared" {
 			continue // skip Dedicated/Host
 		}
 
-		vcpu, err := parseVCPU(attrs.VCPU)
+		vcpu, err := parseInt32(attrs.VCPU)
 		if err != nil {
 			continue
 		}
 		mem, err := parseMemory(attrs.Memory)
 		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "warning: skipping SKU %q due to invalid memory attribute %q: %v\n", sku, attrs.Memory, err)
 			continue
+		}
+		var (
+			gpu       int32
+			gpuMemory int64
+		)
+		if attrs.GPU != "" {
+			gpu, err = parseInt32(attrs.GPU)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "warning: skipping SKU %q due to invalid GPU attribute %q: %v\n", sku, attrs.GPU, err)
+				continue
+			}
+			if attrs.GPUMemory != "" && attrs.GPUMemory != "NA" {
+				gpuMemory, err = parseMemory(attrs.GPUMemory)
+				if err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "warning: skipping SKU %q due to invalid GPU memory attribute %q: %v\n", sku, attrs.GPUMemory, err)
+					continue
+				}
+			}
 		}
 
 		price := extractOnDemandHourlyPriceForSKU(raw.Terms, sku)
@@ -80,6 +101,8 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 				Region:       region,
 				VCPU:         vcpu,
 				Memory:       mem,
+				GPU:          gpu,
+				GPUMemory:    gpuMemory,
 				HourlyPrice:  price,
 				OS:           attrs.OperatingSys,
 			}
@@ -147,29 +170,38 @@ func extractOnDemandHourlyPriceForSKU(terms awsprice.Terms, sku string) float64 
 	return best
 }
 
-// parseVCPU converts a vCPU attribute string to an integer count. Ex : "4" -> 4.
-func parseVCPU(s string) (int32, error) {
+// parseInt3 converts a string attribute to an int32 count. Ex : "4" -> 4.
+func parseInt32(s string) (int32, error) {
 	val, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil {
 		return 0, err
 	}
 	if val < 0 || val > math.MaxInt32 {
-		return 0, fmt.Errorf("vCPU value %d out of int32 range", val)
+		return 0, fmt.Errorf("value %d out of int32 range", val)
 	}
 	return int32(val), nil // #nosec G109 -- value has been range-checked. If the value is greater than MaxInt32, an error is returned.
 }
 
 // parseMemory converts a memory attribute string like "16 GiB" into
-// a float64 representing GiB. Ex: "16 GiB" -> 16.0
-func parseMemory(s string) (float64, error) {
+// an int64 representing GiB. Ex: "16 GiB" -> 16
+func parseMemory(s string) (int64, error) {
 	// Example: "16 GiB"
 	parts := strings.Fields(s)
 	if len(parts) < 1 {
 		return 0, fmt.Errorf("invalid memory string: %q", s)
 	}
+
 	val, err := strconv.ParseFloat(parts[0], 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid memory string %q: %v", parts[0], err)
 	}
-	return val, nil
+	unit := parts[1]
+	switch unit {
+	case "GB":
+		return int64(val * 1_000_000_000), nil
+	case "GiB":
+		return int64(val * 1_073_741_824), nil // 1024^3
+	default:
+		return 0, fmt.Errorf("unknown memory unit: %q", unit)
+	}
 }

@@ -6,6 +6,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/gardener/scaling-advisor/api/common/constants"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
@@ -59,7 +60,7 @@ func (o *LaunchOptions) loadOperatorConfig() (*configv1alpha1.ScalingAdvisorConf
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}
 	operatorConfig := &configv1alpha1.ScalingAdvisorConfiguration{}
-	if err := objutil.LoadYAMLIntoRuntimeObject(o.ConfigFile, configScheme, operatorConfig); err != nil {
+	if err := objutil.LoadUsingSchemeIntoRuntimeObject(os.DirFS("."), o.ConfigFile, configScheme, operatorConfig); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}
 	return operatorConfig, nil
