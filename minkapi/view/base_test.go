@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"
@@ -25,9 +26,9 @@ import (
 
 func TestNodeCreation(t *testing.T) {
 	objCreationTests := map[string]struct {
+		fileName string
 		gvk      schema.GroupVersionKind
 		retErr   error
-		fileName string
 	}{
 		"No error": {
 			fileName: "testdata/node-a.json",
@@ -57,18 +58,18 @@ func TestNodeCreation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			nodes, err := baseView.ListNodes(t.Context())
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Nodes before creation is %d", len(nodes))
 			_, err = createObjectFromFileName[corev1.Node](t, baseView, tc.fileName, tc.gvk)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			nodes, err = baseView.ListNodes(t.Context())
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Nodes after creation is %d", len(nodes))
@@ -78,15 +79,15 @@ func TestNodeCreation(t *testing.T) {
 
 func TestPodListing(t *testing.T) {
 	matchCriteria := map[string]struct {
-		retErr    error
 		c         minkapi.MatchCriteria
 		namespace string
 		names     []string
+		retErr    error
 	}{
 		"No criteria (need ns)":    {retErr: fmt.Errorf("cannot list pods without namespace")},
 		"test namespace":           {namespace: "test", retErr: nil},
 		"random namespace":         {namespace: "mnbvcxz", retErr: nil},
-		"default ns with pod name": {namespace: metav1.NamespaceDefault, names: []string{"pod-default"}, retErr: nil},
+		"default ns with pod name": {namespace: "default", names: []string{"pod-default"}, retErr: nil},
 	}
 	baseView, err := createTestBaseView(t)
 	if err != nil {
@@ -103,7 +104,7 @@ func TestPodListing(t *testing.T) {
 			criteria := minkapi.MatchCriteria{Namespace: tc.namespace, Names: sets.New(tc.names...)}
 			p, err := baseView.ListPods(t.Context(), criteria)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			for _, pd := range p {
@@ -119,9 +120,9 @@ func TestPodListing(t *testing.T) {
 // TODO test matching when deleting
 func TestEventDeletion(t *testing.T) {
 	matchCriteria := map[string]struct {
-		retErr error
-		gvk    schema.GroupVersionKind
 		c      minkapi.MatchCriteria
+		gvk    schema.GroupVersionKind
+		retErr error
 	}{
 		"No criteria": {
 			c:      minkapi.MatchCriteria{},
@@ -139,18 +140,18 @@ func TestEventDeletion(t *testing.T) {
 			retErr: nil,
 		},
 		"default namespace": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
+			c:      minkapi.MatchCriteria{Namespace: "default"},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		// TODO GVK is only utilized for checking store existence
 		"incorrect gvk when deleting": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
+			c:      minkapi.MatchCriteria{Namespace: "default"},
 			gvk:    typeinfo.PodsDescriptor.GVK,
 			retErr: nil,
 		},
 		"non-existing name": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault, Names: sets.New("bingo")},
+			c:      minkapi.MatchCriteria{Namespace: "default", Names: sets.New("bingo")},
 			gvk:    typeinfo.EventsDescriptor.GVK,
 			retErr: nil,
 		},
@@ -170,21 +171,21 @@ func TestEventDeletion(t *testing.T) {
 			}
 			events, err := baseView.ListEvents(t.Context(), tc.c.Namespace)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Events before deletion is %d", len(events))
 
-			t.Logf("Deleting Event with criteria: %s", tc.c)
+			t.Logf("Deleting Event")
 			err = baseView.DeleteObjects(t.Context(), tc.gvk, tc.c)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 
 			events, err = baseView.ListEvents(t.Context(), tc.c.Namespace)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			t.Logf("Number of Events after deletion is %d", len(events))

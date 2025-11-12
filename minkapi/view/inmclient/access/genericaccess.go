@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package access
 
 import (
@@ -58,7 +54,7 @@ func (a *GenericResourceAccess[T, L]) UpdateObject(ctx context.Context, _ metav1
 	if err != nil {
 		return
 	}
-	updatedObj, err = a.GetObject(ctx, obj.GetNamespace(), obj.GetName(), metav1.GetOptions{})
+	updatedObj, err = a.GetObject(ctx, obj.GetName(), obj.GetNamespace(), metav1.GetOptions{})
 	return
 }
 

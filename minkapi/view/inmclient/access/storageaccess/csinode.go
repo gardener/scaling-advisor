@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package storageaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +26,7 @@ type csiNodeAccess struct {
 }
 
 // NewCSINodeAccess creates an access facade for managing CSINodeList resources using the given minkapi View.
-func NewCSINodeAccess(view minkapi.View) clientstoragev1.CSINodeInterface {
+func NewCSINodeAccess(view mkapi.View) clientstoragev1.CSINodeInterface {
 	return &csiNodeAccess{
 		access.GenericResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]{
 			View:      view,

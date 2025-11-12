@@ -13,14 +13,12 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/view/store"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/clientutil"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -40,10 +37,10 @@ var _ minkapi.View = (*sandboxView)(nil)
 
 type sandboxView struct {
 	delegateView minkapi.View
-	eventSink    minkapi.EventSink
 	args         *minkapi.ViewArgs
 	mu           *sync.RWMutex
 	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
+	eventSink    minkapi.EventSink
 	changeCount  atomic.Int64
 }
 
@@ -68,13 +65,12 @@ func NewSandbox(delegateView minkapi.View, args *minkapi.ViewArgs) (minkapi.View
 	}, nil
 }
 
-func (v *sandboxView) Reset() error {
+func (v *sandboxView) Reset() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	resettable := asResettable(v.stores)
-	resettable = append(resettable, v.eventSink)
+	resetStores(v.stores)
 	v.changeCount.Store(0)
-	return ioutil.ResetAll(resettable...)
+	v.eventSink.Reset()
 }
 
 func (v *sandboxView) Close() error {
@@ -88,7 +84,7 @@ func (v *sandboxView) GetName() string {
 }
 
 func (v *sandboxView) GetType() minkapi.ViewType {
-	return minkapi.ViewTypeSandbox
+	return minkapi.SandboxViewType
 }
 
 func (v *sandboxView) GetObjectChangeCount() int64 {
@@ -107,9 +103,9 @@ func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontyp
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessModeNetwork:
+	case commontypes.ClientAccessNetwork:
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessModeInMemory:
+	case commontypes.ClientAccessInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)

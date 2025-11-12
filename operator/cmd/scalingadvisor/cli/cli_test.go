@@ -57,7 +57,18 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 		{
 			name:       "ShouldLoadMinimalScalingAdvisorConfig",
 			configFile: "testdata/basic-operator-config.yaml",
-			want:       updateOperatorConfigWithDefaults(&configv1alpha1.OperatorConfig{}),
+			want: updateOperatorConfigWithDefaults(&configv1alpha1.ScalingAdvisorConfiguration{
+				Server: configv1alpha1.ScalingAdvisorServerConfiguration{
+					ServerConfig: commontypes.ServerConfig{
+						HostPort: commontypes.HostPort{
+							Host: "localhost",
+							Port: 9090,
+						},
+						KubeConfigPath:   "/tmp/kube-config.yaml",
+						ProfilingEnabled: false,
+					},
+				},
+			}),
 		},
 	}
 	for _, tt := range tests {

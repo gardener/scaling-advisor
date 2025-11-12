@@ -49,12 +49,7 @@ func NewMockWeightsFunc(instanceType string) (map[corev1.ResourceName]float64, e
 }
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, access, NewMockWeightsFunc)
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -122,7 +117,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -194,7 +189,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -302,7 +297,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := testutil.LoadTestInstancePricingAccess()
+	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -408,4 +403,150 @@ func TestSelectMinPrice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetNodeScoreSelector(t *testing.T) {
+	tests := map[string]struct {
+		input                commontypes.NodeScoringStrategy
+		expectedFunctionName string
+		expectedError        error
+	}{
+		"least-cost strategy": {
+			input:                commontypes.LeastCostNodeScoringStrategy,
+			expectedFunctionName: testutil.GetFunctionName(t, SelectMaxAllocatable),
+			expectedError:        nil,
+		},
+		"least-waste strategy": {
+			input:                commontypes.LeastWasteNodeScoringStrategy,
+			expectedFunctionName: testutil.GetFunctionName(t, SelectMinPrice),
+			expectedError:        nil,
+		},
+		"invalid strategy": {
+			input:                "invalid",
+			expectedFunctionName: "",
+			expectedError:        service.ErrUnsupportedNodeScoringStrategy,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := GetNodeScoreSelector(tc.input)
+			gotFunctionName := testutil.GetFunctionName(t, got)
+			if tc.expectedError == nil {
+				if err != nil {
+					t.Fatalf("Expected error to be nil but got %v", err)
+				}
+			} else if tc.expectedError != nil {
+				if !errors.Is(err, tc.expectedError) {
+					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
+				} else if err == nil {
+					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
+				}
+			}
+			if tc.expectedFunctionName != "" {
+				if got == nil {
+					t.Fatalf("Expected node score selector to be %s but got nil", gotFunctionName)
+				} else {
+					gotType := reflect.TypeOf(got).String()
+					if gotFunctionName != tc.expectedFunctionName {
+						t.Fatalf("Expected node score selector %s but got %s", tc.expectedFunctionName, gotType)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGetNodeScorer(t *testing.T) {
+	tests := map[string]struct {
+		input         commontypes.NodeScoringStrategy
+		expectedType  string
+		expectedError error
+	}{
+		"least-cost strategy": {
+			input:         commontypes.LeastCostNodeScoringStrategy,
+			expectedType:  "*scorer.LeastCost",
+			expectedError: nil,
+		},
+		"least-waste strategy": {
+			input:         commontypes.LeastWasteNodeScoringStrategy,
+			expectedType:  "*scorer.LeastWaste",
+			expectedError: nil,
+		},
+		"invalid strategy": {
+			input:         "invalid",
+			expectedType:  "",
+			expectedError: service.ErrUnsupportedNodeScoringStrategy,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+			if err != nil {
+				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
+			}
+			got, err := GetNodeScorer(tc.input, access, testWeightsFunc)
+			if tc.expectedError == nil {
+				if err != nil {
+					t.Fatalf("Expected error to be nil but got %v", err)
+				}
+			} else if tc.expectedError != nil {
+				if !errors.Is(err, tc.expectedError) {
+					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
+				} else if err == nil {
+					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
+				}
+			}
+			if tc.expectedType != "" {
+				if got == nil {
+					t.Fatalf("Expected scorer to be %s but got nil", tc.expectedType)
+				} else {
+					gotType := reflect.TypeOf(got).String()
+					if gotType != tc.expectedType {
+						t.Fatalf("Expected type %s but got %s", tc.expectedType, gotType)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Helper function to create mock nodes
+func createNodeResourceInfo(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
+	return service.NodeResourceInfo{
+		Name:         name,
+		InstanceType: instanceType,
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+// Helper function to create mock pods with cpu and memory requests
+func createPodResourceInfo(name string, cpu, memory int64) service.PodResourceInfo {
+	return service.PodResourceInfo{
+		UID: "pod-12345",
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: metav1.NamespaceDefault,
+		},
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+// Helper weights function for testing
+func testWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
+	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
+}
+
+type testInfoAccess struct {
+	err error
+}
+
+// Helper function to create stub instance pricing access that returns an error
+func (m *testInfoAccess) GetInfo(_, _ string) (info service.InstancePriceInfo, err error) {
+	return service.InstancePriceInfo{}, m.err
 }

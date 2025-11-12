@@ -8,7 +8,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/storageaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	clientstoragev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,7 +18,7 @@ var (
 )
 
 type storageV1Impl struct {
-	view minkapi.View
+	view mkapi.View
 }
 
 func (a *storageV1Impl) RESTClient() rest.Interface {

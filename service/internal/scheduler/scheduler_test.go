@@ -20,7 +20,6 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 )
 
@@ -36,7 +35,6 @@ type suiteState struct {
 	wamView         mkapi.View
 	bamView         mkapi.View
 	schedulerHandle svcapi.SchedulerHandle
-	dynClient       dynamic.Interface
 }
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
@@ -48,15 +46,18 @@ func TestMain(m *testing.M) {
 	}
 	// Run integration tests
 	exitCode := m.Run()
-	shutdownSuite()
+	err = shutdownSuite()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to stop suite state: %v\n", err)
+		os.Exit(commoncli.ExitErrShutdown)
+	}
 	os.Exit(exitCode)
-
 }
 
 func TestPodNodeAssignment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
 		t.Fatalf("failed to get client facades: %v", err)
 		return
@@ -110,17 +111,34 @@ func initSuite(ctx context.Context) error {
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
-	defer app.Cancel()
-	<-time.After(1 * time.Second) // give some time for startup
+
+	// Wait for the MinKAPI server to fully initialize and create the config file
+	configPath := "/tmp/minkapi-kube-scheduler-config.yaml"
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+
+	deadline := time.Now().Add(maxWait)
+	for time.Now().Before(deadline) {
+		if _, err = os.Stat(configPath); err == nil {
+			// Config file exists, proceed
+			break
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// Final check that the config file exists
+	if _, err = os.Stat(configPath); err != nil {
+		return fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
+	}
 
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
 	state.baseView = app.Server.GetBaseView()
-	state.wamView, err = app.Server.GetSandboxView(log, "wam")
+	state.wamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "wam")
 	if err != nil {
 		return err
 	}
-	state.bamView, err = app.Server.GetSandboxView(log, "bam")
+	state.bamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "bam")
 	if err != nil {
 		return err
 	}
@@ -129,7 +147,7 @@ func initSuite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	clientFacades, err := state.baseView.GetClientFacades(commontypes.ClientAccessInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(state.ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
 		return err
 	}
@@ -156,7 +174,8 @@ func initSuite(ctx context.Context) error {
 	return nil
 }
 
-func shutdownSuite() {
-	state.schedulerHandle.Stop()
+func shutdownSuite() error {
+	var err = state.schedulerHandle.Close()
 	_ = mkserver.ShutdownApp(state.app)
+	return err
 }

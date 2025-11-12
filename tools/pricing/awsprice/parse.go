@@ -101,6 +101,8 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 				Region:       region,
 				VCPU:         vcpu,
 				Memory:       mem,
+				GPU:          gpu,
+				GPUMemory:    gpuMemory,
 				HourlyPrice:  price,
 				OS:           attrs.OperatingSys,
 			}

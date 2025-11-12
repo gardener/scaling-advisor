@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package storageaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +26,7 @@ type volumeAttachmentAccess struct {
 }
 
 // NewVolumeAttachmentAccess creates an access facade for managing VolumeAttachmentList resources using the given minkapi View.
-func NewVolumeAttachmentAccess(view minkapi.View) clientstoragev1.VolumeAttachmentInterface {
+func NewVolumeAttachmentAccess(view mkapi.View) clientstoragev1.VolumeAttachmentInterface {
 	return &volumeAttachmentAccess{
 		access.GenericResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
 			View:      view,

@@ -56,25 +56,6 @@ func TestResourceListToInt64MapAndBack(t *testing.T) {
 	}
 }
 
-func TestLoadYamlIntoCoreRuntimeObj(t *testing.T) {
-	tests := map[string]struct {
-		filePath string
-		retErr   error
-	}{
-		"valid yaml":        {filePath: "../../minkapi/server/testdata/pod-a.yaml", retErr: nil},
-		"corrupt yaml":      {filePath: "../../minkapi/server/testdata/corrupt-pod-a.yaml", retErr: fmt.Errorf("failed to unmarshal object")},
-		"non-yaml file":     {filePath: "./objutil.go", retErr: fmt.Errorf("failed to unmarshal object")},
-		"non-existent path": {filePath: "../../minkapi/server/testdata/bingo.yaml", retErr: fmt.Errorf("failed to read")},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			var pod1 corev1.Pod
-			gotErr := LoadYamlIntoCoreRuntimeObj(tc.filePath, &pod1)
-			testutil.AssertError(t, gotErr, tc.retErr)
-		})
-	}
-}
-
 func TestSetMetaObjectGVK(t *testing.T) {
 	testPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

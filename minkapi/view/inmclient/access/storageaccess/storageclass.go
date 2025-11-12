@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package storageaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +26,7 @@ type storageClassAccess struct {
 }
 
 // NewStorageClassAccess creates an access facade for managing StorageClass resources using the given minkapi View.
-func NewStorageClassAccess(view minkapi.View) clientstoragev1.StorageClassInterface {
+func NewStorageClassAccess(view mkapi.View) clientstoragev1.StorageClassInterface {
 	return &storageClassAccess{
 		access.GenericResourceAccess[*storagev1.StorageClass, *storagev1.StorageClassList]{
 			View:      view,

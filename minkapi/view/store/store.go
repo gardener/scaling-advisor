@@ -9,12 +9,12 @@ import (
 	"math"
 	"reflect"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
@@ -28,17 +28,16 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ minkapi.ResourceStore = (*InMemResourceStore)(nil)
+var _ mkapi.ResourceStore = (*InMemResourceStore)(nil)
 
 // InMemResourceStore represents an in-memory implementation of the ResourceStore interface for managing resources.
 // It leverages and wraps a backing cache.Store.
 type InMemResourceStore struct {
-	args        *minkapi.ResourceStoreArgs
+	args        *mkapi.ResourceStoreArgs
 	cache       cache.Store
 	broadcaster *watch.Broadcaster
 	// versionCounter is the atomic counter for generating monotonically increasing resource versions
 	versionCounter *atomic.Int64
-	mu             sync.Mutex
 }
 
 // GetVersionCounter returns the atomic resource version counter for resources in this store.
@@ -52,7 +51,7 @@ func (s *InMemResourceStore) GetObjAndListGVK() (objKind schema.GroupVersionKind
 }
 
 // NewInMemResourceStore returns an in-memory store for a given object GVK. TODO: think on simplifying parameters.
-func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore {
+func NewInMemResourceStore(args *mkapi.ResourceStoreArgs) *InMemResourceStore {
 	s := InMemResourceStore{
 		args:           args,
 		cache:          cache.NewStore(cache.MetaNamespaceKeyFunc),
@@ -66,19 +65,14 @@ func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore 
 }
 
 // Reset resets the backing cache for this story and re-initializes the watch broadcasters.
-func (s *InMemResourceStore) Reset() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *InMemResourceStore) Reset() {
 	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
-	return nil
+	s.broadcaster = watch.NewBroadcaster(s.args.WatchConfig.QueueSize, watch.WaitIfChannelFull)
 }
 
 // Add adds the given metav1 Object to this store, setting the right resource version, updating the resource version counter and broadcasting the Add event to any watchers.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	log := logr.FromContextOrDiscard(ctx)
 	o, err := s.validateRuntimeObj(mo)
 	if err != nil {
@@ -104,9 +98,6 @@ func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
 // Update updates the given metav1.Object in the store, setting the next resource version and broadcasting a Modified event.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	log := logr.FromContextOrDiscard(ctx)
 	o, err := s.validateRuntimeObj(mo)
 	if err != nil {
@@ -163,9 +154,6 @@ func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectNam
 
 // GetByKey gets the object identified by the given key from the store and returns the same as a runtime.Object.
 func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtime.Object, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	log := logr.FromContextOrDiscard(ctx)
 	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
@@ -174,7 +162,7 @@ func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtim
 		return
 	}
 	if !exists {
-		log.V(6).Info("did not find object by key", "key", key)
+		log.V(4).Info("did not find object by key", "key", key)
 		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
 		return
 	}
@@ -194,17 +182,14 @@ func (s *InMemResourceStore) Get(ctx context.Context, objName cache.ObjectName) 
 }
 
 // List queries the store according to the given MatchCriteria, gets objects and creates and returns the List object wrapping individual objects.
-func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) (listObj runtime.Object, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *InMemResourceStore) List(ctx context.Context, c mkapi.MatchCriteria) (listObj runtime.Object, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	items := s.cache.List()
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
 	typesMap := typeinfo.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
 	listType, ok := typesMap[s.args.ObjectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
-		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), s.args.ObjectListGVK)
+		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), s.objListGVK)
 	}
 	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
 	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList
@@ -217,15 +202,15 @@ func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) 
 		return nil, fmt.Errorf("failed to get ListMeta field on %v", listObjVal)
 	}
 	typeMetaVal.Set(reflect.ValueOf(metav1.TypeMeta{
-		Kind:       s.args.ObjectListGVK.Kind,
-		APIVersion: s.args.ObjectGVK.GroupVersion().String(),
+		Kind:       s.objListGVK.Kind,
+		APIVersion: s.objGVK.GroupVersion().String(),
 	}))
 	listMetaVal.Set(reflect.ValueOf(metav1.ListMeta{
 		ResourceVersion: currVersionStr,
 	}))
 	itemsField := listObjVal.FieldByName("Items") // // Ex: corev1.Pod
 	if !itemsField.IsValid() || !itemsField.CanSet() || itemsField.Kind() != reflect.Slice {
-		return nil, fmt.Errorf("list object type %T for kind %q does not have a settable slice field named Items", listObj, s.args.ObjectGVK.Kind)
+		return nil, fmt.Errorf("list object type %T for kind %q does not have a settable slice field named Items", listObj, s.objGVK.Kind)
 	}
 	itemType := itemsField.Type().Elem() // e.g., corev1.Pod
 	resultSlice := reflect.MakeSlice(itemsField.Type(), 0, len(items))
@@ -260,10 +245,7 @@ func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) 
 }
 
 // ListMetaObjects queries the store according to the given MatchCriteria, gets objects and returns them as a slice, including the maximum resource version found in the returned objects.
-func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c mkapi.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
 	items := s.cache.List()
 	sliceSize := int(math.Min(float64(len(items)), float64(100)))
 	metaObjs = make([]metav1.Object, 0, sliceSize)
@@ -275,13 +257,13 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 		}
 		mo, err = objutil.AsMeta(item)
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrListObjects, err)
+			err = fmt.Errorf("%w: %w", mkapi.ErrListObjects, err)
 			return
 		}
 		if !c.Matches(mo) {
 			continue
 		}
-		version, err = objutil.ParseObjectResourceVersion(mo)
+		version, err = ParseObjectResourceVersion(mo)
 		if err != nil {
 			return
 		}
@@ -295,7 +277,7 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 
 // DeleteObjects deletes objects from the store that match the provided MatchCriteria.
 // It returns the number of deleted objects and an error if one occurs during deletion.
-func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria) (delCount int, err error) {
+func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c mkapi.MatchCriteria) (delCount int, err error) {
 	items := s.cache.List()
 	var mo metav1.Object
 	for _, item := range items {
@@ -304,7 +286,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 		}
 		mo, err = objutil.AsMeta(item)
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", mkapi.ErrDeleteObject, err)
 			return
 		}
 		if !c.Matches(mo) {
@@ -316,7 +298,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", mkapi.ErrDeleteObject, err)
 			return
 		}
 		err = s.Delete(ctx, objName)
@@ -324,7 +306,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", mkapi.ErrDeleteObject, err)
 			return
 		}
 		delCount++
@@ -340,23 +322,19 @@ func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Obj
 		return
 	}
 	oGVK := o.GetObjectKind().GroupVersionKind()
-	if oGVK != s.args.ObjectGVK {
-		err = fmt.Errorf("object objGVK %q does not match expected objGVK %q", oGVK, s.args.ObjectGVK)
+	if oGVK != s.objGVK {
+		err = fmt.Errorf("object objGVK %q does not match expected objGVK %q", oGVK, s.objGVK)
 	}
 	return
 }
 
 func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespace string, labelSelector labels.Selector) (watchEvents []watch.Event, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	var skip bool
 	allItems := s.cache.List()
 	objs, err := objutil.SliceOfAnyToRuntimeObj(allItems)
 	if err != nil {
 		return
 	}
-	objs = objutil.CloneRuntimeObjects(objs) // Needed to avoid data races if some caller in the chain is introspecting obj fields of objs
 	for _, o := range objs {
 		skip, err = shouldSkipObject(o, startVersion, namespace, labelSelector)
 		if err != nil {
@@ -376,7 +354,7 @@ type EventCallbackFn func(watch.Event) (err error)
 
 // Watch is a blocking function that watches the store for object changes beginning from startVersion, belonging tot he given namespace, matching the given labelSelector and invoking the given eventCallback.
 // Watch will return after the configured watch timeout or if the given context is cancelled.
-func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback minkapi.WatchEventCallback) error {
+func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback mkapi.WatchEventCallback) error {
 	log := logr.FromContextOrDiscard(ctx)
 	events, err := s.buildPendingWatchEvents(startVersion, namespace, labelSelector)
 	if err != nil {
@@ -384,7 +362,7 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 	}
 	watcher, err := s.broadcaster.WatchWithPrefix(events)
 	if err != nil {
-		return fmt.Errorf("cannot start watch for gvk %q: %w", s.args.ObjectGVK, err)
+		return fmt.Errorf("cannot start watch for gvk %q: %w", s.objGVK, err)
 	}
 	defer watcher.Stop()
 	for {
@@ -420,7 +398,7 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 func (s *InMemResourceStore) GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (eventWatcher watch.Interface, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w :%w", minkapi.ErrCreateWatcher, err)
+			err = fmt.Errorf("%w :%w", mkapi.ErrCreateWatcher, err)
 		}
 	}()
 	log := logr.FromContextOrDiscard(ctx)
@@ -466,11 +444,6 @@ func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 
 // Close clears the resources associated with the store, including gracefully shutting down the event broadcaster if it is initialized.
 func (s *InMemResourceStore) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cache != nil {
-		_ = s.cache.Replace([]any{}, "0")
-	}
 	if s.broadcaster != nil {
 		s.broadcaster.Shutdown()
 	}
@@ -519,13 +492,24 @@ func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schem
 	}
 
 	itemType := itemsField.Type().Elem() // e.g., corev1.Pod
-	resultSlice := reflect.MakeSlice(itemsField.Type(), 0, len(items))
+	resultSlice := reflect.MakeSlice(itemType, 0, len(items))
 
 	objs, err := objutil.SliceOfMetaObjToRuntimeObj(items)
 	if err != nil {
 		return
 	}
 	for _, obj := range objs {
+		//metaV1Obj, err := AsMeta(obj)
+		//if err != nil {
+		//	log.Error(err, "cannot access meta object", "obj", obj)
+		//	continue
+		//}
+		//if c.Namespace != "" && metaV1Obj.GetNamespace() != c.Namespace {
+		//	continue
+		//}
+		//if !c.LabelSelector.Matches(labels.Set(metaV1Obj.GetLabels())) {
+		//	continue
+		//}
 		val := reflect.ValueOf(obj)
 		if val.Kind() != reflect.Ptr || val.IsNil() {
 			// ensure each cached obj is a non-nil pointer (Ex *corev1.Pod).
@@ -545,6 +529,7 @@ func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schem
 func shouldSkipObject(obj runtime.Object, startVersion int64, namespace string, labelSelector labels.Selector) (skip bool, err error) {
 	o, err := meta.Accessor(obj)
 	if err != nil {
+		log.Error(err, "cannot access object metadata for obj", "obj", obj)
 		err = fmt.Errorf("cannot access object metadata for obj type %T: %w", obj, err)
 		return
 	}
@@ -556,7 +541,7 @@ func shouldSkipObject(obj runtime.Object, startVersion int64, namespace string, 
 		skip = true
 		return
 	}
-	rv, err := objutil.ParseObjectResourceVersion(o)
+	rv, err := ParseObjectResourceVersion(o)
 	if err != nil {
 		return
 	}

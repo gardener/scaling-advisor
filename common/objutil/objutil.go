@@ -8,10 +8,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"reflect"
 	"strconv"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,11 +30,23 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	sigyaml "sigs.k8s.io/yaml"
 )
+
+// ScalingAdvisorScheme is the runtime.Scheme for Scaling Advisor types.
+var ScalingAdvisorScheme = runtime.NewScheme()
+
+func init() {
+	localSchemeBuilder := runtime.NewSchemeBuilder(
+		sacorev1alpha1.AddToScheme,
+		saconfigv1alpha1.AddToScheme,
+	)
+	utilruntime.Must(localSchemeBuilder.AddToScheme(ScalingAdvisorScheme))
+}
 
 // ToYAML serializes the given k8s runtime.Object to YAML.
 func ToYAML(obj runtime.Object) (string, error) {
@@ -60,18 +77,22 @@ func LoadUsingSchemeIntoRuntimeObject(dirFS fs.FS, objPath string, s *runtime.Sc
 	return nil
 }
 
-// LoadYamlIntoCoreRuntimeObj deserializes the YAML using k8s sig yaml (which has automatic registration for core k8s types) into the given k8s object.
-func LoadYamlIntoCoreRuntimeObj(yamlPath string, obj any) (err error) {
-	data, err := os.ReadFile(yamlPath)
+// LoadIntoRuntimeObj deserializes the object at objPath into the given k8s runtime.Object using the ScalingAdvisorScheme.
+func LoadIntoRuntimeObj(dirFS fs.FS, objPath string, obj runtime.Object) (err error) {
+	return LoadUsingSchemeIntoRuntimeObject(dirFS, objPath, ScalingAdvisorScheme, obj)
+}
+
+// LoadJSONIntoObject deserializes the JSON object at objPath into the given object using standard json.Unmarshal.
+func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
+	objFile, err := dirFS.Open(objPath)
 	if err != nil {
-		err = fmt.Errorf("failed to read %q: %w", yamlPath, err)
-		return
+		return err
 	}
-	err = sigyaml.Unmarshal(data, obj)
+	objBytes, err := io.ReadAll(objFile)
 	if err != nil {
-		err = fmt.Errorf("failed to unmarshal object from dataq: %w", err)
+		return err
 	}
-	return
+	return json.Unmarshal(objBytes, obj)
 }
 
 func SetMetaObjectGVK(obj metav1.Object, gvk schema.GroupVersionKind) {
@@ -252,6 +273,15 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 
 func NamespacedName(mo metav1.Object) types.NamespacedName {
 	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+}
+
+// GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
+func GetFullNames(nsNames []types.NamespacedName) []string {
+	names := make([]string, 0, len(nsNames))
+	for _, nsName := range nsNames {
+		names = append(names, nsName.String())
+	}
+	return names
 }
 
 // GenerateName generates a name by appending a random suffix to the given base name.

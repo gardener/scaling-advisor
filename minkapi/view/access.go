@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package view
 
 import (
@@ -10,8 +6,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +35,7 @@ func NewAccess(ctx context.Context, baseViewArgs *minkapi.ViewArgs) (va minkapi.
 	if err != nil {
 		return nil, err
 	}
-	log.V(2).Info("created base view", "name", bv.GetName())
+	log.Info("created base view", "name", bv.GetName())
 	va = &viewAccess{
 		baseView:     bv,
 		baseViewArgs: baseViewArgs,
@@ -51,13 +48,7 @@ func (v *viewAccess) GetBaseView() minkapi.View {
 	return v.baseView
 }
 
-func (v *viewAccess) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
-	return v.GetSandboxViewOverDelegate(ctx, name, v.baseView)
-}
-
-// GetSandboxViewOverDelegate is the viewAccess implementation for minkapi.ViewAccess.GetSandboxViewOverDelegate
-func (v *viewAccess) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
-	log := logr.FromContextOrDiscard(ctx)
+func (v *viewAccess) GetOrCreateSandboxView(_ context.Context, name string) (minkapi.View, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	sv, ok := v.sandboxViews[name]
@@ -65,16 +56,15 @@ func (v *viewAccess) GetSandboxViewOverDelegate(ctx context.Context, name string
 		return sv, nil
 	}
 
-	sv, err := NewSandbox(delegateView, &minkapi.ViewArgs{
+	sv, err := NewSandbox(v.baseView, &minkapi.ViewArgs{
 		Name:        name,
 		Scheme:      v.baseViewArgs.Scheme,
 		WatchConfig: v.baseViewArgs.WatchConfig,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot create sandbox view %q over delegate view %q: %w", minkapi.ErrCreateView, name, delegateView.GetName(), err)
+		return nil, fmt.Errorf("%w: cannot create sandbox view %q: %w", minkapi.ErrCreateView, name, err)
 	}
 	v.sandboxViews[name] = sv
-	log.V(5).Info("created sandbox view", "name", name, "delegateView", delegateView.GetName())
 	return sv, nil
 }
 
@@ -100,7 +90,7 @@ func createBaseView(ctx context.Context, viewArgs *minkapi.ViewArgs) (minkapi.Vi
 	}
 	_, err = bv.CreateObject(ctx, typeinfo.NamespacesDescriptor.GVK, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: metav1.NamespaceDefault,
+			Name: corev1.NamespaceDefault,
 		},
 	})
 	if err != nil {

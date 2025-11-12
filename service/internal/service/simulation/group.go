@@ -22,6 +22,7 @@ type defaultSimulationGroup struct {
 	simulations []svcapi.Simulation
 }
 
+// CreateSimulationGroups groups the given Simulation instances into one or more SimulationGroups
 func CreateSimulationGroups(simulations []svcapi.Simulation) ([]svcapi.SimulationGroup, error) {
 	groupsByKey := make(map[svcapi.SimGroupKey]*defaultSimulationGroup)
 	for _, sim := range simulations {
@@ -96,6 +97,7 @@ func (g *defaultSimulationGroup) Run(ctx context.Context) (result svcapi.SimGrou
 	return
 }
 
+// SortGroups sorts given simulation groups by NodePool.Priority and then NodeTemplate.Priority.
 func SortGroups(groups []svcapi.SimulationGroup) {
 	slices.SortFunc(groups, func(a, b svcapi.SimulationGroup) int {
 		ak := a.GetKey()

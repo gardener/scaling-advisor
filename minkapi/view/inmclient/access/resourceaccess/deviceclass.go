@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package resourceaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +26,7 @@ type deviceClassAccess struct {
 }
 
 // NewDeviceClassAccess creates an access facade for managing DeviceClass resources using the given minkapi View.
-func NewDeviceClassAccess(view minkapi.View) clientresourcev1.DeviceClassInterface {
+func NewDeviceClassAccess(view mkapi.View) clientresourcev1.DeviceClassInterface {
 	return &deviceClassAccess{
 		access.GenericResourceAccess[*resourcev1.DeviceClass, *resourcev1.DeviceClassList]{
 			View:      view,

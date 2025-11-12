@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
@@ -30,16 +31,16 @@ import (
 var testPod = corev1.Pod{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:            "bingo",
-		Namespace:       metav1.NamespaceDefault,
+		Namespace:       "default",
 		ResourceVersion: "2",
 	},
 }
 
 func TestAdd(t *testing.T) {
 	tests := map[string]struct {
+		typeMeta                         metav1.TypeMeta
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
-		typeMeta                         metav1.TypeMeta
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -65,7 +66,7 @@ func TestAdd(t *testing.T) {
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Add(t.Context(), obj1); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -86,10 +87,10 @@ func TestAdd(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	tests := map[string]struct {
+		name                             string
+		typeMeta                         metav1.TypeMeta
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
-		typeMeta                         metav1.TypeMeta
-		name                             string
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -133,7 +134,7 @@ func TestUpdate(t *testing.T) {
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Update(t.Context(), obj1); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -168,10 +169,10 @@ func TestUpdate(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	tests := map[string]struct {
-		retErr                    error
 		name                      string
-		expectedNumberOfObjects   int
+		retErr                    error
 		createObjectBeforeTesting bool
+		expectedNumberOfObjects   int
 	}{
 		"correct deletion": {
 			name:                      testPod.Name,
@@ -211,7 +212,7 @@ func TestDelete(t *testing.T) {
 			gotObj, _ := s.GetByKey(t.Context(), key)
 			if err := s.DeleteByKey(t.Context(), key); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
@@ -227,8 +228,8 @@ func TestDelete(t *testing.T) {
 
 func TestGetByKey(t *testing.T) {
 	tests := map[string]struct {
-		errorCheckFunc            func(error) bool
 		key                       string
+		errorCheckFunc            func(error) bool
 		objectFound               bool
 		createObjectBeforeTesting bool
 	}{
@@ -269,7 +270,7 @@ func TestGetByKey(t *testing.T) {
 			if err != nil {
 				if !tc.errorCheckFunc(err) {
 					t.Errorf("Expected error to be %s, got: %v",
-						testutil.GetFunctionName(t, tc.errorCheckFunc), err,
+						testutils.GetFunctionName(t, tc.errorCheckFunc), err,
 					)
 					return
 				}
@@ -284,9 +285,9 @@ func TestList(t *testing.T) {
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
+		namespace               string
 		labelSelector           labels.Selector
 		retErr                  error
-		namespace               string
 		expectedNumberOfObjects int
 	}{
 		"base": {
@@ -320,7 +321,7 @@ func TestList(t *testing.T) {
 			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
 			objList, err := s.List(t.Context(), c)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 			}
 			podList, ok := objList.(*corev1.PodList)
 			if !ok {
@@ -345,10 +346,10 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
-		labelSelector           labels.Selector
-		retErr                  error
 		namespace               string
+		labelSelector           labels.Selector
 		startVersion            int64
+		retErr                  error
 		expectedNumberOfObjects int
 	}{
 		"base": {
@@ -406,7 +407,7 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			watchEvents, err := s.buildPendingWatchEvents(tc.startVersion, tc.namespace, tc.labelSelector)
 			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
+				testutils.AssertError(t, err, tc.retErr)
 			}
 			if len(watchEvents) != tc.expectedNumberOfObjects {
 				t.Errorf("Expected returned number of objects to be %d, got %d",
@@ -427,10 +428,10 @@ func TestBuildPendingWatchEvents(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	tests := map[string]struct {
-		labelSelector           labels.Selector
-		retErr                  error
 		namespace               string
+		labelSelector           labels.Selector
 		startVersion            int64
+		retErr                  error
 		expectedNumberOfObjects int
 		modifyObjectAfterWatch  bool
 	}{
@@ -542,7 +543,7 @@ func TestWatch(t *testing.T) {
 			wg.Wait()
 
 			if watchErr != nil && watchErr != context.Canceled {
-				testutil.AssertError(t, watchErr, tc.retErr)
+				testutils.AssertError(t, watchErr, tc.retErr)
 			}
 
 			eventsMutex.Lock()

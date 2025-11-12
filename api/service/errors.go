@@ -32,6 +32,8 @@ var (
 	ErrNoWinningNodeScore = errors.New("no winning node score")
 	//ErrSelectNodeScore is a sentinel error indicating that the NodeScoreSelector failed to select a score
 	ErrSelectNodeScore = errors.New("failed to select node score")
+	// ErrParseSchedulerConfig is a sentinel error indicating that the service failed to parse the scheduler configuration.
+	ErrParseSchedulerConfig = errors.New("failed to parse scheduler configuration")
 	// ErrLoadSchedulerConfig is a sentinel error indicating that the service failed to load the scheduler configuration.
 	ErrLoadSchedulerConfig = errors.New("failed to load scheduler configuration")
 	// ErrLaunchScheduler is a sentinel error indicating that the service failed to launch the scheduler.
@@ -44,6 +46,8 @@ var (
 
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
 	ErrMissingRequiredLabel = errors.New("missing required label")
+	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
+	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
 )
 
 func AsGenerateError(id string, correlationID string, err error) error {

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package coreaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +26,7 @@ type namespaceAccess struct {
 }
 
 // NewNamespaceAccess creates a new namespace access facade for managing namespace resources using the given minkapi View.
-func NewNamespaceAccess(view minkapi.View) clientcorev1.NamespaceInterface {
+func NewNamespaceAccess(view mkapi.View) clientcorev1.NamespaceInterface {
 	return &namespaceAccess{
 		access.GenericResourceAccess[*corev1.Namespace, *corev1.NamespaceList]{
 			View:      view,

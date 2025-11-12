@@ -178,7 +178,7 @@ func initSuite(ctx context.Context) error {
 	}
 	<-time.After(1 * time.Second) // give minmal time for startup
 
-	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(commontypes.ClientAccessNetwork)
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, commontypes.ClientAccessNetwork)
 	if err != nil {
 		return err
 	}

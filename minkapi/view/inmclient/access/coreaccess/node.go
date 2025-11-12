@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package coreaccess
 
 import (
@@ -9,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,8 +25,8 @@ type nodeAccess struct {
 	access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]
 }
 
-// NewNodeAccess creates the k8s client core facade for Nodes leveraging the given view.
-func NewNodeAccess(view minkapi.View) clientcorev1.NodeInterface {
+// NewNodeAccess creates a Node access facade for managing Node resources using the given minkapi View.
+func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
 	return &nodeAccess{
 		access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]{
 			View:      view,

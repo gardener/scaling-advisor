@@ -16,12 +16,11 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/view/store"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/clientutil"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
@@ -37,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -47,12 +45,12 @@ var (
 )
 
 type baseView struct {
-	eventSink       minkapi.EventSink
 	args            *minkapi.ViewArgs
 	mu              *sync.Mutex
-	kubeConfigReady *sync.Cond
 	stores          map[schema.GroupVersionKind]*store.InMemResourceStore
+	eventSink       minkapi.EventSink
 	changeCount     atomic.Int64
+	kubeConfigReady *sync.Cond
 }
 
 // NewBase creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
@@ -73,13 +71,11 @@ func NewBase(args *minkapi.ViewArgs) (minkapi.View, error) {
 	}, nil
 }
 
-func (v *baseView) Reset() error {
+func (v *baseView) Reset() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	resettable := asResettable(v.stores)
-	resettable = append(resettable, v.eventSink)
-	v.changeCount.Store(0)
-	return ioutil.ResetAll(resettable...)
+	resetStores(v.stores)
+	v.eventSink.Reset()
 }
 
 func (v *baseView) Close() error {
@@ -93,7 +89,7 @@ func (v *baseView) GetName() string {
 }
 
 func (v *baseView) GetType() minkapi.ViewType {
-	return minkapi.ViewTypeBase
+	return minkapi.BaseViewType
 }
 
 func (v *baseView) GetObjectChangeCount() int64 {
@@ -116,13 +112,13 @@ func (v *baseView) GetClientFacades(ctx context.Context, accessMode commontypes.
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessModeNetwork:
+	case commontypes.ClientAccessNetwork:
 		if v.GetKubeConfigPath() == "" {
 			err = errors.New("kubeconfig path not specified for network client")
 			return
 		}
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessModeInMemory:
+	case commontypes.ClientAccessInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
@@ -301,7 +297,7 @@ func storeObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKin
 		if namePrefix == "" {
 			return nil, apierrors.NewBadRequest(fmt.Errorf("%w: cannot create %q object in %q namespace since missing both name and generateName in request", minkapi.ErrCreateObject, gvk.Kind, obj.GetNamespace()).Error())
 		}
-		name = objutil.GenerateName(namePrefix)
+		name = typeinfo.GenerateName(namePrefix)
 	}
 	obj.SetName(name)
 
@@ -338,8 +334,6 @@ func updateObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKi
 }
 
 func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, binding corev1.Binding) (*corev1.Pod, error) {
-	// Make a copy of the pod to avoid modifying the original object in the store.
-	pod = pod.DeepCopy()
 	pod.Spec.NodeName = binding.Target.Name
 	podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
 		Type:   corev1.PodScheduled,
@@ -401,7 +395,6 @@ func patchObjectStatus(ctx context.Context, v minkapi.View, gvk schema.GroupVers
 	if err != nil {
 		return
 	}
-	obj = obj.DeepCopyObject()
 	err = objutil.PatchObjectStatus(obj, objName, patchData)
 	if err != nil {
 		err = fmt.Errorf("failed to patch object status of %q: %w", objName, err)
@@ -467,7 +460,7 @@ func asNodes(metaObjects []metav1.Object) (nodes []corev1.Node, maxVersion int64
 			err = fmt.Errorf("object %q is not a corev1.Node", objutil.CacheName(obj))
 			return
 		}
-		version, err = objutil.ParseObjectResourceVersion(obj)
+		version, err = store.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -488,7 +481,7 @@ func asPods(metaObjects []metav1.Object) (pods []corev1.Pod, maxVersion int64, e
 			err = fmt.Errorf("object %q is not a corev1.Pod", objutil.CacheName(obj))
 			return
 		}
-		version, err = objutil.ParseObjectResourceVersion(obj)
+		version, err = store.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -509,7 +502,7 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 			err = fmt.Errorf("object %q is not a corev1.Pod", objutil.CacheName(obj))
 			return
 		}
-		version, err = objutil.ParseObjectResourceVersion(obj)
+		version, err = store.ParseObjectResourceVersion(obj)
 		if err != nil {
 			return
 		}
@@ -521,7 +514,7 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 	return
 }
 
-// combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over the same obj in secondary
+// combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over same obj in secondary
 func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object) (combined []metav1.Object) {
 	found := make(map[cache.ObjectName]bool, len(primary))
 	for _, o := range primary {
@@ -556,10 +549,8 @@ func closeStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) e
 	return errors.Join(errs...)
 }
 
-func asResettable(stores map[schema.GroupVersionKind]*store.InMemResourceStore) []commontypes.Resettable {
-	resettable := make([]commontypes.Resettable, 0, len(stores))
+func resetStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) {
 	for _, s := range stores {
-		resettable = append(resettable, s)
+		s.Reset()
 	}
-	return resettable
 }

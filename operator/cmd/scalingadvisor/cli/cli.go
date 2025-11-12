@@ -60,7 +60,7 @@ func (o *LaunchOptions) loadOperatorConfig() (*configv1alpha1.OperatorConfig, er
 	if err := configv1alpha1.AddToScheme(configScheme); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}
-	operatorConfig := &configv1alpha1.OperatorConfig{}
+	operatorConfig := &configv1alpha1.ScalingAdvisorConfiguration{}
 	if err := objutil.LoadUsingSchemeIntoRuntimeObject(os.DirFS("."), o.ConfigFile, configScheme, operatorConfig); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}

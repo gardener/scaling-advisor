@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package eventsink
 
 import (
@@ -57,9 +53,7 @@ func TestCreateListReset(t *testing.T) {
 		}
 	})
 	t.Run("reset", func(t *testing.T) {
-		if err := sink.Reset(); err != nil {
-			t.Errorf("cannot reset eventSink: %v", err)
-		}
+		sink.Reset()
 		if sink.List() != nil {
 			t.Errorf("eventList should be empty")
 		}
