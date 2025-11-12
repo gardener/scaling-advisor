@@ -85,7 +85,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 	tmpDir := os.TempDir()
 	for _, region := range regions {
 		regionJSONPath := path.Join(tmpDir, "aws_"+region+".json")
-		data, err := os.ReadFile(filepath.Clean(regionJSONPath)) // #nosec G304 -- regionJSONPath is cleaned.
+		data, err := os.ReadFile(filepath.Clean(regionJSONPath))
 		if err != nil {
 			fmt.Printf("Fetching AWS pricing for region: %s\n", region)
 			data, err = awsprice.FetchRegionJSON(region)

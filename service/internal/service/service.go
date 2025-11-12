@@ -131,12 +131,11 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svca
 			generator.SendError(resultsCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
 			return
 		}
-		genCtx := logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", request.ID, "correlationID", request.CorrelationID))
 		runArgs := &generator.RunArgs{
 			Request:   request,
 			ResultsCh: resultsCh,
 		}
-		d.generator.Run(genCtx, runArgs)
+		d.generator.Run(ctx, runArgs)
 	}()
 	return resultsCh
 }
@@ -235,6 +234,9 @@ func LaunchApp(ctx context.Context) (app svcapi.App, exitCode int) {
 func setServiceConfigDefaults(cfg *svcapi.ScalingAdvisorServiceConfig) {
 	if cfg.Port == 0 {
 		cfg.Port = commonconstants.DefaultAdvisorServicePort
+	}
+	if cfg.LogBaseDir == "" {
+		cfg.LogBaseDir = os.TempDir()
 	}
 }
 

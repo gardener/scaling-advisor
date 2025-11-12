@@ -7,6 +7,9 @@ package generator
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -15,6 +18,8 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/common/ioutil"
+	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
@@ -38,6 +43,7 @@ type Args struct {
 	SimulationCreator svcapi.SimulationCreator
 	SimulationGrouper svcapi.SimulationGrouper
 	SchedulerLauncher svcapi.SchedulerLauncher
+	LogBaseDir        string
 }
 
 // RunArgs is used to run the generator and generate scaling advice
@@ -58,14 +64,20 @@ func New(args *Args) *Generator {
 // Run executes the scaling advice generation process using the provided context and runArgs.
 // The results of the generation process are sent as one more ScalingAdviceResult's on the RunArgs.ResultsCh channel.
 func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
-	err := g.doGenerate(ctx, runArgs)
+	genCtx, logPath, logCloser, err := wrapGenerationContext(ctx, g.args.LogBaseDir, runArgs.Request.ID, runArgs.Request.CorrelationID, runArgs.Request.EnableDiagnostics)
+	if err != nil {
+		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
+		return
+	}
+	defer ioutil.CloseQuietly(logCloser)
+	err = g.doGenerate(genCtx, runArgs, logPath)
 	if err != nil {
 		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 }
 
-func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error) {
+func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs, logPath string) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if err = validateRequest(runArgs.Request); err != nil {
 		return
@@ -81,7 +93,7 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 	if err != nil {
 		return
 	}
-	allWinnerNodeScores, unscheduledPods, err := g.runPasses(ctx, runArgs, groups, &groupRunPassCounter)
+	allWinnerNodeScores, unscheduledPods, err := g.runPasses(ctx, runArgs, groups, &groupRunPassCounter, logPath)
 	if err != nil {
 		return
 	}
@@ -91,12 +103,13 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs) (err error
 		return
 	}
 	if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
-		err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods)
+		err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods, logPath)
 	}
 	return
 }
 
-func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+// runPasses FIXME TODO needs to be refactored into separate Passes abstraction to avoid so many arguments being passed.
+func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32, logPath string) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	for {
 		select {
@@ -122,7 +135,7 @@ func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []sv
 			}
 			allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
 			if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
-				err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods)
+				err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods, logPath)
 				if err != nil {
 					return
 				}
@@ -193,7 +206,8 @@ func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.Cluste
 	return nil
 }
 
-func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName) error {
+// sendScalingAdvice needs to be fixed: FIXME, TODO: reduce num of args by making this a method or wrapping args into struct or alternative
+func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, logPath string) error {
 	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
 	if err != nil {
 		return err
@@ -205,13 +219,23 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcap
 		msg = fmt.Sprintf("%s scaling advice for pass %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
 	}
 
-	adviceCh <- svcapi.ScalingAdviceResult{
-		Response: &svcapi.ScalingAdviceResponse{
-			RequestRef:    request.ScalingAdviceRequestRef,
-			Message:       msg,
-			ScalingAdvice: scalingAdvice,
-		},
+	response := svcapi.ScalingAdviceResponse{
+		RequestRef:    request.ScalingAdviceRequestRef,
+		Message:       msg,
+		ScalingAdvice: scalingAdvice,
 	}
+
+	if request.EnableDiagnostics {
+		response.Diagnostics = &sacorev1alpha1.ScalingAdviceDiagnostic{
+			SimRunResults: nil, // TODO: populate SimRunResults
+			TraceLogURL:   logPath,
+		}
+	}
+
+	adviceCh <- svcapi.ScalingAdviceResult{
+		Response: &response,
+	}
+
 	return nil
 }
 
@@ -321,4 +345,18 @@ func (g *Generator) createSimulation(ctx context.Context, simulationName string,
 		TrackPollInterval:   10 * time.Millisecond,
 	}
 	return g.args.SimulationCreator.Create(simulationName, simArgs)
+}
+
+func wrapGenerationContext(ctx context.Context, baseLogDir, requestID, correlationID string, enableDiagnostics bool) (genCtx context.Context, logPath string, logCloser io.Closer, err error) {
+	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", requestID, "correlationID", correlationID))
+	if enableDiagnostics {
+		if baseLogDir == "" {
+			baseLogDir = os.TempDir()
+		}
+		logPath = path.Join(baseLogDir, fmt.Sprintf("%s-%s.log", correlationID, requestID))
+		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, correlationID, logPath)
+		log := logr.FromContextOrDiscard(genCtx)
+		log.Info("Diagnostics enabled for this request", "logPath", logPath)
+	}
+	return
 }
