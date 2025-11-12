@@ -83,11 +83,11 @@ type ShootAccess interface {
 var _ ShootAccess = (*access)(nil)
 
 type access struct {
-	shootCoord      ShootCoordinate
-	scheme          *runtime.Scheme
-	landscapeClient *dynamic.DynamicClient
 	seedClient      client.Client
 	shootClient     client.Client
+	scheme          *runtime.Scheme
+	landscapeClient *dynamic.DynamicClient
+	shootCoord      ShootCoordinate
 }
 
 func init() {
