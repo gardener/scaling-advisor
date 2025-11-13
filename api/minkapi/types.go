@@ -6,12 +6,13 @@ package minkapi
 
 import (
 	"context"
-	"github.com/go-logr/logr"
 	"io"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	corev1 "k8s.io/api/core/v1"
@@ -100,20 +101,20 @@ type ResourceStore interface {
 
 // ResourceStoreArgs contains arguments for creating a ResourceStore.
 type ResourceStoreArgs struct {
-	// Name is the name of the resource store.
-	Name string
+	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
+	Scheme *runtime.Scheme
+	// VersionCounter is the atomic counter for generating monotonically increasing resource versions
+	VersionCounter *atomic.Int64 //optional
 	// ObjectGVK is the GroupVersionKind for objects stored in this store.
 	ObjectGVK schema.GroupVersionKind
 	// ObjectListGVK is the GroupVersionKind for object lists from this store.
 	ObjectListGVK schema.GroupVersionKind
-	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
-	Scheme *runtime.Scheme
-	// WatchConfig contains configuration for watch operations.
-	WatchConfig WatchConfig
-	// VersionCounter is the atomic counter for generating monotonically increasing resource versions
-	VersionCounter *atomic.Int64 //optional
 	// Log is the logger instance for this store.
 	Log logr.Logger
+	// Name is the name of the resource store.
+	Name string
+	// WatchConfig contains configuration for watch operations.
+	WatchConfig WatchConfig
 }
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
@@ -194,12 +195,12 @@ type CreateSandboxViewFunc = func(log logr.Logger, delegateView View, args *View
 
 // ViewArgs contains arguments for creating a View.
 type ViewArgs struct {
+	// Scheme is the runtime Scheme used by KAPI objects exposed by this view
+	Scheme *runtime.Scheme
 	// Name represents name of View
 	Name string
 	// KubeConfigPath is the path of the kubeconfig file corresponding to this view
 	KubeConfigPath string
-	// Scheme is the runtime Scheme used by KAPI objects exposed by this view
-	Scheme *runtime.Scheme
 	// WatchConfig contains configuration for watch operations.
 	WatchConfig WatchConfig
 }
@@ -236,12 +237,12 @@ type App struct {
 
 // MatchCriteria defines criteria for matching Kubernetes objects.
 type MatchCriteria struct {
-	// Namespace specifies the namespace to match. Empty means all namespaces.
-	Namespace string
-	// Names specifies the set of object names to match. Empty means all names.
-	Names sets.Set[string]
 	// LabelSelector specifies the label selector for matching objects.
 	LabelSelector labels.Selector
+	// Names specifies the set of object names to match. Empty means all names.
+	Names sets.Set[string]
+	// Namespace specifies the namespace to match. Empty means all namespaces.
+	Namespace string
 }
 
 // MatchAllCriteria is a predefined criteria that matches all objects.

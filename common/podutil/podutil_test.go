@@ -82,9 +82,9 @@ func TestGetPodCondition(t *testing.T) {
 
 func TestUpdatePodCondition(t *testing.T) {
 	tests := map[string]struct {
+		ignoredFieldsForComparison cmp.Option
 		podCondition               corev1.PodCondition
 		statusChanged              bool
-		ignoredFieldsForComparison cmp.Option
 	}{
 		"update condition status": {
 			podCondition: corev1.PodCondition{

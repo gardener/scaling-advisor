@@ -12,13 +12,13 @@ import (
 
 func TestAsGenerateError(t *testing.T) {
 	tests := []struct {
+		err           error
 		name          string
 		id            string
 		correlationID string
-		err           error
+		expectSubstr  []string
 		expectNil     bool
 		checkMessage  bool
-		expectSubstr  []string
 	}{
 		{
 			name:          "nil error returns nil",

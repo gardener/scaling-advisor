@@ -16,8 +16,8 @@ import (
 
 func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
 	tests := []struct {
-		name     string
 		snapshot *ClusterSnapshot
+		name     string
 		expected int
 	}{
 		{
@@ -73,10 +73,10 @@ func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
 
 func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 	tests := []struct {
-		name        string
 		snapshot    *ClusterSnapshot
-		expectError bool
 		expected    map[sacorev1alpha1.NodePlacement]int32
+		name        string
+		expectError bool
 	}{
 		{
 			name: "nodes with complete placement info",
@@ -315,8 +315,8 @@ func TestNodeInfo_GetResourceInfo(t *testing.T) {
 func TestSimGroupKey_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		key      SimGroupKey
 		expected string
+		key      SimGroupKey
 	}{
 		{
 			name: "both priorities positive",

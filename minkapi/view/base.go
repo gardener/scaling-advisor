@@ -46,12 +46,12 @@ var (
 )
 
 type baseView struct {
+	eventSink       minkapi.EventSink
 	args            *minkapi.ViewArgs
 	mu              *sync.Mutex
-	stores          map[schema.GroupVersionKind]*store.InMemResourceStore
-	eventSink       minkapi.EventSink
-	changeCount     atomic.Int64
 	kubeConfigReady *sync.Cond
+	stores          map[schema.GroupVersionKind]*store.InMemResourceStore
+	changeCount     atomic.Int64
 }
 
 // NewBase creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
