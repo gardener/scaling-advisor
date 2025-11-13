@@ -33,6 +33,8 @@ type Attributes struct {
 	InstanceType string `json:"instanceType"`
 	VCPU         string `json:"vcpu"`
 	Memory       string `json:"memory"`
+	GPU          string `json:"gpu"`
+	GPUMemory    string `json:"gpuMemory"`
 	OperatingSys string `json:"operatingSystem"`
 	Tenancy      string `json:"tenancy"`
 }
@@ -52,6 +54,6 @@ type OfferTerm struct {
 // PriceDimension describes the actual unit price for a product offer.
 // Example: unit = "Hrs", pricePerUnit["USD"] = "0.0928".
 type PriceDimension struct {
-	Unit         string            `json:"unit"`
 	PricePerUnit map[string]string `json:"pricePerUnit"`
+	Unit         string            `json:"unit"`
 }

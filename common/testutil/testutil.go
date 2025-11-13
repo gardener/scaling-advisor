@@ -5,16 +5,18 @@
 package testutil
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"reflect"
 	"runtime"
+	sigyaml "sigs.k8s.io/yaml"
 	"strings"
 	"testing"
-
-	corev1 "k8s.io/api/core/v1"
-	sigyaml "sigs.k8s.io/yaml"
 )
 
 //go:embed testdata/*
@@ -56,9 +58,12 @@ func isNil(v any) bool {
 	}
 }
 
-// GetFunctionName returns the name of the passed function as a string
+// GetFunctionName returns the name of the function passed
 func GetFunctionName(t *testing.T, fn any) string {
 	t.Helper()
+	if fn == nil {
+		return "<nil>"
+	}
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 
@@ -92,4 +97,10 @@ func LoadTestPods() (pods []corev1.Pod, err error) {
 	}
 	pods = append(pods, podA)
 	return
+}
+
+// LoggerContext wraps the given context with a logr logger based on the klog backend.
+func LoggerContext(ctx context.Context) context.Context {
+	log := klog.NewKlogr()
+	return logr.NewContext(ctx, log)
 }

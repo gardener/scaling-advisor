@@ -37,6 +37,12 @@ type ClusterScalingConstraintList struct {
 
 // ClusterScalingConstraintSpec defines the specification of the ClusterScalingConstraint.
 type ClusterScalingConstraintSpec struct {
+	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
+	// +optional
+	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
+	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
+	// +optional
+	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
 	// ConsumerID is the ID of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
 	// It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
 	ConsumerID string `json:"consumerID"`
@@ -44,12 +50,6 @@ type ClusterScalingConstraintSpec struct {
 	AdviceGenerationMode ScalingAdviceGenerationMode `json:"adviceGenerationMode"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools"`
-	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
-	// +optional
-	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
-	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
-	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
 }
 
 // ClusterScalingConstraintStatus defines the observed state of ClusterScalingConstraint.
@@ -73,42 +73,34 @@ const (
 
 // NodePool defines a node pool configuration for a cluster.
 type NodePool struct {
+	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// Quota defines the quota for the node pool.
+	Quota corev1.ResourceList `json:"quota,omitempty"`
+	// ScaleInPolicy defines the scale in policy for this node pool.
+	// +optional
+	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
+	// BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool.
+	BackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
 	// Name is the name of the node pool. It must be unique within the cluster.
 	Name string `json:"name"`
 	// Region is the name of the region.
 	Region string `json:"region"`
-	// Priority is the priority of the node pool.
-	Priority int32 `json:"priority"`
-	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
-	Labels map[string]string `json:"labels"`
-	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
-	Annotations map[string]string `json:"annotations"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
-	Taints []corev1.Taint `json:"taints"`
+	Taints []corev1.Taint `json:"taints,omitempty"`
 	// AvailabilityZones is a list of availability zones for the node pool.
 	AvailabilityZones []string `json:"availabilityZones"`
 	// NodeTemplates is a slice of NodeTemplate.
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
-	// Quota defines the quota for the node pool.
-	Quota corev1.ResourceList `json:"quota"`
-	// ScaleInPolicy defines the scale in policy for this node pool.
-	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
-	// BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool.
-	BackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
+	// Priority is the priority of the node pool.
+	Priority int32 `json:"priority"`
 }
 
 // NodeTemplate defines a node template configuration for an instance type.
 // All nodes of a certain instance type in a node pool will be created using this template.
 type NodeTemplate struct {
-	// Name is the name of the node template.
-	Name string `json:"name"`
-	// Architecture is the architecture of the instance type.
-	Architecture string `json:"architecture"`
-	// InstanceType is the instance type of the node template.
-	InstanceType string `json:"instanceType"`
-	// Priority is the priority of the node template. The lower the number, the higher the priority.
-	Priority int32 `json:"priority"`
 	// Capacity defines the capacity of resources that are available for this instance type.
 	Capacity corev1.ResourceList `json:"capacity"`
 	// KubeReserved defines the capacity for kube reserved resources.
@@ -120,18 +112,20 @@ type NodeTemplate struct {
 	// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
 	// +optional
 	SystemReserved corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
+	// Name is the name of the node template.
+	Name string `json:"name"`
+	// Architecture is the architecture of the instance type.
+	Architecture string `json:"architecture"`
+	// InstanceType is the instance type of the node template.
+	InstanceType string `json:"instanceType"`
+	// Priority is the priority of the node template. The lower the number, the higher the priority.
+	Priority int32 `json:"priority"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes"`
 }
 
 // InstancePricing contains the pricing information for an instance type.
 type InstancePricing struct {
-	// InstanceType is the instance type of the node template.
-	InstanceType string `json:"instanceType"`
-	// Price is the total price of the instance type.
-	// +kubebuilder:validation:Type=number
-	// +kubebuilder:validation:Format=double
-	Price float64 `json:"price"`
 	// UnitCPUPrice is the price per CPU of the instance type.
 	// +kubebuilder:validation:Type=number
 	// +kubebuilder:validation:Format=double
@@ -140,6 +134,12 @@ type InstancePricing struct {
 	// +kubebuilder:validation:Type=number
 	// +kubebuilder:validation:Format=double
 	UnitMemoryPrice *float64 `json:"unitMemoryPrice,omitempty"`
+	// InstanceType is the instance type of the node template.
+	InstanceType string `json:"instanceType"`
+	// Price is the total price of the instance type.
+	// +kubebuilder:validation:Type=number
+	// +kubebuilder:validation:Format=double
+	Price float64 `json:"price"`
 }
 
 // BackoffPolicy defines the backoff policy to be used when backing off from suggesting an instance type + zone in subsequence scaling advice upon failed scaling operation.

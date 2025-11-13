@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 
@@ -61,7 +62,7 @@ var genpriceCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(genpriceCmd)
+	RootCmd.AddCommand(genpriceCmd)
 	genpriceCmd.Flags().StringVarP(
 		&providerStr,
 		"provider", "p",
@@ -81,14 +82,21 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 	}
 
 	var allInfos []svcapi.InstancePriceInfo
+	tmpDir := os.TempDir()
 	for _, region := range regions {
-		fmt.Printf("Fetching AWS pricing for region: %s\n", region)
-
-		data, err := awsprice.FetchRegionJSON(region)
+		regionJSONPath := path.Join(tmpDir, "aws_"+region+".json")
+		data, err := os.ReadFile(filepath.Clean(regionJSONPath))
 		if err != nil {
-			return fmt.Errorf("failed to fetch region %s: %w", region, err)
+			fmt.Printf("Fetching AWS pricing for region: %s\n", region)
+			data, err = awsprice.FetchRegionJSON(region)
+			if err != nil {
+				return fmt.Errorf("failed to fetch region %s: %w", region, err)
+			}
+			if err = os.WriteFile(regionJSONPath, data, 0o600); err != nil {
+				return fmt.Errorf("failed to write temp region file %s: %w", regionJSONPath, err)
+			}
+			fmt.Printf("Written pricing info for region %q to file %s\n", region, regionJSONPath)
 		}
-
 		infos, err := awsprice.ParseRegionPrices(region, "Linux", data)
 		if err != nil {
 			return fmt.Errorf("failed to parse region %s: %w", region, err)

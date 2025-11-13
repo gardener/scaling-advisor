@@ -16,6 +16,7 @@ import (
 
 var _ service.GetProviderInstancePricingAccessFunc = GetInstancePricingAccess
 
+// GetInstancePricingAccess loads instance pricing details from the given pricingDataPath and delegates to GetInstancePricingFromData.
 func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPath string) (service.InstancePricingAccess, error) {
 	data, err := os.ReadFile(filepath.Clean(pricingDataPath))
 	if err != nil {
@@ -24,6 +25,7 @@ func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPat
 	return GetInstancePricingFromData(provider, data)
 }
 
+// GetInstancePricingFromData parses instance pricing data and returns an InstancePricingAccess implementation for the given provider.
 func GetInstancePricingFromData(provider commontypes.CloudProvider, data []byte) (service.InstancePricingAccess, error) {
 	var ip infoAccess
 	var err error
@@ -53,8 +55,8 @@ func parseInstanceTypeInfos(data []byte) (map[service.PriceKey]service.InstanceP
 var _ service.InstancePricingAccess = (*infoAccess)(nil)
 
 type infoAccess struct {
-	CloudProvider   commontypes.CloudProvider
 	infosByPriceKey map[service.PriceKey]service.InstancePriceInfo
+	CloudProvider   commontypes.CloudProvider
 }
 
 func (a infoAccess) GetInfo(region, instanceType string) (info service.InstancePriceInfo, err error) {

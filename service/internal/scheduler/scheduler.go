@@ -34,15 +34,32 @@ var _ svcapi.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context
-	name      string
 	scheduler *scheduler.Scheduler
 	cancelFn  context.CancelFunc
 	params    *svcapi.SchedulerLaunchParams
+	name      string
 }
 
+// NewLauncher initializes and returns a SchedulerLauncher using a scheduler config file and a maximum parallelism limit.
+// It reads the scheduler configuration from the provided file path and validates it.
+// Returns an error if the configuration file cannot be read or parsed.
+// Then delegates to NewLauncherFromConfig
 func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
-	scheduledConfig, err := loadSchedulerConfig(schedulerConfigPath)
+	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", svcapi.ErrLoadSchedulerConfig, err)
+	}
+	return NewLauncherFromConfig(configBytes, maxParallel)
+}
+
+// NewLauncherFromConfig initializes and returns a SchedulerLauncher using the scheduler config bytes (YAML) and a maximum parallelism limit.
+// It parses the scheduler configuration and validates it. Returns an error if the configuration file cannot be
+// parsed.
+// maxParallel represents the maximum number of parallel embedded scheduler instances that are launchable via SchedulerLauncher.Launch.
+// Once crossed, further calls to SchedulerLauncher.Launch will block until previously obtained SchedulerHandle's are stopped.
+func NewLauncherFromConfig(configBytes []byte, maxParallel int) (svcapi.SchedulerLauncher, error) {
+	scheduledConfig, err := parseSchedulerConfig(configBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -52,17 +69,13 @@ func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerL
 	}, nil
 }
 
-func loadSchedulerConfig(configPath string) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
+func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", svcapi.ErrLoadSchedulerConfig, err)
+			err = fmt.Errorf("%w: %w", svcapi.ErrParseSchedulerConfig, err)
 		}
 	}()
 
-	data, err := os.ReadFile(filepath.Clean(configPath))
-	if err != nil {
-		return
-	}
 	scheme := runtime.NewScheme()
 	if err = schedulerapiconfig.AddToScheme(scheme); err != nil {
 		return
@@ -71,7 +84,7 @@ func loadSchedulerConfig(configPath string) (config *schedulerapiconfig.KubeSche
 		return
 	}
 	codecs := serializer.NewCodecFactory(scheme)
-	obj, _, err := codecs.UniversalDecoder(schedulerapiconfig.SchemeGroupVersion).Decode(data, nil, nil)
+	obj, _, err := codecs.UniversalDecoder(schedulerapiconfig.SchemeGroupVersion).Decode(configBytes, nil, nil)
 	if err != nil {
 		return
 	}
@@ -147,10 +160,11 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 	return
 }
 
-func (s *schedulerHandle) Stop() {
+func (s *schedulerHandle) Close() error {
 	log := logr.FromContextOrDiscard(s.ctx)
 	log.Info("Stopping scheduler", "name", s.name)
 	s.cancelFn()
+	return nil
 }
 
 func (s *schedulerHandle) GetParams() svcapi.SchedulerLaunchParams {

@@ -18,9 +18,9 @@ import (
 
 func TestParseLaunchOptions(t *testing.T) {
 	tests := []struct {
+		want    *LaunchOptions
 		name    string
 		args    []string
-		want    *LaunchOptions
 		wantErr bool
 	}{
 		{
@@ -50,14 +50,14 @@ func TestParseLaunchOptions(t *testing.T) {
 
 func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 	tests := []struct {
+		want       *configv1alpha1.ScalingAdvisorConfiguration
 		name       string
 		configFile string
-		want       *configv1alpha1.ScalingAdvisorConfiguration
 		wantErr    bool
 	}{
 		{
 			name:       "ShouldLoadMinimalScalingAdvisorConfig",
-			configFile: "./testdata/basic-operator-config.yaml",
+			configFile: "testdata/basic-operator-config.yaml",
 			want: updateOperatorConfigWithDefaults(&configv1alpha1.ScalingAdvisorConfiguration{
 				Server: configv1alpha1.ScalingAdvisorServerConfiguration{
 					ServerConfig: commontypes.ServerConfig{
