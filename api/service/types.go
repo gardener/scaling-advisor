@@ -450,6 +450,78 @@ type NodePodAssignment struct {
 // If there is no winning node score amongst the group, then it returns nil.
 type NodeScoreSelector func(groupNodeScores []NodeScore, weightsFn GetWeightsFunc, pricing InstancePricingAccess) (winningNodeScore *NodeScore, err error)
 
+// SimulatorStrategy represents a simulator strategy variant.
+// +enum
+type SimulatorStrategy string
+
+const (
+	SimulatorStrategyScaleOnePerGroup  SimulatorStrategy = "scale-one-per-group"
+	SimulatorStrategyScaleManyPerGroup SimulatorStrategy = "scale-many-per-group"
+)
+
+/*
+	P1: Az-a, Az-b, Az-c
+	NT: NT1
+
+	PlanGenerator:
+		* Selects a Simulator based on SimulationStrategy
+		> Creation of SimulationGroup(s) based on NodePool(s), NodeTemplate(s) and AZ(s) combinations is a responsibility of the Simulator.
+		* Invokes Simulator.Run which should return ScaleOutPlan.
+
+	Simulator.Run:
+		* Calls CreateSimulationGroups
+			* Type 1: Creates a SimulationGroup having Simulation(s) for each combination of 1 NT + 1 NP + 1 AZ
+			* Type 2: Creates a SimulationGroup having a single Simulation for multiple NTs + multiple NPs + multiple AZs
+			* The SimulationGroups are ordered by priority of NodePool and NodeTemplate for Type1 or Type2.
+		* Increments the pass counter and calls runPass on the SimulationGroups. This is done until one of the following happens:
+			* The context is cancelled or timeout occurs.
+			* There is no pass winner NodeScore(s) from a SimulationGroup in the current pass.
+			* There are no leftover unscheduled pods.
+		* RunPass of Type1:
+			* Iterate over the SimulationGroups based on priority.
+			* Call Simulator.RunGroup which executes each simulation in the group concurrently.
+				* Simulation.Run:
+					* Scales a single node for a combination of NT + NP + AZ.
+					* Runs a scheduler and gives pod-to-node assignment for the scaled node and existing node(s) and leftover unscheduled pods.
+				* For each simulation, gets the `SimulationResult`.
+					* If there are at least one Pod scheduled in this pass then convert it into NodeScoreArgs and computes the NodeScoreResult.
+					* If there are no pods scheduled in this pass then there is no need to compute a NodeScoreResult. This simulation does not participate further in winning NodeScoreResult selection.
+				* If there are no computed NodeScoreResult's for the SimulationGroup, then it will consider the next group.
+				* Selects the winning NodeScoreResult amongst all computed NodeScoreResult's for the SimulationGroup.
+				* If there are no winning NodeScoreResult's, then it will consider the next group.
+				* If there is a winning NodeScoreResult:
+					* Get the unscheduled pods from the winning NodeScoreResult. If there are no unscheduled pods, then constructs the ScaleOutPlan and returns the same to the PlanGenerator.
+					* If there are leftover unscheduled pods, it will re-run the simulations for the same group. In each such run it may choose a different winning NodeScoreResult.
+		* RunPass of Type2:
+			* Iterate over the SimulationGroups based on priority.
+			* Call Simulator.RunGroup which executes the single simulation in the group.
+				* Calls Simulation.Run:
+					* Scales one Node per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
+					* Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
+				* For the simulation, gets the `SimulationResult`.
+					* If there are no leftover unscheduled pods, constructs the ScaleOutPlan and returns the same to the PlanGenerator.
+					* If there are leftover unscheduled pods, it will re-run the simulation for the same group.
+						* If there are no pods scheduled in this pass then it will consider the next group.
+						* If there is at least one pod scheduled in this pass, it will continue re-running the simulation for the same group.
+
+
+	There are 2 kinds of Simulations
+ 	1. Associated with a 1 NT + 1 NP + 1 AZ. Scales a single node for this combination. Runs a scheduler and gives pod-to-node assignment for the scaled node and existing node(s) and leftover unscheduled pods.
+	2. Associated with multiple NTs + multiple NPs + multiple AZs. Scales one Node per unique combination. Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
+
+	There are 2 kinds of Simulators
+	1. Creates a SimulationGroup holding multiple independent simulations of kind 1 above. Executes each simulation concurrently. Computes the node scores for each simulation and selects the winning node score amongst the group.
+		1. If there are no winning node scores, then it will consider the next group. (If there are no pods scheduled in this run, then there will be no winning node score)
+		2. If there is a winning node score, it will re-run the simulation for the same group.
+	2. Creates a SimulationGroup holding a single simulation of kind 2 above. Executes the simulation.
+		1. If there are no leftover unscheduled pods, it constructs node scores for the simulation run results of all simulation groups run so far and returns the same to the PlanGenerator.
+		2. If there are leftover unscheduled pods, it will re-run the simulation for the same group.
+			1. There are no further pod-to-node assignments possible, then it will consider the next group.
+			2. There are further pod-to-node assignments possible, it will continue re-running the simulation for the same group.
+
+
+*/
+
 // Simulation represents an activity that performs valid unscheduled pod to ready node assignments on a minkapi View.
 // A simulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model
 // from the pod/node data and run a tool that solves the model.
@@ -463,21 +535,29 @@ type Simulation interface {
 	// NodeTemplate returns the target node template against which the simulation should be run
 	NodeTemplate() *sacorev1alpha1.NodeTemplate
 	// Run executes the simulation to completion and returns any encountered error. This is a blocking call and callers are
-	// expected to manage concurrency and SimRunResult consumption.
+	// expected to manage concurrency and SimulationResult consumption.
 	Run(ctx context.Context) error
-	// Result returns the latest SimRunResult if the simulation is in ActivityStatusSuccess,
+	// Result returns the latest SimulationResult if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
-	Result() (SimRunResult, error)
+	Result() (SimulationResult, error)
 }
 
-// SimRunResult contains the results of a completed simulation run.
-type SimRunResult struct {
+// SimulationResult contains the results of a completed simulation run.
+type SimulationResult struct {
 	// Name of the Simulation that produced this result.
 	Name string
+	// Placement represents the placement information for the Node.
+	Placement sacorev1alpha1.NodePlacement
+	// ScaledAssignment represents the assignment of the scaled Node for the current run.
+	ScaledAssignment *NodePodAssignment
+	// OtherAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot
+	// or it is a winning simulated Node from a previous run.
+	OtherAssignments []NodePodAssignment
+	// UnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
+	UnscheduledPods []types.NamespacedName
 	// ScaledNode is the simulated scaled node.
-	ScaledNode *corev1.Node
-	NodeScorerArgs
+	//ScaledNode *corev1.Node
 }
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.
@@ -577,7 +657,7 @@ type SimGroupRunResult struct {
 	// Name of the group that produced this result.
 	Name string
 	// SimulationResults contains the results from all simulations in the group.
-	SimulationResults []SimRunResult
+	SimulationResults []SimulationResult
 	// Key is the simulation group key (partition key)
 	Key SimGroupKey
 }

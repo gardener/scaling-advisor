@@ -80,8 +80,8 @@ func (g *defaultSimulationGroup) Run(ctx context.Context) (result svcapi.SimGrou
 		return
 	}
 
-	var simResults []svcapi.SimRunResult
-	var simResult svcapi.SimRunResult
+	var simResults []svcapi.SimulationResult
+	var simResult svcapi.SimulationResult
 	for _, sim := range g.simulations {
 		simResult, err = sim.Result()
 		if err != nil {

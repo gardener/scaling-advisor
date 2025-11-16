@@ -60,6 +60,7 @@ type ClusterScalingConstraintStatus struct {
 }
 
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
+// +enum
 type ScalingAdviceGenerationMode string
 
 const (
@@ -70,11 +71,6 @@ const (
 	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
 	// all pending pods have been scheduled or stabilised.
 	ScalingAdviceGenerationModeAllAtOnce = "all-at-once"
-)
-
-var (
-	// AllScalingAdviceGenerationModes is the set of all ScalingAdviceGenerationMode's
-	AllScalingAdviceGenerationModes = sets.New[ScalingAdviceGenerationMode](ScalingAdviceGenerationModeIncremental, ScalingAdviceGenerationModeAllAtOnce)
 )
 
 // NodePool defines a node pool configuration for a cluster.

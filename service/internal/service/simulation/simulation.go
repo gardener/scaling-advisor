@@ -84,7 +84,7 @@ func (s *defaultSimulation) ActivityStatus() svcapi.ActivityStatus {
 	return s.state.status
 }
 
-func (s *defaultSimulation) Result() (svcapi.SimRunResult, error) {
+func (s *defaultSimulation) Result() (svcapi.SimulationResult, error) {
 	return s.state.result, s.state.err
 }
 
@@ -131,7 +131,7 @@ func (s *defaultSimulation) Run(simCtx context.Context) (err error) {
 	if err != nil {
 		return
 	}
-	s.state.result = svcapi.SimRunResult{
+	s.state.result = svcapi.SimulationResult{
 		Name:       s.name,
 		ScaledNode: s.state.simNode,
 		NodeScorerArgs: svcapi.NodeScorerArgs{
@@ -286,7 +286,7 @@ type trackState struct {
 	unscheduledPods     map[types.NamespacedName]svcapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
 	scheduledPodsByNode map[string][]svcapi.PodResourceInfo             // map of node names to PodReosurceInfo
 	status              svcapi.ActivityStatus
-	result              svcapi.SimRunResult
+	result              svcapi.SimulationResult
 	groupRunPassNum     uint32
 }
 

@@ -23,17 +23,16 @@ import (
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// Generator is responsible for creating and managing simulations to generate scaling advice.
-type Generator struct {
+// PlanGenerator is responsible for creating and managing simulations to generate scaling advice plans.
+type PlanGenerator struct {
 	args *Args
 }
 
-// Args is used to construct a new instance of the Generator
+// Args is used to construct a new instance of the PlanGenerator
 type Args struct {
 	ViewAccess        mkapi.ViewAccess
 	PricingAccess     svcapi.InstancePricingAccess
@@ -54,16 +53,16 @@ type RunArgs struct {
 	Timeout   time.Duration
 }
 
-// New creates a new instance of Generator using the provided Args. It initializes the Generator struct.
-func New(args *Args) *Generator {
-	return &Generator{
+// New creates a new instance of PlanGenerator using the provided Args. It initializes the PlanGenerator struct.
+func New(args *Args) *PlanGenerator {
+	return &PlanGenerator{
 		args: args,
 	}
 }
 
 // Run executes the scaling advice generation process using the provided context and runArgs.
 // The results of the generation process are sent as one more ScalingAdviceResult's on the RunArgs.ResultsCh channel.
-func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
+func (g *PlanGenerator) Run(ctx context.Context, runArgs *RunArgs) {
 	genCtx, logPath, logCloser, err := wrapGenerationContext(ctx, g.args.LogBaseDir, runArgs.Request.ID, runArgs.Request.CorrelationID, runArgs.Request.EnableDiagnostics)
 	if err != nil {
 		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
@@ -77,7 +76,7 @@ func (g *Generator) Run(ctx context.Context, runArgs *RunArgs) {
 	}
 }
 
-func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs, logPath string) (err error) {
+func (g *PlanGenerator) doGenerate(ctx context.Context, runArgs *RunArgs, logPath string) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if err = validateRequest(runArgs.Request); err != nil {
 		return
@@ -109,13 +108,13 @@ func (g *Generator) doGenerate(ctx context.Context, runArgs *RunArgs, logPath st
 }
 
 // runPasses FIXME TODO needs to be refactored into separate Passes abstraction to avoid so many arguments being passed.
-func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32, logPath string) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+func (g *PlanGenerator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32, logPath string) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
-			log.Info("Generator context done. Aborting pass loop", "err", err)
+			log.Info("PlanGenerator context done. Aborting pass loop", "err", err)
 			return
 		default:
 			var passWinnerNodeScores []svcapi.NodeScore
@@ -237,7 +236,7 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcap
 	return nil
 }
 
-func (g *Generator) runPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+func (g *PlanGenerator) runPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
 		groupRunResult svcapi.SimGroupRunResult
@@ -282,32 +281,32 @@ func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcap
 	//if winnerScoreIndex < 0 {
 	//	return nil, nil //No winning score for this group
 	//}
-	winnerNode := getScaledNodeOfWinner(groupResult.SimulationResults, winnerNodeScore)
+	//winnerNode := getScaledNodeOfWinner(groupResult.SimulationResults, winnerNodeScore)
 	//if winnerNode == nil {
 	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.InstanceType)
 	//}
 	return svcapi.SimGroupScores{
 		AllNodeScores:   nodeScores,
 		WinnerNodeScore: winnerNodeScore,
-		WinnerNode:      winnerNode,
+		//WinnerNode:      winnerNode,
 	}, nil
 }
 
-func getScaledNodeOfWinner(simRunResults []svcapi.SimRunResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
-	var (
-		winnerNode *corev1.Node
-	)
-	for _, sr := range simRunResults {
-		if sr.ID == winnerNodeScore.ID {
-			winnerNode = sr.ScaledNode
-			break
-		}
-	}
-	return winnerNode
-}
+//func getScaledNodeOfWinner(simRunResults []svcapi.SimulationResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
+//	var (
+//		winnerNode *corev1.Node
+//	)
+//	for _, sr := range simRunResults {
+//		if sr.ID == winnerNodeScore.ID {
+//			winnerNode = sr.ScaledNode
+//			break
+//		}
+//	}
+//	return winnerNode
+//}
 
 // createSimulationGroups creates a slice of SimulationGroup based on priorities that are defined at the NodePool and NodeTemplate level.
-func (g *Generator) createSimulationGroups(ctx context.Context, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
+func (g *PlanGenerator) createSimulationGroups(ctx context.Context, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
 	request := runArgs.Request
 	var (
 		allSimulations []svcapi.Simulation
@@ -328,7 +327,7 @@ func (g *Generator) createSimulationGroups(ctx context.Context, runArgs *RunArgs
 	return g.args.SimulationGrouper.Group(allSimulations)
 }
 
-func (g *Generator) createSimulation(ctx context.Context, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
+func (g *PlanGenerator) createSimulation(ctx context.Context, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
 	simView, err := g.args.ViewAccess.GetOrCreateSandboxView(ctx, simulationName)
 	if err != nil {
 		return nil, err

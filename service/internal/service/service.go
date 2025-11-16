@@ -35,7 +35,7 @@ var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 type defaultScalingAdvisor struct {
 	minKAPIServer     mkapi.Server
 	schedulerLauncher svcapi.SchedulerLauncher
-	generator         *generator.Generator
+	generator         *generator.PlanGenerator
 	cfg               svcapi.ScalingAdvisorServiceConfig
 }
 

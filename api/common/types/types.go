@@ -70,6 +70,7 @@ const (
 )
 
 // CloudProvider represents the cloud provider type for the cluster.
+// +enum
 type CloudProvider string
 
 const (
@@ -105,14 +106,15 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 }
 
 // ClientAccessMode indicates the access mode of k8s client
+// +enum
 type ClientAccessMode string
 
 const (
 	// ClientAccessModeNetwork indicates the client accesses k8s api-server via a network call.
-	ClientAccessModeNetwork ClientAccessMode = "Network"
+	ClientAccessModeNetwork ClientAccessMode = "network"
 	// ClientAccessModeInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
 	// thus reducing the need for serialization and deserialization of requests and responses.
-	ClientAccessModeInMemory ClientAccessMode = "InMemory"
+	ClientAccessModeInMemory ClientAccessMode = "in-memory"
 )
 
 // ClientFacades is a holder for the primary k8s client and informer interfaces.

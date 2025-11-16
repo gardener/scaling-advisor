@@ -45,6 +45,7 @@ type ClusterScalingFeedbackSpec struct {
 }
 
 // ScalingErrorType defines the type of scaling error.
+// +enum
 type ScalingErrorType string
 
 const (

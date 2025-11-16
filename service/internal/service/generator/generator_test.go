@@ -88,7 +88,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 	}
 }
 
-func createTestGenerator(ctx context.Context) (*Generator, error) {
+func createTestGenerator(ctx context.Context) (*PlanGenerator, error) {
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return nil, err
