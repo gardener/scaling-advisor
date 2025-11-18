@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +25,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 // Generator is responsible for creating and managing simulations to generate scaling advice.
@@ -150,7 +150,7 @@ func (g *Generator) runPasses(ctx context.Context, runArgs *RunArgs, groups []sv
 }
 
 func validateRequest(request svcapi.ScalingAdviceRequest) error {
-	if err := validateConstraint(request.Constraint); err != nil {
+	if err := validateConstraint(request.Constraint, field.NewPath("request.constraint")); err != nil {
 		return err
 	}
 	if err := validateClusterSnapshot(request.Snapshot); err != nil {
@@ -159,12 +159,10 @@ func validateRequest(request svcapi.ScalingAdviceRequest) error {
 	return nil
 }
 
-func validateConstraint(constraint *sacorev1alpha1.ClusterScalingConstraint) error {
-	if strings.TrimSpace(constraint.Name) == "" {
-		return fmt.Errorf("%w: constraint name must not be empty", svcapi.ErrInvalidScalingConstraint)
-	}
-	if strings.TrimSpace(constraint.Namespace) == "" {
-		return fmt.Errorf("%w: constraint namespace must not be empty", svcapi.ErrInvalidScalingConstraint)
+func validateConstraint(constraint *sacorev1alpha1.ClusterScalingConstraint, fldPath *field.Path) error {
+	errList := sacorev1alpha1.ValidateClusterScalingConstraint(constraint, fldPath)
+	if len(errList) > 0 {
+		return fmt.Errorf("%w: %w", svcapi.ErrInvalidScalingConstraint, errList.ToAggregate())
 	}
 	return nil
 }

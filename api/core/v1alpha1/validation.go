@@ -7,8 +7,7 @@ import (
 )
 
 // ValidateNodePool validates a NodePool object.
-func ValidateNodePool(np *NodePool, fldPath *field.Path) field.ErrorList {
-	allErrs := field.ErrorList{}
+func ValidateNodePool(np *NodePool, fldPath *field.Path) (allErrs field.ErrorList) {
 	if strings.TrimSpace(np.Region) == "" {
 		allErrs = append(allErrs, field.Required(fldPath.Child("region"), "region must not be empty"))
 	}
@@ -22,5 +21,19 @@ func ValidateNodePool(np *NodePool, fldPath *field.Path) field.ErrorList {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("priority"), np.Priority, "priority must be non-negative"))
 	}
 	// TODO add checks for Quota
+	return allErrs
+}
+
+// ValidateClusterScalingConstraint validates the given scaling constraints under the given fieldPath and returns a list of validation errors encapsulated in field.ErrorList
+func ValidateClusterScalingConstraint(constraint *ClusterScalingConstraint, fieldPath *field.Path) (allErrs field.ErrorList) {
+	if strings.TrimSpace(constraint.Name) == "" {
+		allErrs = append(allErrs, field.Required(fieldPath.Child("name"), "constraint name must not be empty"))
+	}
+	if strings.TrimSpace(constraint.Namespace) == "" {
+		allErrs = append(allErrs, field.Required(fieldPath.Child("namespace"), "constraint namespace must not be empty"))
+	}
+	if !AllScalingAdviceGenerationModes.Has(constraint.Spec.AdviceGenerationMode) {
+		allErrs = append(allErrs, field.Invalid(fieldPath.Child("spec.adviceGenerationMode"), constraint.Spec.AdviceGenerationMode, "invalid AdviceGenerationMode"))
+	}
 	return allErrs
 }

@@ -5,7 +5,7 @@
   },
   "spec": {
     "consumerID": "",
-    "adviceGenerationMode": "AllAtOnce",
+    "adviceGenerationMode": "all-at-once",
     "nodePools": [
       {
         "name": "p",
