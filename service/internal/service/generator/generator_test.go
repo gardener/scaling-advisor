@@ -94,11 +94,11 @@ func createTestGenerator(ctx context.Context) (*Generator, error) {
 		return nil, err
 	}
 	weightsFn := weights.GetDefaultWeightsFn()
-	nodeScorer, err := scorer.GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, pricingAccess, weightsFn)
+	nodeScorer, err := scorer.GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, pricingAccess, weightsFn)
 	if err != nil {
 		return nil, err
 	}
-	nodeSelector, err := scorer.GetNodeScoreSelector(commontypes.LeastCostNodeScoringStrategy)
+	nodeSelector, err := scorer.GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastCost)
 	if err != nil {
 		return nil, err
 	}

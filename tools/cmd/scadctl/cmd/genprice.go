@@ -48,7 +48,7 @@ var genpriceCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, args []string) error {
 		pricingDir := args[0]
 		switch provider {
-		case commontypes.AWSCloudProvider:
+		case commontypes.CloudProviderAWS:
 			// If no regions specified, use defaults
 			useRegions := regions
 			if len(useRegions) == 0 {
@@ -66,7 +66,7 @@ func init() {
 	genpriceCmd.Flags().StringVarP(
 		&providerStr,
 		"provider", "p",
-		string(commontypes.AWSCloudProvider),
+		string(commontypes.CloudProviderAWS),
 		"cloud provider (aws|gcp|azure|ali|openstack)",
 	)
 

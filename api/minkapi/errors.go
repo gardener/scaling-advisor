@@ -7,6 +7,7 @@ package minkapi
 import (
 	"errors"
 	"fmt"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 

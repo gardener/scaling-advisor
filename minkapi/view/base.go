@@ -90,7 +90,7 @@ func (v *baseView) GetName() string {
 }
 
 func (v *baseView) GetType() minkapi.ViewType {
-	return minkapi.BaseViewType
+	return minkapi.ViewTypeBase
 }
 
 func (v *baseView) GetObjectChangeCount() int64 {
@@ -113,13 +113,13 @@ func (v *baseView) GetClientFacades(ctx context.Context, accessMode commontypes.
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessNetwork:
+	case commontypes.ClientAccessModeNetwork:
 		if v.GetKubeConfigPath() == "" {
 			err = errors.New("kubeconfig path not specified for network client")
 			return
 		}
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessInMemory:
+	case commontypes.ClientAccessModeInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)

@@ -87,7 +87,7 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	commoncli.MapQPSBurstFlags(flagSet, &opts.QPSBurst)
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)
 	flagSet.StringVar(&opts.InstancePricingPath, "--instance-info", "-i", "path to instance info file (contains prices)")
-	flagSet.StringVarP(&opts.CloudProvider, "--cloud-provider", "-c", string(commontypes.AWSCloudProvider), "cloud provider")
+	flagSet.StringVarP(&opts.CloudProvider, "--cloud-provider", "-c", string(commontypes.CloudProviderAWS), "cloud provider")
 	flagSet.IntVarP(&opts.MaxParallelSimulations, "--max-parallel-simulations", "-m", 1, "maximum number of parallel simulations")
 	return flagSet, &opts
 }

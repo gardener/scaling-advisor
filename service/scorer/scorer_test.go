@@ -136,7 +136,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.LeastWasteNodeScoringStrategy, tc.access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, tc.access, tc.weightsFn)
 			if err != nil {
 				t.Fatal(err)
 				return
@@ -267,7 +267,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.LeastCostNodeScoringStrategy, tc.access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, tc.access, tc.weightsFn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -290,7 +290,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	selector, err := GetNodeScoreSelector(commontypes.LeastCostNodeScoringStrategy)
+	selector, err := GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastCost)
 	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)
 	simNodeWithStorage.Allocatable["Storage"] = 10
 	if err != nil {
@@ -424,7 +424,7 @@ func TestSelectMinPrice(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	selector, err := GetNodeScoreSelector(commontypes.LeastWasteNodeScoringStrategy)
+	selector, err := GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastWaste)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,12 +534,12 @@ func TestGetNodeScoreSelector(t *testing.T) {
 		expectedFunctionName string
 	}{
 		"least-cost strategy": {
-			input:                commontypes.LeastCostNodeScoringStrategy,
+			input:                commontypes.NodeScoringStrategyLeastCost,
 			expectedFunctionName: testutil.GetFunctionName(t, SelectMaxAllocatable),
 			expectedError:        nil,
 		},
 		"least-waste strategy": {
-			input:                commontypes.LeastWasteNodeScoringStrategy,
+			input:                commontypes.NodeScoringStrategyLeastWaste,
 			expectedFunctionName: testutil.GetFunctionName(t, SelectMinPrice),
 			expectedError:        nil,
 		},
@@ -585,12 +585,12 @@ func TestGetNodeScorer(t *testing.T) {
 		expectedType  string
 	}{
 		"least-cost strategy": {
-			input:         commontypes.LeastCostNodeScoringStrategy,
+			input:         commontypes.NodeScoringStrategyLeastCost,
 			expectedType:  "*scorer.LeastCost",
 			expectedError: nil,
 		},
 		"least-waste strategy": {
-			input:         commontypes.LeastWasteNodeScoringStrategy,
+			input:         commontypes.NodeScoringStrategyLeastWaste,
 			expectedType:  "*scorer.LeastWaste",
 			expectedError: nil,
 		},

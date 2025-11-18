@@ -16,7 +16,7 @@ func NewInMemClientFacades(view mkapi.View, resyncPeriod time.Duration) commonty
 	client := &inMemClient{view: view}
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	return commontypes.ClientFacades{
-		Mode:               commontypes.ClientAccessInMemory,
+		Mode:               commontypes.ClientAccessModeInMemory,
 		Client:             client,
 		DynClient:          nil, // TODO: develop this
 		InformerFactory:    informerFactory,

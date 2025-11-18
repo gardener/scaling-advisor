@@ -59,7 +59,7 @@ func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPe
 	}
 	informerFactory, dynInformerFactory := BuildInformerFactories(client, dynClient, resyncPeriod)
 	clientFacades = commontypes.ClientFacades{
-		Mode:               commontypes.ClientAccessNetwork,
+		Mode:               commontypes.ClientAccessModeNetwork,
 		Client:             client,
 		DynClient:          dynClient,
 		InformerFactory:    informerFactory,

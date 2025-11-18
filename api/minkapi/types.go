@@ -184,10 +184,10 @@ type View interface {
 type ViewType string
 
 const (
-	// BaseViewType represents the foundational view of the MinKAPI server.
-	BaseViewType ViewType = "base"
-	// SandboxViewType represents a sandboxed private view.
-	SandboxViewType ViewType = "sandbox"
+	// ViewTypeBase represents the foundational view of the MinKAPI server.
+	ViewTypeBase ViewType = "base"
+	// ViewTypeSandbox represents a sandboxed private view.
+	ViewTypeSandbox ViewType = "sandbox"
 )
 
 // CreateSandboxViewFunc represents a creator function for constructing sandbox views from the delegate view and given args
