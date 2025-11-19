@@ -30,7 +30,7 @@ func GetInstancePricingAccessWithFakeData() (access service.InstancePricingAcces
 	if err != nil {
 		return
 	}
-	return pricing.GetInstancePricingFromData(commontypes.AWSCloudProvider, testData)
+	return pricing.GetInstancePricingFromData(commontypes.CloudProviderAWS, testData)
 }
 
 // GetInstancePricingAccessForTop20AWSInstanceTypes loads pricing data for the top 20 AWS instance types in eu-west-1 region and
@@ -46,5 +46,5 @@ func GetInstancePricingAccessForTop20AWSInstanceTypes() (access service.Instance
 	if err != nil {
 		return
 	}
-	return pricing.GetInstancePricingFromData(commontypes.AWSCloudProvider, testData)
+	return pricing.GetInstancePricingFromData(commontypes.CloudProviderAWS, testData)
 }

@@ -7,6 +7,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -64,11 +65,16 @@ type ScalingAdviceGenerationMode string
 const (
 	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
 	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
-	ScalingAdviceGenerationModeIncremental = "Incremental"
+	ScalingAdviceGenerationModeIncremental = "incremental"
 	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
 	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
 	// all pending pods have been scheduled or stabilised.
-	ScalingAdviceGenerationModeAllAtOnce = "AllAtOnce"
+	ScalingAdviceGenerationModeAllAtOnce = "all-at-once"
+)
+
+var (
+	// AllScalingAdviceGenerationModes is the set of all ScalingAdviceGenerationMode's
+	AllScalingAdviceGenerationModes = sets.New[ScalingAdviceGenerationMode](ScalingAdviceGenerationModeIncremental, ScalingAdviceGenerationModeAllAtOnce)
 )
 
 // NodePool defines a node pool configuration for a cluster.

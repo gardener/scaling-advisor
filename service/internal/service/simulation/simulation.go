@@ -201,7 +201,7 @@ func (s *defaultSimulation) getScaledNodeAssignment() *svcapi.NodePodAssignment 
 }
 
 func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView mkapi.View) (svcapi.SchedulerHandle, error) {
-	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessInMemory)
+	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
 	if err != nil {
 		return nil, err
 	}

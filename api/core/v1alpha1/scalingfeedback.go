@@ -48,10 +48,10 @@ type ClusterScalingFeedbackSpec struct {
 type ScalingErrorType string
 
 const (
-	// ErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.
-	ErrorTypeResourceExhausted ScalingErrorType = "ResourceExhaustedError"
-	// ErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.
-	ErrorTypeCreationTimeout ScalingErrorType = "CreationTimeoutError"
+	// ScalingErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.
+	ScalingErrorTypeResourceExhausted ScalingErrorType = "ResourceExhaustedError"
+	// ScalingErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.
+	ScalingErrorTypeCreationTimeout ScalingErrorType = "CreationTimeoutError"
 )
 
 // ScaleOutErrorInfo is the backoff information for each instance type + zone.

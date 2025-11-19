@@ -63,26 +63,26 @@ type ConstraintReference struct {
 type NodeScoringStrategy string
 
 const (
-	// LeastWasteNodeScoringStrategy represents a scoring strategy that minimizes resource waste.
-	LeastWasteNodeScoringStrategy NodeScoringStrategy = "LeastWaste"
-	// LeastCostNodeScoringStrategy represents a scoring strategy that minimizes cost.
-	LeastCostNodeScoringStrategy NodeScoringStrategy = "LeastCost"
+	// NodeScoringStrategyLeastWaste represents a scoring strategy that minimizes resource waste.
+	NodeScoringStrategyLeastWaste NodeScoringStrategy = "least-waste"
+	// NodeScoringStrategyLeastCost represents a scoring strategy that minimizes cost.
+	NodeScoringStrategyLeastCost NodeScoringStrategy = "least-cost"
 )
 
 // CloudProvider represents the cloud provider type for the cluster.
 type CloudProvider string
 
 const (
-	// AWSCloudProvider indicates AWS as cloud provider.
-	AWSCloudProvider CloudProvider = "aws"
-	// GCPCloudProvider indicates GCP as cloud provider.
-	GCPCloudProvider CloudProvider = "gcp"
-	// AzureCloudProvider indicates Azure as cloud provider.
-	AzureCloudProvider CloudProvider = "azure"
-	// AliCloudProvider indicates Alibaba Cloud as cloud provider.
-	AliCloudProvider CloudProvider = "ali"
-	// OpenStackCloudProvider indicates OpenStack as cloud provider.
-	OpenStackCloudProvider CloudProvider = "openstack"
+	// CloudProviderAWS indicates AWS as cloud provider.
+	CloudProviderAWS CloudProvider = "aws"
+	// CloudProviderGCP indicates GCP as cloud provider.
+	CloudProviderGCP CloudProvider = "gcp"
+	// CloudProviderAzure indicates Azure as cloud provider.
+	CloudProviderAzure CloudProvider = "azure"
+	// CloudProviderAli indicates Alibaba Cloud as cloud provider.
+	CloudProviderAli CloudProvider = "ali"
+	// CloudProviderOpenStack indicates OpenStack as cloud provider.
+	CloudProviderOpenStack CloudProvider = "openstack"
 )
 
 // AsCloudProvider converts a string to CloudProvider type. It returns an error if the cloudProvider string
@@ -90,15 +90,15 @@ const (
 func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	switch cloudProvider {
 	case "aws":
-		return AWSCloudProvider, nil
+		return CloudProviderAWS, nil
 	case "gcp":
-		return GCPCloudProvider, nil
+		return CloudProviderGCP, nil
 	case "azure":
-		return AzureCloudProvider, nil
+		return CloudProviderAzure, nil
 	case "ali":
-		return AliCloudProvider, nil
+		return CloudProviderAli, nil
 	case "openstack":
-		return OpenStackCloudProvider, nil
+		return CloudProviderOpenStack, nil
 	default:
 		return "", fmt.Errorf("unuspported cloud provider: %s", cloudProvider)
 	}
@@ -108,11 +108,11 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 type ClientAccessMode string
 
 const (
-	// ClientAccessNetwork indicates the client accesses k8s api-server via a network call.
-	ClientAccessNetwork ClientAccessMode = "Network"
-	// ClientAccessInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
+	// ClientAccessModeNetwork indicates the client accesses k8s api-server via a network call.
+	ClientAccessModeNetwork ClientAccessMode = "Network"
+	// ClientAccessModeInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
 	// thus reducing the need for serialization and deserialization of requests and responses.
-	ClientAccessInMemory ClientAccessMode = "InMemory"
+	ClientAccessModeInMemory ClientAccessMode = "InMemory"
 )
 
 // ClientFacades is a holder for the primary k8s client and informer interfaces.

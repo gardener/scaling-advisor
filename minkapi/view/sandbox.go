@@ -86,7 +86,7 @@ func (v *sandboxView) GetName() string {
 }
 
 func (v *sandboxView) GetType() minkapi.ViewType {
-	return minkapi.SandboxViewType
+	return minkapi.ViewTypeSandbox
 }
 
 func (v *sandboxView) GetObjectChangeCount() int64 {
@@ -105,9 +105,9 @@ func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontyp
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessNetwork:
+	case commontypes.ClientAccessModeNetwork:
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessInMemory:
+	case commontypes.ClientAccessModeInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
