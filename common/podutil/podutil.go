@@ -88,6 +88,7 @@ func AsPod(info svcapi.PodInfo) *corev1.Pod {
 					Resources: corev1.ResourceRequirements{
 						Requests: objutil.Int64MapToResourceList(info.AggregatedRequests),
 					},
+					Image: info.Name + "-dummy-image",
 				},
 			},
 		},
