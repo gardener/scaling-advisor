@@ -38,9 +38,9 @@ const (
 	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
 	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
 	LabelNodeTemplateName = "sa.gardener.cloud/node-template-name"
-	// LabelRequestID is the label key to identify the request ID of scaling advice request.
+	// LabelRequestID is the label key to identify the request Name of scaling advice request.
 	LabelRequestID = "sa.gardener.cloud/request-id"
-	// LabelCorrelationID is the label key to identify the correlation ID of the scaling advice request.
+	// LabelCorrelationID is the label key to identify the correlation Name of the scaling advice request.
 	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
 )
 

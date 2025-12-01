@@ -48,7 +48,12 @@ func (v *viewAccess) GetBaseView() minkapi.View {
 	return v.baseView
 }
 
-func (v *viewAccess) GetOrCreateSandboxView(_ context.Context, name string) (minkapi.View, error) {
+func (v *viewAccess) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
+	return v.GetSandboxViewOverDelegate(ctx, name, v.baseView)
+}
+
+func (v *viewAccess) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	sv, ok := v.sandboxViews[name]
@@ -56,15 +61,16 @@ func (v *viewAccess) GetOrCreateSandboxView(_ context.Context, name string) (min
 		return sv, nil
 	}
 
-	sv, err := NewSandbox(v.baseView, &minkapi.ViewArgs{
+	sv, err := NewSandbox(delegateView, &minkapi.ViewArgs{
 		Name:        name,
 		Scheme:      v.baseViewArgs.Scheme,
 		WatchConfig: v.baseViewArgs.WatchConfig,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot create sandbox view %q: %w", minkapi.ErrCreateView, name, err)
+		return nil, fmt.Errorf("%w: cannot create sandbox view %q over delegate view %q: %w", minkapi.ErrCreateView, name, delegateView.GetName(), err)
 	}
 	v.sandboxViews[name] = sv
+	log.Info("created sandbox view", "name", name, "delegateView", delegateView.GetName())
 	return sv, nil
 }
 

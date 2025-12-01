@@ -239,10 +239,10 @@ func (k *InMemoryKAPI) GetBaseView() minkapi.View {
 	return k.viewAccess.GetBaseView()
 }
 
-// GetOrCreateSandboxView creates or returns a sandboxed KAPI View with the given name
-func (k *InMemoryKAPI) GetOrCreateSandboxView(ctx context.Context, name string) (minkapi.View, error) {
+// GetSandboxView creates or returns a sandboxed KAPI View with the given name
+func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	sv, err := k.viewAccess.GetOrCreateSandboxView(ctx, name)
+	sv, err := k.viewAccess.GetSandboxView(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +280,10 @@ func (k *InMemoryKAPI) GetOrCreateSandboxView(ctx context.Context, name string) 
 	sandboxViewMux := http.NewServeMux()
 	k.registerRoutes(log, sandboxViewMux, sv)
 	return sv, nil
+}
+
+func (k *InMemoryKAPI) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
+	return nil, nil
 }
 
 func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view minkapi.View) {
@@ -396,7 +400,7 @@ func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Re
 		return
 	}
 	log := logr.FromContextOrDiscard(r.Context())
-	_, err := k.GetOrCreateSandboxView(r.Context(), viewName)
+	_, err := k.GetSandboxView(r.Context(), viewName)
 	if err != nil {
 		handleInternalServerError(w, r, err)
 		return
@@ -644,7 +648,7 @@ func handleWatch(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.
 // This endpoint is invoked by the scheduler, and it is expected that the API HostPort sets the `pod.Spec.NodeName`
 //
 // Example Payload
-// {"kind":"Binding","apiVersion":"v1","metadata":{"name":"a-p4r2l","namespace":"default","uid":"b8124ee8-a0c7-4069-930d-fc5e901675d3"},"target":{"kind":"Node","name":"a-kl827"}}
+// {"kind":"Binding","apiVersion":"v1","metadata":{"name":"a-p4r2l","namespace":"default","uid":"b8124ee8-a0c7-4069-930d-fc5e901675d3"},"target":{"kind":"NodeResources","name":"a-kl827"}}
 func handleCreatePodBinding(view minkapi.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logr.FromContextOrDiscard(r.Context())

@@ -57,18 +57,12 @@ type Config struct {
 	WatchConfig WatchConfig
 }
 
-// Resettable defines types that can reset their state to a default or initial configuration.
-type Resettable interface {
-	// Reset resets the state of the implementing type.
-	Reset()
-}
-
 // WatchEventCallback is a function type for handling watch events from a ResourceStore.
 type WatchEventCallback func(watch.Event) (err error)
 
 // ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	Resettable
+	commontypes.Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
@@ -119,7 +113,7 @@ type ResourceStoreArgs struct {
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	Resettable
+	commontypes.Resettable
 	events.EventSink
 	// List returns all events in the sink.
 	List() []eventsv1.Event
@@ -128,7 +122,7 @@ type EventSink interface {
 // View is the high-level facade to a repository of objects of different types (GVK).
 // TODO: Think of a better name. Rename this to ObjectRepository or something else, also add godoc ?
 type View interface {
-	Resettable
+	commontypes.Resettable
 	io.Closer
 	// GetName returns the name of this view.
 	GetName() string
@@ -210,11 +204,16 @@ type ViewAccess interface {
 	io.Closer
 	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
 	GetBaseView() View
-	// GetOrCreateSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
+	// GetSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
 	// at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig named `minkapi-<name>.yaml` is also generated
 	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
 	// TODO: discuss whether the above is OK.
-	GetOrCreateSandboxView(ctx context.Context, name string) (View, error)
+	GetSandboxView(ctx context.Context, name string) (View, error)
+	// GetSandboxViewOverDelegate creates or returns a sandboxed KAPI View with the given name over the provided
+	// delegateView that is also served as a KAPI Service at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig
+	// named `minkapi-<name>.yaml` is also generated in the same directory as the base `minkapi.yaml`.  The sandbox name
+	// should be a valid path-prefix, ie no-spaces.
+	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
 }
 
 // Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) service accessible at http://<MinKAPIHost>:<MinKAPIPort>/base

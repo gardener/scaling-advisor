@@ -1,4 +1,4 @@
-package generator
+package planner
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gardener/scaling-advisor/service/internal/scheduler"
-	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
+	"github.com/gardener/scaling-advisor/service/internal/service/simulator/multi"
 	"github.com/gardener/scaling-advisor/service/internal/service/weights"
 	"github.com/gardener/scaling-advisor/service/internal/testutil"
 	pricingtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
@@ -24,7 +24,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 	runCtx := commontestutil.LoggerContext(t.Context())
 	g, err := createTestGenerator(runCtx)
 	if err != nil {
-		t.Errorf("failed to create test generator: %v", err)
+		t.Errorf("failed to create test planner: %v", err)
 		return
 	}
 
@@ -88,7 +88,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 	}
 }
 
-func createTestGenerator(ctx context.Context) (*PlanGenerator, error) {
+func createTestGenerator(ctx context.Context) (*Planner, error) {
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return nil, err
@@ -126,11 +126,11 @@ func createTestGenerator(ctx context.Context) (*PlanGenerator, error) {
 	args := Args{
 		ViewAccess:        viewAccess,
 		PricingAccess:     pricingAccess,
-		WeightsFn:         weightsFn,
+		ResourceWeigher:   weightsFn,
 		NodeScorer:        nodeScorer,
 		Selector:          nodeSelector,
-		SimulationCreator: svcapi.SimulationCreatorFunc(simulation.New),
-		SimulationGrouper: svcapi.SimulationGrouperFunc(simulation.CreateSimulationGroups),
+		SimulationCreator: svcapi.SimulationCreatorFunc(multi.NewGroup),
+		SimulationGrouper: svcapi.SimulationGrouperFunc(multi.createSimulationGroups),
 		SchedulerLauncher: schedulerLauncher,
 	}
 

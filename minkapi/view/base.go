@@ -458,7 +458,7 @@ func asNodes(metaObjects []metav1.Object) (nodes []corev1.Node, maxVersion int64
 	for _, obj := range metaObjects {
 		n, ok := obj.(*corev1.Node)
 		if !ok {
-			err = fmt.Errorf("object %q is not a corev1.Node", objutil.CacheName(obj))
+			err = fmt.Errorf("object %q is not a corev1.NodeResources", objutil.CacheName(obj))
 			return
 		}
 		version, err = objutil.ParseObjectResourceVersion(obj)

@@ -138,11 +138,11 @@ func initSuite(ctx context.Context) error {
 	state.app = &app
 	state.ctx, state.cancel = app.Ctx, app.Cancel
 	state.baseView = app.Server.GetBaseView()
-	state.wamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "wam")
+	state.wamView, err = app.Server.GetSandboxView(state.ctx, "wam")
 	if err != nil {
 		return err
 	}
-	state.bamView, err = app.Server.GetOrCreateSandboxView(state.ctx, "bam")
+	state.bamView, err = app.Server.GetSandboxView(state.ctx, "bam")
 	if err != nil {
 		return err
 	}

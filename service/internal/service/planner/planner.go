@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package generator
+package planner
 
 import (
 	"context"
@@ -14,114 +14,138 @@ import (
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/gardener/scaling-advisor/service/internal/service/simulator/multi"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// PlanGenerator is responsible for creating and managing simulations to generate scaling advice plans.
-type PlanGenerator struct {
+// Planner is responsible for creating and managing simulations to generate scaling advice plans.
+type Planner struct {
 	args *Args
 }
 
-// Args is used to construct a new instance of the PlanGenerator
+// Args is used to construct a new instance of the Planner
 type Args struct {
-	ViewAccess        mkapi.ViewAccess
-	PricingAccess     svcapi.InstancePricingAccess
-	WeightsFn         svcapi.GetWeightsFunc
-	NodeScorer        svcapi.NodeScorer
-	Selector          svcapi.NodeScoreSelector
-	SimulationCreator svcapi.SimulationCreator
-	SimulationGrouper svcapi.SimulationGrouper
-	SchedulerLauncher svcapi.SchedulerLauncher
+	ViewAccess      minkapi.ViewAccess
+	PricingAccess   service.InstancePricingAccess
+	ResourceWeigher service.ResourceWeigher
+	//SimulationGrouper service.SimulationGrouper
+	SchedulerLauncher service.SchedulerLauncher
 	LogBaseDir        string
 }
 
-// RunArgs is used to run the generator and generate scaling advice
-// TODO: follow Args, RunArgs convention for all other components too (which have more than 3 parameters) for structural consistency
+// RunArgs is used to run the planner and generate scaling advice
 type RunArgs struct {
-	ResultsCh chan<- svcapi.ScalingAdviceResult
-	Request   svcapi.ScalingAdviceRequest
-	Timeout   time.Duration
+	ResultsCh chan<- service.ScalingAdviceResult
+	Request   service.ScalingAdviceRequest
 }
 
-// New creates a new instance of PlanGenerator using the provided Args. It initializes the PlanGenerator struct.
-func New(args *Args) *PlanGenerator {
-	return &PlanGenerator{
+// New creates a new instance of Planner using the provided Args. It initializes the Planner struct.
+func New(args *Args) *Planner {
+	return &Planner{
 		args: args,
 	}
 }
 
 // Run executes the scaling advice generation process using the provided context and runArgs.
 // The results of the generation process are sent as one more ScalingAdviceResult's on the RunArgs.ResultsCh channel.
-func (g *PlanGenerator) Run(ctx context.Context, runArgs *RunArgs) {
-	genCtx, logPath, logCloser, err := wrapGenerationContext(ctx, g.args.LogBaseDir, runArgs.Request.ID, runArgs.Request.CorrelationID, runArgs.Request.EnableDiagnostics)
+func (p *Planner) Run(ctx context.Context, runArgs *RunArgs) {
+	genCtx, logPath, logCloser, err := wrapGenerationContext(ctx, p.args.LogBaseDir, runArgs.Request.ID, runArgs.Request.CorrelationID, runArgs.Request.EnableDiagnostics)
 	if err != nil {
 		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 	defer ioutil.CloseQuietly(logCloser)
-	err = g.doGenerate(genCtx, runArgs, logPath)
+
+	simulator, err := p.getSimulator(&runArgs.Request)
+	if err != nil {
+		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
+		return
+	}
+	planConsumerFn := func(scaleOutPlan sacorev1alpha1.ScaleOutPlan) error {
+		resp := &service.ScalingAdviceResponse{
+			ScalingAdvice: nil,
+			Diagnostics:   nil,
+			RequestRef:    service.ScalingAdviceRequestRef{},
+			Message:       "",
+		}
+		runArgs.ResultsCh <- service.ScalingAdviceResult{
+			Response: resp,
+		}
+	}
+	simulator.SimulateScaleOut(ctx, planConsumerFn)
+	err = p.doGenerate(genCtx, runArgs, logPath)
 	if err != nil {
 		SendError(runArgs.ResultsCh, runArgs.Request.ScalingAdviceRequestRef, err)
 		return
 	}
 }
 
-func (g *PlanGenerator) doGenerate(ctx context.Context, runArgs *RunArgs, logPath string) (err error) {
+func (p *Planner) getSimulator(req *service.ScalingAdviceRequest) (service.Simulator, error) {
+	switch req.SimulationStrategy {
+	case commontypes.SimulationStrategyMultiSimulationsPerGroup:
+		return multi.NewSimulator(p.args.ViewAccess, p.args.ResourceWeigher, p.args.PricingAccess, p.args.SchedulerLauncher, req)
+	default:
+		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", service.ErrUnsupportedSimulationStrategy, req.SimulationStrategy)
+	}
+}
+
+func (p *Planner) doGenerate(ctx context.Context, runArgs *RunArgs, logPath string) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if err = validateRequest(runArgs.Request); err != nil {
 		return
 	}
-	baseView := g.args.ViewAccess.GetBaseView()
+	baseView := p.args.ViewAccess.GetBaseView()
 	err = synchronizeBaseView(ctx, baseView, runArgs.Request.Snapshot)
 	if err != nil {
 		return
 	}
 
 	var groupRunPassCounter atomic.Uint32
-	groups, err := g.createSimulationGroups(ctx, runArgs, &groupRunPassCounter)
+	groups, err := p.createSimulationGroups(ctx, runArgs, &groupRunPassCounter)
 	if err != nil {
 		return
 	}
-	allWinnerNodeScores, unscheduledPods, err := g.runPasses(ctx, runArgs, groups, &groupRunPassCounter, logPath)
+	allWinnerNodeScores, unscheduledPods, err := p.runPasses(ctx, runArgs, groups, &groupRunPassCounter, logPath)
 	if err != nil {
 		return
 	}
 	if len(allWinnerNodeScores) == 0 {
 		log.Info("No scaling advice generated. No winning nodes produced by any simulation group.")
-		err = svcapi.ErrNoScalingAdvice
+		err = service.ErrNoScalingAdvice
 		return
 	}
-	if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
+	if runArgs.Request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
 		err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassCounter.Load(), allWinnerNodeScores, unscheduledPods, logPath)
 	}
 	return
 }
 
 // runPasses FIXME TODO needs to be refactored into separate Passes abstraction to avoid so many arguments being passed.
-func (g *PlanGenerator) runPasses(ctx context.Context, runArgs *RunArgs, groups []svcapi.SimulationGroup, groupRunPassCounter *atomic.Uint32, logPath string) (allWinnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+func (p *Planner) runPasses(ctx context.Context, runArgs *RunArgs, groups []service.SimulationGroup, groupRunPassCounter *atomic.Uint32, logPath string) (allWinnerNodeScores []service.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
-			log.Info("PlanGenerator context done. Aborting pass loop", "err", err)
+			log.Info("Planner context done. Aborting pass loop", "err", err)
 			return
 		default:
-			var passWinnerNodeScores []svcapi.NodeScore
+			var passWinnerNodeScores []service.NodeScore
 			groupRunPassNum := groupRunPassCounter.Load()
 			log := log.WithValues("groupRunPass", groupRunPassNum) // purposefully shadowed.
 			passCtx := logr.NewContext(ctx, log)
-			passWinnerNodeScores, unscheduledPods, err = g.runPass(passCtx, groups)
+			passWinnerNodeScores, unscheduledPods, err = p.runPass(passCtx, groups)
 			if err != nil {
 				return
 			}
@@ -133,7 +157,7 @@ func (g *PlanGenerator) runPasses(ctx context.Context, runArgs *RunArgs, groups 
 				return
 			}
 			allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
-			if runArgs.Request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeIncremental {
+			if runArgs.Request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
 				err = sendScalingAdvice(runArgs.ResultsCh, runArgs.Request, groupRunPassNum, passWinnerNodeScores, unscheduledPods, logPath)
 				if err != nil {
 					return
@@ -148,8 +172,8 @@ func (g *PlanGenerator) runPasses(ctx context.Context, runArgs *RunArgs, groups 
 	}
 }
 
-func validateRequest(request svcapi.ScalingAdviceRequest) error {
-	if err := validateConstraint(request.Constraint, field.NewPath("request.constraint")); err != nil {
+func validateRequest(request service.ScalingAdviceRequest) error {
+	if err := validateConstraint(request.Constraint); err != nil {
 		return err
 	}
 	if err := validateClusterSnapshot(request.Snapshot); err != nil {
@@ -158,25 +182,27 @@ func validateRequest(request svcapi.ScalingAdviceRequest) error {
 	return nil
 }
 
-func validateConstraint(constraint *sacorev1alpha1.ClusterScalingConstraint, fldPath *field.Path) error {
-	errList := sacorev1alpha1.ValidateClusterScalingConstraint(constraint, fldPath)
-	if len(errList) > 0 {
-		return fmt.Errorf("%w: %w", svcapi.ErrInvalidScalingConstraint, errList.ToAggregate())
+func validateConstraint(constraint *sacorev1alpha1.ClusterScalingConstraint) error {
+	if strings.TrimSpace(constraint.Name) == "" {
+		return fmt.Errorf("%w: constraint name must not be empty", service.ErrInvalidScalingConstraint)
+	}
+	if strings.TrimSpace(constraint.Namespace) == "" {
+		return fmt.Errorf("%w: constraint namespace must not be empty", service.ErrInvalidScalingConstraint)
 	}
 	return nil
 }
 
-func validateClusterSnapshot(cs *svcapi.ClusterSnapshot) error {
+func validateClusterSnapshot(cs *service.ClusterSnapshot) error {
 	// Check if all nodes have the required label commonconstants.LabelNodeTemplateName
 	for _, nodeInfo := range cs.Nodes {
 		if _, ok := nodeInfo.Labels[commonconstants.LabelNodeTemplateName]; !ok {
-			return fmt.Errorf("%w: node %q has no label %q", svcapi.ErrMissingRequiredLabel, nodeInfo.Name, commonconstants.LabelNodeTemplateName)
+			return fmt.Errorf("%w: node %q has no label %q", service.ErrMissingRequiredLabel, nodeInfo.Name, commonconstants.LabelNodeTemplateName)
 		}
 	}
 	return nil
 }
 
-func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.ClusterSnapshot) error {
+func synchronizeBaseView(ctx context.Context, view minkapi.View, cs *service.ClusterSnapshot) error {
 	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
 	// the base view with the current state of the target cluster.
 	view.Reset()
@@ -204,19 +230,19 @@ func synchronizeBaseView(ctx context.Context, view mkapi.View, cs *svcapi.Cluste
 }
 
 // sendScalingAdvice needs to be fixed: FIXME, TODO: reduce num of args by making this a method or wrapping args into struct or alternative
-func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcapi.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, logPath string) error {
+func sendScalingAdvice(adviceCh chan<- service.ScalingAdviceResult, request service.ScalingAdviceRequest, groupRunPassNum uint32, winnerNodeScores []service.NodeScore, unscheduledPods []types.NamespacedName, logPath string) error {
 	scalingAdvice, err := createScalingAdvice(request, groupRunPassNum, winnerNodeScores, unscheduledPods)
 	if err != nil {
 		return err
 	}
 	var msg string
-	if request.Constraint.Spec.AdviceGenerationMode == sacorev1alpha1.ScalingAdviceGenerationModeAllAtOnce {
-		msg = fmt.Sprintf("%s scaling advice for total num passes %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
+	if request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
+		msg = fmt.Sprintf("%s scaling advice for total num passes %d with %d pending unscheduled pods", request.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
 	} else {
-		msg = fmt.Sprintf("%s scaling advice for pass %d with %d pending unscheduled pods", request.Constraint.Spec.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
+		msg = fmt.Sprintf("%s scaling advice for pass %d with %d pending unscheduled pods", request.AdviceGenerationMode, groupRunPassNum, len(unscheduledPods))
 	}
 
-	response := svcapi.ScalingAdviceResponse{
+	response := service.ScalingAdviceResponse{
 		RequestRef:    request.ScalingAdviceRequestRef,
 		Message:       msg,
 		ScalingAdvice: scalingAdvice,
@@ -229,25 +255,25 @@ func sendScalingAdvice(adviceCh chan<- svcapi.ScalingAdviceResult, request svcap
 		}
 	}
 
-	adviceCh <- svcapi.ScalingAdviceResult{
+	adviceCh <- service.ScalingAdviceResult{
 		Response: &response,
 	}
 
 	return nil
 }
 
-func (g *PlanGenerator) runPass(ctx context.Context, groups []svcapi.SimulationGroup) (winnerNodeScores []svcapi.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+func (p *Planner) runPass(ctx context.Context, groups []service.SimulationGroup) (winnerNodeScores []service.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
-		groupRunResult svcapi.SimGroupRunResult
-		groupScores    svcapi.SimGroupScores
+		groupRunResult service.SimulationGroupResult
+		groupScores    service.SimulationGroupScores
 	)
 	for _, group := range groups {
 		groupRunResult, err = group.Run(ctx)
 		if err != nil {
 			return
 		}
-		groupScores, err = computeSimGroupScores(g.args.PricingAccess, g.args.WeightsFn, g.args.NodeScorer, g.args.Selector, &groupRunResult)
+		groupScores, err = computeSimGroupScores(p.args.PricingAccess, p.args.ResourceWeigher, p.args.NodeScorer, p.args.Selector, &groupRunResult)
 		if err != nil {
 			return
 		}
@@ -265,18 +291,18 @@ func (g *PlanGenerator) runPass(ctx context.Context, groups []svcapi.SimulationG
 	return
 }
 
-func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcapi.GetWeightsFunc, scorer svcapi.NodeScorer, selector svcapi.NodeScoreSelector, groupResult *svcapi.SimGroupRunResult) (svcapi.SimGroupScores, error) {
-	var nodeScores []svcapi.NodeScore
+func computeSimGroupScores(pricer service.InstancePricingAccess, weigher service.ResourceWeigher, scorer service.NodeScorer, groupResult *service.SimulationGroupResult) (service.SimulationGroupScores, error) {
+	var nodeScores []service.NodeScore
 	for _, sr := range groupResult.SimulationResults {
 		nodeScore, err := scorer.Compute(sr.NodeScorerArgs)
 		if err != nil {
-			return svcapi.SimGroupScores{}, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", svcapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
+			return service.SimulationGroupScores{}, fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", service.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
 		}
 		nodeScores = append(nodeScores, nodeScore)
 	}
-	winnerNodeScore, err := selector(nodeScores, weightsFun, pricer)
+	winnerNodeScore, err := selector(nodeScores, weigher, pricer)
 	if err != nil {
-		return svcapi.SimGroupScores{}, fmt.Errorf("%w: node score selection failed for group %q: %w", svcapi.ErrSelectNodeScore, groupResult.Name, err)
+		return service.SimulationGroupScores{}, fmt.Errorf("%w: node score selection failed for group %q: %w", service.ErrSelectNodeScore, groupResult.Name, err)
 	}
 	//if winnerScoreIndex < 0 {
 	//	return nil, nil //No winning score for this group
@@ -285,19 +311,19 @@ func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcap
 	//if winnerNode == nil {
 	//	return nil, fmt.Errorf("%w: winner node not found for group %q", api.ErrSelectNodeScore, groupResult.InstanceType)
 	//}
-	return svcapi.SimGroupScores{
+	return service.SimulationGroupScores{
 		AllNodeScores:   nodeScores,
 		WinnerNodeScore: winnerNodeScore,
 		//WinnerNode:      winnerNode,
 	}, nil
 }
 
-//func getScaledNodeOfWinner(simRunResults []svcapi.SimulationResult, winnerNodeScore *svcapi.NodeScore) *corev1.Node {
+//func getScaledNodeOfWinner(simRunResults []service.SimulationResult, winnerNodeScore *service.NodeScore) *corev1.NodeResources {
 //	var (
-//		winnerNode *corev1.Node
+//		winnerNode *corev1.NodeResources
 //	)
 //	for _, sr := range simRunResults {
-//		if sr.ID == winnerNodeScore.ID {
+//		if sr.Name == winnerNodeScore.Name {
 //			winnerNode = sr.ScaledNode
 //			break
 //		}
@@ -306,17 +332,17 @@ func computeSimGroupScores(pricer svcapi.InstancePricingAccess, weightsFun svcap
 //}
 
 // createSimulationGroups creates a slice of SimulationGroup based on priorities that are defined at the NodePool and NodeTemplate level.
-func (g *PlanGenerator) createSimulationGroups(ctx context.Context, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]svcapi.SimulationGroup, error) {
+func (p *Planner) createSimulationGroups(ctx context.Context, runArgs *RunArgs, groupRunPassCounter *atomic.Uint32) ([]service.SimulationGroup, error) {
 	request := runArgs.Request
 	var (
-		allSimulations []svcapi.Simulation
+		allSimulations []service.Simulation
 	)
 	for _, nodePool := range request.Constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
 			for _, zone := range nodePool.AvailabilityZones {
 				simulationName := fmt.Sprintf("%s_%s_%s", nodePool.Name, nodeTemplate.Name, zone)
 
-				sim, err := g.createSimulation(ctx, simulationName, &nodePool, nodeTemplate.Name, zone, groupRunPassCounter)
+				sim, err := p.createSimulation(ctx, simulationName, &nodePool, nodeTemplate.Name, zone, groupRunPassCounter)
 				if err != nil {
 					return nil, err
 				}
@@ -324,24 +350,24 @@ func (g *PlanGenerator) createSimulationGroups(ctx context.Context, runArgs *Run
 			}
 		}
 	}
-	return g.args.SimulationGrouper.Group(allSimulations)
+	return p.args.SimulationGrouper.Group(allSimulations)
 }
 
-func (g *PlanGenerator) createSimulation(ctx context.Context, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (svcapi.Simulation, error) {
-	simView, err := g.args.ViewAccess.GetOrCreateSandboxView(ctx, simulationName)
+func (p *Planner) createSimulation(ctx context.Context, simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string, groupRunPassCounter *atomic.Uint32) (service.Simulation, error) {
+	simView, err := p.args.ViewAccess.GetSandboxView(ctx, simulationName)
 	if err != nil {
 		return nil, err
 	}
-	simArgs := &svcapi.SimulationArgs{
-		GroupRunPassCounter: groupRunPassCounter,
-		AvailabilityZone:    zone,
-		NodePool:            nodePool,
-		NodeTemplateName:    nodeTemplateName,
-		SchedulerLauncher:   g.args.SchedulerLauncher,
-		View:                simView,
-		TrackPollInterval:   10 * time.Millisecond,
+	simArgs := &service.SimulationArgs{
+		RunCounter:        groupRunPassCounter,
+		AvailabilityZone:  zone,
+		NodePool:          nodePool,
+		NodeTemplateName:  nodeTemplateName,
+		SchedulerLauncher: p.args.SchedulerLauncher,
+		View:              simView,
+		TrackPollInterval: 10 * time.Millisecond,
 	}
-	return g.args.SimulationCreator.Create(simulationName, simArgs)
+	return p.args.SimulationCreator.Create(simulationName, simArgs)
 }
 
 func wrapGenerationContext(ctx context.Context, baseLogDir, requestID, correlationID string, enableDiagnostics bool) (genCtx context.Context, logPath string, logCloser io.Closer, err error) {

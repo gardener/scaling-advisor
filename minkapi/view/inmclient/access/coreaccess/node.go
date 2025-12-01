@@ -25,7 +25,7 @@ type nodeAccess struct {
 	access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]
 }
 
-// NewNodeAccess creates a Node access facade for managing Node resources using the given minkapi View.
+// NewNodeAccess creates a NodeResources access facade for managing NodeResources resources using the given minkapi View.
 func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
 	return &nodeAccess{
 		access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]{

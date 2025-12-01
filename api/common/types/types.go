@@ -15,6 +15,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Resettable defines types that can reset their state to a default or initial configuration.
+type Resettable interface {
+	// Reset resets the state of the implementing type.
+	Reset()
+}
+
 // Service is a component that can be started and stopped.
 type Service interface {
 	// Start starts the service with the given context. Start may block depending on the implementation - if the service is a server.
@@ -58,6 +64,33 @@ type ConstraintReference struct {
 	// Namespace is the namespace of the ClusterScalingConstraint.
 	Namespace string `json:"namespace"`
 }
+
+// SimulationStrategy represents a simulation strategy variant.
+// +enum
+type SimulationStrategy string
+
+const (
+	// SimulationStrategyMultiSimulationsPerGroup represents a simulation strategy which runs independent multiple simulations differentiated by scaling a node for a combination
+	// of NodePool, NodeTemplate and AvailabilityZone.
+	SimulationStrategyMultiSimulationsPerGroup SimulationStrategy = "multi-simulations-per-group"
+	// SimulationStrategySingleSimulationPerGroup represents a simulation strategy which runs a single simulation by scaling multiple nodes for a given
+	// group for all combinations of NodePool, NodeTemplate and AvailabilityZone.
+	SimulationStrategySingleSimulationPerGroup SimulationStrategy = "single-simulation-per-group"
+)
+
+// ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
+// +enum
+type ScalingAdviceGenerationMode string
+
+const (
+	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
+	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
+	ScalingAdviceGenerationModeIncremental = "incremental"
+	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
+	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
+	// all pending pods have been scheduled or stabilised.
+	ScalingAdviceGenerationModeAllAtOnce = "all-at-once"
+)
 
 // NodeScoringStrategy represents a node scoring strategy variant.
 type NodeScoringStrategy string

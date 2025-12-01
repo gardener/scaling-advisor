@@ -11,14 +11,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/gardener/scaling-advisor/service/cli"
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
-	"github.com/gardener/scaling-advisor/service/internal/service/generator"
-	"github.com/gardener/scaling-advisor/service/internal/service/simulation"
-	"github.com/gardener/scaling-advisor/service/internal/service/weights"
-	"github.com/gardener/scaling-advisor/service/pricing"
-	"github.com/gardener/scaling-advisor/service/scorer"
-
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
@@ -26,6 +18,11 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
+	"github.com/gardener/scaling-advisor/service/cli"
+	"github.com/gardener/scaling-advisor/service/internal/scheduler"
+	"github.com/gardener/scaling-advisor/service/internal/service/planner"
+	"github.com/gardener/scaling-advisor/service/internal/service/weights"
+	"github.com/gardener/scaling-advisor/service/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 )
@@ -35,7 +32,7 @@ var _ svcapi.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 type defaultScalingAdvisor struct {
 	minKAPIServer     mkapi.Server
 	schedulerLauncher svcapi.SchedulerLauncher
-	generator         *generator.PlanGenerator
+	generator         *planner.Planner
 	cfg               svcapi.ScalingAdvisorServiceConfig
 }
 
@@ -43,9 +40,7 @@ type defaultScalingAdvisor struct {
 func New(ctx context.Context,
 	config svcapi.ScalingAdvisorServiceConfig,
 	pricingAccess svcapi.InstancePricingAccess,
-	weightsFn svcapi.GetWeightsFunc,
-	nodeScorer svcapi.NodeScorer,
-	selector svcapi.NodeScoreSelector) (svc svcapi.ScalingAdvisorService, err error) {
+	weightsFn svcapi.GetResourceWeightsFunc) (svc svcapi.ScalingAdvisorService, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", svcapi.ErrInitFailed, err)
@@ -70,14 +65,10 @@ func New(ctx context.Context,
 	if err != nil {
 		return
 	}
-	g := generator.New(&generator.Args{
+	g := planner.New(&planner.Args{
 		ViewAccess:        minKAPIServer,
 		PricingAccess:     pricingAccess,
-		WeightsFn:         weightsFn,
-		NodeScorer:        nodeScorer,
-		Selector:          selector,
-		SimulationCreator: svcapi.SimulationCreatorFunc(simulation.New),
-		SimulationGrouper: svcapi.SimulationGrouperFunc(simulation.CreateSimulationGroups),
+		ResourceWeigher:   weightsFn,
 		SchedulerLauncher: schedulerLauncher,
 	})
 	svc = &defaultScalingAdvisor{
@@ -128,10 +119,10 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request svca
 	resultsCh := make(chan svcapi.ScalingAdviceResult)
 	go func() {
 		if len(request.Snapshot.GetUnscheduledPods()) == 0 {
-			generator.SendError(resultsCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
+			planner.SendError(resultsCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", svcapi.ErrNoUnscheduledPods))
 			return
 		}
-		runArgs := &generator.RunArgs{
+		runArgs := &planner.RunArgs{
 			Request:   request,
 			ResultsCh: resultsCh,
 		}
@@ -202,18 +193,7 @@ func LaunchApp(ctx context.Context) (app svcapi.App, exitCode int) {
 		return
 	}
 	weightsFn := weights.GetDefaultWeightsFn()
-	nodeScorer, err := scorer.GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, pricingAccess, weightsFn)
-	if err != nil {
-		exitCode = commoncli.ExitErrStart
-		return
-	}
-	// TODO: ask meghna whether this can be made an interface and if weightsFn can be passed at construction time.
-	nodeSelector, err := scorer.GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastCost)
-	if err != nil {
-		exitCode = commoncli.ExitErrStart
-		return
-	}
-	app.Service, err = New(app.Ctx, cfg, pricingAccess, weightsFn, nodeScorer, nodeSelector)
+	app.Service, err = New(app.Ctx, cfg, pricingAccess, weightsFn)
 	if err != nil {
 		exitCode = commoncli.ExitErrStart
 		return

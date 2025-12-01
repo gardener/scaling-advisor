@@ -52,6 +52,8 @@ var (
 	ErrMissingRequiredLabel = errors.New("missing required label")
 	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
 	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
+	// ErrUnsupportedSimulationStrategy is a sentinel error indicating that an unsupported simulation strategy was specified.
+	ErrUnsupportedSimulationStrategy = errors.New("unsupported simulation strategy")
 )
 
 // AsGenerateError wraps an error with scaling advice request context information.
@@ -62,5 +64,5 @@ func AsGenerateError(id string, correlationID string, err error) error {
 	if errors.Is(ErrGenScalingAdvice, err) {
 		return err
 	}
-	return fmt.Errorf("%w: could not process request with ID %q, CorrelationID %q: %w", ErrGenScalingAdvice, id, correlationID, err)
+	return fmt.Errorf("%w: could not process request with Name %q, CorrelationID %q: %w", ErrGenScalingAdvice, id, correlationID, err)
 }

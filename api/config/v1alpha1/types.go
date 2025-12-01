@@ -95,6 +95,10 @@ type ControllersConfiguration struct {
 type ScalingConstraintsControllerConfiguration struct {
 	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
 	ConcurrentSyncs *int `json:"concurrentSyncs"`
+	// AdviceGenerationMode defines the mode in which scaling advice is generated.
+	AdviceGenerationMode commontypes.ScalingAdviceGenerationMode `json:"adviceGenerationMode"`
+	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
+	SimulationStrategy commontypes.SimulationStrategy `json:"simulationStrategy"`
 	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
 	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
 	// CloudProvider specifies the cloud provider for which the scaling advisor is configured.

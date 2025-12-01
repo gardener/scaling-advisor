@@ -29,7 +29,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		return
 	}
 	assignment := service.NodePodAssignment{
-		Node: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4),
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
 			createPodResourceInfo("simPodA", 1, 2),
 		},
@@ -38,80 +38,80 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	podWithStorage := createPodResourceInfo("simStorage", 2, 4)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
 		access        service.InstancePricingAccess
-		weightsFn     service.GetWeightsFunc
+		weightsFn     service.GetResourceWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              700,
-				ScaledNodeResource: assignment.Node,
+				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: []service.NodePodAssignment{{
-					Node:          createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: []service.NodePodAssignment{{
+					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
 					ScheduledPods: []service.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
-				UnscheduledPods: nil},
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              0,
-				ScaledNodeResource: assignment.Node,
+				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
 		"weights undefined for resource type": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignmentWithStorage,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignmentWithStorage,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              0,
-				ScaledNodeResource: assignmentWithStorage.Node,
+				ScaledNodeResource: assignmentWithStorage.NodeResources,
 			},
 		},
 		"weights function returns an error": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access: access,
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
@@ -121,11 +121,11 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		},
 		"pricingAccess.GetInfo() function returns an error": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access: &testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
@@ -161,7 +161,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		return
 	}
 	assignment := service.NodePodAssignment{
-		Node: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{
 			createPodResourceInfo("simPodA", 1, 2),
 		},
@@ -170,79 +170,79 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	podWithStorage := createPodResourceInfo("simStorage", 1, 2)
 	podWithStorage.AggregatedRequests["Storage"] = 10
 	assignmentWithStorage := service.NodePodAssignment{
-		Node:          createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
 		ScheduledPods: []service.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
 		input         service.NodeScorerArgs
 		access        service.InstancePricingAccess
-		weightsFn     service.GetWeightsFunc
+		weightsFn     service.GetResourceWeightsFunc
 		expectedErr   error
 		expectedScore service.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              350,
-				ScaledNodeResource: assignment.Node,
+				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
-				ScaledAssignment: &assignment,
-				OtherAssignments: []service.NodePodAssignment{{
-					Node:          createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: []service.NodePodAssignment{{
+					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
 					ScheduledPods: []service.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
-				UnscheduledPods: nil},
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              700,
-				ScaledNodeResource: assignment.Node,
+				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
 		"weights undefined for resource type": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
-				ScaledAssignment: &assignmentWithStorage,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+				ScaledNodePodAssignment: &assignmentWithStorage,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
 			expectedScore: service.NodeScore{
-				ID:                 "testing",
+				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              350,
-				ScaledNodeResource: assignmentWithStorage.Node,
+				ScaledNodeResource: assignmentWithStorage.NodeResources,
 			},
 		}, "weights function returns an error": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access: access,
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
@@ -252,11 +252,11 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		},
 		"pricingAccess.GetInfo() function returns an error": {
 			input: service.NodeScorerArgs{
-				ID:               "testing",
-				Placement:        sacorev1alpha1.NodePlacement{},
-				ScaledAssignment: &assignment,
-				OtherAssignments: nil,
-				UnscheduledPods:  nil},
+				ID:                      "testing",
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
+				ScaledNodePodAssignment: &assignment,
+				OtherNodePodAssignments: nil,
+				LeftOverUnscheduledPods: nil},
 			access: &testInfoAccess{err: errors.New("testing error")},
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
@@ -302,9 +302,9 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -314,13 +314,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		"different allocatables": {
 			input: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -328,7 +328,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				}},
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{{
-				ID:                 "testing2",
+				Name:               "testing2",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              1,
@@ -338,13 +338,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		"identical allocatables": {
 			input: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -354,13 +354,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -371,13 +371,13 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		"undefined weights for resource type": {
 			input: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 4, 8)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -385,7 +385,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				}},
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{{
-				ID:                 "testing1",
+				Name:               "testing1",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 				UnscheduledPods:    nil,
 				Value:              1,
@@ -409,7 +409,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				}
 			}
 			if found == false {
-				t.Fatalf("Winning Node Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
+				t.Fatalf("Winning NodeResources Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
 			}
 			if errDiff != "" {
 				t.Fatalf("Difference: %s", errDiff)
@@ -434,9 +434,9 @@ func TestSelectMinPrice(t *testing.T) {
 		expectedIn  []service.NodeScore
 	}{
 		"single node score": {
-			input:       []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
+			input:       []service.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn:  []service.NodeScore{{ID: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
+			expectedIn:  []service.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
 			input:       []service.NodeScore{},
@@ -446,13 +446,13 @@ func TestSelectMinPrice(t *testing.T) {
 		"different prices": {
 			input: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -462,7 +462,7 @@ func TestSelectMinPrice(t *testing.T) {
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -471,13 +471,13 @@ func TestSelectMinPrice(t *testing.T) {
 		"identical prices": {
 			input: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -487,13 +487,13 @@ func TestSelectMinPrice(t *testing.T) {
 			expectedErr: nil,
 			expectedIn: []service.NodeScore{
 				{
-					ID:                 "testing1",
+					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)},
 				{
-					ID:                 "testing2",
+					Name:               "testing2",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
 					UnscheduledPods:    nil,
 					Value:              1,
@@ -518,7 +518,7 @@ func TestSelectMinPrice(t *testing.T) {
 				}
 			}
 			if found == false {
-				t.Fatalf("Winning Node Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
+				t.Fatalf("Winning NodeResources Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
 			}
 			if errDiff != "" {
 				t.Fatalf("Difference: %s", errDiff)
