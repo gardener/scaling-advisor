@@ -66,9 +66,9 @@ const (
 	KindConfigMap string = "ConfigMap"
 	// KindConfigMapList represents a list of Kubernetes ConfigMap resources.
 	KindConfigMapList string = "ConfigMapList"
-	// KindNode represents a Kubernetes NodeResources resource.
-	KindNode string = "NodeResources"
-	// KindNodeList represents a list of Kubernetes NodeResources resources.
+	// KindNode represents a Kubernetes Node resource.
+	KindNode string = "Node"
+	// KindNodeList represents a list of Kubernetes Node resources.
 	KindNodeList string = "NodeList"
 	// KindPod represents a Kubernetes Pod resource.
 	KindPod string = "Pod"
@@ -231,7 +231,7 @@ var (
 	ServiceAccountsDescriptor = NewDescriptor(corev1.SchemeGroupVersion.WithKind(KindServiceAccount), KindServiceAccountList, true, "serviceaccounts", "sa")
 	// ConfigMapsDescriptor is an aggregate holder of type information for ConfigMap resources.
 	ConfigMapsDescriptor = NewDescriptor(corev1.SchemeGroupVersion.WithKind(KindConfigMap), KindConfigMapList, true, "configmaps", "cm")
-	// NodesDescriptor is an aggregate holder of type information for NodeResources resources.
+	// NodesDescriptor is an aggregate holder of type information for Node resources.
 	NodesDescriptor = NewDescriptor(corev1.SchemeGroupVersion.WithKind(KindNode), KindNodeList, false, "nodes", "no")
 	// PodsDescriptor is an aggregate holder of type information for Pod resources.
 	PodsDescriptor = NewDescriptor(corev1.SchemeGroupVersion.WithKind(KindPod), KindPodList, true, "pods", "po")
