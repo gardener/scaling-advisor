@@ -49,9 +49,10 @@ type ShootCoordinate struct {
 }
 
 var (
-	shootCoords           ShootCoordinate
-	scenarioDir           string
-	excludeKubeSystemPods bool
+	shootCoords             ShootCoordinate
+	scenarioDir             string
+	excludeSystemComponents bool
+	obfuscateData           bool
 )
 
 // shootGVR is the GroupVersionResource of a gardener shoot
@@ -116,11 +117,19 @@ func init() {
 		"gardener shoot name (required)",
 	)
 	_ = gardenerCmd.MarkFlagRequired("shoot")
+
 	gardenerCmd.Flags().BoolVar(
-		&excludeKubeSystemPods,
-		"exclude-kube-system-pods",
+		&excludeSystemComponents,
+		"exclude-system-components",
 		false,
-		"exclude kube-system pods from the snapshot",
+		"exclude system components (pods and priority classes) from the snapshot",
+	)
+
+	gardenerCmd.Flags().BoolVar(
+		&obfuscateData,
+		"obfuscate-data",
+		true,
+		"sanitize and obfuscate cluster sensitive data",
 	)
 }
 
@@ -453,13 +462,13 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 	if err != nil {
 		return snap, fmt.Errorf("failed to create volume map: %w", err)
 	}
-	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{}, excludeKubeSystemPods)
+	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{}, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
 	snap.Pods = make([]svcapi.PodInfo, 0, len(pods))
-	for i, pod := range pods {
-		sanitizePod(&pod, i)
+	for _, pod := range pods {
+		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
@@ -468,7 +477,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
 	}
 
-	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeKubeSystemPods)
+	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list priority classes: %w", err)
 	}
@@ -481,9 +490,12 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 		return snap, fmt.Errorf("failed to list runtime classes: %w", err)
 	}
 
-	err = obfuscateNodeNames(&snap)
-	if err != nil {
-		return snap, fmt.Errorf("failed to obfuscate node names: %w", err)
+	if obfuscateData {
+		fmt.Println("Obfuscating snapshot data!!")
+		err = obfuscateMetadata(&snap)
+		if err != nil {
+			return snap, fmt.Errorf("failed to obfuscate metadata: %w", err)
+		}
 	}
 	return snap, nil
 }
@@ -685,7 +697,46 @@ func saveDataToFile(data any, path string) error {
 	return encoder.Encode(data)
 }
 
-func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
+func obfuscateMetadata(snap *svcapi.ClusterSnapshot) error {
+	for i := range snap.Nodes {
+		maps.DeleteFunc(snap.Nodes[i].Labels, sanitizeDeleteFunc)
+		maps.DeleteFunc(snap.Nodes[i].Annotations, sanitizeDeleteFunc)
+	}
+	// ownerId := 0
+	for i, pod := range snap.Pods {
+		snap.Pods[i].Name = "pod-" + strconv.Itoa(i)
+		if len(pod.OwnerReferences) >= 1 && pod.OwnerReferences[0].Kind == "DaemonSet" {
+			snap.Pods[i].Name = snap.Pods[i].Name + "-ds"
+		}
+
+		maps.DeleteFunc(snap.Pods[i].Labels, func(k, _ string) bool {
+			for _, prefix := range removePrefixes {
+				// FIXME can be part of affinity as well, sigh
+				if strings.HasPrefix(k, prefix) && pod.NodeSelector[k] != "" {
+					return true
+				}
+			}
+			return false
+		})
+		maps.DeleteFunc(snap.Pods[i].Annotations, sanitizeDeleteFunc)
+
+		// FIXME
+		// for _, owner := range pod.OwnerReferences {
+		// 	if strings.HasPrefix(owner.Name, "owner-") {
+		// 		continue
+		// 	}
+		// 	originalName := owner.Name
+		// 	newName := "owner-" + strconv.Itoa(ownerId)
+		// 	ownerId += 1
+		// 	snapStr = strings.ReplaceAll(snapStr, originalName, newName)
+		// }
+	}
+
+	for i := range snap.PriorityClasses {
+		maps.DeleteFunc(snap.PriorityClasses[i].Labels, sanitizeDeleteFunc)
+		maps.DeleteFunc(snap.PriorityClasses[i].Annotations, sanitizeDeleteFunc)
+	}
+
 	snapData, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("could not marshal snapshot: %w", err)
@@ -697,6 +748,7 @@ func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
 		newName := "node-" + strconv.Itoa(i)
 		snapStr = strings.ReplaceAll(snapStr, originalName, newName)
 	}
+
 	err = json.Unmarshal([]byte(snapStr), snap)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal snapshot string to snapshot object: %w", err)
@@ -705,21 +757,15 @@ func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
 	return nil
 }
 
-func sanitizePod(pod *corev1.Pod, index int) {
-	pod.Name = "pod-" + strconv.Itoa(index)
-	maps.DeleteFunc(pod.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(pod.Annotations, sanitizeDeleteFunc)
+func sanitizePod(pod *corev1.Pod) {
 	pod.ManagedFields = nil
 	for i := range pod.Spec.Volumes {
 		pod.Spec.Volumes[i].Projected = nil
 	}
-	pod.OwnerReferences = nil
 }
 
 func sanitizeNode(node *corev1.Node) {
 	node.Namespace = ""
-	maps.DeleteFunc(node.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(node.Annotations, sanitizeDeleteFunc)
 	node.ManagedFields = nil
 	requiredConditions := []corev1.NodeConditionType{
 		corev1.NodeReady, corev1.NodeDiskPressure, corev1.NodePIDPressure, corev1.NodeMemoryPressure,
@@ -733,9 +779,8 @@ func sanitizeNode(node *corev1.Node) {
 }
 
 func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
+	pc.ResourceVersion = ""
 	pc.ManagedFields = nil
-	maps.DeleteFunc(pc.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(pc.Annotations, sanitizeDeleteFunc)
 }
 
 // TODO Can this removal cause issues with selectors?
@@ -756,5 +801,6 @@ var (
 		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
 		"controller-revision-hash", "gardener.cloud/role", "networking.gardener.cloud/", "node.gardener.cloud/critical-component",
 		"pod-template-generation", "reference.resources.gardener.cloud/",
+		"container.apparmor.security.beta.kubernetes.io/install-cni",
 	}
 )

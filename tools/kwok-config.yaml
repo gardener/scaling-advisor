@@ -1,0 +1,48 @@
+apiVersion: kwok.x-k8s.io/v1alpha1
+kind: KwokctlConfiguration
+options:
+  runtime: docker
+  kubeVersion: v1.34.0
+  disableKubeControllerManager: true
+  manageAllNodes: true
+  kubeSchedulerConfig: "/Users/I752152/go/src/github.com/gardener/sa-scalebench/tools/kube-scheduler-config.yaml"
+componentPatches:
+  - name: "kube-apiserver"
+    extraArgs:
+    - key: "disable-admission-plugins"
+      value: "TaintNodesByCondition"
+  - name: "kube-scheduler"
+    extraArgs:
+    - key: "v"
+      value: "6"
+# ran make make-image-arch-arm64
+components:
+  - name: cluster-autoscaler
+    image: gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:dev
+    command:
+      - /cluster-autoscaler
+    args:
+      - --v=4
+      - --leader-elect=false
+      - --cloud-provider=kwok
+      - --kubeconfig=/etc/kubeconfig/kubeconfig
+    envs:
+      - name: KUBERNETES_SERVICE_HOST
+        value: "127.0.0.1"
+      - name: KUBERNETES_SERVICE_PORT
+        value: "32766" #"6443"
+      - name: KWOK_PROVIDER_MODE
+        value: "local"
+      - name: POD_NAMESPACE
+        value: "default"
+      - name: KUBECONFIG
+        value: "/etc/kubeconfig/kubeconfig"
+    volumes:
+      - hostPath: /Users/I752152/.kwok/clusters/kwok-test-cluster/kubeconfig
+        mountPath: /etc/kubeconfig/kubeconfig
+        readOnly: true
+      - hostPath: /Users/I752152/.kwok/clusters/kwok-test-cluster/pki
+        mountPath: /etc/kubernetes/pki
+        readOnly: true
+    networks:
+      - kwok-kwok-test-cluster
