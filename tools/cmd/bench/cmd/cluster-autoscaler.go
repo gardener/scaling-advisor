@@ -38,7 +38,7 @@ var caSetupCmd = &cobra.Command{
 		var cas caSetup
 
 		if !skipScalarBuild {
-			if err = cas.BuildScaler(context.TODO(), version, "cluster-autoscaler", outputDir); err != nil {
+			if err = cas.BuildScaler(context.TODO(), version, "cluster-autoscaler"); err != nil {
 				return fmt.Errorf("error building ca source: %v", err)
 			}
 		}
@@ -64,8 +64,9 @@ type caSetup struct {
 }
 
 // TODO: maybe consider using helm charts!!!!!
-func (cas *caSetup) BuildScaler(ctx context.Context, version, scaler, dataDir string) error {
+func (cas *caSetup) BuildScaler(ctx context.Context, version, scaler string) error {
 	fmt.Printf("%s fetchscaler called\n", scaler)
+	dataDir := os.TempDir()
 	unzippedPath, err := getAssets(ctx, version, scaler, dataDir)
 	if err != nil {
 		return err
@@ -73,13 +74,14 @@ func (cas *caSetup) BuildScaler(ctx context.Context, version, scaler, dataDir st
 	fmt.Printf("Unzipped to %q\n", path.Join(dataDir, unzippedPath))
 
 	// TODO: ensure docker is running (ADD TAG with version)
-	cmd := exec.Command("sh", "-c", "make", fmt.Sprintf("make-image-arch-%s", runtime.GOARCH))
-	cmd.Dir = (path.Join(dataDir, unzippedPath, "cluster-autoscaler"))
+	cmd := exec.Command("make", fmt.Sprintf("make-image-arch-%s", runtime.GOARCH))
+	cmd.Dir = path.Join(dataDir, unzippedPath, "cluster-autoscaler")
 	var stderr, stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	fmt.Printf("Building %s\n", unzippedPath)
+	fmt.Printf("Running %q in %q\n", cmd.String(), cmd.Dir)
 	err = cmd.Run()
 	if err != nil {
 		capturedError := strings.TrimSpace(stderr.String())
@@ -88,6 +90,7 @@ func (cas *caSetup) BuildScaler(ctx context.Context, version, scaler, dataDir st
 		}
 		return fmt.Errorf("command failed: %w", err)
 	}
+	fmt.Printf("DEBUG(stdout): \n%s\n", stdout.String()) // FIXME add logging levels?
 	return nil
 }
 

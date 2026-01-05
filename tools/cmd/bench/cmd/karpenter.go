@@ -29,7 +29,7 @@ var karpenterSetupCmd = &cobra.Command{
 		var ks karpenterSetup
 
 		if !skipScalarBuild {
-			if err = ks.BuildScaler(context.TODO(), version, "karpenter", outputDir); err != nil {
+			if err = ks.BuildScaler(context.TODO(), version, "karpenter"); err != nil {
 				return fmt.Errorf("error building karpenter source: %v", err)
 			}
 		}
@@ -54,8 +54,9 @@ type karpenterSetup struct {
 	// scenarioDir string
 }
 
-func (ks *karpenterSetup) BuildScaler(ctx context.Context, version, scaler, dataDir string) error {
+func (ks *karpenterSetup) BuildScaler(ctx context.Context, version, scaler string) error {
 	fmt.Printf("%s fetchscaler called\n", scaler)
+	dataDir := os.TempDir()
 	unzippedPath, err := getAssets(ctx, version, scaler, dataDir)
 	if err != nil {
 		return err

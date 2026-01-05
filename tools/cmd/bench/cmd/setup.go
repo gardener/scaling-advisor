@@ -63,9 +63,9 @@ func init() {
 // necessary requirements needed to execute and run the benchmarking tool
 type SetupScaler interface {
 	// FetchScaler downloads the specified version of the scaler into
-	// the specified data directory with a fallback if none is specified
+	// a temporary data directory
 	// TODO: ensure no redundant downloads if the required data is present
-	BuildScaler(ctx context.Context, version, scaler, dataDir string) error
+	BuildScaler(ctx context.Context, version, scaler string) error
 	// GenerateKwokData uses the cluster snapshot and scaling constraints
 	// data present in scenarioDir to construct the relevant data required
 	// by the kwok provider of the scaler
