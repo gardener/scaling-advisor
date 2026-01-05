@@ -12,5 +12,7 @@ func (f CloserFunc) Close() error {
 
 // CloseQuietly safely closes an io.Closer, ignoring and suppressing any error during the close operation.
 func CloseQuietly(closer io.Closer) {
-	_ = closer.Close()
+	if closer != nil {
+		_ = closer.Close()
+	}
 }

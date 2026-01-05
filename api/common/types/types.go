@@ -23,10 +23,10 @@ type Resettable interface {
 
 // Service is a component that can be started and stopped.
 type Service interface {
-	// Start starts the service with the given context. Start may block depending on the implementation - if the service is a server.
+	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
 	// The context is expected to be populated with a logger.
 	Start(ctx context.Context) error
-	// Stop stops the service. Stop does not block.
+	// Stop stops the core. Stop does not block.
 	Stop(ctx context.Context) error
 }
 
@@ -35,13 +35,13 @@ type ServerConfig struct {
 	// KubeConfigPath is the path to master kube-config.
 	KubeConfigPath string `json:"kubeConfigPath"`
 	HostPort       `json:",inline"`
-	// GracefulShutdownTimeout is the time given to the service to gracefully shutdown.
+	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
 	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
-	// ProfilingEnabled indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/*
+	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
 	ProfilingEnabled bool `json:"profilingEnabled"`
 }
 
-// HostPort contains information for service host and port.
+// HostPort contains information for core host and port.
 type HostPort struct {
 	// Host is the IP address on which to listen for the specified port.
 	Host string `json:"host"`

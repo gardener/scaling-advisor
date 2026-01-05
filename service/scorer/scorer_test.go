@@ -546,7 +546,7 @@ func TestGetNodeScoreSelector(t *testing.T) {
 		"invalid strategy": {
 			input:                "invalid",
 			expectedFunctionName: "",
-			expectedError:        service.ErrUnsupportedNodeScoringStrategy,
+			expectedError:        service.ErrCreateNodeScorer,
 		},
 	}
 	for name, tc := range tests {
@@ -597,7 +597,7 @@ func TestGetNodeScorer(t *testing.T) {
 		"invalid strategy": {
 			input:         "invalid",
 			expectedType:  "",
-			expectedError: service.ErrUnsupportedNodeScoringStrategy,
+			expectedError: service.ErrCreateNodeScorer,
 		},
 	}
 	for name, tc := range tests {

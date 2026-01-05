@@ -9,34 +9,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/tools/events"
+	logsapiv1 "k8s.io/component-base/logs/api/v1"
 	"k8s.io/kubernetes/pkg/scheduler"
 	schedulerapiconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	schedulerapiconfigv1 "k8s.io/kubernetes/pkg/scheduler/apis/config/v1"
 	"k8s.io/kubernetes/pkg/scheduler/profile"
 )
 
-var _ svcapi.SchedulerLauncher = (*schedulerLauncher)(nil)
+var _ service.SchedulerLauncher = (*schedulerLauncher)(nil)
 
 type schedulerLauncher struct {
 	schedulerConfig *schedulerapiconfig.KubeSchedulerConfiguration
 	semaphore       *semaphore.Weighted
 }
 
-var _ svcapi.SchedulerHandle = (*schedulerHandle)(nil)
+var _ service.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context
 	scheduler *scheduler.Scheduler
 	cancelFn  context.CancelFunc
-	params    *svcapi.SchedulerLaunchParams
+	params    *service.SchedulerLaunchParams
 	name      string
 }
 
@@ -44,11 +48,11 @@ type schedulerHandle struct {
 // It reads the scheduler configuration from the provided file path and validates it.
 // Returns an error if the configuration file cannot be read or parsed.
 // Then delegates to NewLauncherFromConfig
-func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerLauncher, error) {
+func NewLauncher(schedulerConfigPath string, maxParallel int) (service.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
 	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", svcapi.ErrLoadSchedulerConfig, err)
+		return nil, fmt.Errorf("%w: %w", service.ErrLoadSchedulerConfig, err)
 	}
 	return NewLauncherFromConfig(configBytes, maxParallel)
 }
@@ -58,7 +62,7 @@ func NewLauncher(schedulerConfigPath string, maxParallel int) (svcapi.SchedulerL
 // parsed.
 // maxParallel represents the maximum number of parallel embedded scheduler instances that are launchable via SchedulerLauncher.Launch.
 // Once crossed, further calls to SchedulerLauncher.Launch will block until previously obtained SchedulerHandle's are stopped.
-func NewLauncherFromConfig(configBytes []byte, maxParallel int) (svcapi.SchedulerLauncher, error) {
+func NewLauncherFromConfig(configBytes []byte, maxParallel int) (service.SchedulerLauncher, error) {
 	scheduledConfig, err := parseSchedulerConfig(configBytes)
 	if err != nil {
 		return nil, err
@@ -72,7 +76,7 @@ func NewLauncherFromConfig(configBytes []byte, maxParallel int) (svcapi.Schedule
 func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", svcapi.ErrParseSchedulerConfig, err)
+			err = fmt.Errorf("%w: %w", service.ErrParseSchedulerConfig, err)
 		}
 	}()
 
@@ -92,7 +96,7 @@ func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSc
 	return config, nil
 }
 
-func (s *schedulerLauncher) Launch(ctx context.Context, params *svcapi.SchedulerLaunchParams) (svcapi.SchedulerHandle, error) {
+func (s *schedulerLauncher) Launch(ctx context.Context, params *service.SchedulerLaunchParams) (service.SchedulerHandle, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if err := s.semaphore.Acquire(ctx, 1); err != nil {
 		return nil, err
@@ -105,26 +109,42 @@ func (s *schedulerLauncher) Launch(ctx context.Context, params *svcapi.Scheduler
 	}
 
 	go func() {
-		log.Info("Running scheduler", "name", handle.name)
+		log.Info("Begin run scheduler", "name", handle.name)
 		handle.scheduler.Run(schedulerCtx)
-		log.Info("Stopped scheduler", "name", handle.name)
+		log.Info("End run scheduler", "name", handle.name)
 	}()
 	return handle, nil
 }
 
-func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn context.CancelFunc, params *svcapi.SchedulerLaunchParams) (handle *schedulerHandle, err error) {
+func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn context.CancelFunc, params *service.SchedulerLaunchParams) (handle *schedulerHandle, err error) {
 	defer func() {
 		if err != nil {
 			cancelFn()
-			err = fmt.Errorf("%w: %w", svcapi.ErrLaunchScheduler, err)
+			err = fmt.Errorf("%w: %w", service.ErrLaunchScheduler, err)
 		}
 	}()
+
+	verbosity := logutil.VerbosityFromContext(ctx)
+	if verbosity > 0 {
+		loggingConfig := logsapiv1.LoggingConfiguration{
+			Format:         logsapiv1.DefaultLogFormat,
+			FlushFrequency: logsapiv1.TimeOrMetaDuration{Duration: metav1.Duration{Duration: time.Second * 1}},
+			Verbosity:      logsapiv1.VerbosityLevel(verbosity),
+			Options:        logsapiv1.FormatOptions{},
+		}
+		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
+		if err != nil {
+			err = fmt.Errorf("failed to apply logging configuration: %w", err)
+			return
+		}
+	}
+
 	log := logr.FromContextOrDiscard(ctx)
 	broadcaster := events.NewBroadcaster(params.EventSink)
 	broadcaster.StartRecordingToSink(ctx.Done())
-	//
 	name := "embedded-scheduler-" + rand.String(5)
-	recorderFactory := profile.NewRecorderFactory(broadcaster) //
+	recorderFactory := profile.NewRecorderFactory(broadcaster)
+
 	// Explicit recorder factory using your instance name
 	sched, err := scheduler.New(
 		ctx,
@@ -164,9 +184,10 @@ func (s *schedulerHandle) Close() error {
 	log := logr.FromContextOrDiscard(s.ctx)
 	log.Info("Stopping scheduler", "name", s.name)
 	s.cancelFn()
+	log.Info("Stopped scheduler", "name", s.name)
 	return nil
 }
 
-func (s *schedulerHandle) GetParams() svcapi.SchedulerLaunchParams {
+func (s *schedulerHandle) GetParams() service.SchedulerLaunchParams {
 	return *s.params
 }

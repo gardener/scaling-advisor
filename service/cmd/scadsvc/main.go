@@ -4,8 +4,22 @@
 
 package main
 
-import "fmt"
+import (
+	"context"
+	"os"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/service/cli"
+)
 
 func main() {
-	fmt.Println("To Be Implemented")
+	app, exitCode := cli.LaunchApp(context.Background())
+	if exitCode != commoncli.ExitSuccess {
+		os.Exit(exitCode)
+	}
+	defer app.Cancel()
+
+	<-app.Ctx.Done()
+	exitCode = cli.ShutdownApp(&app)
+	os.Exit(exitCode)
 }

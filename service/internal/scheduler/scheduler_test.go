@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/testutil"
-	mkserver "github.com/gardener/scaling-advisor/minkapi/server"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,8 +111,8 @@ func initSuite(ctx context.Context) error {
 	var err error
 	var exitCode int
 	ctx = logr.NewContext(ctx, log)
-
-	app, exitCode := mkserver.LaunchApp(ctx)
+	ctx = context.WithValue(ctx, commonconstants.VerbosityCtxKey, 1)
+	app, exitCode := cli.LaunchApp(ctx)
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
@@ -179,6 +180,6 @@ func initSuite(ctx context.Context) error {
 
 func shutdownSuite() error {
 	var err = state.schedulerHandle.Close()
-	_ = mkserver.ShutdownApp(state.app)
+	_ = cli.ShutdownApp(state.app)
 	return err
 }

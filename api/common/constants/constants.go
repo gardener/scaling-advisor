@@ -32,8 +32,12 @@ const (
 const (
 	// LabelSimulationName is the label key to identify name of the simulation inside a simulation group.
 	LabelSimulationName = "sa.gardener.cloud/simulation-name"
-	// LabelSimulationGroupPassNum is the label key to identify the pass number of the simulation group.
-	LabelSimulationGroupPassNum = "sa.gardener.cloud/simulation-group-pass-num"
+	// LabelSimulationGroupName is the label key to identify the name of the simulation group.
+	LabelSimulationGroupName = "sa.gardener.cloud/simulation-group-name"
+	// LabelSimulationGroupNumPasses is the label key to identify the number of passes made for this simulation group.
+	LabelSimulationGroupNumPasses = "sa.gardener.cloud/simulation-group-num-passes"
+	// LabelTotalSimulations is the label key to identify the total number of simulations across all simulation groups at the time the group run result was produced.
+	LabelTotalSimulations = "sa.gardener.cloud/total-simulations"
 	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
 	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
 	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
@@ -53,8 +57,13 @@ const (
 	DefaultOperatorMetricsPort = 8082
 	// DefaultOperatorProfilingPort is the default port for the operator profiling endpoints.
 	DefaultOperatorProfilingPort = 8083
-	// DefaultAdvisorServicePort is the default port for the scaling advisor service.
+	// DefaultAdvisorServicePort is the default port for the scaling advisor core.
 	DefaultAdvisorServicePort = 8090
-	// DefaultMinKAPIPort is the default port for the MinKAPI service.
+	// DefaultMinKAPIPort is the default port for the MinKAPI core.
 	DefaultMinKAPIPort = 8091
+)
+
+const (
+	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
+	VerbosityCtxKey = "verbosity"
 )

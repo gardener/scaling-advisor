@@ -20,12 +20,14 @@ var _ service.GetNodeScorer = GetNodeScorer
 // GetNodeScorer returns the NodeScorer based on the NodeScoringStrategy
 func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instancePricingAccess service.InstancePricingAccess, resourceWeigher service.ResourceWeigher) (service.NodeScorer, error) {
 	switch scoringStrategy {
+	case "":
+		return nil, fmt.Errorf("%w: scoring strategy must be specified", service.ErrCreateNodeScorer)
 	case commontypes.NodeScoringStrategyLeastCost:
 		return &LeastCost{pricingAccess: instancePricingAccess, resourceWeigher: resourceWeigher}, nil
 	case commontypes.NodeScoringStrategyLeastWaste:
 		return &LeastWaste{pricingAccess: instancePricingAccess, resourceWeigher: resourceWeigher}, nil
 	default:
-		return nil, fmt.Errorf("%w: unsupported %q", service.ErrUnsupportedNodeScoringStrategy, scoringStrategy)
+		return nil, fmt.Errorf("%w: unsupported %q", service.ErrCreateNodeScorer, scoringStrategy)
 	}
 }
 

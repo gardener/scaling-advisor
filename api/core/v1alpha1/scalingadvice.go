@@ -104,8 +104,8 @@ type NodePlacement struct {
 
 // ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
 type ScalingAdviceDiagnostic struct {
-	// TraceLogURL is the URL to the transient trace log for the scaling simulation run.
-	TraceLogURL string `json:"traceLogURL"`
+	// TraceLogName is the name of the trace log. This can be used to fetch the trace log from the scaling advisor core.
+	TraceLogName string `json:"traceLogName"`
 	// SimRunResults is the list of simulation run results for the scaling advice.
 	SimRunResults []ScalingSimRunResult `json:"simRunResults"`
 }

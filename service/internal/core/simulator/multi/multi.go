@@ -4,65 +4,65 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/service"
-	"github.com/gardener/scaling-advisor/service/internal/service/simulator"
-	"github.com/gardener/scaling-advisor/service/scorer"
+	"github.com/gardener/scaling-advisor/service/internal/core/simulator"
+	"github.com/gardener/scaling-advisor/service/internal/core/util"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ service.Simulator = (*multiSimulator)(nil)
+var _ service.ScaleOutSimulator = (*multiSimulator)(nil)
 
 // TODO find a better word for multiSimulator.
 type multiSimulator struct {
-	viewAccess           minkapi.ViewAccess
-	resourceWeigher      service.ResourceWeigher
-	pricingAccess        service.InstancePricingAccess
-	nodeScorer           service.NodeScorer
-	schedulerLauncher    service.SchedulerLauncher
+	viewAccess        minkapi.ViewAccess
+	schedulerLauncher service.SchedulerLauncher
+	nodeScorer        service.NodeScorer
+	simulatorConfig   service.SimulatorConfig
+	// simulationCreator is a factory interface to create Simulations. This allows testing either the ScalingPlanner or MultiSimulator
+	// with mock simulations.
 	simulationCreator    service.SimulationCreator
-	request              *service.ScalingAdviceRequest
 	simulationRunCounter atomic.Uint32
+	request              *service.ScalingAdviceRequest
 }
 
-// NewSimulator creates a new service.Simulator that runs multiple simulations concurrently.
-func NewSimulator(viewAccess minkapi.ViewAccess, resourceWeigher service.ResourceWeigher, pricingAccess service.InstancePricingAccess, schedulerLauncher service.SchedulerLauncher, req *service.ScalingAdviceRequest) (service.Simulator, error) {
-	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, pricingAccess, resourceWeigher)
-	if err != nil {
-		return nil, err
-	}
+// NewScaleOutSimulator creates a new service.ScaleOutSimulator that runs multiple simulations concurrently.
+func NewScaleOutSimulator(viewAccess minkapi.ViewAccess, schedulerLauncher service.SchedulerLauncher, nodeScorer service.NodeScorer, simulatorConfig service.SimulatorConfig, req *service.ScalingAdviceRequest) (service.ScaleOutSimulator, error) {
 	return &multiSimulator{
 		viewAccess:        viewAccess,
-		resourceWeigher:   resourceWeigher,
-		pricingAccess:     pricingAccess,
-		nodeScorer:        nodeScorer,
 		schedulerLauncher: schedulerLauncher,
+		nodeScorer:        nodeScorer,
+		simulatorConfig:   simulatorConfig,
 		simulationCreator: service.SimulationCreatorFunc(NewSimulation),
 		request:           req,
 	}, nil
 }
 
-func (m *multiSimulator) SimulateScaleOut(ctx context.Context, planConsumerFn service.ScaleOutPlanConsumeFunc) error {
+func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- service.ScalingPlanResult) {
+	var err error
+	defer func() {
+		if err != nil {
+			util.SendPlanError(resultCh, m.request.GetRef(), err)
+		}
+	}()
 	baseView := m.viewAccess.GetBaseView()
-	err := simulator.SynchronizeBaseView(ctx, baseView, m.request.Snapshot)
-	if err != nil {
-		return err
+	if err = simulator.SynchronizeBaseView(ctx, baseView, m.request.Snapshot); err != nil {
+		return
 	}
 
 	m.simulationRunCounter.Store(0) // initialize it to 0.
-	simulationGroups, err := m.createSimulationGroups(ctx, m.request)
+	simulationGroups, err := m.createSimulationGroups(m.request)
 	if err != nil {
-		return err
+		return
 	}
-	return m.runAllGroups(ctx, baseView, simulationGroups, planConsumerFn)
+	err = m.runAllGroups(ctx, baseView, simulationGroups, resultCh)
 }
 
-func (m *multiSimulator) createSimulationGroups(ctx context.Context, request *service.ScalingAdviceRequest) ([]service.SimulationGroup, error) {
+func (m *multiSimulator) createSimulationGroups(request *service.ScalingAdviceRequest) ([]service.SimulationGroup, error) {
 	var allSimulations []service.Simulation
 	for _, nodePool := range request.Constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
@@ -90,15 +90,15 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 		NodePool:          nodePool,
 		NodeTemplateName:  nodeTemplateName,
 		SchedulerLauncher: m.schedulerLauncher,
-		TrackPollInterval: 10 * time.Millisecond,
+		Config:            m.simulatorConfig,
 	}
-	return NewSimulation(simulationName, simArgs)
+	return m.simulationCreator.Create(simulationName, simArgs)
 }
 
-//func (m *multiSimulator) runPasses(ctx context.Context, groups []service.SimulationGroup, consumeFn minkapi.View) error {
+//func (m *multiSimulator) runPasses(ctx context.Context, groups []core.SimulationGroup, consumeFn minkapi.View) error {
 //	ctxLog := logr.FromContextOrDiscard(ctx)
 //	var (
-//		allWinnerNodeScores     []service.NodeScore
+//		allWinnerNodeScores     []core.NodeScore
 //		leftoverUnscheduledPods []types.NamespacedName
 //	)
 //runPassesLoop:
@@ -108,7 +108,7 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 //		select {
 //		case <-ctx.Done():
 //			err := ctx.Err()
-//			log.Error(err, "Simulator context done. Aborting pass runPassesLoop")
+//			log.Error(err, "ScaleOutSimulator context done. Aborting pass runPassesLoop")
 //			return err
 //		default:
 //			passCtx := logr.NewContext(ctx, log)
@@ -125,7 +125,7 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 //			}
 //			allWinnerNodeScores = append(allWinnerNodeScores, passWinnerNodeScores...)
 //			if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
-//				if err = createAndInvokePlanConsumer(log, m.request, passWinnerNodeScores, passLeftoverUnscheduledPods, consumeFn); err != nil {
+//				if err = createAndSendPlanResult(log, m.request, passWinnerNodeScores, passLeftoverUnscheduledPods, consumeFn); err != nil {
 //					return err
 //				}
 //			}
@@ -140,11 +140,11 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 //
 //	if len(allWinnerNodeScores) == 0 {
 //		ctxLog.Info("No scaling advice generated. No winning nodes produced by any simulation group.")
-//		return service.ErrNoScalingAdvice
+//		return core.ErrNoScalingAdvice
 //	}
 //
 //	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
-//		if err := createAndInvokePlanConsumer(ctxLog, m.request, allWinnerNodeScores, leftoverUnscheduledPods, consumeFn); err != nil {
+//		if err := createAndSendPlanResult(ctxLog, m.request, allWinnerNodeScores, leftoverUnscheduledPods, consumeFn); err != nil {
 //			return err
 //		}
 //	}
@@ -152,16 +152,16 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 //}
 
 // runPass iterates through the simulation groups. For each group, it runs the group specific simulation(s) and
-// obtains the service.SimulationGroupResult which encapsulates the results of all simulations in the group.
-// It then runs the NodeScorer against the service.SimulationGroupResult and selects a winner amongst all the computed
-// service.NodeScore's. If there is no winner node score it will continue to the next service.SimulationGroup.
+// obtains the core.SimulationGroupResult which encapsulates the results of all simulations in the group.
+// It then runs the NodeScorer against the core.SimulationGroupResult and selects a winner amongst all the computed
+// core.NodeScore's. If there is no winner node score it will continue to the next core.SimulationGroup.
 // If there is a winner node score, it appends to the returned slice of allWinnerNodeScores.
 // If there are no leftover unscheduled pods after processing a group, it breaks the loop and returns.
-//func (m *multiSimulator) runPass(ctx context.Context, groups []service.SimulationGroup) (allWinnerNodeScores []service.NodeScore, unscheduledPods []types.NamespacedName, err error) {
+//func (m *multiSimulator) runPass(ctx context.Context, groups []core.SimulationGroup) (allWinnerNodeScores []core.NodeScore, unscheduledPods []types.NamespacedName, err error) {
 //	log := logr.FromContextOrDiscard(ctx)
 //	var (
-//		groupResult service.SimulationGroupResult
-//		groupScores service.SimulationGroupScores
+//		groupResult core.SimulationGroupResult
+//		groupScores core.SimulationGroupScores
 //	)
 //	for groupIndex := 0; groupIndex < len(groups); {
 //		group := groups[groupIndex]
@@ -210,21 +210,22 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 //}
 
 // runAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
-// If the request AdviceGenerationMode is Incremental, after running passes for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and invokes the planConsumeFn.
-// If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and invokes the planConsumeFn.
-func (m *multiSimulator) runAllGroups(ctx context.Context, baseView minkapi.View, simGroups []service.SimulationGroup, planConsumeFn service.ScaleOutPlanConsumeFunc) (err error) {
+// If the request AdviceGenerationMode is Incremental, after running passes for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
+// If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
+func (m *multiSimulator) runAllGroups(ctx context.Context, baseView minkapi.View, simGroups []service.SimulationGroup, resultCh chan<- service.ScalingPlanResult) (err error) {
 	var (
 		groupView               = baseView
 		groupWinnerNodeScores   []service.NodeScore
 		allWinnerNodeScores     []service.NodeScore
 		leftoverUnscheduledPods []types.NamespacedName
+		simGroupRunResult       util.SimulationGroupRunResult
 		log                     = logr.FromContextOrDiscard(ctx)
 	)
 	for groupIndex := 0; groupIndex < len(simGroups); {
 		group := simGroups[groupIndex]
 		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
 		grpCtx := logr.NewContext(ctx, log)
-		groupView, groupWinnerNodeScores, leftoverUnscheduledPods, err = m.runAllPassesForGroup(grpCtx, groupView, group)
+		simGroupRunResult, err = m.runAllPassesForGroup(grpCtx, groupView, group)
 		if err != nil {
 			err = fmt.Errorf("failed to run all passes for group %q: %w", group.Name(), err)
 			return
@@ -236,7 +237,8 @@ func (m *multiSimulator) runAllGroups(ctx context.Context, baseView minkapi.View
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, groupWinnerNodeScores...)
 		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
-			if err = createAndInvokePlanConsumer(log, m.request, groupWinnerNodeScores, leftoverUnscheduledPods, planConsumeFn); err != nil {
+			log.Info("Sending incremental scale-out plan")
+			if err = util.SendPlanResult(m.request, simGroupRunResult, resultCh); err != nil {
 				return
 			}
 		}
@@ -251,27 +253,28 @@ func (m *multiSimulator) runAllGroups(ctx context.Context, baseView minkapi.View
 		return
 	}
 	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
-		err = createAndInvokePlanConsumer(log, m.request, allWinnerNodeScores, leftoverUnscheduledPods, planConsumeFn)
+		log.Info("Sending all-at-once scale-out plan")
+		err = util.SendPlanResult(m.request, simGroupRunResult, resultCh)
 	}
 	return
 }
 
 // runAllPassesForGroup runs all passes for the given simulation group until there is no winner or there are no leftover unscheduled pods or the context is done.
-func (m *multiSimulator) runAllPassesForGroup(ctx context.Context, groupView minkapi.View, group service.SimulationGroup) (nextPassView minkapi.View, groupWinnerNodeScores []service.NodeScore, leftoverUnscheduledPods []types.NamespacedName, err error) {
+func (m *multiSimulator) runAllPassesForGroup(ctx context.Context, groupView minkapi.View, group service.SimulationGroup) (sgrr util.SimulationGroupRunResult, err error) {
 	var (
-		groupRunPass     int
 		winningNodeScore *service.NodeScore
 	)
-	nextPassView = groupView
+	sgrr.NextGroupView = groupView
+	sgrr.NumPasses = 1 // it will run at least once.
 	for {
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
 		default:
-			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunPass", groupRunPass)
+			log := logr.FromContextOrDiscard(ctx).WithValues("numGroupRunPass", sgrr.NumPasses)
 			passCtx := logr.NewContext(ctx, log)
-			nextPassView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, nextPassView, group)
+			sgrr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgrr.NextGroupView, group)
 			if err != nil {
 				return
 			}
@@ -280,22 +283,23 @@ func (m *multiSimulator) runAllPassesForGroup(ctx context.Context, groupView min
 				log.Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
-			groupWinnerNodeScores = append(groupWinnerNodeScores, *winningNodeScore)
+			sgrr.WinnerNodeScores = append(sgrr.WinnerNodeScores, *winningNodeScore)
 			// It captures the leftover unscheduled pods from the last winning node score.
 			// If there is no winning node score in the current pass, the leftover unscheduled pods from the
 			// previous pass will be retained.
-			leftoverUnscheduledPods = winningNodeScore.UnscheduledPods
-			if len(leftoverUnscheduledPods) == 0 {
+			sgrr.LeftoverUnscheduledPods = winningNodeScore.UnscheduledPods
+			if len(sgrr.LeftoverUnscheduledPods) == 0 {
 				log.Info("All pods have been scheduled in pass")
 				return
 			}
 		}
+		sgrr.NumPasses++
 	}
 }
 
 // runSinglePassForGroup runs all simulations in the given simulation group once over the provided passView.
-// If there is a winnerNodeScore among the simulations in the group, it is returned along with the nextPassView.
-// If there is no winner then winner node score is nil and the nextPassView is nil.
+// If there is a winnerNodeScore among the simulations in the group, it is returned along with the nextGroupView.
+// If there is no winner then winner node score is nil and the nextGroupView is nil.
 func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, passView minkapi.View, group service.SimulationGroup) (nextPassView minkapi.View, winnerNodeScore *service.NodeScore, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
@@ -370,18 +374,4 @@ func mapSimulationResultToNodeScoreArgs(simResult service.SimulationResult) serv
 		OtherNodePodAssignments: simResult.OtherNodePodAssignments,
 		LeftOverUnscheduledPods: simResult.LeftoverUnscheduledPods,
 	}
-}
-
-func createAndInvokePlanConsumer(log logr.Logger, req *service.ScalingAdviceRequest, winnerNodeScores []service.NodeScore, leftoverUnscheduledPods []types.NamespacedName, consumeFn service.ScaleOutPlanConsumeFunc) error {
-	log.Info("Invoking scale-out plan consume func")
-	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
-	if err != nil {
-		return err
-	}
-	scaleOutPlan := simulator.CreateScaleOutPlan(winnerNodeScores, existingNodeCountByPlacement, leftoverUnscheduledPods)
-	err = consumeFn(scaleOutPlan)
-	if err != nil {
-		return fmt.Errorf("failed to invoke scale-out plan consumer: %w", err)
-	}
-	return nil
 }

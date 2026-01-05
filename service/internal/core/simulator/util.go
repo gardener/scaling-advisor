@@ -37,6 +37,7 @@ func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *service.Clu
 			return err
 		}
 	}
+	// TODO support PVC, PV, StorageClass, etc.
 	return nil
 }
 

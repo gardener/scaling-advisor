@@ -16,8 +16,12 @@ var (
 	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
 	// ErrStartFailed is a sentinel error indicating that the scaling-advisor service failed to start.
 	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
+	// ErrGenScalingPlan is a sentinel error indicating that the planner failed to generate a scaling plan.
+	ErrGenScalingPlan = errors.New("failed to generate scaling plan")
 	// ErrGenScalingAdvice is a sentinel error indicating that the service failed to generate scaling advice.
 	ErrGenScalingAdvice = errors.New("failed to generate scaling advice")
+	// ErrCreateSimulator is a sentinel error indicating that the service failed to create a simulator.
+	ErrCreateSimulator = errors.New("failed to create simulator")
 	// ErrCreateSimulation is a sentinel error indicating that the service failed to create a scaling simulation
 	ErrCreateSimulation = errors.New("failed to create simulation")
 	// ErrRunSimulation is a sentinel error indicating that a specific scaling simulation failed
@@ -42,8 +46,8 @@ var (
 	ErrNoUnscheduledPods = errors.New("no unscheduled pods")
 	// ErrNoScalingAdvice is a sentinel error indicating that no scaling advice was generated.
 	ErrNoScalingAdvice = errors.New("no scaling advice")
-	// ErrUnsupportedNodeScoringStrategy is a sentinel error indicating an unsupported node scoring strategy was specified.
-	ErrUnsupportedNodeScoringStrategy = errors.New("unsupported node scoring strategy")
+	// ErrCreateNodeScorer is a sentinel error indicating that the service failed to create a NodeScorer.
+	ErrCreateNodeScorer = errors.New("failed to create node scorer")
 	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
 	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 	// ErrLoadInstanceTypeInfo is a sentinel error indicating that instance type information could not be loaded.
@@ -56,13 +60,24 @@ var (
 	ErrUnsupportedSimulationStrategy = errors.New("unsupported simulation strategy")
 )
 
-// AsGenerateError wraps an error with scaling advice request context information.
-func AsGenerateError(id string, correlationID string, err error) error {
+// AsPlanError wraps an error with scaling advice request context information.
+func AsPlanError(id string, correlationID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(ErrGenScalingPlan, err) {
+		return err
+	}
+	return fmt.Errorf("%w: could not process request with Name %q, CorrelationID %q: %w", ErrGenScalingPlan, id, correlationID, err)
+}
+
+// AsScalingAdviceError wraps an error with scaling advice request context information.
+func AsScalingAdviceError(id string, correlationID string, err error) error {
 	if err == nil {
 		return nil
 	}
 	if errors.Is(ErrGenScalingAdvice, err) {
 		return err
 	}
-	return fmt.Errorf("%w: could not process request with Name %q, CorrelationID %q: %w", ErrGenScalingAdvice, id, correlationID, err)
+	return fmt.Errorf("%w: could not generate scaling advice for request with Name %q, CorrelationID %q: %w", ErrGenScalingAdvice, id, correlationID, err)
 }

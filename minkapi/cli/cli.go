@@ -5,15 +5,19 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/minkapi/server"
+	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -37,6 +41,63 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 	return mainOpts, nil
 }
 
+// LaunchApp is a helper function used to parse cli args, construct, and start the MinKAPI server,
+// embed this inside an App representing the binary process along with an application context and application cancel func.
+//
+// On success, returns an initialized App which holds the minkapi Server, the App Context (which has been setup for SIGINT and SIGTERM cancellation and holds a logger),
+// and the Cancel func which callers are expected to defer in their main routines.
+//
+// On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
+func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int) {
+	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx)
+	log := logr.FromContextOrDiscard(app.Ctx).WithValues("program", minkapi.ProgramName)
+	commoncli.PrintVersion(minkapi.ProgramName)
+	cliOpts, err := ParseProgramFlags(os.Args[1:])
+	if err != nil {
+		if errors.Is(err, pflag.ErrHelp) {
+			return
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+		exitCode = commoncli.ExitErrParseOpts
+		return
+	}
+	app.Server, err = server.NewDefaultInMemory(ctx, cliOpts.Config)
+	if err != nil {
+		log.Error(err, "failed to initialize InMemoryKAPI")
+		exitCode = commoncli.ExitErrStart
+		return
+	}
+	// Begin the core in a goroutine
+	go func() {
+		if err := app.Server.Start(app.Ctx); err != nil {
+			if errors.Is(err, minkapi.ErrStartFailed) {
+				log.Error(err, "failed to start core")
+			} else {
+				log.Error(err, fmt.Sprintf("%s start failed", minkapi.ProgramName))
+			}
+		}
+	}()
+	return
+}
+
+// ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
+func ShutdownApp(app *minkapi.App) (exitCode int) {
+	// Create a context with a 5-second timeout for shutdown
+	shutDownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	log := logr.FromContextOrDiscard(app.Ctx)
+
+	// Perform shutdown
+	if err := app.Server.Stop(shutDownCtx); err != nil {
+		log.Error(err, fmt.Sprintf(" %s shutdown failed", minkapi.ProgramName))
+		exitCode = commoncli.ExitErrShutdown
+		return
+	}
+	log.Info(fmt.Sprintf("%s shutdown gracefully.", minkapi.ProgramName))
+	exitCode = commoncli.ExitSuccess
+	return
+}
+
 func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
 	flagSet := pflag.NewFlagSet(minkapi.ProgramName, pflag.ContinueOnError)
@@ -52,7 +113,7 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	flagSet.StringVarP(&opts.KubeConfigPath, clientcmd.RecommendedConfigPathFlag, "k", opts.KubeConfigPath, "path to master kubeconfig - fallback to KUBECONFIG env-var")
 	commoncli.MapServerConfigFlags(flagSet, &opts.ServerConfig)
 	MapWatchConfigFlags(flagSet, &opts.WatchConfig)
-	flagSet.StringVarP(&opts.BasePrefix, "base-prefix", "b", minkapi.DefaultBasePrefix, "base path prefix for the base view of the minkapi service")
+	flagSet.StringVarP(&opts.BasePrefix, "base-prefix", "b", minkapi.DefaultBasePrefix, "base path prefix for the base view of the minkapi core")
 	return flagSet, &opts
 }
 

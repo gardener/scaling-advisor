@@ -68,7 +68,7 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels := maps.Clone(nodePool.Labels)
 
 	nodeLabels[commonconstants.LabelSimulationName] = simulationName
-	nodeLabels[commonconstants.LabelSimulationGroupPassNum] = fmt.Sprintf("%d", groupRunPassNum)
+	nodeLabels[commonconstants.LabelSimulationGroupNumPasses] = fmt.Sprintf("%d", groupRunPassNum)
 	nodeLabels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
 	nodeLabels[corev1.LabelArchStable] = nodeTemplate.Architecture
 	nodeLabels[corev1.LabelTopologyZone] = az

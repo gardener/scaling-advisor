@@ -31,7 +31,7 @@ const (
 	ProgramName = "minkapi"
 	// DefaultWatchQueueSize is the default maximum number of events to queue per watcher.
 	DefaultWatchQueueSize = 100
-	// DefaultWatchTimeout is the default timeout for watches after which MinKAPI service closes the connection.
+	// DefaultWatchTimeout is the default timeout for watches after which MinKAPI core closes the connection.
 	DefaultWatchTimeout = 5 * time.Minute
 	// DefaultKubeConfigPath is the default kubeconfig path if none is specified.
 	DefaultKubeConfigPath = "/tmp/minkapi.yaml"
@@ -43,13 +43,13 @@ const (
 type WatchConfig struct {
 	// QueueSize is the maximum number of events to queue per watcher
 	QueueSize int
-	// Timeout represents the timeout for watches following which MinKAPI service will close the connection and ends the watch.
+	// Timeout represents the timeout for watches following which MinKAPI core will close the connection and ends the watch.
 	Timeout time.Duration
 }
 
 // Config holds the configuration for MinKAPI.
 type Config struct {
-	// BasePrefix is the path prefix at which the base View of the minkapi service is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
+	// BasePrefix is the path prefix at which the base View of the minkapi core is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
 	commontypes.ServerConfig
@@ -216,7 +216,7 @@ type ViewAccess interface {
 	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
 }
 
-// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) service accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
+// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
 	commontypes.Service

@@ -14,12 +14,12 @@ import (
 var (
 	// ErrInitFailed is a sentinel error indicating that the minkapi program failed to initialize.
 	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
-	// ErrStartFailed is a sentinel error indicating that the service failed to start.
+	// ErrStartFailed is a sentinel error indicating that the core failed to start.
 	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
 	// ErrClientFacadesFailed is a sentinel error indicating that client facades creation failed.
 	ErrClientFacadesFailed = errors.New("failed to create client facades")
-	// ErrServiceFailed is a sentinel error indicating that the service failed.
-	ErrServiceFailed = fmt.Errorf("%s service failed", ProgramName)
+	// ErrServiceFailed is a sentinel error indicating that the core failed.
+	ErrServiceFailed = fmt.Errorf("%s core failed", ProgramName)
 	// ErrLoadConfigTemplate is a sentinel error indicating that config template loading failed.
 	ErrLoadConfigTemplate = errors.New("cannot load config template")
 	// ErrExecuteConfigTemplate is a sentinel error indicating that config template execution failed.
