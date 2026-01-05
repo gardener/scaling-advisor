@@ -4,12 +4,11 @@
 
 package main
 
+// TODO: fix this cmd/bench/cmd, this is confusing
 import (
-	"github.com/gardener/scaling-advisor/tools/cmd/scadctl/cmd"
-
-	_ "github.com/gardener/scaling-advisor/tools/cmd/scadctl/cmd/genscenario"
+	bench "github.com/gardener/scaling-advisor/tools/cmd/bench/cmd"
 )
 
 func main() {
-	cmd.Execute()
+	bench.Execute()
 }

@@ -6,6 +6,8 @@ REPO_HACK_DIR           := $(REPO_ROOT)/hack
 
 scadctl_main_pkg_path = ./cmd/scadctl
 scadctl_binary_name = scadctl
+scalebench_main_pkg_path = ./cmd/bench
+scalebench_binary_name = scalebench
 
 # include tools targets
 include $(REPO_HACK_DIR)/tools.mk
@@ -48,9 +50,17 @@ tidy:
 
 ## build: build the client
 .PHONY: build
-build:
+build: build-scadctl build-scalebench
+
+.PHONY: build-scadctl
+build-scadctl:
 	mkdir -p bin
 	go build -buildvcs -o=bin/${scadctl_binary_name} ${scadctl_main_pkg_path}
+
+.PHONY: build-scalebench
+build-scalebench:
+	mkdir -p bin
+	go build -buildvcs -o=bin/${scalebench_binary_name} ${scalebench_main_pkg_path}
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
