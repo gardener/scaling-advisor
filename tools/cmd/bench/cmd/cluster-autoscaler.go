@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -104,7 +105,8 @@ func (cas *caSetup) GenerateKwokData(ctx context.Context, scenarioDir, outputDir
 		return fmt.Errorf("Could not open the scenario directory %q: %v", scenarioDir, err)
 	}
 	for _, file := range files {
-		if !file.IsDir() && strings.HasPrefix(file.Name(), "cluster-scaling-constraints-") {
+		// FIXME provide cluster-scaling-constraints filename
+		if !file.IsDir() && strings.Contains(file.Name(), "constraints") {
 			file, err := os.Open(path.Join(scenarioDir, file.Name()))
 			if err != nil {
 				return fmt.Errorf("Could not open the scalingConstraint file %q: %v", file.Name(), err)
@@ -183,9 +185,6 @@ func constructKwokProviderTemplate(csc apiv1alpha1.ClusterScalingConstraint) err
 					Name:        nodeTemplate.Name,
 					Labels:      nodePool.Labels,
 					Annotations: nodePool.Annotations,
-					// Annotations: map[string]string{
-					// 	"kwok.x-k8s.io/node": "fake",
-					// },
 				},
 				Spec: corev1.NodeSpec{
 					Taints: nodePool.Taints,
@@ -194,10 +193,20 @@ func constructKwokProviderTemplate(csc apiv1alpha1.ClusterScalingConstraint) err
 					Capacity:    nodeTemplate.Capacity,
 					Allocatable: nodeutil.ComputeAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.SystemReserved),
 					Phase:       corev1.NodeRunning,
-					// Conditions:  utils.BuildReadyConditions(),
 				},
 			}
-			// node.Labels["type"] = "kwok"
+			if node.Annotations == nil {
+				// Needed to fix null annotations panic in CA kwok
+				node.Annotations = make(map[string]string)
+				node.Annotations["kwok.x-k8s.io/node"] = "fake"
+			}
+			// Fixes `NodeResourcesFit` "Too Many Pods" scheduling failure
+			if node.Status.Allocatable.Pods().Cmp(*resource.NewQuantity(0, resource.DecimalSI)) == 0 {
+				node.Status.Allocatable["pods"] = *resource.NewQuantity(110, resource.DecimalSI)
+			}
+			if node.Status.Capacity.Pods().Cmp(*resource.NewQuantity(0, resource.DecimalSI)) == 0 {
+				node.Status.Capacity["pods"] = *resource.NewQuantity(110, resource.DecimalSI)
+			}
 			kwokTemplates.Items = append(kwokTemplates.Items, node)
 		}
 	}

@@ -31,3 +31,9 @@ gosec-report.sarif
 # hack tools binaries and generated configurations
 **/bin/
 gen/
+
+# Kwok cluster logs
+tools/logs/
+
+ca-kwok-provider-config.yaml
+ca-kwok-provider-template.yaml

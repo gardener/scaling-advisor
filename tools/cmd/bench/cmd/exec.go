@@ -5,7 +5,9 @@
 package bench
 
 import (
+	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,8 +15,8 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"slices"
 	"syscall"
+	"text/template"
 
 	svcapi "github.com/gardener/scaling-advisor/api/service"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
@@ -28,6 +30,9 @@ import (
 	"sigs.k8s.io/e2e-framework/support/kwok"
 	"sigs.k8s.io/yaml"
 )
+
+//go:embed templates/*.yaml
+var content embed.FS
 
 var (
 	skipCleanup  bool
@@ -63,19 +68,46 @@ var execCmd = &cobra.Command{
 	},
 }
 
+type KwokCfgTmplParams struct {
+	HomeDir                 string
+	ClusterName             string
+	KubeSchedulerConfigPath string
+	OutputPath              string
+	// Scaler Image?
+}
+
 // REF: https://medium.com/programming-kubernetes/testing-kubernetes-controllers-with-the-e2e-framework-fac232843dc6
 func setupTestEnv() error {
 	testenv := env.New()
-	// FIXME use template
-	kwokClusterName := "kwok-test-cluster" //envconf.RandomName("kwok-cluster", 16)
+	kwokClusterName := envconf.RandomName("kwok-cluster", 17)
 
 	ctx := setupSignalHandler()
 	var cfg *envconf.Config
 
 	log.Printf("Setting up KWOK cluster %q...\n", kwokClusterName)
-	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), kwokClusterName, "kwok-config.yaml")
+	// This is needed to provide an absolute path to kwokctlConfiguration
+	kubeSchedulerConfigPath, err := writeEmbeddedKubeSchedulerConfig()
+	if err != nil {
+		return fmt.Errorf("could not write kube-scheduler config: %w", err)
+	}
+	defer os.Remove(kubeSchedulerConfigPath)
+
+	outputFile := path.Join(os.TempDir(), "kwok-config.yaml")
+	kwokCfgTmplParams := KwokCfgTmplParams{
+		HomeDir:                 os.Getenv("HOME"),
+		ClusterName:             kwokClusterName,
+		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
+		OutputPath:              outputFile,
+	}
+
+	err = generateKwokConfig(kwokCfgTmplParams, "templates/kwok-config-tmpl.yaml")
+	if err != nil {
+		return fmt.Errorf("could not create kwok config: %w", err)
+	}
+	fmt.Printf("Wrote kwok config template to %q\n", kwokCfgTmplParams.OutputPath)
+	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), kwokClusterName, outputFile)
 	cfg = testenv.EnvConf()
-	ctx, err := createClusterFunc(ctx, cfg)
+	ctx, err = createClusterFunc(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create cluster: %w", err)
 	}
@@ -99,6 +131,7 @@ func setupTestEnv() error {
 		if _, err := exportLogsFunc(ctx, cfg); err != nil {
 			log.Printf("Warning: Failed to export logs: %v", err)
 		}
+		log.Printf("Exported logs to %q\n", logsDir)
 
 		if !skipCleanup {
 			log.Println("Cleaning up...")
@@ -139,7 +172,7 @@ func runKwokCluster(ctx context.Context, cfg *envconf.Config, snapshotFile strin
 		return err
 	}
 
-	err = deployAndUntaintNodes(ctx, clusterSnapshot, cfg)
+	err = deployNodes(ctx, clusterSnapshot, cfg)
 	if err != nil {
 		return err
 	}
@@ -235,25 +268,13 @@ func createNamespaces(ctx context.Context, clusterSnapshot svcapi.ClusterSnapsho
 	return nil
 }
 
-func deployAndUntaintNodes(ctx context.Context, clusterSnapshot svcapi.ClusterSnapshot, cfg *envconf.Config) error {
+func deployNodes(ctx context.Context, clusterSnapshot svcapi.ClusterSnapshot, cfg *envconf.Config) error {
 	log.Printf("Deploying nodes, count %d...\n", len(clusterSnapshot.Nodes))
 	for _, nInfo := range clusterSnapshot.Nodes {
 		n := nodeutil.AsNode(nInfo)
 		n.Spec.ProviderID = "kwok://" + n.Name // fixes not managed by kwok
 		if err := cfg.Client().Resources().Create(ctx, n); err != nil {
 			return fmt.Errorf("failed to create node: %w", err)
-		}
-
-		if err := cfg.Client().Resources().Get(ctx, n.Name, "", n); err != nil {
-			return fmt.Errorf("failed to fetch node: %w", err)
-		}
-
-		n.Spec.Taints = slices.DeleteFunc(n.Spec.Taints, func(item corev1.Taint) bool {
-			return item.Key == corev1.TaintNodeNotReady
-		})
-
-		if err := cfg.Client().Resources().Update(ctx, n); err != nil {
-			return fmt.Errorf("failed to update node: %w", err)
 		}
 	}
 	return nil
@@ -361,4 +382,47 @@ func deployCAKwokConfig(ctx context.Context, caKwokCfgFile string, cfg *envconf.
 		return fmt.Errorf("failed to create kwok provider config: %w", err)
 	}
 	return nil
+}
+
+func generateKwokConfig(params KwokCfgTmplParams, templateConfigPath string) error {
+	data, err := content.ReadFile(templateConfigPath)
+	if err != nil {
+		return fmt.Errorf("cannot read %s from content FS: %w", templateConfigPath, err)
+	}
+	templateConfig, err := template.New(templateConfigPath).Parse(string(data))
+	if err != nil {
+		return fmt.Errorf("cannot parse %s template: %w", templateConfigPath, err)
+	}
+
+	var buf bytes.Buffer
+	err = templateConfig.Execute(&buf, params)
+	if err != nil {
+		return fmt.Errorf("cannot render %q template with params %q: %w", templateConfig.Name(), params, err)
+	}
+	err = os.WriteFile(params.OutputPath, buf.Bytes(), 0600)
+	if err != nil {
+		return fmt.Errorf("cannot write kwok config to %q: %w", params.OutputPath, err)
+	}
+	return nil
+}
+
+func writeEmbeddedKubeSchedulerConfig() (string, error) {
+	kubeSchedulerConfigData, err := content.ReadFile("templates/kube-scheduler-config.yaml")
+	if err != nil {
+		return "", fmt.Errorf("cannot read kube-scheduler-config.yaml from embedded FS: %w", err)
+	}
+
+	// Create a temporary file
+	tempFile, err := os.CreateTemp("", "kube-scheduler-config.yaml")
+	if err != nil {
+		return "", fmt.Errorf("cannot create temporary file: %w", err)
+	}
+	defer tempFile.Close()
+
+	if _, err := tempFile.Write(kubeSchedulerConfigData); err != nil {
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("cannot write to temporary file: %w", err)
+	}
+
+	return tempFile.Name(), nil
 }
