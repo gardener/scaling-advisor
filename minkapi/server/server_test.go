@@ -18,6 +18,7 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/minkapi/cli"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,7 +173,7 @@ func initSuite(ctx context.Context) error {
 	var err error
 	var exitCode int
 
-	state.app, exitCode = LaunchApp(ctx)
+	state.app, exitCode = cli.LaunchApp(ctx)
 	if exitCode != commoncli.ExitSuccess {
 		os.Exit(exitCode)
 	}
@@ -200,5 +201,5 @@ func initSuite(ctx context.Context) error {
 
 func shutdownSuite() {
 	state.app.Cancel()
-	_ = ShutdownApp(&state.app)
+	_ = cli.ShutdownApp(&state.app)
 }

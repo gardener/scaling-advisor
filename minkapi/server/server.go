@@ -127,7 +127,7 @@ func (k *InMemoryKAPI) Start(ctx context.Context) error {
 
 	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
 		KubeConfigPath:          k.cfg.KubeConfigPath,
-		KubeSchedulerConfigPath: fmt.Sprintf("/tmp/%s-kube-scheduler-config.yaml", minkapi.ProgramName),
+		KubeSchedulerConfigPath: fmt.Sprintf("/tmp/%s-bin-packing-scheduler-config.yaml", minkapi.ProgramName),
 		QPS:                     100,
 		Burst:                   50,
 	}
@@ -204,7 +204,7 @@ func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (minkapi
 	log.Info("sandbox kubeconfig generated for sandbox view", "name", name, "path", k.cfg.KubeConfigPath)
 	sv.SetKubeConfigPath(kubeConfigPath)
 
-	kubeSchedulerConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s-kube-scheduler-config.yaml", minkapi.ProgramName, name))
+	kubeSchedulerConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s-bin-packing-scheduler-config.yaml", minkapi.ProgramName, name))
 	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
 		KubeConfigPath:          kubeConfigPath,
 		KubeSchedulerConfigPath: kubeSchedulerConfigPath,

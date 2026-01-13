@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package planner
 
 import (
@@ -8,13 +12,13 @@ import (
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/planner"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	"github.com/gardener/scaling-advisor/service/internal/core/weights"
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
-	"github.com/gardener/scaling-advisor/service/internal/testutil"
+	"github.com/gardener/scaling-advisor/planner/scheduler"
+	"github.com/gardener/scaling-advisor/planner/weights"
+	"github.com/gardener/scaling-advisor/samples"
 	pricingtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 )
 
@@ -29,30 +33,31 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 		return
 	}
 
-	constraints, err := testutil.LoadBasicClusterConstraints(testutil.BasicCluster)
+	constraints, err := samples.LoadClusterConstraints(samples.CategoryBasic)
 	if err != nil {
 		t.Errorf("failed to load basic cluster constraints: %v", err)
 		return
 	}
-	snapshot, err := testutil.LoadBasicClusterSnapshot(testutil.BasicCluster)
+	snapshot, err := samples.LoadClusterSnapshot(samples.CategoryBasic)
 	if err != nil {
 		t.Errorf("failed to load basic cluster snapshot: %v", err)
 		return
 	}
 
-	req := service.ScalingAdviceRequest{
-		ScalingAdviceRequestRef: service.ScalingAdviceRequestRef{
+	req := planner.ScalingAdviceRequest{
+		ScalingAdviceRequestRef: planner.ScalingAdviceRequestRef{
 			ID:            t.Name(),
 			CorrelationID: t.Name(),
 		},
-		Constraint:          constraints,
-		Snapshot:            snapshot,
-		DiagnosticVerbosity: 2,
-		ScoringStrategy:     commontypes.NodeScoringStrategyLeastCost,
-		SimulationStrategy:  commontypes.SimulationStrategyMultiSimulationsPerGroup,
+		Constraint:           constraints,
+		Snapshot:             snapshot,
+		DiagnosticVerbosity:  2,
+		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
+		SimulationStrategy:   commontypes.SimulationStrategyMultiSimulationsPerGroup,
+		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
 	}
 
-	resultCh := make(chan service.ScalingPlanResult, 1)
+	resultCh := make(chan planner.ScalingPlanResult, 1)
 	defer close(resultCh)
 	p.Plan(runCtx, req, resultCh)
 	planResult := <-resultCh
@@ -90,7 +95,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 	}
 }
 
-func createTestScalingPlanner(ctx context.Context) (service.ScalingPlanner, error) {
+func createTestScalingPlanner(ctx context.Context) (planner.ScalingPlanner, error) {
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return nil, err
@@ -108,20 +113,20 @@ func createTestScalingPlanner(ctx context.Context) (service.ScalingPlanner, erro
 		return nil, err
 	}
 
-	schedulerConfigBytes, err := testutil.ReadSchedulerConfig()
+	schedulerConfigBytes, err := samples.LoadBinPackingSchedulerConfig()
 	if err != nil {
 		return nil, err
 	}
-	simulatorConfig := service.SimulatorConfig{
-		MaxParallelSimulations: service.DefaultMaxParallelSimulations,
-		TrackPollInterval:      service.DefaultTrackPollInterval,
+	simulatorConfig := planner.SimulatorConfig{
+		MaxParallelSimulations: planner.DefaultMaxParallelSimulations,
+		TrackPollInterval:      planner.DefaultTrackPollInterval,
 	}
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
 	if err != nil {
 		return nil, err
 	}
 
-	scalePlannerArgs := service.ScalingPlannerArgs{
+	scalePlannerArgs := planner.ScalingPlannerArgs{
 		ViewAccess:        viewAccess,
 		ResourceWeigher:   weightsFn,
 		PricingAccess:     pricingAccess,

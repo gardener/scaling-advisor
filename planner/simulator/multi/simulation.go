@@ -14,7 +14,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
@@ -24,25 +24,24 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ service.Simulation = (*singleNodeScalingSimulation)(nil)
+var _ planner.Simulation = (*singleNodeScalingSimulation)(nil)
 
 type singleNodeScalingSimulation struct {
-	args         *service.SimulationArgs
+	args         *planner.SimulationArgs
 	nodeTemplate *sacorev1alpha1.NodeTemplate
 	state        *trackState
 	name         string
 }
 
-var _ service.SimulationCreatorFunc = NewSimulation
+var _ planner.SimulationCreatorFunc = NewSimulation
 
 // NewSimulation creates a new Simulation instance with the specified name and using the given arguments after validation.
-func NewSimulation(name string, args *service.SimulationArgs) (service.Simulation, error) {
+func NewSimulation(name string, args *planner.SimulationArgs) (planner.Simulation, error) {
 	var nodeTemplate *sacorev1alpha1.NodeTemplate
 	for _, nt := range args.NodePool.NodeTemplates {
 		if nt.Name == args.NodeTemplateName {
@@ -58,8 +57,8 @@ func NewSimulation(name string, args *service.SimulationArgs) (service.Simulatio
 		args:         args,
 		nodeTemplate: nodeTemplate,
 		state: &trackState{
-			status:              service.ActivityStatusPending,
-			scheduledPodsByNode: make(map[string][]service.PodResourceInfo),
+			status:              planner.ActivityStatusPending,
+			scheduledPodsByNode: make(map[string][]planner.PodResourceInfo),
 		},
 	}
 	return sim, nil
@@ -67,8 +66,8 @@ func NewSimulation(name string, args *service.SimulationArgs) (service.Simulatio
 
 func (s *singleNodeScalingSimulation) Reset() {
 	s.state = &trackState{
-		status:              service.ActivityStatusPending,
-		scheduledPodsByNode: make(map[string][]service.PodResourceInfo),
+		status:              planner.ActivityStatusPending,
+		scheduledPodsByNode: make(map[string][]planner.PodResourceInfo),
 	}
 }
 
@@ -89,26 +88,26 @@ func (s *singleNodeScalingSimulation) Name() string {
 	return s.name
 }
 
-func (s *singleNodeScalingSimulation) ActivityStatus() service.ActivityStatus {
+func (s *singleNodeScalingSimulation) ActivityStatus() planner.ActivityStatus {
 	return s.state.status
 }
 
-func (s *singleNodeScalingSimulation) Result() (service.SimulationResult, error) {
+func (s *singleNodeScalingSimulation) Result() (planner.SimulationResult, error) {
 	return s.state.result, s.state.err
 }
 
 func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View) (err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: run of simulation %q failed: %w", service.ErrRunSimulation, s.name, err)
+			err = fmt.Errorf("%w: run of simulation %q failed: %w", planner.ErrRunSimulation, s.name, err)
 			s.state.err = err
-			s.state.status = service.ActivityStatusFailure
+			s.state.status = planner.ActivityStatusFailure
 		}
 	}()
 
 	log := logr.FromContextOrDiscard(ctx)
 	simCtx := logr.NewContext(ctx, log.WithValues("simulationName", s.name))
-	s.state.status = service.ActivityStatusRunning
+	s.state.status = planner.ActivityStatusRunning
 	s.args.RunCounter.Add(1)
 
 	// Get unscheduled pods from the view
@@ -117,7 +116,7 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 		return fmt.Errorf("simulation %q was unable to get unscheduled pods from view %q: %w", s.name, view.GetName(), err)
 	}
 	if len(unscheduledPods) == 0 {
-		return fmt.Errorf("%w: simulation %q was created with no unscheduled pods in the view %q", service.ErrNoUnscheduledPods, s.name, view.GetName())
+		return fmt.Errorf("%w: simulation %q was created with no unscheduled pods in the view %q", planner.ErrNoUnscheduledPods, s.name, view.GetName())
 	}
 	s.state.unscheduledPods = unscheduledPods
 
@@ -152,45 +151,46 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	}
 
 	// create simulation result
-	s.state.result = service.SimulationResult{
+	s.state.result = planner.SimulationResult{
 		Name:                     s.name,
 		View:                     view,
+		ScaledNodes:              []*corev1.Node{s.state.simNode},
 		ScaledNodePlacements:     []sacorev1alpha1.NodePlacement{s.getScaledNodePlacementInfo()},
-		ScaledNodePodAssignments: []service.NodePodAssignment{s.getScaledNodeAssignment()},
+		ScaledNodePodAssignments: []planner.NodePodAssignment{s.getScaledNodeAssignment()},
 		OtherNodePodAssignments:  otherAssignments,
 		LeftoverUnscheduledPods:  slices.Collect(maps.Keys(s.state.unscheduledPods)),
 	}
-	s.state.status = service.ActivityStatusSuccess
+	s.state.status = planner.ActivityStatusSuccess
 	return
 }
 
-func validateSimulationArgs(args *service.SimulationArgs, nodeTemplate *sacorev1alpha1.NodeTemplate) error {
+func validateSimulationArgs(args *planner.SimulationArgs, nodeTemplate *sacorev1alpha1.NodeTemplate) error {
 	if nodeTemplate == nil {
-		return fmt.Errorf("%w: node template %q not found in node pool %q", service.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
+		return fmt.Errorf("%w: node template %q not found in node pool %q", planner.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
 	}
 	if args.NodePool == nil {
-		return fmt.Errorf("%w: node pool must not be nil", service.ErrCreateSimulation)
+		return fmt.Errorf("%w: node pool must not be nil", planner.ErrCreateSimulation)
 	}
 	errList := sacorev1alpha1.ValidateNodePool(args.NodePool, field.NewPath("nodePool"))
 	if len(errList) > 0 {
-		return fmt.Errorf("%w: invalid node pool %q: %v", service.ErrCreateSimulation, args.NodePool.Name, errList.ToAggregate())
+		return fmt.Errorf("%w: invalid node pool %q: %v", planner.ErrCreateSimulation, args.NodePool.Name, errList.ToAggregate())
 	}
 	if args.Config.TrackPollInterval <= 0 {
-		return fmt.Errorf("%w: track poll interval must be positive duration", service.ErrCreateSimulation)
+		return fmt.Errorf("%w: track poll interval must be positive duration", planner.ErrCreateSimulation)
 	}
 	if args.SchedulerLauncher == nil {
-		return fmt.Errorf("%w: scheduler launcher must not be nil", service.ErrCreateSimulation)
+		return fmt.Errorf("%w: scheduler launcher must not be nil", planner.ErrCreateSimulation)
 	}
 	return nil
 }
 
-func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[types.NamespacedName]service.PodResourceInfo, err error) {
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[types.NamespacedName]planner.PodResourceInfo, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return
 	}
-	unscheduled = make(map[types.NamespacedName]service.PodResourceInfo, len(pods))
+	unscheduled = make(map[types.NamespacedName]planner.PodResourceInfo, len(pods))
 	for _, p := range pods {
 		if IsUnscheduledPod(&p) {
 			if logutil.VerbosityFromContext(ctx) > 2 {
@@ -212,19 +212,19 @@ func (s *singleNodeScalingSimulation) getScaledNodePlacementInfo() sacorev1alpha
 	}
 }
 
-func (s *singleNodeScalingSimulation) getScaledNodeAssignment() service.NodePodAssignment {
-	return service.NodePodAssignment{
+func (s *singleNodeScalingSimulation) getScaledNodeAssignment() planner.NodePodAssignment {
+	return planner.NodePodAssignment{
 		NodeResources: getNodeResourceInfo(s.state.simNode),
 		ScheduledPods: s.state.scheduledPodsByNode[s.state.simNode.Name],
 	}
 }
 
-func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (service.SchedulerHandle, error) {
+func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (planner.SchedulerHandle, error) {
 	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
 	if err != nil {
 		return nil, err
 	}
-	schedLaunchParams := &service.SchedulerLaunchParams{
+	schedLaunchParams := &planner.SchedulerLaunchParams{
 		ClientFacades: clientFacades,
 		EventSink:     simView.GetEventSink(),
 	}
@@ -245,107 +245,119 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 		},
 		Status: corev1.NodeStatus{
 			Capacity:    s.nodeTemplate.Capacity,
-			Allocatable: nodeutil.ComputeAllocatable(s.nodeTemplate.Capacity, s.nodeTemplate.SystemReserved, s.nodeTemplate.KubeReserved),
+			Allocatable: nodeutil.BuildAllocatable(s.nodeTemplate.Capacity, s.nodeTemplate.SystemReserved, s.nodeTemplate.KubeReserved),
 			Conditions:  nodeutil.BuildReadyConditions(time.Now()),
 		},
 	}
 }
 
+const maxUnchangedReconciles = 10
+
 // trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
 //  2. Stabilization period is over and there are still unscheduled pods.
-func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) error {
+func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
-	s.state.status = service.ActivityStatusRunning
-	var (
-		err        error
-		retryAfter time.Duration
-	)
+	s.state.status = planner.ActivityStatusRunning
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			retryAfter, err = s.state.reconcile(ctx, view)
+			err = s.state.reconcile(ctx, view)
 			if err != nil {
-				return err
+				return
 			}
 			if len(s.state.unscheduledPods) == 0 {
 				log.Info("no unscheduled pods left")
-				return nil
+				return
 			}
 		}
-		<-time.After(retryAfter)
+		<-time.After(s.args.Config.TrackPollInterval)
 	}
 }
 
-func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, view minkapi.View) ([]service.NodePodAssignment, error) {
+func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, view minkapi.View) ([]planner.NodePodAssignment, error) {
 	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPodsByNode))
-	nodeNames = slices.DeleteFunc(nodeNames, func(nodeName string) bool {
-		return nodeName == s.state.simNode.Name
-	})
 	nodes, err := view.ListNodes(ctx, nodeNames...)
 	if err != nil {
 		return nil, err
 	}
-	assignments := make([]service.NodePodAssignment, 0, len(nodes))
+	var assignments []planner.NodePodAssignment
 	for _, node := range nodes {
-		nodeResources := getNodeResourceInfo(&node)
+		if node.Name == s.state.simNode.Name {
+			continue
+		}
 		podResources := s.state.scheduledPodsByNode[node.Name]
-		assignments = append(assignments, service.NodePodAssignment{
-			NodeResources: nodeResources,
-			ScheduledPods: podResources,
-		})
+		if len(podResources) > 0 {
+			nodeResources := getNodeResourceInfo(&node)
+			assignments = append(assignments, planner.NodePodAssignment{
+				NodeResources: nodeResources,
+				ScheduledPods: podResources,
+			})
+		}
 	}
 	return assignments, nil
 }
 
 // trackState is regularly populated when simulation is running.
 type trackState struct {
-	err                 error
-	simNode             *corev1.Node
-	unscheduledPods     map[types.NamespacedName]service.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode map[string][]service.PodResourceInfo             // map of node names to PodReosurceInfo
-	status              service.ActivityStatus
-	result              service.SimulationResult
-	pollInterval        time.Duration
+	err                      error
+	simNode                  *corev1.Node
+	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
+	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
+	status                   planner.ActivityStatus
+	result                   planner.SimulationResult
+	latestReconcileEventTime metav1.MicroTime
+	numUnchangedReconciles   int
 }
 
-func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (retryAfter time.Duration, err error) {
+func (t *trackState) reconcile(ctx context.Context, view minkapi.View) error {
 	var (
-		obj runtime.Object
+		eventTime metav1.MicroTime
 	)
 
-	retryAfter = t.pollInterval
+	lastRecordedReconcileEventTime := t.latestReconcileEventTime
+
 	log := logr.FromContextOrDiscard(ctx)
 	for idx, ev := range view.GetEventSink().List() {
-		log.V(4).Info("analyzing event", "index", idx, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+		if ev.Series != nil {
+			eventTime = ev.Series.LastObservedTime
+		} else {
+			eventTime = ev.EventTime
+		}
+		log.V(5).Info("checking event", "index", idx, "id", ev.UID, "eventTime", eventTime, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+		if t.latestReconcileEventTime.Equal(&eventTime) || t.latestReconcileEventTime.After(eventTime.Time) {
+			continue
+		}
+		t.latestReconcileEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
-				retryAfter = 100 * t.pollInterval
+				log.Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 			}
 			continue
 		}
+		log.Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 
 		podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 		log.Info("pod was scheduled", "namespacedName", podNsName, "eventNote", ev.Note)
 		podObjName := cache.NamespacedNameAsObjectName(podNsName)
-		obj, err = view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
+		obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
 		if err != nil {
-			return
+			return err
 		}
 		pod, ok := obj.(*corev1.Pod)
 		if !ok {
 			err = fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
-			return
+			return err
 		}
 		if pod.Spec.NodeName == "" {
 			err = fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
-			return
+			return err
 
 		}
 		podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
-		found := slices.ContainsFunc(podsOnNode, func(podOnNode service.PodResourceInfo) bool {
+		found := slices.ContainsFunc(podsOnNode, func(podOnNode planner.PodResourceInfo) bool {
 			return podOnNode.NamespacedName == podNsName
 		})
 		if found {
@@ -356,12 +368,26 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (retryAft
 		log.V(4).Info("pod added to trackState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", len(t.scheduledPodsByNode))
 		delete(t.unscheduledPods, podNsName)
 	}
-	return
+
+	nodes, _ := view.ListNodes(ctx)
+	log.Info("nodes", "count", len(nodes))
+	pods, _ := view.ListPods(ctx, minkapi.MatchAllCriteria)
+	log.Info("pods", "count", len(pods))
+
+	if lastRecordedReconcileEventTime.Equal(&t.latestReconcileEventTime) {
+		t.numUnchangedReconciles++
+	}
+	if t.numUnchangedReconciles >= maxUnchangedReconciles {
+		log.Info("no new scheduling events observed", "numUnchangedReconciles", t.numUnchangedReconciles, "lastRecordedReconcileEventTime", t.latestReconcileEventTime)
+		return fmt.Errorf("%w: no new scheduling events observed in the last %d reconciles", planner.ErrSimulationStabilizationTimeout, t.numUnchangedReconciles)
+	}
+
+	return nil
 }
 
-func getNodeResourceInfo(node *corev1.Node) service.NodeResourceInfo {
+func getNodeResourceInfo(node *corev1.Node) planner.NodeResourceInfo {
 	instanceType := nodeutil.GetInstanceType(node)
-	return service.NodeResourceInfo{
+	return planner.NodeResourceInfo{
 		Name:         node.Name,
 		InstanceType: instanceType,
 		Capacity:     objutil.ResourceListToInt64Map(node.Status.Capacity),

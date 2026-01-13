@@ -20,7 +20,7 @@ import (
 
 	apiv1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	svcapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
@@ -128,7 +128,7 @@ func init() {
 // for generating scaling scenario(s) for a gardener cluster.
 var gardenerCmd = &cobra.Command{
 	Use:   "gardener <scenario-dir>",
-	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager (needs landscape oidc-kubeconfig to be present on the system)",
+	Short: "generate scaling data into <scenario-dir> for the gardener cluster manager (needs landscape oidc-kubeconfig to be present on the system)",
 	PreRunE: func(_ *cobra.Command, _ []string) (err error) {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -149,7 +149,7 @@ var gardenerCmd = &cobra.Command{
 		} else {
 			scenarioDir = path.Join(args[0], shootCoords.getFullyQualifiedName())
 		}
-		fmt.Printf("Generating scaling scenarios for shoot in %s\n", scenarioDir)
+		fmt.Printf("Generating scaling data for shoot in %s\n", scenarioDir)
 		err = os.MkdirAll(scenarioDir, 0750)
 		if err != nil {
 			return fmt.Errorf("error creating scenario directory: %v", err)
@@ -566,7 +566,6 @@ func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.C
 
 	csc = &apiv1alpha1.ClusterScalingConstraint{}
 	csc.Spec.NodePools = nodePools
-	csc.Spec.AdviceGenerationMode = apiv1alpha1.ScalingAdviceGenerationModeAllAtOnce // FIXME hardcoded for now
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }

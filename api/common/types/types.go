@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
@@ -85,11 +86,17 @@ type ScalingAdviceGenerationMode string
 const (
 	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
 	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
-	ScalingAdviceGenerationModeIncremental = "incremental"
+	ScalingAdviceGenerationModeIncremental ScalingAdviceGenerationMode = "incremental"
 	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
 	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
 	// all pending pods have been scheduled or stabilised.
-	ScalingAdviceGenerationModeAllAtOnce = "all-at-once"
+	ScalingAdviceGenerationModeAllAtOnce ScalingAdviceGenerationMode = "all-at-once"
+)
+
+// SupportedAdviceGenerationModes is a set of all supported scaling advice generation modes.
+var SupportedAdviceGenerationModes = sets.New(
+	ScalingAdviceGenerationModeIncremental,
+	ScalingAdviceGenerationModeAllAtOnce,
 )
 
 // NodeScoringStrategy represents a node scoring strategy variant.

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
@@ -27,20 +27,20 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/profile"
 )
 
-var _ service.SchedulerLauncher = (*schedulerLauncher)(nil)
+var _ planner.SchedulerLauncher = (*schedulerLauncher)(nil)
 
 type schedulerLauncher struct {
 	schedulerConfig *schedulerapiconfig.KubeSchedulerConfiguration
 	semaphore       *semaphore.Weighted
 }
 
-var _ service.SchedulerHandle = (*schedulerHandle)(nil)
+var _ planner.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context
 	scheduler *scheduler.Scheduler
 	cancelFn  context.CancelFunc
-	params    *service.SchedulerLaunchParams
+	params    *planner.SchedulerLaunchParams
 	name      string
 }
 
@@ -48,11 +48,11 @@ type schedulerHandle struct {
 // It reads the scheduler configuration from the provided file path and validates it.
 // Returns an error if the configuration file cannot be read or parsed.
 // Then delegates to NewLauncherFromConfig
-func NewLauncher(schedulerConfigPath string, maxParallel int) (service.SchedulerLauncher, error) {
+func NewLauncher(schedulerConfigPath string, maxParallel int) (planner.SchedulerLauncher, error) {
 	// Initialize the scheduler with the provided configuration
 	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", service.ErrLoadSchedulerConfig, err)
+		return nil, fmt.Errorf("%w: %w", planner.ErrLoadSchedulerConfig, err)
 	}
 	return NewLauncherFromConfig(configBytes, maxParallel)
 }
@@ -62,7 +62,7 @@ func NewLauncher(schedulerConfigPath string, maxParallel int) (service.Scheduler
 // parsed.
 // maxParallel represents the maximum number of parallel embedded scheduler instances that are launchable via SchedulerLauncher.Launch.
 // Once crossed, further calls to SchedulerLauncher.Launch will block until previously obtained SchedulerHandle's are stopped.
-func NewLauncherFromConfig(configBytes []byte, maxParallel int) (service.SchedulerLauncher, error) {
+func NewLauncherFromConfig(configBytes []byte, maxParallel int) (planner.SchedulerLauncher, error) {
 	scheduledConfig, err := parseSchedulerConfig(configBytes)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func NewLauncherFromConfig(configBytes []byte, maxParallel int) (service.Schedul
 func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSchedulerConfiguration, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", service.ErrParseSchedulerConfig, err)
+			err = fmt.Errorf("%w: %w", planner.ErrParseSchedulerConfig, err)
 		}
 	}()
 
@@ -96,7 +96,7 @@ func parseSchedulerConfig(configBytes []byte) (config *schedulerapiconfig.KubeSc
 	return config, nil
 }
 
-func (s *schedulerLauncher) Launch(ctx context.Context, params *service.SchedulerLaunchParams) (service.SchedulerHandle, error) {
+func (s *schedulerLauncher) Launch(ctx context.Context, params *planner.SchedulerLaunchParams) (planner.SchedulerHandle, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if err := s.semaphore.Acquire(ctx, 1); err != nil {
 		return nil, err
@@ -116,11 +116,11 @@ func (s *schedulerLauncher) Launch(ctx context.Context, params *service.Schedule
 	return handle, nil
 }
 
-func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn context.CancelFunc, params *service.SchedulerLaunchParams) (handle *schedulerHandle, err error) {
+func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn context.CancelFunc, params *planner.SchedulerLaunchParams) (handle *schedulerHandle, err error) {
 	defer func() {
 		if err != nil {
 			cancelFn()
-			err = fmt.Errorf("%w: %w", service.ErrLaunchScheduler, err)
+			err = fmt.Errorf("%w: %w", planner.ErrLaunchScheduler, err)
 		}
 	}()
 
@@ -188,6 +188,6 @@ func (s *schedulerHandle) Close() error {
 	return nil
 }
 
-func (s *schedulerHandle) GetParams() service.SchedulerLaunchParams {
+func (s *schedulerHandle) GetParams() planner.SchedulerLaunchParams {
 	return *s.params
 }

@@ -11,9 +11,10 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -23,8 +24,8 @@ func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
 
-// AsNode converts a svcapi.NodeInfo to a corev1.NodeResources object.
-func AsNode(info svcapi.NodeInfo) *corev1.Node {
+// AsNode converts a planner.NodeInfo to a corev1.NodeResources object.
+func AsNode(info planner.NodeInfo) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              info.Name,
@@ -44,11 +45,14 @@ func AsNode(info svcapi.NodeInfo) *corev1.Node {
 	}
 }
 
-// ComputeAllocatable computes the allocatable resources of a node given its capacity, system reserved and kube reserved resources.
-func ComputeAllocatable(capacity, systemReserved, kubeReserved corev1.ResourceList) corev1.ResourceList {
+// BuildAllocatable builds the allocatable resources of a node given its capacity, system reserved and kube reserved resources.
+func BuildAllocatable(capacity, systemReserved, kubeReserved corev1.ResourceList) corev1.ResourceList {
 	allocatable := capacity.DeepCopy()
 	objutil.SubtractResources(allocatable, systemReserved)
 	objutil.SubtractResources(allocatable, kubeReserved)
+	if _, ok := allocatable[corev1.ResourcePods]; !ok {
+		allocatable[corev1.ResourcePods] = resource.MustParse("110")
+	}
 	return allocatable
 }
 
@@ -79,13 +83,13 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	return nodeLabels
 }
 
-// AsNodeInfo converts a corev1.NodeResources into a svcapi.NodeInfo object.
+// AsNodeInfo converts a corev1.NodeResources into a planner.NodeInfo object.
 // It additionally takes in csiDriverVolumeMaximums which is a map
 // of CSI driver names to the maximum number of volumes managed by
 // the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) svcapi.NodeInfo {
-	return svcapi.NodeInfo{
-		ResourceMeta: svcapi.ResourceMeta{
+func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) planner.NodeInfo {
+	return planner.NodeInfo{
+		ResourceMeta: planner.ResourceMeta{
 			UID:               node.UID,
 			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
 			Labels:            node.Labels,

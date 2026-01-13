@@ -14,7 +14,7 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	svcapi "github.com/gardener/scaling-advisor/api/planner"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
@@ -118,7 +118,7 @@ func initSuite(ctx context.Context) error {
 	}
 
 	// Wait for the MinKAPI server to fully initialize and create the config file
-	configPath := "/tmp/minkapi-kube-scheduler-config.yaml"
+	configPath := "/tmp/minkapi-bin-packing-scheduler-config.yaml"
 	maxWait := 30 * time.Second
 	checkInterval := 500 * time.Millisecond
 

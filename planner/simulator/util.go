@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package simulator
 
 import (
@@ -5,7 +9,7 @@ import (
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
@@ -13,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *service.ClusterSnapshot) error {
+func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *planner.ClusterSnapshot) error {
 	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
 	// the base view with the current state of the target cluster.
 	view.Reset()
@@ -42,7 +46,7 @@ func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *service.Clu
 }
 
 // CreateScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func CreateScaleOutPlan(winningNodeScores []service.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+func CreateScaleOutPlan(winningNodeScores []planner.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := GroupByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {
@@ -61,8 +65,8 @@ func CreateScaleOutPlan(winningNodeScores []service.NodeScore, existingNodeCount
 }
 
 // GroupByNodePlacement groups the given nodeScores by their NodePlacement and returns a map of NodePlacement to slice of NodeScores.
-func GroupByNodePlacement(nodeScores []service.NodeScore) map[sacorev1alpha1.NodePlacement][]service.NodeScore {
-	groupByPlacement := make(map[sacorev1alpha1.NodePlacement][]service.NodeScore)
+func GroupByNodePlacement(nodeScores []planner.NodeScore) map[sacorev1alpha1.NodePlacement][]planner.NodeScore {
+	groupByPlacement := make(map[sacorev1alpha1.NodePlacement][]planner.NodeScore)
 	for _, ns := range nodeScores {
 		groupByPlacement[ns.Placement] = append(groupByPlacement[ns.Placement], ns)
 	}

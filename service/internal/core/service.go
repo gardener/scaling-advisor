@@ -14,28 +14,29 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/api/service"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/service/internal/core/planner"
+	"github.com/gardener/scaling-advisor/planner"
+	"github.com/gardener/scaling-advisor/planner/scheduler"
 	"github.com/gardener/scaling-advisor/service/internal/core/util"
-	"github.com/gardener/scaling-advisor/service/internal/scheduler"
 )
 
 var _ service.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
 
 type defaultScalingAdvisor struct {
 	minKAPIServer     minkapi.Server
-	schedulerLauncher service.SchedulerLauncher
-	planner           service.ScalingPlanner
+	schedulerLauncher plannerapi.SchedulerLauncher
+	planner           plannerapi.ScalingPlanner
 	cfg               service.ScalingAdvisorServiceConfig
 }
 
 // NewService initializes and returns a ScalingAdvisorService based on the provided dependencies.
 func NewService(ctx context.Context,
 	config service.ScalingAdvisorServiceConfig,
-	pricingAccess service.InstancePricingAccess,
-	weightsFn service.GetResourceWeightsFunc) (svc service.ScalingAdvisorService, err error) {
+	pricingAccess plannerapi.InstancePricingAccess,
+	weightsFn plannerapi.GetResourceWeightsFunc) (svc service.ScalingAdvisorService, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", service.ErrInitFailed, err)
@@ -60,7 +61,7 @@ func NewService(ctx context.Context,
 	if err != nil {
 		return
 	}
-	p := planner.New(service.ScalingPlannerArgs{
+	p := planner.New(plannerapi.ScalingPlannerArgs{
 		ViewAccess:        minKAPIServer,
 		ResourceWeigher:   weightsFn,
 		PricingAccess:     pricingAccess,
@@ -111,15 +112,15 @@ func (d *defaultScalingAdvisor) Stop(ctx context.Context) (err error) {
 	return
 }
 
-func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request service.ScalingAdviceRequest) <-chan service.ScalingAdviceResult {
+func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request plannerapi.ScalingAdviceRequest) <-chan plannerapi.ScalingAdviceResult {
 	genCtx, cancelFn := wrapGenerationContext(ctx, request)
 	defer cancelFn()
-	adviceResultCh := make(chan service.ScalingAdviceResult, 1)
-	planResultCh := make(chan service.ScalingPlanResult)
+	adviceResultCh := make(chan plannerapi.ScalingAdviceResult, 1)
+	planResultCh := make(chan plannerapi.ScalingPlanResult)
 	go func() {
 		defer close(planResultCh)
 		if len(request.Snapshot.GetUnscheduledPods()) == 0 {
-			sendAdviceError(adviceResultCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", service.ErrNoUnscheduledPods))
+			sendAdviceError(adviceResultCh, request.ScalingAdviceRequestRef, fmt.Errorf("%w: no unscheduled pods found", plannerapi.ErrNoUnscheduledPods))
 			return
 		}
 		d.planner.Plan(genCtx, request, planResultCh)
@@ -132,7 +133,7 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request serv
 				sendAdviceError(adviceResultCh, request.ScalingAdviceRequestRef, planResult.Err)
 				continue
 			}
-			adviceResultCh <- service.ScalingAdviceResult{
+			adviceResultCh <- plannerapi.ScalingAdviceResult{
 				Response: util.CreateScalingAdviceResponse(request, planResult),
 			}
 		}
@@ -143,7 +144,7 @@ func (d *defaultScalingAdvisor) GenerateAdvice(ctx context.Context, request serv
 
 // wrapGenerationContext wraps the given context with a timeout derived from the request's AdviceGenerationTimeout field.
 // TODO instead of hard coding a 5 min default timeout, this should be computed dynamically based on the cluster snapshot and cluster constraints.
-func wrapGenerationContext(ctx context.Context, request service.ScalingAdviceRequest) (context.Context, context.CancelFunc) {
+func wrapGenerationContext(ctx context.Context, request plannerapi.ScalingAdviceRequest) (context.Context, context.CancelFunc) {
 	genTimeout := 5 * time.Minute
 	if request.AdviceGenerationTimeout > 0 {
 		genTimeout = request.AdviceGenerationTimeout
@@ -161,11 +162,11 @@ func setServiceConfigDefaults(cfg *service.ScalingAdvisorServiceConfig) {
 }
 
 // sendAdviceError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.
-func sendAdviceError(resultsCh chan<- service.ScalingAdviceResult, requestRef service.ScalingAdviceRequestRef, err error) {
-	if !errors.Is(err, service.ErrGenScalingPlan) {
-		err = service.AsScalingAdviceError(requestRef.ID, requestRef.CorrelationID, err)
+func sendAdviceError(resultsCh chan<- plannerapi.ScalingAdviceResult, requestRef plannerapi.ScalingAdviceRequestRef, err error) {
+	if !errors.Is(err, plannerapi.ErrGenScalingPlan) {
+		err = plannerapi.AsScalingAdviceError(requestRef.ID, requestRef.CorrelationID, err)
 	}
-	resultsCh <- service.ScalingAdviceResult{
+	resultsCh <- plannerapi.ScalingAdviceResult{
 		Err: err,
 	}
 }

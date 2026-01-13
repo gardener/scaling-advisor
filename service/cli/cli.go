@@ -16,11 +16,12 @@ import (
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
+	"github.com/gardener/scaling-advisor/planner/weights"
 	"github.com/gardener/scaling-advisor/service/internal/core"
-	"github.com/gardener/scaling-advisor/service/internal/core/weights"
 	"github.com/gardener/scaling-advisor/service/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -29,12 +30,12 @@ import (
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
 	InstancePricingPath string
-	// CloudProvider is the cloud provider for which the scaling advisor service is initialized.
+	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider    string
 	ServerConfig     commontypes.ServerConfig
 	ClientConfig     commontypes.QPSBurst
 	WatchConfig      minkapi.WatchConfig
-	SimulationConfig service.SimulatorConfig
+	SimulationConfig planner.SimulatorConfig
 	TraceLogBaseDir  string
 }
 
@@ -53,7 +54,7 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 }
 
 // LaunchApp is a helper function used to parse cli args, construct, and start the ScalingAdvisorService,
-// embed the service inside an App representing the binary process along with an application context and application cancel func.
+// embed the planner inside an App representing the binary process along with an application context and application cancel func.
 //
 // On success, returns an initialized App which holds the ScalingAdvisorService, the App Context (which has been setup for SIGINT and SIGTERM cancellation and holds a logger),
 // and the Cancel func which callers are expected to defer in their main routines.
@@ -113,10 +114,10 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int) {
 		exitCode = commoncli.ExitErrStart
 		return
 	}
-	// Begin the service in a goroutine
+	// Begin the planner in a goroutine
 	go func() {
 		if err = app.Service.Start(app.Ctx); err != nil {
-			log.Error(err, "failed to start service")
+			log.Error(err, "failed to start planner")
 		}
 	}()
 	if err != nil {
@@ -186,8 +187,8 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)
 	flagSet.StringVar(&opts.InstancePricingPath, "instance-info", "", "path to instance info file (contains prices)")
 	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(commontypes.CloudProviderAWS), "cloud provider")
-	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", service.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
-	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", service.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
+	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", planner.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
+	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", planner.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
 	flagSet.StringVar(&opts.TraceLogBaseDir, "trace-log-base-dir", os.TempDir(), "base directory for trace logs")
 	return flagSet, &opts
 }
