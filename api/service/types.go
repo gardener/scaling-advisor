@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// ProgramName is the program name for the scaling advisor sevice.
+	// ProgramName is the program name for the scaling advisor service.
 	ProgramName = "scadsvc"
 )
 
