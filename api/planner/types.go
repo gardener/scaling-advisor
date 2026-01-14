@@ -656,6 +656,8 @@ func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simula
 	return f(name, args)
 }
 
+// GetSimulationViewFunc is a type alias for view provider functions that take a context and view name and return the associated minkapi View.
+// Used to decouple components.
 type GetSimulationViewFunc func(ctx context.Context, name string) (minkapi.View, error)
 
 // SimulationGroup is a group of simulations at the same priority level (ie a partition of simulations). Depending upon
