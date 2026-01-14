@@ -32,16 +32,16 @@ type ScalingAdviceRequest struct {
 	// Constraint represents the constraints using which the scaling advice is generated.
 	Constraint *sacorev1alpha1.ClusterScalingConstraint
 	ScalingAdviceRequestRef
+	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
+	SimulationStrategy commontypes.SimulationStrategy
+	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
+	ScoringStrategy commontypes.NodeScoringStrategy
+	// AdviceGenerationMode defines the mode in which scaling advice is generated.
+	AdviceGenerationMode commontypes.ScalingAdviceGenerationMode
 	// DiagnosticVerbosity indicates the level of  diagnostics produced during scaling advice generation.
 	// By default, its value is 0 which disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
 	DiagnosticVerbosity int
-	// AdviceGenerationMode defines the mode in which scaling advice is generated.
-	AdviceGenerationMode commontypes.ScalingAdviceGenerationMode
-	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
-	SimulationStrategy commontypes.SimulationStrategy
-	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
-	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
 	// AdviceGenerationTimeout is the maximum duration allowed for generating scaling advice.
 	AdviceGenerationTimeout time.Duration
 }
@@ -443,9 +443,8 @@ type ScalingPlannerArgs struct {
 
 // ScalingPlanResult encapsulates the result of a scaling plan generation.
 type ScalingPlanResult struct {
-	// Name is the name of this plan result.
-	// For incremental generation mode, this can be used to disambiguate one plan results from another for the same ScalingAdviceRequest.
-	Name string
+	// Err is any error encountered during plan generation.
+	Err error
 	// Labels is the associated metadata.
 	Labels map[string]string
 	// ScaleOutPlan is the generated scale-out plan.
@@ -454,8 +453,9 @@ type ScalingPlanResult struct {
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan
 	// Diagnostics provides diagnostics information for the scaling plan.
 	Diagnostics *sacorev1alpha1.ScalingAdviceDiagnostic
-	// Err is any error encountered during plan generation.
-	Err error
+	// Name is the name of this plan result.
+	// For incremental generation mode, this can be used to disambiguate one plan results from another for the same ScalingAdviceRequest.
+	Name string
 }
 
 // ScalingPlanner defines the interface for computing scaling plans.
@@ -751,20 +751,20 @@ type ScaleOutPlanConsumeFunc func(plan sacorev1alpha1.ScaleOutPlan) error
 
 // SimulationGroupRunResult represents the result of running all passes for a SimulationGroup.
 type SimulationGroupRunResult struct {
-	// Name is the name of the simulation group.
-	Name string
-	// NumPasses is the number of passes executed in this group before moving to the next group.
-	// A pass is defined as the execution of all simulations in a group.
-	NumPasses int
-	// TotalSimulations is the total number of simulations executed across all groups until now.
-	TotalSimulations int
 	// CreatedAt is the time when this group run result was created.
 	CreatedAt time.Time
 	// NextGroupView is the updated view after executing all passes in this group.
 	// The next group if any should use this view as its base view.
 	NextGroupView minkapi.View
+	// Name is the name of the simulation group.
+	Name string
 	// WinnerNodeScores contains the node scores of the winning nodes.
 	WinnerNodeScores []NodeScore
 	// LeftoverUnscheduledPods contains the namespaced names of pods that could not be scheduled.
 	LeftoverUnscheduledPods []types.NamespacedName
+	// NumPasses is the number of passes executed in this group before moving to the next group.
+	// A pass is defined as the execution of all simulations in a group.
+	NumPasses int
+	// TotalSimulations is the total number of simulations executed across all groups until now.
+	TotalSimulations int
 }
