@@ -335,6 +335,8 @@ func updateObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKi
 }
 
 func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, binding corev1.Binding) (*corev1.Pod, error) {
+	// Make a copy of the pod to avoid modifying the original object in the store.
+	pod = pod.DeepCopy()
 	pod.Spec.NodeName = binding.Target.Name
 	podutil.UpdatePodCondition(&pod.Status, &corev1.PodCondition{
 		Type:   corev1.PodScheduled,

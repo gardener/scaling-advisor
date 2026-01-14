@@ -9,10 +9,11 @@ import (
 	"maps"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

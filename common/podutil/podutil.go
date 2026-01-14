@@ -7,8 +7,9 @@ package podutil
 import (
 	"slices"
 
-	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
+
+	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

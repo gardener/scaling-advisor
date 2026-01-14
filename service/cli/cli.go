@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/gardener/scaling-advisor/service/internal/core"
-	"github.com/gardener/scaling-advisor/service/pricing"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -24,6 +23,7 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/planner/weights"
+	"github.com/gardener/scaling-advisor/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 )

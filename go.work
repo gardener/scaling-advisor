@@ -3,10 +3,11 @@ go 1.25.0
 use (
 	./api
 	./common
-	./samples
 	./minkapi
-	./planner
-	./service
 	./operator
+	./planner
+	./pricing
+	./samples
+	./service
 	./tools
 )

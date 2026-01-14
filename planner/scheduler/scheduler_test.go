@@ -6,6 +6,7 @@ package scheduler
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"testing"
@@ -42,7 +43,18 @@ var log = klog.NewKlogr()
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
 func TestMain(m *testing.M) {
-	err := initSuite(context.Background())
+	// There is a data race between go test and klog. We need to disable go test parallelism.
+	err := flag.Set("test.parallel", "1") // disable go test parallelism
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to set test flags: %v\n", err)
+		os.Exit(commoncli.ExitErrStart)
+	}
+
+	klog.InitFlags(nil)
+	defer klog.Flush()
+
+	// Initialize suite state
+	err = initSuite(context.Background())
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
 		os.Exit(commoncli.ExitErrStart)

@@ -7,7 +7,6 @@ package logutil
 import (
 	"context"
 	"io"
-	logsapiv1 "k8s.io/component-base/logs/api/v1"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
+	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
 
 // VerbosityFromContext retrieves the verbosity level from the given context.

@@ -12,7 +12,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/samples"
+	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -21,7 +21,7 @@ import (
 )
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := samples.GetInstancePricingAccessWithFakeData()
+	access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -153,7 +153,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := samples.GetInstancePricingAccessWithFakeData()
+	access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -283,7 +283,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := samples.GetInstancePricingAccessWithFakeData()
+	access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -420,7 +420,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := samples.GetInstancePricingAccessWithFakeData()
+	access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -552,7 +552,7 @@ func TestGetNodeScorer(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			access, err := samples.GetInstancePricingAccessWithFakeData()
+			access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
 			if err != nil {
 				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}

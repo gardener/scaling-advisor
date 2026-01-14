@@ -9,11 +9,9 @@ import (
 	"fmt"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/service/pricing"
 )
 
 const (
@@ -57,36 +55,4 @@ func LoadClusterSnapshot(categoryName string) (*planner.ClusterSnapshot, error) 
 // LoadBinPackingSchedulerConfig loads the kube-scheduler configuration from the sample data filesystem.
 func LoadBinPackingSchedulerConfig() ([]byte, error) {
 	return dataFS.ReadFile("data/bin-packing-scheduler-config.yaml")
-}
-
-// GetInstancePricingAccessWithFakeData loads and parses fake instance pricing data from sample data for testing purposes.
-// Returns an implementation of planner.InstancePricingAccess or an error if loading or parsing the data fails.
-// Errors are wrapped with planner.ErrLoadInstanceTypeInfo sentinel error.
-func GetInstancePricingAccessWithFakeData() (access planner.InstancePricingAccess, err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("%w: %w", planner.ErrLoadInstanceTypeInfo, err)
-		}
-	}()
-	testData, err := dataFS.ReadFile("data/fake-instance_price_infos.json")
-	if err != nil {
-		return
-	}
-	return pricing.GetInstancePricingFromData(commontypes.CloudProviderAWS, testData)
-}
-
-// GetInstancePricingAccessForTop20AWSInstanceTypes loads pricing data for the top 20 AWS instance types in eu-west-1 region and
-// Returns an implementation of planner.InstancePricingAccess or an error if loading or parsing the data fails.
-// Errors are wrapped with planner.ErrLoadInstanceTypeInfo sentinel error.
-func GetInstancePricingAccessForTop20AWSInstanceTypes() (access planner.InstancePricingAccess, err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("%w: %w", planner.ErrLoadInstanceTypeInfo, err)
-		}
-	}()
-	testData, err := dataFS.ReadFile("data/aws_eu-west-1_top20_instance_pricing.json")
-	if err != nil {
-		return
-	}
-	return pricing.GetInstancePricingFromData(commontypes.CloudProviderAWS, testData)
 }

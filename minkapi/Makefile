@@ -55,7 +55,7 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./cli ./server .
+	@$(REPO_HACK_DIR)/format.sh ./...
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format

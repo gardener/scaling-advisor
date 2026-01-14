@@ -10,19 +10,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
-
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 )
 

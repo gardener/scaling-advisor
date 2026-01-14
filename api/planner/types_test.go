@@ -9,6 +9,7 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -324,7 +325,7 @@ func TestSimGroupKey_String(t *testing.T) {
 				NodePoolPriority:     1,
 				NodeTemplatePriority: 2,
 			},
-			expected: "(1:2)",
+			expected: "1-2",
 		},
 		{
 			name: "zero priorities",
@@ -332,7 +333,7 @@ func TestSimGroupKey_String(t *testing.T) {
 				NodePoolPriority:     0,
 				NodeTemplatePriority: 0,
 			},
-			expected: "(0:0)",
+			expected: "0-0",
 		},
 		{
 			name: "large priorities",
@@ -340,15 +341,15 @@ func TestSimGroupKey_String(t *testing.T) {
 				NodePoolPriority:     100,
 				NodeTemplatePriority: 200,
 			},
-			expected: "(100:200)",
+			expected: "100-200",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.key.String()
-			if result != tt.expected {
-				t.Errorf("expected %s, got %s", tt.expected, result)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.key.String()
+			if result != tc.expected {
+				t.Errorf("expected %s, got %s", tc.expected, result)
 			}
 		})
 	}

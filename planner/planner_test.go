@@ -15,10 +15,11 @@ import (
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/gardener/scaling-advisor/samples"
 )
 
@@ -44,8 +45,8 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 		return
 	}
 
-	req := planner.ScalingAdviceRequest{
-		ScalingAdviceRequestRef: planner.ScalingAdviceRequestRef{
+	req := plannerapi.ScalingAdviceRequest{
+		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
 			ID:            t.Name(),
 			CorrelationID: t.Name(),
 		},
@@ -57,7 +58,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
 	}
 
-	resultCh := make(chan planner.ScalingPlanResult, 1)
+	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
 	defer close(resultCh)
 	p.Plan(runCtx, req, resultCh)
 	planResult := <-resultCh
@@ -95,8 +96,8 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 	}
 }
 
-func createTestScalingPlanner(ctx context.Context) (planner.ScalingPlanner, error) {
-	pricingAccess, err := samples.GetInstancePricingAccessForTop20AWSInstanceTypes()
+func createTestScalingPlanner(ctx context.Context) (plannerapi.ScalingPlanner, error) {
+	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return nil, err
 	}
@@ -117,16 +118,16 @@ func createTestScalingPlanner(ctx context.Context) (planner.ScalingPlanner, erro
 	if err != nil {
 		return nil, err
 	}
-	simulatorConfig := planner.SimulatorConfig{
-		MaxParallelSimulations: planner.DefaultMaxParallelSimulations,
-		TrackPollInterval:      planner.DefaultTrackPollInterval,
+	simulatorConfig := plannerapi.SimulatorConfig{
+		MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+		TrackPollInterval:      plannerapi.DefaultTrackPollInterval,
 	}
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
 	if err != nil {
 		return nil, err
 	}
 
-	scalePlannerArgs := planner.ScalingPlannerArgs{
+	scalePlannerArgs := plannerapi.ScalingPlannerArgs{
 		ViewAccess:        viewAccess,
 		ResourceWeigher:   weightsFn,
 		PricingAccess:     pricingAccess,
