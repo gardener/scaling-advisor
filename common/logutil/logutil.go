@@ -7,6 +7,7 @@ package logutil
 import (
 	"context"
 	"io"
+	logsapiv1 "k8s.io/component-base/logs/api/v1"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,16 +18,16 @@ import (
 )
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
-func VerbosityFromContext(ctx context.Context) int {
+func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 	v := ctx.Value(commonconstants.VerbosityCtxKey)
 	if v == nil {
 		return 0
 	}
-	verbosity, ok := v.(int)
+	verbosity, ok := v.(uint32)
 	if !ok {
 		return 0
 	}
-	return verbosity
+	return logsapiv1.VerbosityLevel(verbosity)
 }
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that

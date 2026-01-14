@@ -129,7 +129,7 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 		loggingConfig := logsapiv1.LoggingConfiguration{
 			Format:         logsapiv1.DefaultLogFormat,
 			FlushFrequency: logsapiv1.TimeOrMetaDuration{Duration: metav1.Duration{Duration: time.Second * 1}},
-			Verbosity:      logsapiv1.VerbosityLevel(verbosity),
+			Verbosity:      verbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
 		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
