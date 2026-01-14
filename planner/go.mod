@@ -7,7 +7,6 @@ require (
 	github.com/gardener/scaling-advisor/common v0.0.0
 	github.com/gardener/scaling-advisor/minkapi v0.0.0
 	github.com/gardener/scaling-advisor/samples v0.0.0
-	github.com/gardener/scaling-advisor/service v0.0.0-20251121101427-16b9a35ee569
 	github.com/go-logr/logr v1.4.3
 	golang.org/x/sync v0.17.0
 	k8s.io/api v0.34.3

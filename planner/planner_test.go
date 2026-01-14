@@ -19,7 +19,6 @@ import (
 	"github.com/gardener/scaling-advisor/planner/scheduler"
 	"github.com/gardener/scaling-advisor/planner/weights"
 	"github.com/gardener/scaling-advisor/samples"
-	pricingtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 )
 
 func TestGenerateBasicScalingAdvice(t *testing.T) {
@@ -96,7 +95,7 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 }
 
 func createTestScalingPlanner(ctx context.Context) (planner.ScalingPlanner, error) {
-	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
+	pricingAccess, err := samples.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return nil, err
 	}

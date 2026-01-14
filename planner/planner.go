@@ -17,9 +17,9 @@ import (
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/planner/scorer"
 	"github.com/gardener/scaling-advisor/planner/simulator/multi"
 	"github.com/gardener/scaling-advisor/planner/util"
-	"github.com/gardener/scaling-advisor/service/scorer"
 	"github.com/go-logr/logr"
 )
 

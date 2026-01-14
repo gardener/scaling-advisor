@@ -6,10 +6,9 @@ package scorer
 
 import (
 	"errors"
+	"github.com/gardener/scaling-advisor/samples"
 	"reflect"
 	"testing"
-
-	prtestutil "github.com/gardener/scaling-advisor/service/pricing/testutil"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
@@ -23,7 +22,7 @@ import (
 )
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
-	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return

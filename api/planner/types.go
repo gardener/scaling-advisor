@@ -90,10 +90,6 @@ type SimulatorConfig struct {
 	TrackPollInterval time.Duration
 }
 
-// ScalingAdviceResponseFn is a callback function which is invoked by the scaling advisor planner when generating scaling advice.
-// The callback maybe invoked zero or more times during the generation of scaling advice with callbackType representing the type of change in the scaling advice.
-type ScalingAdviceResponseFn func(response ScalingAdviceResponse) error
-
 // ScalingAdviceResult represents a single result emitted by the ScalingAdvisorService
 // during the generation of scaling advice.
 //
