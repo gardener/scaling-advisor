@@ -16,8 +16,11 @@ import (
 	"github.com/go-logr/stdr"
 )
 
+// LogContextKey is a type alias for log related context keys
+type LogContextKey string
+
 // TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-const TraceLogPathCtxKey = "traceLogPath"
+const TraceLogPathCtxKey LogContextKey = "traceLogPath"
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) int {

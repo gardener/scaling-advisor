@@ -221,8 +221,11 @@ func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (minkapi
 	return sv, nil
 }
 
+// GetSandboxViewOverDelegate is the minkapi server implementation for minkapi.ViewAccess.GetSandboxViewOverDelegate
+// It delegates to underlying viewAccess.GetSandboxViewOverDelegate and also registers routes for the new sandbox View.
 func (k *InMemoryKAPI) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
-	return nil, nil
+	return k.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegateView)
+	// TODO: also register routes for sandbox view.
 }
 
 func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view minkapi.View) {

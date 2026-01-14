@@ -56,6 +56,7 @@ func (v *viewAccess) GetSandboxView(ctx context.Context, name string) (minkapi.V
 	return v.GetSandboxViewOverDelegate(ctx, name, v.baseView)
 }
 
+// GetSandboxViewOverDelegate is the viewAccess implementation for minkapi.ViewAccess.GetSandboxViewOverDelegate
 func (v *viewAccess) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	v.mu.Lock()
