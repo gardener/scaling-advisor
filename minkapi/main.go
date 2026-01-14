@@ -8,8 +8,9 @@ import (
 	"context"
 	"os"
 
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
+
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
 )
 
 func main() {

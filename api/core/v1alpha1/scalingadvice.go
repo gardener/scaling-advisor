@@ -94,7 +94,7 @@ type NodePlacement struct {
 	NodePoolName string `json:"nodePoolName"`
 	// NodeTemplateName is the name of the node template.
 	NodeTemplateName string `json:"nodeTemplateName"`
-	// InstanceType is the instance type of the NodeResources.
+	// InstanceType is the instance type of the Node
 	InstanceType string `json:"instanceType"`
 	// Region is the region of the instance
 	Region string `json:"region"`

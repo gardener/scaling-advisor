@@ -106,7 +106,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 			Type:               corev1.NodeReady,
 			Status:             corev1.ConditionFalse,
 			Reason:             "NodeNotReady",
-			Message:            "NodeResources is not ready due to some issue",
+			Message:            "Node is not ready due to some issue",
 			LastHeartbeatTime:  metav1.Now(),
 			LastTransitionTime: metav1.Now(),
 		},
@@ -383,7 +383,7 @@ func createBinding(p *corev1.Pod, n *corev1.Node) corev1.Binding {
 			UID:       p.GetUID(),
 		},
 		Target: corev1.ObjectReference{
-			Kind: "NodeResources",
+			Kind: "Node",
 			Name: n.GetName(),
 		},
 	}
@@ -421,7 +421,7 @@ func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error
 	}
 	n, ok := o.(*corev1.Node)
 	if !ok {
-		err = fmt.Errorf("expected NodeResources, got %T", o)
+		err = fmt.Errorf("expected Node, got %T", o)
 		t.Fatalf("from view %q, failed to get node: %v", v.GetName(), err)
 	}
 	return

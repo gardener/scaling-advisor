@@ -258,7 +258,7 @@ func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 	}
 }
 
-// NodeInfo contains the minimum set of information about corev1.NodeResources that will be required by the kube-scheduler.
+// NodeInfo contains the minimum set of information about corev1.Node that will be required by the kube-scheduler.
 type NodeInfo struct {
 	// Capacity is the total resource capacity of the node.
 	Capacity map[corev1.ResourceName]int64 `json:"capacity,omitempty"`
@@ -267,7 +267,7 @@ type NodeInfo struct {
 	// CSIDriverVolumeMaximums is a map of CSI driver names to the maximum number of unique volumes managed by the
 	// CSI driver that can be used on a node.
 	CSIDriverVolumeMaximums map[string]int32 `json:"csiDriverVolumeMaximums,omitempty"`
-	// InstanceType is the instance type for the NodeResources.
+	// InstanceType is the instance type for the Node
 	InstanceType string `json:"instanceType"`
 	ResourceMeta
 	// Taints are the node's taints.
@@ -357,12 +357,12 @@ type NodeScorer interface {
 type NodeScorerArgs struct {
 	// ID that must be given to the NodeScore produced by the NodeScorer
 	ID string
-	// ScaledNodePlacement represents the placement information for the NodeResources.
+	// ScaledNodePlacement represents the placement information for the Node
 	ScaledNodePlacement sacorev1alpha1.NodePlacement
-	// ScaledNodePodAssignment represents the assignment of the scaled NodeResources for the current run.
+	// ScaledNodePodAssignment represents the node-pod assignment of the scaled Node for the current run.
 	ScaledNodePodAssignment *NodePodAssignment
-	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing NodeResources which is part of the ClusterSnapshot
-	// or it is a winning simulated NodeResources from a previous run.
+	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot
+	// or it is a winning simulated Node from a previous run.
 	OtherNodePodAssignments []NodePodAssignment
 	// LeftOverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
 	LeftOverUnscheduledPods []types.NamespacedName
@@ -371,12 +371,12 @@ type NodeScorerArgs struct {
 // NodeScore represents the scoring result for a node in scaling simulations.
 type NodeScore struct {
 	ScaledNodeResource NodeResourceInfo
-	// Placement represents the placement information for the NodeResources.
+	// Placement represents the placement information for the Node.
 	Placement sacorev1alpha1.NodePlacement
 	// Name uniquely identifies this NodeScore
 	Name            string
 	UnscheduledPods []types.NamespacedName
-	// Value is the score value for this NodeResources.
+	// Value is the score value for this Node.
 	Value int
 }
 
@@ -501,7 +501,7 @@ type ScalingPlanner interface {
 			* Iterate over the SimulationGroups based on priority.
 			* Call ScaleOutSimulator.RunGroup which executes the single simulation in the group.
 				* Calls Simulation.Run:
-					* Scales one NodeResources per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
+					* Scales one Node per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
 					* Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
 				* For the simulation, gets the `SimulationResult`.
 					* If there are no leftover unscheduled pods, constructs the ScaleOutPlan and returns the same to the PlanGenerator.
@@ -512,7 +512,7 @@ type ScalingPlanner interface {
 
 	There are 2 kinds of Simulations
  	1. Associated with a 1 NT + 1 NP + 1 AZ. Scales a single node for this combination. Runs a scheduler and gives pod-to-node assignment for the scaled node and existing node(s) and leftover unscheduled pods.
-	2. Associated with multiple NTs + multiple NPs + multiple AZs. Scales one NodeResources per unique combination. Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
+	2. Associated with multiple NTs + multiple NPs + multiple AZs. Scales one Node per unique combination. Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
 
 	There are 2 kinds of Simulators
 	1. Creates a SimulationGroup holding multiple independent simulations of kind 1 above. Executes each simulation concurrently. Computes the node scores for each simulation and selects the winning node score amongst the group.
@@ -560,7 +560,7 @@ type ScaleOutSimulator interface {
 	// Iterate over the SimulationGroups based on priority.
 	// Call ScaleOutSimulator.RunGroup which executes the single simulation in the group.
 	// Calls Simulation.Run:
-	// Scales one NodeResources per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
+	// Scales one Node per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
 	// Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
 	// For the simulation, gets the `SimulationResult`.
 	// If there are no leftover unscheduled pods, constructs the ScaleOutPlan and returns the same to the PlanGenerator.
@@ -618,8 +618,8 @@ type SimulationResult struct {
 	ScaledNodePlacements []sacorev1alpha1.NodePlacement
 	// ScaledNodePodAssignments represents the assignment of Pods to scaled Nodes.
 	ScaledNodePodAssignments []NodePodAssignment
-	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing NodeResources which is part of the ClusterSnapshot
-	// or it is a winning simulated NodeResources from a previous run.
+	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot
+	// or it is a winning simulated Node from a previous run.
 	OtherNodePodAssignments []NodePodAssignment
 	// LeftoverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
 	LeftoverUnscheduledPods []types.NamespacedName

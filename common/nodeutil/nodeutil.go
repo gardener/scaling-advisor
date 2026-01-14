@@ -24,7 +24,7 @@ func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
 
-// AsNode converts a planner.NodeInfo to a corev1.NodeResources object.
+// AsNode converts a planner.NodeInfo to a corev1.Node object.
 func AsNode(info planner.NodeInfo) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -83,7 +83,7 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	return nodeLabels
 }
 
-// AsNodeInfo converts a corev1.NodeResources into a planner.NodeInfo object.
+// AsNodeInfo converts a corev1.Node into a planner.NodeInfo object.
 // It additionally takes in csiDriverVolumeMaximums which is a map
 // of CSI driver names to the maximum number of volumes managed by
 // the driver on the node.

@@ -10,14 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/planner/scheduler"
+	"github.com/gardener/scaling-advisor/planner/weights"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/planner"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	"github.com/gardener/scaling-advisor/planner/scheduler"
-	"github.com/gardener/scaling-advisor/planner/weights"
 	"github.com/gardener/scaling-advisor/samples"
 )
 

@@ -173,7 +173,7 @@ func (l LeastWaste) Compute(args planner.NodeScorerArgs) (nodeScore planner.Node
 }
 
 // Select returns the index of the node score for the node with the lowest price.
-// if multiple node scores have instance types with the same price, an index is picked at random from them
+// If multiple node scores have instance types with the same price, an index is picked at random from them
 func (l LeastWaste) Select(nodeScores []planner.NodeScore) (*planner.NodeScore, error) {
 	if len(nodeScores) == 0 {
 		return nil, planner.ErrNoWinningNodeScore

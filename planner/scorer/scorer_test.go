@@ -6,14 +6,13 @@ package scorer
 
 import (
 	"errors"
-	"github.com/gardener/scaling-advisor/samples"
 	"reflect"
 	"testing"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/samples"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -154,7 +153,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 }
 
 func TestLeastCostScoringStrategy(t *testing.T) {
-	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -284,12 +283,15 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 }
 
 func TestSelectMaxAllocatable(t *testing.T) {
-	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
-	selector, err := GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastCost)
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
 	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)
 	simNodeWithStorage.Allocatable["Storage"] = 10
 	if err != nil {
@@ -394,7 +396,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, testWeightsFunc, access)
+			winningNodeScore, err := scorer.Select(tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -418,12 +420,12 @@ func TestSelectMaxAllocatable(t *testing.T) {
 }
 
 func TestSelectMinPrice(t *testing.T) {
-	access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
-	selector, err := GetNodeScoreSelector(commontypes.NodeScoringStrategyLeastWaste)
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +505,7 @@ func TestSelectMinPrice(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := selector(tc.input, testWeightsFunc, access)
+			winningNodeScore, err := scorer.Select(tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -521,57 +523,6 @@ func TestSelectMinPrice(t *testing.T) {
 			}
 			if errDiff != "" {
 				t.Fatalf("Difference: %s", errDiff)
-			}
-		})
-	}
-}
-
-func TestGetNodeScoreSelector(t *testing.T) {
-	tests := map[string]struct {
-		expectedError        error
-		input                commontypes.NodeScoringStrategy
-		expectedFunctionName string
-	}{
-		"least-cost strategy": {
-			input:                commontypes.NodeScoringStrategyLeastCost,
-			expectedFunctionName: testutil.GetFunctionName(t, SelectMaxAllocatable),
-			expectedError:        nil,
-		},
-		"least-waste strategy": {
-			input:                commontypes.NodeScoringStrategyLeastWaste,
-			expectedFunctionName: testutil.GetFunctionName(t, SelectMinPrice),
-			expectedError:        nil,
-		},
-		"invalid strategy": {
-			input:                "invalid",
-			expectedFunctionName: "",
-			expectedError:        planner.ErrCreateNodeScorer,
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			got, err := GetNodeScoreSelector(tc.input)
-			gotFunctionName := testutil.GetFunctionName(t, got)
-			if tc.expectedError == nil {
-				if err != nil {
-					t.Fatalf("Expected error to be nil but got %v", err)
-				}
-			} else if tc.expectedError != nil {
-				if !errors.Is(err, tc.expectedError) {
-					t.Fatalf("Expected error to wrap %v but got %v", tc.expectedError, err)
-				} else if err == nil {
-					t.Fatalf("Expected error to be %v but got nil", tc.expectedError)
-				}
-			}
-			if tc.expectedFunctionName != "" {
-				if got == nil {
-					t.Fatalf("Expected node score selector to be %s but got nil", gotFunctionName)
-				} else {
-					gotType := reflect.TypeOf(got).String()
-					if gotFunctionName != tc.expectedFunctionName {
-						t.Fatalf("Expected node score selector %s but got %s", tc.expectedFunctionName, gotType)
-					}
-				}
 			}
 		})
 	}
@@ -601,11 +552,11 @@ func TestGetNodeScorer(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			access, err := prtestutil.GetInstancePricingAccessWithFakeData()
+			access, err := samples.GetInstancePricingAccessWithFakeData()
 			if err != nil {
 				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, testWeightsFunc)
+			got, err := GetNodeScorer(tc.input, access, planner.GetResourceWeightsFunc(testWeightsFunc))
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)

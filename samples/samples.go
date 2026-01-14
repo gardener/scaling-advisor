@@ -7,13 +7,13 @@ package samples
 import (
 	"embed"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/service/pricing"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/service/pricing"
 )
 
 const (

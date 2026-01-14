@@ -12,11 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/server"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
-	"github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"

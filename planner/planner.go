@@ -11,15 +11,16 @@ import (
 	"os"
 	"path"
 
+	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/simulator/multi"
+	"github.com/gardener/scaling-advisor/planner/util"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
-	"github.com/gardener/scaling-advisor/planner/scorer"
-	"github.com/gardener/scaling-advisor/planner/simulator/multi"
-	"github.com/gardener/scaling-advisor/planner/util"
 	"github.com/go-logr/logr"
 )
 
