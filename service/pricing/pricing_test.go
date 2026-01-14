@@ -7,11 +7,11 @@ package pricing_test
 import (
 	"testing"
 
-	"github.com/gardener/scaling-advisor/service/pricing/testutil"
+	"github.com/gardener/scaling-advisor/samples"
 )
 
 func TestGetInstancePricing(t *testing.T) {
-	access, err := testutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Error(err)
 		return
@@ -43,7 +43,7 @@ func TestGetPrice(t *testing.T) {
 		{"invalid region but valid instance", "invalid_region", "instance_type_2", true},
 	}
 
-	access, err := testutil.GetInstancePricingAccessWithFakeData()
+	access, err := samples.GetInstancePricingAccessWithFakeData()
 	if err != nil {
 		t.Error(err)
 		return

@@ -12,6 +12,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/gardener/scaling-advisor/service/internal/core"
+	"github.com/gardener/scaling-advisor/service/pricing"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -21,8 +24,6 @@ import (
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/planner/weights"
-	"github.com/gardener/scaling-advisor/service/internal/core"
-	"github.com/gardener/scaling-advisor/service/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 )
@@ -32,11 +33,11 @@ type Opts struct {
 	InstancePricingPath string
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider    string
+	TraceLogBaseDir  string
 	ServerConfig     commontypes.ServerConfig
 	ClientConfig     commontypes.QPSBurst
 	WatchConfig      minkapi.WatchConfig
 	SimulationConfig planner.SimulatorConfig
-	TraceLogBaseDir  string
 }
 
 // ParseProgramFlags parses the command line arguments and returns Opts.

@@ -12,6 +12,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/gardener/scaling-advisor/service/internal/core/util"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -20,7 +22,6 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/planner"
 	"github.com/gardener/scaling-advisor/planner/scheduler"
-	"github.com/gardener/scaling-advisor/service/internal/core/util"
 )
 
 var _ service.ScalingAdvisorService = (*defaultScalingAdvisor)(nil)
