@@ -27,12 +27,12 @@ type multiSimulator struct {
 	viewAccess        minkapi.ViewAccess
 	schedulerLauncher planner.SchedulerLauncher
 	nodeScorer        planner.NodeScorer
-	simulatorConfig   planner.SimulatorConfig
 	// simulationCreator is a factory interface to create Simulations. This allows testing either the ScalingPlanner or MultiSimulator
 	// with mock simulations.
 	simulationCreator    planner.SimulationCreator
-	simulationRunCounter atomic.Uint32
 	request              *planner.ScalingAdviceRequest
+	simulatorConfig      planner.SimulatorConfig
+	simulationRunCounter atomic.Uint32
 }
 
 // NewScaleOutSimulator creates a new planner.ScaleOutSimulator that runs multiple simulations concurrently.

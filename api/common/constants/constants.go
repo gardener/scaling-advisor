@@ -63,7 +63,13 @@ const (
 	DefaultMinKAPIPort = 8091
 )
 
+// ContextKey is the type alias for scaling advisor related context keys
+type ContextKey string
+
 const (
 	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
-	VerbosityCtxKey = "verbosity"
+	VerbosityCtxKey ContextKey = "verbosity"
+
+	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
+	TraceLogPathCtxKey ContextKey = "traceLogPath"
 )

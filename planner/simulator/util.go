@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// SynchronizeBaseView synchronizes the given view with the given cluster snapshot.
 func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *planner.ClusterSnapshot) error {
 	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
 	// the base view with the current state of the target cluster.

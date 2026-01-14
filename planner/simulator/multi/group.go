@@ -22,6 +22,7 @@ type simGroup struct {
 	key         planner.SimGroupKey
 }
 
+// NewGroup creates a new SimulationGroup with the given name and simulation group key.
 func NewGroup(name string, key planner.SimGroupKey) planner.SimulationGroup {
 	return &simGroup{
 		name: name,

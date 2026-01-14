@@ -302,13 +302,13 @@ func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, v
 
 // trackState is regularly populated when simulation is running.
 type trackState struct {
+	latestReconcileEventTime metav1.MicroTime
 	err                      error
 	simNode                  *corev1.Node
 	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
 	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
 	status                   planner.ActivityStatus
 	result                   planner.SimulationResult
-	latestReconcileEventTime metav1.MicroTime
 	numUnchangedReconciles   int
 }
 
@@ -354,7 +354,6 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) error {
 		if pod.Spec.NodeName == "" {
 			err = fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
 			return err
-
 		}
 		podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
 		found := slices.ContainsFunc(podsOnNode, func(podOnNode planner.PodResourceInfo) bool {
