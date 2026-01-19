@@ -13,13 +13,13 @@ import (
 
 // CreateScalingAdviceResponse creates a ScalingAdviceResponse based on the given request and plan result.
 func CreateScalingAdviceResponse(request planner.ScalingAdviceRequest, planResult planner.ScalingPlanResult) *planner.ScalingAdviceResponse {
-	scalingAdvice := sacorev1alpha1.ClusterScalingAdvice{
+	scalingAdvice := sacorev1alpha1.ScalingAdvice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      planResult.Name,
 			Namespace: request.Constraint.Namespace,
 			Labels:    planResult.Labels, // TODO use merge when there are additional labels to add other than from planResult
 		},
-		Spec: sacorev1alpha1.ClusterScalingAdviceSpec{
+		Spec: sacorev1alpha1.ScalingAdviceSpec{
 			ScaleOutPlan: planResult.ScaleOutPlan,
 			ScaleInPlan:  planResult.ScaleInPlan,
 			ConstraintRef: commontypes.ConstraintReference{

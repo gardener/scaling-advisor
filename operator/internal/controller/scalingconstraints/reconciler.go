@@ -31,7 +31,7 @@ func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControlle
 	}
 }
 
-// Reconcile handles reconciliation for ScalingConstraint objects and produces ClusterScalingAdvice
+// Reconcile handles reconciliation for ScalingConstraint objects and produces ScalingAdvice
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.log.WithValues("namespace", req.Namespace, "name", req.Name)
 

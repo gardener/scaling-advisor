@@ -128,7 +128,7 @@ _Appears in:_
 
 
 ### Resource Types
-- [ClusterScalingAdvice](#clusterscalingadvice)
+- [ScalingAdvice](#scalingadvice)
 - [ScalingConstraint](#scalingconstraint)
 - [ScalingFeedback](#scalingfeedback)
 
@@ -150,60 +150,6 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `initialBackoff` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | InitialBackoffDuration defines the lower limit of the backoff duration. |  |  |
 | `maxBackoff` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | MaxBackoffDuration defines the upper limit of the backoff duration. |  |  |
-
-
-#### ClusterScalingAdvice
-
-
-
-ClusterScalingAdvice is the schema to define cluster scaling advice for a cluster.
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
-| `kind` _string_ | `ClusterScalingAdvice` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[ClusterScalingAdviceSpec](#clusterscalingadvicespec)_ | Spec defines the specification of ClusterScalingAdvice. |  |  |
-| `status` _[ClusterScalingAdviceStatus](#clusterscalingadvicestatus)_ | Status defines the status of ClusterScalingAdvice. |  |  |
-
-
-#### ClusterScalingAdviceSpec
-
-
-
-ClusterScalingAdviceSpec defines the desired state of ClusterScalingAdvice.
-
-
-
-_Appears in:_
-- [ClusterScalingAdvice](#clusterscalingadvice)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `scaleOutPlan` _[ScaleOutPlan](#scaleoutplan)_ | ScaleOutPlan is the plan for scaling out across node pools. |  |  |
-| `scaleInPlan` _[ScaleInPlan](#scaleinplan)_ | ScaleInPlan is the plan for scaling in across node pools. |  |  |
-| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
-
-
-#### ClusterScalingAdviceStatus
-
-
-
-ClusterScalingAdviceStatus defines the observed state of ClusterScalingAdvice.
-
-
-
-_Appears in:_
-- [ClusterScalingAdvice](#clusterscalingadvice)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `diagnostic` _[ScalingAdviceDiagnostic](#scalingadvicediagnostic)_ | Diagnostic provides diagnostics information for the scaling advice.<br />This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is<br />set on the corresponding ScalingConstraint resource. |  |  |
-| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions represents additional information |  |  |
 
 
 
@@ -321,7 +267,7 @@ ScaleInPlan is the plan for scaling in a node pool and/or targeted set of nodes.
 
 
 _Appears in:_
-- [ClusterScalingAdviceSpec](#clusterscalingadvicespec)
+- [ScalingAdviceSpec](#scalingadvicespec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -392,12 +338,31 @@ ScaleOutPlan is the plan for scaling out a node pool.
 
 
 _Appears in:_
-- [ClusterScalingAdviceSpec](#clusterscalingadvicespec)
+- [ScalingAdviceSpec](#scalingadvicespec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `unsatisfiedPodNames` _string array_ | UnsatisfiedPodNames is the list of all pods (namespace/name) that could not be satisfied by the scale out plan. |  |  |
 | `Items` _[ScaleOutItem](#scaleoutitem) array_ | Items is the slice of scaling-out advice for a node pool. |  |  |
+
+
+#### ScalingAdvice
+
+
+
+ScalingAdvice is the schema to define cluster scaling advice for a cluster.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
+| `kind` _string_ | `ScalingAdvice` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ScalingAdviceSpec](#scalingadvicespec)_ | Spec defines the specification of ScalingAdvice. |  |  |
+| `status` _[ScalingAdviceStatus](#scalingadvicestatus)_ | Status defines the status of ScalingAdvice. |  |  |
 
 
 #### ScalingAdviceDiagnostic
@@ -409,12 +374,47 @@ ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
 
 
 _Appears in:_
-- [ClusterScalingAdviceStatus](#clusterscalingadvicestatus)
+- [ScalingAdviceStatus](#scalingadvicestatus)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `traceLogName` _string_ | TraceLogName is the name of the trace log. This can be used to fetch the trace log from the scaling advisor core. |  |  |
 | `simRunResults` _[ScalingSimRunResult](#scalingsimrunresult) array_ | SimRunResults is the list of simulation run results for the scaling advice. |  |  |
+
+
+#### ScalingAdviceSpec
+
+
+
+ScalingAdviceSpec defines the desired state of ScalingAdvice.
+
+
+
+_Appears in:_
+- [ScalingAdvice](#scalingadvice)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `scaleOutPlan` _[ScaleOutPlan](#scaleoutplan)_ | ScaleOutPlan is the plan for scaling out across node pools. |  |  |
+| `scaleInPlan` _[ScaleInPlan](#scaleinplan)_ | ScaleInPlan is the plan for scaling in across node pools. |  |  |
+| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
+
+
+#### ScalingAdviceStatus
+
+
+
+ScalingAdviceStatus defines the observed state of ScalingAdvice.
+
+
+
+_Appears in:_
+- [ScalingAdvice](#scalingadvice)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `diagnostic` _[ScalingAdviceDiagnostic](#scalingadvicediagnostic)_ | Diagnostic provides diagnostics information for the scaling advice.<br />This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is<br />set on the corresponding ScalingConstraint resource. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions represents additional information |  |  |
 
 
 #### ScalingConstraint

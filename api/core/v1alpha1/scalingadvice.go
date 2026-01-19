@@ -13,31 +13,31 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={csa}
+// +kubebuilder:resource:shortName={sa}
 
-// ClusterScalingAdvice is the schema to define cluster scaling advice for a cluster.
-type ClusterScalingAdvice struct {
+// ScalingAdvice is the schema to define cluster scaling advice for a cluster.
+type ScalingAdvice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the specification of ClusterScalingAdvice.
-	Spec ClusterScalingAdviceSpec `json:"spec"`
-	// Status defines the status of ClusterScalingAdvice.
-	Status ClusterScalingAdviceStatus `json:"status,omitempty"`
+	// Spec defines the specification of ScalingAdvice.
+	Spec ScalingAdviceSpec `json:"spec"`
+	// Status defines the status of ScalingAdvice.
+	Status ScalingAdviceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterScalingAdviceList is a list of ClusterScalingAdvice.
-type ClusterScalingAdviceList struct {
+// ScalingAdviceList is a list of ScalingAdvice.
+type ScalingAdviceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of ClusterScalingAdvice.
-	Items []ClusterScalingAdvice `json:"items"`
+	// Items is a slice of ScalingAdvice.
+	Items []ScalingAdvice `json:"items"`
 }
 
-// ClusterScalingAdviceSpec defines the desired state of ClusterScalingAdvice.
-type ClusterScalingAdviceSpec struct {
+// ScalingAdviceSpec defines the desired state of ScalingAdvice.
+type ScalingAdviceSpec struct {
 	// ScaleOutPlan is the plan for scaling out across node pools.
 	// +optional
 	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
@@ -47,8 +47,8 @@ type ClusterScalingAdviceSpec struct {
 	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 }
 
-// ClusterScalingAdviceStatus defines the observed state of ClusterScalingAdvice.
-type ClusterScalingAdviceStatus struct {
+// ScalingAdviceStatus defines the observed state of ScalingAdvice.
+type ScalingAdviceStatus struct {
 	// Diagnostic provides diagnostics information for the scaling advice.
 	// This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
 	// set on the corresponding ScalingConstraint resource.

@@ -1,0 +1,285 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: scalingadvices.sa.gardener.cloud
+spec:
+  group: sa.gardener.cloud
+  names:
+    kind: ScalingAdvice
+    listKind: ScalingAdviceList
+    plural: scalingadvices
+    shortNames:
+    - sa
+    singular: scalingadvice
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ScalingAdvice is the schema to define cluster scaling advice
+          for a cluster.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of ScalingAdvice.
+            properties:
+              constraintRef:
+                description: ConstraintRef is a reference to the ScalingConstraint
+                  that this advice is based on.
+                properties:
+                  name:
+                    description: Name is the name of the ClusterScalingConstraint.
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the ClusterScalingConstraint.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              scaleInPlan:
+                description: ScaleInPlan is the plan for scaling in across node pools.
+                properties:
+                  items:
+                    description: Items is the slice of scaling-in advice for a node
+                      pool.
+                    items:
+                      description: ScaleInItem is the unit of scaling-in advice for
+                        a specific node.
+                      properties:
+                        availabilityZone:
+                          description: AvailabilityZone is the availability zone of
+                            the node pool.
+                          type: string
+                        instanceType:
+                          description: InstanceType is the instance type of the Node
+                          type: string
+                        nodeName:
+                          description: NodeName is the name of the node to be scaled
+                            in.
+                          type: string
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
+                          type: string
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
+                          type: string
+                        region:
+                          description: Region is the region of the instance
+                          type: string
+                      required:
+                      - availabilityZone
+                      - instanceType
+                      - nodeName
+                      - nodePoolName
+                      - nodeTemplateName
+                      - region
+                      type: object
+                    type: array
+                required:
+                - items
+                type: object
+              scaleOutPlan:
+                description: ScaleOutPlan is the plan for scaling out across node
+                  pools.
+                properties:
+                  Items:
+                    description: Items is the slice of scaling-out advice for a node
+                      pool.
+                    items:
+                      description: ScaleOutItem is the unit of scaling advice for
+                        a node pool.
+                      properties:
+                        availabilityZone:
+                          description: AvailabilityZone is the availability zone of
+                            the node pool.
+                          type: string
+                        currentReplicas:
+                          description: CurrentReplicas is the current number of replicas
+                            for the NodePlacement.
+                          format: int32
+                          type: integer
+                        delta:
+                          description: Delta is the delta change in the number of
+                            nodes for the NodePlacement.
+                          format: int32
+                          type: integer
+                        instanceType:
+                          description: InstanceType is the instance type of the Node
+                          type: string
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
+                          type: string
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
+                          type: string
+                        region:
+                          description: Region is the region of the instance
+                          type: string
+                      required:
+                      - availabilityZone
+                      - currentReplicas
+                      - delta
+                      - instanceType
+                      - nodePoolName
+                      - nodeTemplateName
+                      - region
+                      type: object
+                    type: array
+                  unsatisfiedPodNames:
+                    description: UnsatisfiedPodNames is the list of all pods (namespace/name)
+                      that could not be satisfied by the scale out plan.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - Items
+                - unsatisfiedPodNames
+                type: object
+            required:
+            - constraintRef
+            - scaleInPlan
+            type: object
+          status:
+            description: Status defines the status of ScalingAdvice.
+            properties:
+              conditions:
+                description: Conditions represents additional information
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              diagnostic:
+                description: |-
+                  Diagnostic provides diagnostics information for the scaling advice.
+                  This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
+                  set on the corresponding ScalingConstraint resource.
+                properties:
+                  simRunResults:
+                    description: SimRunResults is the list of simulation run results
+                      for the scaling advice.
+                    items:
+                      description: ScalingSimRunResult is the result of a simulation
+                        run in the scaling advisor.
+                      properties:
+                        availabilityZone:
+                          description: AvailabilityZone is the availability zone of
+                            the node pool.
+                          type: string
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
+                          type: string
+                        nodeScore:
+                          description: NodeScore is the score of the node in the simulation
+                            run.
+                          format: int64
+                          type: integer
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
+                          type: string
+                        numUnscheduledPods:
+                          description: NumUnscheduledPods is the number of pods that
+                            could not be scheduled in this simulation run.
+                          format: int32
+                          type: integer
+                        scheduledPodNames:
+                          description: ScheduledPodNames is the list of pod names
+                            that were scheduled in this simulation run.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - availabilityZone
+                      - nodePoolName
+                      - nodeScore
+                      - nodeTemplateName
+                      - numUnscheduledPods
+                      - scheduledPodNames
+                      type: object
+                    type: array
+                  traceLogName:
+                    description: TraceLogName is the name of the trace log. This can
+                      be used to fetch the trace log from the scaling advisor core.
+                    type: string
+                required:
+                - simRunResults
+                - traceLogName
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
