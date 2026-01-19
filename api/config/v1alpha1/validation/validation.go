@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// ValidateScalingAdvisorConfiguration validates the ScalingAdvisorConfiguration.
-func ValidateScalingAdvisorConfiguration(config *configv1apha1.ScalingAdvisorConfiguration) field.ErrorList {
+// ValidateScalingAdvisorConfiguration validates the OperatorConfig.
+func ValidateScalingAdvisorConfiguration(config *configv1apha1.OperatorConfig) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, validateClientConnectionConfiguration(config.ClientConnection, field.NewPath("clientConnection"))...)
 	allErrs = append(allErrs, validateLeaderElectionConfiguration(config.LeaderElection, field.NewPath("leaderElection"))...)
@@ -21,7 +21,7 @@ func ValidateScalingAdvisorConfiguration(config *configv1apha1.ScalingAdvisorCon
 }
 
 // validateClientConnectionConfiguration validates the client connection configuration.
-func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfiguration, fldPath *field.Path) field.ErrorList {
+func validateClientConnectionConfiguration(config configv1apha1.ClientConnectionConfig, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
 	if config.Burst < 0 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("burst"), config.Burst, "burst must be non-negative"))
@@ -30,7 +30,7 @@ func validateClientConnectionConfiguration(config configv1apha1.ClientConnection
 }
 
 // validateLeaderElectionConfiguration validates the leader election configuration.
-func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfiguration, fldPath *field.Path) field.ErrorList {
+func validateLeaderElectionConfiguration(config configv1apha1.LeaderElectionConfig, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if !config.Enabled {
 		return allErrs

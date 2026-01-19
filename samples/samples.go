@@ -23,8 +23,8 @@ const (
 var dataFS embed.FS
 
 // LoadClusterConstraints loads cluster constraints from the sample data filesystem.
-func LoadClusterConstraints(categoryName string) (*sacorev1alpha1.ClusterScalingConstraint, error) {
-	var clusterConstraints sacorev1alpha1.ClusterScalingConstraint
+func LoadClusterConstraints(categoryName string) (*sacorev1alpha1.ScalingConstraint, error) {
+	var clusterConstraints sacorev1alpha1.ScalingConstraint
 	clusterConstraintsPath := fmt.Sprintf("data/%s-cluster-constraints.json", categoryName)
 	switch categoryName {
 	case CategoryBasic:

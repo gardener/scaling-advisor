@@ -124,8 +124,8 @@ func initSuite(ctx context.Context) error {
 	var exitCode int
 	ctx = logr.NewContext(ctx, log)
 	ctx = context.WithValue(ctx, commonconstants.VerbosityCtxKey, 1)
-	app, exitCode := cli.LaunchApp(ctx)
-	if exitCode != commoncli.ExitSuccess {
+	app, exitCode, err := cli.LaunchApp(ctx)
+	if err != nil {
 		os.Exit(exitCode)
 	}
 

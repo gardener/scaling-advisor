@@ -557,14 +557,14 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	return worker.Object, nil
 }
 
-func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ClusterScalingConstraint, err error) {
+func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ScalingConstraint, err error) {
 	nodePools, err := createNodePools(extensionWorker)
 	if err != nil {
 		err = fmt.Errorf("error creating node pools: %v", err)
 		return
 	}
 
-	csc = &apiv1alpha1.ClusterScalingConstraint{}
+	csc = &apiv1alpha1.ScalingConstraint{}
 	csc.Spec.NodePools = nodePools
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return

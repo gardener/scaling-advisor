@@ -7,37 +7,36 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={csc}
+// +kubebuilder:resource:shortName={sc}
 
-// ClusterScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
-type ClusterScalingConstraint struct {
+// ScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
+type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the specification of the ClusterScalingConstraint.
-	Spec ClusterScalingConstraintSpec `json:"spec"`
-	// Status defines the status of the ClusterScalingConstraint.
-	Status ClusterScalingConstraintStatus `json:"status,omitempty"`
+	// Spec defines the specification of the ScalingConstraint.
+	Spec ScalingConstraintSpec `json:"spec"`
+	// Status defines the status of the ScalingConstraint.
+	Status ScalingConstraintStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterScalingConstraintList is a list of ClusterScalingConstraint.
-type ClusterScalingConstraintList struct {
+// ScalingConstraintList is a list of ScalingConstraint.
+type ScalingConstraintList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of ClusterScalingConstraint's.
-	Items []ClusterScalingConstraint `json:"items"`
+	// Items is a slice of ScalingConstraint's.
+	Items []ScalingConstraint `json:"items"`
 }
 
-// ClusterScalingConstraintSpec defines the specification of the ClusterScalingConstraint.
-type ClusterScalingConstraintSpec struct {
+// ScalingConstraintSpec defines the specification of the ScalingConstraint.
+type ScalingConstraintSpec struct {
 	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
 	// +optional
 	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
@@ -51,9 +50,9 @@ type ClusterScalingConstraintSpec struct {
 	NodePools []NodePool `json:"nodePools"`
 }
 
-// ClusterScalingConstraintStatus defines the observed state of ClusterScalingConstraint.
-type ClusterScalingConstraintStatus struct {
-	// Conditions contains the conditions for the ClusterScalingConstraint.
+// ScalingConstraintStatus defines the observed state of ScalingConstraint.
+type ScalingConstraintStatus struct {
+	// Conditions contains the conditions for the ScalingConstraint.
 	Conditions []metav1.Condition `json:"conditions"`
 }
 

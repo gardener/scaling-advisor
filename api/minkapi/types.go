@@ -223,15 +223,15 @@ type Server interface {
 	ViewAccess
 }
 
-// App represents an application process that wraps a minkapi Server, an application context and application cancel func.
-// Main entry-point functions that embed minkapi are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+// App represents a MinKAPI application process that wraps a minkapi Server, an application context and application cancel func.
+// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp and shutdown applications via minkapi cli.ShutdownApp
 type App struct {
-	// Server is the MinKAPI server instance.
-	Server Server
 	// Ctx is the application context.
 	Ctx context.Context
 	// Cancel is the context cancellation function.
 	Cancel context.CancelFunc
+	// Server is the MinKAPI server instance.
+	Server Server
 }
 
 // MatchCriteria defines criteria for matching Kubernetes objects.

@@ -10,104 +10,117 @@
 
 
 
-#### ClientConnectionConfiguration
+#### ClientConnectionConfig
 
 
 
-ClientConnectionConfiguration contains details for constructing a client.
+ClientConnectionConfig contains details for constructing a client.
 
 
 
 _Appears in:_
-- [ScalingAdvisorConfiguration](#scalingadvisorconfiguration)
+- [OperatorConfig](#operatorconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `qps` _float_ | QPS controls the number of queries per second allowed for this connection. |  |  |
-| `burst` _integer_ | Burst allows extra queries to accumulate when a client is exceeding its rate. |  |  |
+| `kubeConfigPath` _string_ | KubeConfigPath is the path to kube-config. |  |  |
 | `contentType` _string_ | ContentType is the content type used when sending data to the server from this client. |  |  |
 | `acceptContentTypes` _string_ | AcceptContentTypes defines the Accept header sent by clients when connecting to the server,<br />overriding the default value of 'application/json'. This field will control all connections<br />to the server used by a particular client. |  |  |
+| `burst` _integer_ | Burst allows extra queries to accumulate when a client is exceeding its rate. |  |  |
+| `qps` _float_ | QPS controls the number of queries per second allowed for this connection. |  |  |
 
 
-#### ControllersConfiguration
-
-
-
-ControllersConfiguration defines the configuration for controllers that are run as part of the scaling-advisor.
-
-
-
-_Appears in:_
-- [ScalingAdvisorConfiguration](#scalingadvisorconfiguration)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `scalingConstraints` _[ScalingConstraintsControllerConfiguration](#scalingconstraintscontrollerconfiguration)_ | ScalingConstraints is the configuration for then controller that reconciles ScalingConstraints. |  |  |
-
-
-#### LeaderElectionConfiguration
+#### ControllersConfig
 
 
 
-LeaderElectionConfiguration defines the configuration for the leader election.
+ControllersConfig defines the configuration for controllers that are run as part of the scaling-advisor.
 
 
 
 _Appears in:_
-- [ScalingAdvisorConfiguration](#scalingadvisorconfiguration)
+- [OperatorConfig](#operatorconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `enabled` _boolean_ | Enabled specifies whether leader election is enabled. Set this<br />to true when running replicated instances of the operator for high availability. |  |  |
-| `leaseDuration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | LeaseDuration is the duration that non-leader candidates will wait<br />after observing a leadership renewal until attempting to acquire<br />leadership of the occupied but un-renewed leader slot. This is effectively the<br />maximum duration that a leader can be stopped before it is replaced<br />by another candidate. This is only applicable if leader election is<br />enabled. |  |  |
-| `renewDeadline` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | RenewDeadline is the interval between attempts by the acting leader to<br />renew its leadership before it stops leading. This must be less than or<br />equal to the lease duration.<br />This is only applicable if leader election is enabled. |  |  |
-| `retryPeriod` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | RetryPeriod is the duration leader elector clients should wait<br />between attempting acquisition and renewal of leadership.<br />This is only applicable if leader election is enabled. |  |  |
+| `scalingConstraints` _[ScalingConstraintsControllerConfig](#scalingconstraintscontrollerconfig)_ | ScalingConstraints is the configuration for then controller that reconciles ScalingConstraints. |  |  |
+
+
+#### LeaderElectionConfig
+
+
+
+LeaderElectionConfig defines the configuration for the leader election.
+
+
+
+_Appears in:_
+- [OperatorConfig](#operatorconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
 | `resourceLock` _string_ | ResourceLock determines which resource lock to use for leader election.<br />This is only applicable if leader election is enabled. |  |  |
 | `resourceName` _string_ | ResourceName determines the name of the resource that leader election<br />will use for holding the leader lock.<br />This is only applicable if leader election is enabled. |  |  |
 | `resourceNamespace` _string_ | ResourceNamespace determines the namespace in which the leader<br />election resource will be created.<br />This is only applicable if leader election is enabled. |  |  |
+| `leaseDuration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | LeaseDuration is the duration that non-leader candidates will wait<br />after observing a leadership renewal until attempting to acquire<br />leadership of the occupied but un-renewed leader slot. This is effectively the<br />maximum duration that a leader can be stopped before it is replaced<br />by another candidate. This is only applicable if leader election is<br />enabled. |  |  |
+| `renewDeadline` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | RenewDeadline is the interval between attempts by the acting leader to<br />renew its leadership before it stops leading. This must be less than or<br />equal to the lease duration.<br />This is only applicable if leader election is enabled. |  |  |
+| `retryPeriod` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | RetryPeriod is the duration leader elector clients should wait<br />between attempting acquisition and renewal of leadership.<br />This is only applicable if leader election is enabled. |  |  |
+| `enabled` _boolean_ | Enabled specifies whether leader election is enabled. Set this<br />to true when running replicated instances of the operator for high availability. |  |  |
 
 
 
 
-#### ScalingAdvisorServerConfiguration
+#### ScalingAdviceGenerationConfig
 
 
 
-ScalingAdvisorServerConfiguration is the configuration for Scaling Advisor server.
+ScalingAdviceGenerationConfig contains configuration for scaling advice generation.
 
 
 
 _Appears in:_
-- [ScalingAdvisorConfiguration](#scalingadvisorconfiguration)
+- [OperatorConfig](#operatorconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `host` _string_ | Host is the IP address on which to listen for the specified port. |  |  |
-| `port` _integer_ | Port is the port on which to serve requests. |  |  |
-| `kubeConfigPath` _string_ | KubeConfigPath is the path to master kube-config. |  |  |
-| `profilingEnabled` _boolean_ | ProfilingEnabled indicates whether this service should register the standard pprof HTTP handlers: /debug/pprof/* |  |  |
-| `gracefulShutdownTimeout` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | GracefulShutdownTimeout is the time given to the service to gracefully shutdown. |  |  |
-| `healthProbes` _[HostPort](#hostport)_ | HealthProbes is the host and port for serving the healthz and readyz endpoints. |  |  |
-| `metrics` _[HostPort](#hostport)_ | Metrics is the host and port for serving the metrics endpoint. |  |  |
-| `profiling` _[HostPort](#hostport)_ | Profiling is the host and port for serving the profiling endpoints. |  |  |
+| `mode` _[ScalingAdviceGenerationMode](#scalingadvicegenerationmode)_ | Mode defines the mode in which scaling advice is generated. |  |  |
+| `simulationStrategy` _[SimulationStrategy](#simulationstrategy)_ | SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice. |  |  |
+| `scoringStrategy` _[NodeScoringStrategy](#nodescoringstrategy)_ | ScoringStrategy defines the node scoring strategy to use for scaling decisions. |  |  |
 
 
-#### ScalingConstraintsControllerConfiguration
+#### ScalingAdvisorServerConfig
 
 
 
-ScalingConstraintsControllerConfiguration is the configuration for then controller that reconciles ScalingConstraints.
+ScalingAdvisorServerConfig is the configuration for Scaling Advisor server.
 
 
 
 _Appears in:_
-- [ControllersConfiguration](#controllersconfiguration)
+- [OperatorConfig](#operatorconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `healthProbeBindAddress` _string_ | HealthProbesBindAddress is the host and port for serving health probes. |  |  |
+| `metricsBindAddress` _string_ | Metrics is the host and port for serving metrics. |  |  |
+| `profilingBindAddress` _string_ | ProfilingBindAddress is the host and port for serving profiling data. |  |  |
+| `profilingEnabled` _boolean_ | ProfilingEnable indicates whether profiling is enabled. |  |  |
+
+
+#### ScalingConstraintsControllerConfig
+
+
+
+ScalingConstraintsControllerConfig is the configuration for then controller that reconciles ScalingConstraints.
+
+
+
+_Appears in:_
+- [ControllersConfig](#controllersconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `concurrentSyncs` _integer_ | ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller. |  |  |
-| `scoringStrategy` _[NodeScoringStrategy](#nodescoringstrategy)_ | ScoringStrategy defines the node scoring strategy to use for scaling decisions. |  |  |
-| `cloudProvider` _[CloudProvider](#cloudprovider)_ | CloudProvider specifies the cloud provider for which the scaling advisor is configured. |  |  |
 
 
 
@@ -116,8 +129,8 @@ _Appears in:_
 
 ### Resource Types
 - [ClusterScalingAdvice](#clusterscalingadvice)
-- [ClusterScalingConstraint](#clusterscalingconstraint)
-- [ClusterScalingFeedback](#clusterscalingfeedback)
+- [ScalingConstraint](#scalingconstraint)
+- [ScalingFeedback](#scalingfeedback)
 
 
 
@@ -130,8 +143,8 @@ BackoffPolicy defines the backoff policy to be used when backing off from sugges
 
 
 _Appears in:_
-- [ClusterScalingConstraintSpec](#clusterscalingconstraintspec)
 - [NodePool](#nodepool)
+- [ScalingConstraintSpec](#scalingconstraintspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -171,9 +184,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on. |  |  |
 | `scaleOutPlan` _[ScaleOutPlan](#scaleoutplan)_ | ScaleOutPlan is the plan for scaling out across node pools. |  |  |
 | `scaleInPlan` _[ScaleInPlan](#scaleinplan)_ | ScaleInPlan is the plan for scaling in across node pools. |  |  |
+| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
 
 
 #### ClusterScalingAdviceStatus
@@ -189,100 +202,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `diagnostic` _[ScalingAdviceDiagnostic](#scalingadvicediagnostic)_ | Diagnostic provides diagnostics information for the scaling advice.<br />This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is<br />set on the corresponding ClusterScalingConstraint resource. |  |  |
+| `diagnostic` _[ScalingAdviceDiagnostic](#scalingadvicediagnostic)_ | Diagnostic provides diagnostics information for the scaling advice.<br />This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is<br />set on the corresponding ScalingConstraint resource. |  |  |
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions represents additional information |  |  |
-
-
-#### ClusterScalingConstraint
-
-
-
-ClusterScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
-| `kind` _string_ | `ClusterScalingConstraint` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[ClusterScalingConstraintSpec](#clusterscalingconstraintspec)_ | Spec defines the specification of the ClusterScalingConstraint. |  |  |
-| `status` _[ClusterScalingConstraintStatus](#clusterscalingconstraintstatus)_ | Status defines the status of the ClusterScalingConstraint. |  |  |
-
-
-#### ClusterScalingConstraintSpec
-
-
-
-ClusterScalingConstraintSpec defines the specification of the ClusterScalingConstraint.
-
-
-
-_Appears in:_
-- [ClusterScalingConstraint](#clusterscalingconstraint)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `consumerID` _string_ | ConsumerID is the ID of the consumer who creates the scaling constraint and is the target for cluster scaling advises.<br />It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created. |  |  |
-| `adviceGenerationMode` _[ScalingAdviceGenerationMode](#scalingadvicegenerationmode)_ | AdviceGenerationMode defines the mode in which scaling advice is generated. |  |  |
-| `nodePools` _[NodePool](#nodepool) array_ | NodePools is the list of node pools to choose from when creating scaling advice. |  |  |
-| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level. |  |  |
-| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool. |  |  |
-
-
-#### ClusterScalingConstraintStatus
-
-
-
-ClusterScalingConstraintStatus defines the observed state of ClusterScalingConstraint.
-
-
-
-_Appears in:_
-- [ClusterScalingConstraint](#clusterscalingconstraint)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions contains the conditions for the ClusterScalingConstraint. |  |  |
-
-
-#### ClusterScalingFeedback
-
-
-
-ClusterScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
-Scaling advisor can refine its future scaling advice based on this feedback.
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
-| `kind` _string_ | `ClusterScalingFeedback` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[ClusterScalingFeedbackSpec](#clusterscalingfeedbackspec)_ | Spec defines the specification of ClusterScalingFeedback. |  |  |
-
-
-#### ClusterScalingFeedbackSpec
-
-
-
-ClusterScalingFeedbackSpec defines the specification of the ClusterScalingFeedback.
-
-
-
-_Appears in:_
-- [ClusterScalingFeedback](#clusterscalingfeedback)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on. |  |  |
-| `scaleOutErrorInfos` _[ScaleOutErrorInfo](#scaleouterrorinfo) array_ | ScaleOutErrorInfos is the list of scale-out errors for the scaling advice. |  |  |
-| `scaleInErrorInfo` _[ScaleInErrorInfo](#scaleinerrorinfo)_ | ScaleInErrorInfo is the scale-in error information for the scaling advice. |  |  |
 
 
 
@@ -303,7 +224,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
 | `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
-| `instanceType` _string_ | InstanceType is the instance type of the Node. |  |  |
+| `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
 
@@ -317,20 +238,20 @@ NodePool defines a node pool configuration for a cluster.
 
 
 _Appears in:_
-- [ClusterScalingConstraintSpec](#clusterscalingconstraintspec)
+- [ScalingConstraintSpec](#scalingconstraintspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | Name is the name of the node pool. It must be unique within the cluster. |  |  |
-| `region` _string_ | Region is the name of the region. |  |  |
-| `priority` _integer_ | Priority is the priority of the node pool. |  |  |
 | `labels` _object (keys:string, values:string)_ | Labels is a map of key/value pairs for labels applied to all the nodes in this node pool. |  |  |
 | `annotations` _object (keys:string, values:string)_ | Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool. |  |  |
+| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the scale in policy for this node pool. |  |  |
+| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool. |  |  |
+| `name` _string_ | Name is the name of the node pool. It must be unique within the cluster. |  |  |
+| `region` _string_ | Region is the name of the region. |  |  |
 | `taints` _[Taint](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#taint-v1-core) array_ | Taints is a list of taints applied to all the nodes in this node pool. |  |  |
 | `availabilityZones` _string array_ | AvailabilityZones is a list of availability zones for the node pool. |  |  |
 | `nodeTemplates` _[NodeTemplate](#nodetemplate) array_ | NodeTemplates is a slice of NodeTemplate. |  |  |
-| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the scale in policy for this node pool. |  |  |
-| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool. |  |  |
+| `priority` _integer_ | Priority is the priority of the node pool. |  |  |
 
 
 #### NodeTemplate
@@ -363,7 +284,7 @@ ScaleInErrorInfo is the information about nodes that could not be deleted for sc
 
 
 _Appears in:_
-- [ClusterScalingFeedbackSpec](#clusterscalingfeedbackspec)
+- [ScalingFeedbackSpec](#scalingfeedbackspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -385,7 +306,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
 | `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
-| `instanceType` _string_ | InstanceType is the instance type of the Node. |  |  |
+| `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
 | `nodeName` _string_ | NodeName is the name of the node to be scaled in. |  |  |
@@ -416,8 +337,8 @@ ScaleInPolicy defines the scale in policy to be used when scaling in a node pool
 
 
 _Appears in:_
-- [ClusterScalingConstraintSpec](#clusterscalingconstraintspec)
 - [NodePool](#nodepool)
+- [ScalingConstraintSpec](#scalingconstraintspec)
 
 
 
@@ -430,14 +351,14 @@ ScaleOutErrorInfo is the backoff information for each instance type + zone.
 
 
 _Appears in:_
-- [ClusterScalingFeedbackSpec](#clusterscalingfeedbackspec)
+- [ScalingFeedbackSpec](#scalingfeedbackspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
 | `instanceType` _string_ | InstanceType is the instance type of the node pool. |  |  |
-| `failCount` _integer_ | FailCount is the number of nodes that have failed creation. |  |  |
 | `errorType` _[ScalingErrorType](#scalingerrortype)_ | ErrorType is the type of error that occurred during scale-out. |  |  |
+| `failCount` _integer_ | FailCount is the number of nodes that have failed creation. |  |  |
 
 
 #### ScaleOutItem
@@ -455,7 +376,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
 | `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
-| `instanceType` _string_ | InstanceType is the instance type of the Node. |  |  |
+| `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
 | `currentReplicas` _integer_ | CurrentReplicas is the current number of replicas for the NodePlacement. |  |  |
@@ -492,21 +413,62 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `traceLogName` _string_ | TraceLogName is the name of the trace log. This can be used to fetch the trace log from the scaling advisor core. |  |  |
 | `simRunResults` _[ScalingSimRunResult](#scalingsimrunresult) array_ | SimRunResults is the list of simulation run results for the scaling advice. |  |  |
-| `traceLogURL` _string_ | TraceLogURL is the URL to the transient trace log for the scaling simulation run. |  |  |
 
 
-#### ScalingAdviceGenerationMode
+#### ScalingConstraint
 
-_Underlying type:_ _string_
 
-ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
+
+ScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
+| `kind` _string_ | `ScalingConstraint` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ScalingConstraintSpec](#scalingconstraintspec)_ | Spec defines the specification of the ScalingConstraint. |  |  |
+| `status` _[ScalingConstraintStatus](#scalingconstraintstatus)_ | Status defines the status of the ScalingConstraint. |  |  |
+
+
+#### ScalingConstraintSpec
+
+
+
+ScalingConstraintSpec defines the specification of the ScalingConstraint.
 
 
 
 _Appears in:_
-- [ClusterScalingConstraintSpec](#clusterscalingconstraintspec)
+- [ScalingConstraint](#scalingconstraint)
 
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level. |  |  |
+| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool. |  |  |
+| `consumerID` _string_ | ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.<br />It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created. |  |  |
+| `nodePools` _[NodePool](#nodepool) array_ | NodePools is the list of node pools to choose from when creating scaling advice. |  |  |
+
+
+#### ScalingConstraintStatus
+
+
+
+ScalingConstraintStatus defines the observed state of ScalingConstraint.
+
+
+
+_Appears in:_
+- [ScalingConstraint](#scalingconstraint)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions contains the conditions for the ScalingConstraint. |  |  |
 
 
 #### ScalingErrorType
@@ -522,8 +484,45 @@ _Appears in:_
 
 | Field | Description |
 | --- | --- |
-| `ResourceExhaustedError` | ErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.<br /> |
-| `CreationTimeoutError` | ErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.<br /> |
+| `ResourceExhaustedError` | ScalingErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.<br /> |
+| `CreationTimeoutError` | ScalingErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.<br /> |
+
+
+#### ScalingFeedback
+
+
+
+ScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
+Scaling advisor can refine its future scaling advice based on this feedback.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
+| `kind` _string_ | `ScalingFeedback` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ScalingFeedbackSpec](#scalingfeedbackspec)_ | Spec defines the specification of ScalingFeedback. |  |  |
+
+
+#### ScalingFeedbackSpec
+
+
+
+ScalingFeedbackSpec defines the specification of the ScalingFeedback.
+
+
+
+_Appears in:_
+- [ScalingFeedback](#scalingfeedback)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
+| `scaleOutErrorInfos` _[ScaleOutErrorInfo](#scaleouterrorinfo) array_ | ScaleOutErrorInfos is the list of scale-out errors for the scaling advice. |  |  |
+| `scaleInErrorInfo` _[ScaleInErrorInfo](#scaleinerrorinfo)_ | ScaleInErrorInfo is the scale-in error information for the scaling advice. |  |  |
 
 
 #### ScalingSimRunResult
@@ -542,8 +541,8 @@ _Appears in:_
 | `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
 | `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
-| `nodeScore` _integer_ | NodeScore is the score of the node in the simulation run. |  |  |
 | `scheduledPodNames` _string array_ | ScheduledPodNames is the list of pod names that were scheduled in this simulation run. |  |  |
+| `nodeScore` _integer_ | NodeScore is the score of the node in the simulation run. |  |  |
 | `numUnscheduledPods` _integer_ | NumUnscheduledPods is the number of pods that could not be scheduled in this simulation run. |  |  |
 
 

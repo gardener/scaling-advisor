@@ -29,9 +29,9 @@ type ScalingAdviceRequest struct {
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
-	Feedback *sacorev1alpha1.ClusterScalingFeedback
+	Feedback *sacorev1alpha1.ScalingFeedback
 	// Constraint represents the constraints using which the scaling advice is generated.
-	Constraint *sacorev1alpha1.ClusterScalingConstraint
+	Constraint *sacorev1alpha1.ScalingConstraint
 	ScalingAdviceRequestRef
 	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
 	SimulationStrategy commontypes.SimulationStrategy
@@ -335,7 +335,7 @@ type PriceKey struct {
 // InstancePricingAccess defines an interface for accessing instance pricing information.
 type InstancePricingAccess interface {
 	// GetInfo gets the InstancePriceInfo (whicn includes price) for the given region and instance type.
-	// TODO: should we also pass OS name here ? if so, we need to need to change ClusterScalingConstraint.
+	// TODO: should we also pass OS name here ? if so, we need to need to change ScalingConstraint.
 	GetInfo(region, instanceTypeName string) (InstancePriceInfo, error)
 }
 

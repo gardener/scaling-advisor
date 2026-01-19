@@ -9,13 +9,11 @@ import (
 	"os"
 
 	"github.com/gardener/scaling-advisor/service/cli"
-
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
 )
 
 func main() {
-	app, exitCode := cli.LaunchApp(context.Background())
-	if exitCode != commoncli.ExitSuccess {
+	app, exitCode, err := cli.LaunchApp(context.Background())
+	if err != nil {
 		os.Exit(exitCode)
 	}
 	defer app.Cancel()

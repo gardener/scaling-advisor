@@ -12,31 +12,31 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName={csf}
+// +kubebuilder:resource:shortName={sf}
 
-// ClusterScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
+// ScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
 // Scaling advisor can refine its future scaling advice based on this feedback.
-type ClusterScalingFeedback struct {
+type ScalingFeedback struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the specification of ClusterScalingFeedback.
-	Spec ClusterScalingFeedbackSpec `json:"spec"`
+	// Spec defines the specification of ScalingFeedback.
+	Spec ScalingFeedbackSpec `json:"spec"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterScalingFeedbackList is a list of ClusterScalingFeedback.
-type ClusterScalingFeedbackList struct {
+// ScalingFeedbackList is a list of ScalingFeedback.
+type ScalingFeedbackList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of ClusterScalingFeedback.
-	Items []ClusterScalingFeedback `json:"items"`
+	// Items is a slice of ScalingFeedback.
+	Items []ScalingFeedback `json:"items"`
 }
 
-// ClusterScalingFeedbackSpec defines the specification of the ClusterScalingFeedback.
-type ClusterScalingFeedbackSpec struct {
-	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
+// ScalingFeedbackSpec defines the specification of the ScalingFeedback.
+type ScalingFeedbackSpec struct {
+	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
 	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 	// ScaleOutErrorInfos is the list of scale-out errors for the scaling advice.
 	ScaleOutErrorInfos []ScaleOutErrorInfo `json:"scaleOutErrorInfos,omitempty"`

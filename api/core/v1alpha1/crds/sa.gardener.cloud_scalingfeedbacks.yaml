@@ -1,0 +1,110 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: scalingfeedbacks.sa.gardener.cloud
+spec:
+  group: sa.gardener.cloud
+  names:
+    kind: ScalingFeedback
+    listKind: ScalingFeedbackList
+    plural: scalingfeedbacks
+    shortNames:
+    - sf
+    singular: scalingfeedback
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
+          Scaling advisor can refine its future scaling advice based on this feedback.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of ScalingFeedback.
+            properties:
+              constraintRef:
+                description: ConstraintRef is a reference to the ScalingConstraint
+                  that this advice is based on.
+                properties:
+                  name:
+                    description: Name is the name of the ClusterScalingConstraint.
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the ClusterScalingConstraint.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              scaleInErrorInfo:
+                description: ScaleInErrorInfo is the scale-in error information for
+                  the scaling advice.
+                properties:
+                  nodeNames:
+                    description: NodeNames is the list of node names that could not
+                      be deleted for scaled in.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - nodeNames
+                type: object
+              scaleOutErrorInfos:
+                description: ScaleOutErrorInfos is the list of scale-out errors for
+                  the scaling advice.
+                items:
+                  description: ScaleOutErrorInfo is the backoff information for each
+                    instance type + zone.
+                  properties:
+                    availabilityZone:
+                      description: AvailabilityZone is the availability zone of the
+                        node pool.
+                      type: string
+                    errorType:
+                      description: ErrorType is the type of error that occurred during
+                        scale-out.
+                      type: string
+                    failCount:
+                      description: FailCount is the number of nodes that have failed
+                        creation.
+                      format: int32
+                      type: integer
+                    instanceType:
+                      description: InstanceType is the instance type of the node pool.
+                      type: string
+                  required:
+                  - availabilityZone
+                  - errorType
+                  - failCount
+                  - instanceType
+                  type: object
+                type: array
+            required:
+            - constraintRef
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true

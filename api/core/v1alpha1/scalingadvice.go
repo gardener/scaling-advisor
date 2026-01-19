@@ -43,7 +43,7 @@ type ClusterScalingAdviceSpec struct {
 	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
 	// ScaleInPlan is the plan for scaling in across node pools.
 	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
-	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
+	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
 	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 }
 
@@ -51,7 +51,7 @@ type ClusterScalingAdviceSpec struct {
 type ClusterScalingAdviceStatus struct {
 	// Diagnostic provides diagnostics information for the scaling advice.
 	// This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-	// set on the corresponding ClusterScalingConstraint resource.
+	// set on the corresponding ScalingConstraint resource.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
 	// Conditions represents additional information

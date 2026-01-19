@@ -20,7 +20,7 @@ const (
 // App represents an application process that wraps a ScalingAdvisorService, an application context and application cancel func.
 // `main` entry-point functions that embed scadsvc are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {
-	// Service is the scaling advisor planner instance.
+	// Service is the scaling advisor service instance.
 	Service ScalingAdvisorService
 	// Ctx is the application context.
 	Ctx context.Context

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/gardener/scaling-advisor/service/internal/core/util"
@@ -44,7 +45,7 @@ func NewService(ctx context.Context,
 		}
 	}()
 	setServiceConfigDefaults(&config)
-	minKAPIServer, err := mkcore.NewDefaultInMemory(ctx, config.MinKAPIConfig)
+	minKAPIServer, err := mkcore.New(ctx, config.MinKAPIConfig)
 	if err != nil {
 		return
 	}
@@ -154,8 +155,8 @@ func wrapGenerationContext(ctx context.Context, request plannerapi.ScalingAdvice
 }
 
 func setServiceConfigDefaults(cfg *service.ScalingAdvisorServiceConfig) {
-	if cfg.ServerConfig.Port == 0 {
-		cfg.ServerConfig.Port = commonconstants.DefaultAdvisorServicePort
+	if strings.TrimSpace(cfg.ServerConfig.BindAddress) == "" {
+		cfg.ServerConfig.BindAddress = commonconstants.DefaultAdvisorServiceBindAddress
 	}
 	if cfg.TraceLogBaseDir == "" {
 		cfg.TraceLogBaseDir = os.TempDir()

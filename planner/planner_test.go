@@ -26,7 +26,7 @@ import (
 func TestGenerateBasicScalingAdvice(t *testing.T) {
 	testCtx, cancelFn := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancelFn()
-	runCtx, runCancelFn := commoncli.CreateAppContext(testCtx)
+	runCtx, runCancelFn := commoncli.CreateAppContext(testCtx, "planner-test")
 	defer runCancelFn()
 	p, err := createTestScalingPlanner(runCtx)
 	if err != nil {

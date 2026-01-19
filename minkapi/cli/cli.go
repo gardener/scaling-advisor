@@ -8,9 +8,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server"
 
@@ -49,11 +50,10 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 // and the Cancel func which callers are expected to defer in their main routines.
 //
 // On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
-func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int) {
-	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx)
-	log := logr.FromContextOrDiscard(app.Ctx).WithValues("program", minkapi.ProgramName)
+func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 	commoncli.PrintVersion(minkapi.ProgramName)
-	cliOpts, err := ParseProgramFlags(os.Args[1:])
+	var cliOpts *Opts
+	cliOpts, err = ParseProgramFlags(os.Args[1:])
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
 			return
@@ -62,15 +62,18 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int) {
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}
-	app.Server, err = server.NewDefaultInMemory(ctx, cliOpts.Config)
+	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx, minkapi.ProgramName)
+	log := logr.FromContextOrDiscard(app.Ctx)
+	app.Server, err = server.New(ctx, cliOpts.Config)
 	if err != nil {
-		log.Error(err, "failed to initialize InMemoryKAPI")
+		log.Error(err, "failed to initialize minkapi server")
 		exitCode = commoncli.ExitErrStart
 		return
 	}
 	// Begin the core in a goroutine
 	go func() {
-		if err := app.Server.Start(app.Ctx); err != nil {
+		err = app.Server.Start(app.Ctx)
+		if err != nil {
 			if errors.Is(err, minkapi.ErrStartFailed) {
 				log.Error(err, "failed to start core")
 			} else {
@@ -84,7 +87,7 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int) {
 // ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
 func ShutdownApp(app *minkapi.App) (exitCode int) {
 	// Create a context with a 5-second timeout for shutdown
-	shutDownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutDownCtx, cancel := context.WithTimeout(context.Background(), commonconstants.DefaultGracefulShutdownTimeout)
 	defer cancel()
 	log := logr.FromContextOrDiscard(app.Ctx)
 
@@ -103,12 +106,11 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
 	flagSet := pflag.NewFlagSet(minkapi.ProgramName, pflag.ContinueOnError)
 
-	opts.KubeConfigPath = os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
 	if opts.KubeConfigPath == "" {
 		opts.KubeConfigPath = minkapi.DefaultKubeConfigPath
 	}
-	if opts.Port == 0 {
-		opts.Port = commonconstants.DefaultMinKAPIPort
+	if len(opts.BindAddress) == 0 {
+		opts.BindAddress = net.JoinHostPort("", strconv.Itoa(commonconstants.DefaultMinKAPIPort))
 	}
 	// TODO: Change opts.KubeConfigPath to opts.KubeConfigGenDir later
 	flagSet.StringVarP(&opts.KubeConfigPath, clientcmd.RecommendedConfigPathFlag, "k", opts.KubeConfigPath, "path to master kubeconfig - fallback to KUBECONFIG env-var")

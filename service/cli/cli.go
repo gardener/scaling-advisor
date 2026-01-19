@@ -14,7 +14,6 @@ import (
 
 	"github.com/gardener/scaling-advisor/service/internal/core"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -57,12 +56,11 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 // LaunchApp is a helper function used to parse cli args, construct, and start the ScalingAdvisorService,
 // embed the planner inside an App representing the binary process along with an application context and application cancel func.
 //
-// On success, returns an initialized App which holds the ScalingAdvisorService, the App Context (which has been setup for SIGINT and SIGTERM cancellation and holds a logger),
+// On success, returns an initialized App which holds the ScalingAdvisorService, the App Context (set up for SIGINT and SIGTERM cancellation and holds a logger),
 // and the Cancel func which callers are expected to defer in their main routines.
 //
 // On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
-func LaunchApp(ctx context.Context) (app service.App, exitCode int) {
-	var err error
+func LaunchApp(ctx context.Context) (app service.App, exitCode int, err error) {
 	defer func() {
 		if errors.Is(err, pflag.ErrHelp) {
 			return
@@ -70,14 +68,15 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int) {
 		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
 	}()
 
-	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx)
-	log := logr.FromContextOrDiscard(app.Ctx).WithValues("program", service.ProgramName)
-	commoncli.PrintVersion(service.ProgramName)
 	cliOpts, err := ParseProgramFlags(os.Args[1:])
 	if err != nil {
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}
+
+	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx, service.ProgramName)
+	log := logr.FromContextOrDiscard(app.Ctx)
+	commoncli.PrintVersion(service.ProgramName)
 	embeddedMinKAPIKubeConfigPath := path.Join(os.TempDir(), "embedded-minkapi.yaml")
 	log.Info("embedded minkapi-kube cfg path", "kubeConfigPath", embeddedMinKAPIKubeConfigPath)
 	cloudProvider, err := commontypes.AsCloudProvider(cliOpts.CloudProvider)
@@ -90,12 +89,10 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int) {
 		MinKAPIConfig: minkapi.Config{
 			BasePrefix: minkapi.DefaultBasePrefix,
 			ServerConfig: commontypes.ServerConfig{
-				HostPort: commontypes.HostPort{
-					Host: "localhost",
-					Port: commonconstants.DefaultMinKAPIPort,
-				},
-				KubeConfigPath:   embeddedMinKAPIKubeConfigPath,
-				ProfilingEnabled: cliOpts.ServerConfig.ProfilingEnabled,
+				BindAddress:             cliOpts.ServerConfig.BindAddress,
+				KubeConfigPath:          embeddedMinKAPIKubeConfigPath,
+				ProfilingEnabled:        cliOpts.ServerConfig.ProfilingEnabled,
+				GracefulShutdownTimeout: cliOpts.ServerConfig.GracefulShutdownTimeout,
 			},
 			WatchConfig: cliOpts.WatchConfig,
 		},
@@ -180,9 +177,6 @@ func (o Opts) validate() error {
 func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
 	flagSet := pflag.NewFlagSet(service.ProgramName, pflag.ContinueOnError)
-	if opts.ServerConfig.Port == 0 {
-		opts.ServerConfig.Port = commonconstants.DefaultAdvisorServicePort
-	}
 	commoncli.MapServerConfigFlags(flagSet, &opts.ServerConfig)
 	commoncli.MapQPSBurstFlags(flagSet, &opts.ClientConfig)
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)

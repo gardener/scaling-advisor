@@ -27,9 +27,9 @@ var (
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&ClusterScalingConstraint{},
-		&ClusterScalingConstraintList{},
-		&ClusterScalingFeedback{},
+		&ScalingConstraint{},
+		&ScalingConstraintList{},
+		&ScalingFeedback{},
 	)
 	return nil
 }

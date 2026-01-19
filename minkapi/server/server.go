@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	rt "runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
@@ -41,19 +42,20 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ minkapi.Server = (*InMemoryKAPI)(nil)
+var _ minkapi.Server = (*InMemServer)(nil)
 
-// InMemoryKAPI holds the in-memory stores, watch channels, and version tracking for simple implementation of minkapi.APIServer
-type InMemoryKAPI struct {
+// InMemServer holds the in-memory stores, watch channels, and version tracking for simple implementation of minkapi.APIServer
+type InMemServer struct {
 	listenerAddr net.Addr
 	viewAccess   minkapi.ViewAccess
 	rootMux      *http.ServeMux
 	server       *http.Server
+	kapiURL      string
 	cfg          minkapi.Config
 }
 
-// NewDefaultInMemory constructs a KAPI server with default implementations of sub-components.
-func NewDefaultInMemory(ctx context.Context, cfg minkapi.Config) (minkapi.Server, error) {
+// New constructs a KAPI server with default implementations of sub-components.
+func New(ctx context.Context, cfg minkapi.Config) (minkapi.Server, error) {
 	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
 		Name:           minkapi.DefaultBasePrefix,
 		KubeConfigPath: cfg.KubeConfigPath,
@@ -63,11 +65,11 @@ func NewDefaultInMemory(ctx context.Context, cfg minkapi.Config) (minkapi.Server
 	if err != nil {
 		return nil, err
 	}
-	return NewInMemoryUsingViews(ctx, cfg, viewAccess)
+	return NewUsingViews(ctx, cfg, viewAccess)
 }
 
-// NewInMemoryUsingViews constructs a KAPI server with the given base view.
-func NewInMemoryUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k minkapi.Server, err error) {
+// NewUsingViews constructs a KAPI server with the given base view.
+func NewUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k minkapi.Server, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
@@ -76,15 +78,16 @@ func NewInMemoryUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess m
 	}()
 	setMinKAPIConfigDefaults(&cfg)
 	rootMux := http.NewServeMux()
-	s := &InMemoryKAPI{
+	s := &InMemServer{
 		cfg:     cfg,
 		rootMux: rootMux,
 		server: &http.Server{
-			Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+			Addr: cfg.BindAddress,
 			// G112 (CWE-400): Potential Slowloris Attack: kept it same as the one defined for http server started in the actual kube-apiserver.
 			// See: https://github.com/kubernetes/kubernetes/blob/ad82c3d39f5e9f21e173ffeb8aa57953a0da4601/staging/src/k8s.io/apiserver/pkg/server/secure_serving.go#L172
 			ReadHeaderTimeout: 32 * time.Second,
 		},
+		kapiURL:    fmt.Sprintf("http://%s/%s", cfg.BindAddress, cfg.BasePrefix),
 		viewAccess: viewAccess,
 	}
 	// DO NOT REMOVE: Single route registration crap needed for kubectl compatibility as it ignores server path prefixes
@@ -97,7 +100,7 @@ func NewInMemoryUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess m
 }
 
 // Start begins the MinKAPI server
-func (k *InMemoryKAPI) Start(ctx context.Context) error {
+func (k *InMemServer) Start(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
 	k.server.BaseContext = func(_ net.Listener) context.Context {
 		return ctx
@@ -113,11 +116,10 @@ func (k *InMemoryKAPI) Start(ctx context.Context) error {
 		return fmt.Errorf("%w: cannot listen on TCP Address %q: %w", minkapi.ErrStartFailed, k.server.Addr, err)
 	}
 	k.listenerAddr = listener.Addr()
-	kapiURL := fmt.Sprintf("http://%s:%d/%s", k.cfg.Host, k.cfg.Port, k.cfg.BasePrefix)
 	err = configtmpl.GenKubeConfig(configtmpl.KubeConfigParams{
-		Name:           minkapi.DefaultBasePrefix,
+		Name:           k.cfg.BasePrefix,
 		KubeConfigPath: k.cfg.KubeConfigPath,
-		URL:            kapiURL,
+		URL:            k.kapiURL,
 	})
 	if err != nil {
 		return fmt.Errorf("%w: %w", minkapi.ErrStartFailed, err)
@@ -136,7 +138,7 @@ func (k *InMemoryKAPI) Start(ctx context.Context) error {
 		return fmt.Errorf("%w: %w", minkapi.ErrStartFailed, err)
 	}
 	log.Info("sample kube-scheduler-config generated", "path", schedulerTmplParams.KubeSchedulerConfigPath)
-	log.Info(fmt.Sprintf("%s core listening", minkapi.ProgramName), "address", k.server.Addr, "kapiURL", kapiURL)
+	log.Info(fmt.Sprintf("%s core listening", minkapi.ProgramName), "address", k.server.Addr, "kapiURL", k.kapiURL)
 	if err = k.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("%w: %w", minkapi.ErrServiceFailed, err)
 	}
@@ -144,7 +146,7 @@ func (k *InMemoryKAPI) Start(ctx context.Context) error {
 }
 
 // Stop shuts down the HTTP server and closes the base view
-func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
+func (k *InMemServer) Stop(ctx context.Context) (err error) {
 	var errs []error
 	var cancel context.CancelFunc
 	if k.cfg.GracefulShutdownTimeout.Duration > 0 {
@@ -169,23 +171,23 @@ func (k *InMemoryKAPI) Stop(ctx context.Context) (err error) {
 }
 
 // Close gracefully shuts down the server and closes associated resources, essentially wrapping the Stop method using the background context.
-func (k *InMemoryKAPI) Close() error {
+func (k *InMemServer) Close() error {
 	return k.Stop(context.Background())
 }
 
 // GetBaseView returns the foundational View of the KAPI Server.
-func (k *InMemoryKAPI) GetBaseView() minkapi.View {
+func (k *InMemServer) GetBaseView() minkapi.View {
 	return k.viewAccess.GetBaseView()
 }
 
 // GetSandboxView creates or returns a sandboxed KAPI View with the given name
-func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
+func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	sv, err := k.viewAccess.GetSandboxView(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	kapiURL := fmt.Sprintf("http://%s:%d/%s", k.cfg.Host, k.cfg.Port, name)
+	kapiURL := fmt.Sprintf("http://%s/%s", k.cfg.BindAddress, name)
 	_, err = url.Parse(kapiURL)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid sandbox-kapi URI for view %q: %w", minkapi.ErrCreateView, name, err)
@@ -223,12 +225,12 @@ func (k *InMemoryKAPI) GetSandboxView(ctx context.Context, name string) (minkapi
 
 // GetSandboxViewOverDelegate is the minkapi server implementation for minkapi.ViewAccess.GetSandboxViewOverDelegate
 // It delegates to underlying viewAccess.GetSandboxViewOverDelegate and also registers routes for the new sandbox View.
-func (k *InMemoryKAPI) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
+func (k *InMemServer) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
 	return k.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegateView)
 	// TODO: also register routes for sandbox view.
 }
 
-func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view minkapi.View) {
+func (k *InMemServer) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view minkapi.View) {
 	// TODO: Design: Discuss this since this is not necessary when running as operator since operator has its own profiling enablement.
 	if k.cfg.ProfilingEnabled {
 		log.Info("profiling enabled - registering /debug/pprof/* handlers")
@@ -257,7 +259,7 @@ func (k *InMemoryKAPI) registerRoutes(log logr.Logger, viewMux *http.ServeMux, v
 	k.rootMux.Handle("/"+view.GetName()+"/", http.StripPrefix("/"+view.GetName(), viewMux))
 }
 
-func (k *InMemoryKAPI) registerAPIGroups(viewMux *http.ServeMux) {
+func (k *InMemServer) registerAPIGroups(viewMux *http.ServeMux) {
 	// Core API
 	viewMux.HandleFunc("GET /api/v1/", k.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
 
@@ -268,7 +270,7 @@ func (k *InMemoryKAPI) registerAPIGroups(viewMux *http.ServeMux) {
 	}
 }
 
-func (k *InMemoryKAPI) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.Descriptor, view minkapi.View) {
+func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.Descriptor, view minkapi.View) {
 	g := d.GVK.Group
 	r := d.GVR.Resource
 	if d.GVK.Group == "" {
@@ -308,7 +310,7 @@ func (k *InMemoryKAPI) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo
 }
 
 // handleAPIGroups returns the list of supported API groups
-func (k *InMemoryKAPI) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
+func (k *InMemServer) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -317,7 +319,7 @@ func (k *InMemoryKAPI) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAPIVersions returns the list of versions for the core API group
-func (k *InMemoryKAPI) handleAPIVersions(w http.ResponseWriter, r *http.Request) {
+func (k *InMemServer) handleAPIVersions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -325,7 +327,7 @@ func (k *InMemoryKAPI) handleAPIVersions(w http.ResponseWriter, r *http.Request)
 	writeJsonResponse(w, r, &typeinfo.SupportedAPIVersions)
 }
 
-func (k *InMemoryKAPI) handleAPIResources(apiResourceList metav1.APIResourceList) http.HandlerFunc {
+func (k *InMemServer) handleAPIResources(apiResourceList metav1.APIResourceList) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -335,7 +337,7 @@ func (k *InMemoryKAPI) handleAPIResources(apiResourceList metav1.APIResourceList
 	}
 }
 
-func (k *InMemoryKAPI) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
+func (k *InMemServer) handleCreateSandboxView(w http.ResponseWriter, r *http.Request) {
 	viewName := r.PathValue("name")
 	if viewName == "" {
 		handleStatusError(w, r, apierrors.NewBadRequest("sandbox view name is required"))
@@ -720,11 +722,14 @@ func setMinKAPIConfigDefaults(cfg *minkapi.Config) {
 	if cfg.WatchConfig.Timeout <= 0 {
 		cfg.WatchConfig.Timeout = minkapi.DefaultWatchTimeout
 	}
-	if cfg.KubeConfigPath == "" {
+	if strings.TrimSpace(cfg.BasePrefix) == "" {
+		cfg.BasePrefix = minkapi.DefaultBasePrefix
+	}
+	if strings.TrimSpace(cfg.KubeConfigPath) == "" {
 		cfg.KubeConfigPath = minkapi.DefaultKubeConfigPath
 	}
-	if cfg.Port == 0 {
-		cfg.Port = commonconstants.DefaultMinKAPIPort
+	if strings.TrimSpace(cfg.BindAddress) == "" {
+		cfg.BindAddress = net.JoinHostPort("", strconv.Itoa(commonconstants.DefaultMinKAPIPort))
 	}
 }
 

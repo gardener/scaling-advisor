@@ -31,23 +31,17 @@ type Service interface {
 	Stop(ctx context.Context) error
 }
 
-// ServerConfig is the common configuration for a server.
+// ServerConfig is the common configuration for a server which can be used as standalone
+// or embedded within another process.
 type ServerConfig struct {
 	// KubeConfigPath is the path to master kube-config.
 	KubeConfigPath string `json:"kubeConfigPath"`
-	HostPort       `json:",inline"`
+	// BindAddress is the address(host:port) to bind the server to.
+	BindAddress string `json:"bindAddress"`
 	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
 	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
 	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
 	ProfilingEnabled bool `json:"profilingEnabled"`
-}
-
-// HostPort contains information for core host and port.
-type HostPort struct {
-	// Host is the IP address on which to listen for the specified port.
-	Host string `json:"host"`
-	// Port is the port on which to serve requests.
-	Port int `json:"port"`
 }
 
 // QPSBurst is a simple encapsulation of client QPS and Burst settings.

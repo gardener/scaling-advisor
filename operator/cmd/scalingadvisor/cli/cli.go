@@ -39,7 +39,7 @@ func ParseLaunchOptions(cliArgs []string) (*LaunchOptions, error) {
 }
 
 // LoadAndValidateOperatorConfig loads and validates the scaling-advisor operator configuration from the specified path in the launch options.
-func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.ScalingAdvisorConfiguration, error) {
+func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.OperatorConfig, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
@@ -47,6 +47,7 @@ func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.Scaling
 	if err != nil {
 		return nil, err
 	}
+	configv1alpha1.SetDefaults_ScalingAdvisorServerConfiguration(&operatorConfig.Server)
 	if errs := configv1alpha1validation.ValidateScalingAdvisorConfiguration(operatorConfig); len(errs) > 0 {
 		return nil, errs.ToAggregate()
 	}
@@ -54,12 +55,12 @@ func (o *LaunchOptions) LoadAndValidateOperatorConfig() (*configv1alpha1.Scaling
 }
 
 // loadOperatorConfig loads the operator configuration from the ConfigFile specified in the LaunchOptions.
-func (o *LaunchOptions) loadOperatorConfig() (*configv1alpha1.ScalingAdvisorConfiguration, error) {
+func (o *LaunchOptions) loadOperatorConfig() (*configv1alpha1.OperatorConfig, error) {
 	configScheme := runtime.NewScheme()
 	if err := configv1alpha1.AddToScheme(configScheme); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}
-	operatorConfig := &configv1alpha1.ScalingAdvisorConfiguration{}
+	operatorConfig := &configv1alpha1.OperatorConfig{}
 	if err := objutil.LoadUsingSchemeIntoRuntimeObject(os.DirFS("."), o.ConfigFile, configScheme, operatorConfig); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrLoadOperatorConfig, err)
 	}
