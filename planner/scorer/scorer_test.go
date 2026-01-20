@@ -5,31 +5,47 @@
 package scorer
 
 import (
-	"context"
-	"errors"
-	"reflect"
 	"testing"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	"github.com/gardener/scaling-advisor/api/planner"
 	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-// Instance types from fake-instance_price_infos.json (region "s"):
-//
-//	instance-a-1: 2 vCPU / 4 mem, price 1.0
-//	instance-a-2: 4 vCPU / 8 mem, price 2.0
-//	instance-b-1: 8 vCPU / 16 mem, price 4.0
-//	instance-b-2: 16 vCPU / 32 mem, price 8.0
-//	instance-c-1: 2 vCPU / 4 mem,  price 1.0 (same price as instance-a-1)
-const region = "s"
+func CreateMockNode(name, instanceType string, cpu, memory int64) service.NodeResourceInfo {
+	return service.NodeResourceInfo{
+		Name:         name,
+		InstanceType: instanceType,
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+func CreateMockPod(name string, cpu, memory int64) service.PodResourceInfo {
+	return service.PodResourceInfo{
+		UID: "pod-12345",
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: "default",
+		},
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
+		},
+	}
+}
+
+// Helper function to create mock weights for instance type
+func NewMockWeightsFunc(instanceType string) (map[corev1.ResourceName]float64, error) {
+	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
+}
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
 	access, err := pricingtestutil.GetInstancePricingAccessWithFakeData()
@@ -37,126 +53,117 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	// node: instance-a-1 (2 CPU / 4 mem), pod A: 1 CPU / 2 mem
-	// wastage = (2-1) CPU + (4-2) mem = 1 CPU + 2 mem → NRU = 5*1 + 1*2 = 7 → score = int(7*100) = 700
-	assignment := plannerapi.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4"),
-		ScheduledPods: []plannerapi.PodResourceInfo{
-			createPodResourceInfo("simPodA", "1", "2"),
+	assignment := planner.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4),
+		ScheduledPods: []planner.PodResourceInfo{
+			createPodResourceInfo("simPodA", 1, 2),
 		},
 	}
-	// node: instance-a-2 (4 CPU / 8 mem), pod: 4 CPU / 8 mem + 10 storage (no weight)
-	// wastage = (4-4) CPU + (8-8) mem = 0 → score = 0
-	podWithStorage := createPodResourceInfo("simStorage", "4", "8")
-	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
-	assignmentWithStorage := plannerapi.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8"),
-		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
+	//test case where weights are not defined for all resources
+	podWithStorage := createPodResourceInfo("simStorage", 2, 4)
+	podWithStorage.AggregatedRequests["Storage"] = 10
+	assignmentWithStorage := planner.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
-		input         plannerapi.NodeScorerArgs
-		access        pricingapi.InstancePricingAccess
-		weigher       plannerapi.ResourceWeigher
+		input         planner.NodeScorerArgs
+		access        planner.InstancePricingAccess
+		weightsFn     planner.GetResourceWeightsFunc
 		expectedErr   error
-		expectedScore plannerapi.NodeScore
+		expectedScore planner.NodeScore
 	}{
-		// wastage = (2-1) CPU + (4-2) mem = (1, 2) → NRU = 5*1 + 1*2 = 7 → score = int(700) = 700
 		"pod scheduled on scaled node only": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              700,
 				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
-		// wastage = allocatable - (pod A on scaled node + pod B on existing node)
-		// = (2,4) - (1,2) - (1,2) = (0,0) → score = 0
 		"pods scheduled on scaled node and existing node": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
-				OtherNodePodAssignments: []plannerapi.NodePodAssignment{{
-					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", "8", "16"),
-					ScheduledPods: []plannerapi.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
+				OtherNodePodAssignments: []planner.NodePodAssignment{{
+					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []planner.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              0,
 				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
-		// storage has no weight → NRU for storage = 0; wastage = (4-4) CPU + (8-8) mem = 0 → score = 0
 		"weights undefined for resource type": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignmentWithStorage,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
 				Value:              0,
 				ScaledNodeResource: assignmentWithStorage.NodeResources,
 			},
 		},
 		"weights function returns an error": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access:        access,
-			weigher:       &testWeigher{inError: true},
-			expectedErr:   plannerapi.ErrComputeNodeScore,
-			expectedScore: plannerapi.NodeScore{},
+			access: access,
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   planner.ErrComputeNodeScore,
+			expectedScore: planner.NodeScore{},
 		},
 		"pricingAccess.GetInfo() function returns an error": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access:        &testInfoAccess{err: errors.New("testing error")},
-			weigher:       &testWeigher{inError: true},
-			expectedErr:   plannerapi.ErrComputeNodeScore,
-			expectedScore: plannerapi.NodeScore{},
+			access: &testInfoAccess{err: errors.New("testing error")},
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   planner.ErrComputeNodeScore,
+			expectedScore: planner.NodeScore{},
 		},
 	}
-	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, tc.access, tc.weigher)
-			if err != nil {
-				t.Fatal(err)
-				return
-			}
-			got, err := scorer.Compute(ctx, tc.input)
+			got, err := scorer.Compute(tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
-			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
+			errDiff := cmp.Diff(tc.expectedErr, err)
 			if scoreDiff != "" {
 				t.Fatalf("Difference: %s", scoreDiff)
 			}
@@ -173,124 +180,116 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	// node: instance-a-2 (4 CPU / 8 mem, price 2.0), pod A: 1 CPU / 2 mem
-	// NRU(pod A) = 5*1 + 1*2 = 7 → score = round(7*100/2.0) = 350
-	assignment := plannerapi.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "4", "8"),
-		ScheduledPods: []plannerapi.PodResourceInfo{
-			createPodResourceInfo("simPodA", "1", "2"),
+	assignment := planner.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		ScheduledPods: []planner.PodResourceInfo{
+			createPodResourceInfo("simPodA", 1, 2),
 		},
 	}
-	// pod: 1 CPU / 2 mem + 10 storage (storage has no weight)
-	// NRU = 5*1 + 1*2 = 7 (storage ignored) → score = round(700/2.0) = 350
-	podWithStorage := createPodResourceInfo("simStorage", "1", "2")
-	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
-	assignmentWithStorage := plannerapi.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "4", "8"),
-		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
+	//test case where weights are not defined for all resources
+	podWithStorage := createPodResourceInfo("simStorage", 1, 2)
+	podWithStorage.AggregatedRequests["Storage"] = 10
+	assignmentWithStorage := planner.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
+		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
-		input         plannerapi.NodeScorerArgs
-		access        pricingapi.InstancePricingAccess
-		weigher       plannerapi.ResourceWeigher
+		input         planner.NodeScorerArgs
+		access        planner.InstancePricingAccess
+		weightsFn     planner.GetResourceWeightsFunc
 		expectedErr   error
-		expectedScore plannerapi.NodeScore
+		expectedScore planner.NodeScore
 	}{
-		// pod A on scaled node only: NRU = 5*1 + 1*2 = 7 → score = round(700/2.0) = 350
 		"pod scheduled on scaled node only": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              350,
 				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
-		// pod A on scaled node + pod B on existing node: NRU = 5*(1+1) + 1*(2+2) = 14 → score = round(1400/2.0) = 700
 		"pods scheduled on scaled node and existing node": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignment,
-				OtherNodePodAssignments: []plannerapi.NodePodAssignment{{
-					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", "8", "16"),
-					ScheduledPods: []plannerapi.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
+				OtherNodePodAssignments: []planner.NodePodAssignment{{
+					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", 2, 4),
+					ScheduledPods: []planner.PodResourceInfo{createPodResourceInfo("simPodB", 1, 2)},
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              700,
 				ScaledNodeResource: assignment.NodeResources,
 			},
 		},
-		// storage has no weight → NRU = 5*1 + 1*2 = 7 (storage ignored) → score = round(700/2.0) = 350
 		"weights undefined for resource type": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignmentWithStorage,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weigher:     &testWeigher{},
+			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: plannerapi.NodeScore{
+			expectedScore: planner.NodeScore{
 				Name:               "testing",
-				Placement:          sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
 				Value:              350,
 				ScaledNodeResource: assignmentWithStorage.NodeResources,
 			},
-		},
-		"weights function returns an error": {
-			input: plannerapi.NodeScorerArgs{
+		}, "weights function returns an error": {
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access:        access,
-			weigher:       &testWeigher{inError: true},
-			expectedErr:   plannerapi.ErrComputeNodeScore,
-			expectedScore: plannerapi.NodeScore{},
+			access: access,
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   planner.ErrComputeNodeScore,
+			expectedScore: planner.NodeScore{},
 		},
 		"pricingAccess.GetInfo() function returns an error": {
-			input: plannerapi.NodeScorerArgs{
+			input: planner.NodeScorerArgs{
 				ID:                      "testing",
-				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"},
+				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access:        &testInfoAccess{err: errors.New("testing error")},
-			weigher:       &testWeigher{inError: true},
-			expectedErr:   plannerapi.ErrComputeNodeScore,
-			expectedScore: plannerapi.NodeScore{},
+			access: &testInfoAccess{err: errors.New("testing error")},
+			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
+				return nil, errors.New("testing error")
+			},
+			expectedErr:   planner.ErrComputeNodeScore,
+			expectedScore: planner.NodeScore{},
 		},
 	}
-	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, tc.access, tc.weigher)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := scorer.Compute(ctx, tc.input)
+			got, err := scorer.Compute(tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
-			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
+			errDiff := cmp.Diff(tc.expectedErr, err)
 			if scoreDiff != "" {
 				t.Fatalf("Difference: %s", scoreDiff)
 			}
@@ -307,99 +306,115 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, &testWeigher{})
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// instance-a-2 node with extra storage resource that has no weight defined
-	simNodeWithStorage := createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")
-	simNodeWithStorage.Allocatable[corev1.ResourceStorage] = resource.MustParse("10")
+	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)
+	simNodeWithStorage.Allocatable["Storage"] = 10
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := map[string]struct {
-		input       []plannerapi.NodeScore
+		input       []planner.NodeScore
 		expectedErr error
-		expectedIn  []plannerapi.NodeScore
+		expectedIn  []planner.NodeScore
 	}{
 		"single node score": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
+			input:       []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
+			expectedIn:  []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
-			input:       []plannerapi.NodeScore{},
-			expectedErr: plannerapi.ErrNoWinningNodeScore,
-			expectedIn:  []plannerapi.NodeScore{},
+			input:       []planner.NodeScore{},
+			expectedErr: planner.ErrNoWinningNodeScore,
+			expectedIn:  []planner.NodeScore{},
 		},
-		// both value=1; instance-a-2 (4 CPU / 8 mem) > instance-a-1 (2 CPU / 4 mem) → instance-a-2 wins
 		"different allocatables": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")},
-			},
+			input: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
+				}},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")},
-			},
+			expectedIn: []planner.NodeScore{{
+				Name:               "testing2",
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+				UnscheduledPods:    nil,
+				Value:              1,
+				ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 4, 8),
+			}},
 		},
-		// both value=1 and identical allocatable (2 CPU / 4 mem) → either may be returned
 		"identical allocatables": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", "2", "4")},
+			input: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
+				},
 			},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", "2", "4")},
+			expectedIn: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 2, 4),
+				},
 			},
 		},
-		// both value=1; instance-c-2: 4 CPU / 8 mem; instance-a-2: 4 CPU / 8 mem + storage (storage ignored)
-		// NRU(instance-c-2) = 5*4 + 1*8 = 28; NRU(instance-a-2) = 5*4 + 1*8 = 28 (storage ignored)
-		// tied → either may be returned
 		"undefined weights for resource type": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-2"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-c-2", "4", "8")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 1, ScaledNodeResource: simNodeWithStorage},
-			},
+			input: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 4, 8)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: simNodeWithStorage,
+				}},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-2"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-c-2", "4", "8")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 1, ScaledNodeResource: simNodeWithStorage},
-			},
-		},
-		// sim1: value=10, instance-a-2 (4 CPU / 8 mem); sim2: value=20, instance-a-1 (2 CPU / 4 mem)
-		// highest value wins regardless of allocatable → sim2 wins
-		"different values: highest value wins regardless of allocatable": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-2", "4", "8")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 20, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-1", "2", "4")},
-			},
-			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 20, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-1", "2", "4")},
-			},
-		},
-		// sim1: value=10, instance-a-1 (2 CPU / 4 mem); sim2: value=10, instance-a-2 (4 CPU / 8 mem); sim3: value=5, instance-b-1 (8 CPU / 16 mem)
-		// sim1 and sim2 tie on value; sim2 has larger allocatable → sim2 wins; sim3 excluded despite largest allocatable
-		"tied value: larger allocatable wins": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")},
-				{Name: "sim3", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-b-1"}, Value: 5, ScaledNodeResource: createNodeResourceInfo("simNode3", "instance-b-1", "8", "16")},
-			},
-			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")},
-			},
+			expectedIn: []planner.NodeScore{{
+				Name:               "testing1",
+				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+				UnscheduledPods:    nil,
+				Value:              1,
+				ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 4, 8),
+			}},
 		},
 	}
-	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := scorer.Select(ctx, tc.input)
+			winningNodeScore, err := scorer.Select(tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -428,82 +443,87 @@ func TestSelectMinPrice(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, access, &testWeigher{})
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tests := map[string]struct {
-		input       []plannerapi.NodeScore
+		input       []planner.NodeScore
 		expectedErr error
-		expectedIn  []plannerapi.NodeScore
+		expectedIn  []planner.NodeScore
 	}{
 		"single node score": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
+			input:       []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
+			expectedIn:  []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)}},
 		},
 		"no node score": {
-			input:       []plannerapi.NodeScore{},
-			expectedErr: plannerapi.ErrNoWinningNodeScore,
-			expectedIn:  []plannerapi.NodeScore{},
+			input:       []planner.NodeScore{},
+			expectedErr: planner.ErrNoWinningNodeScore,
+			expectedIn:  []planner.NodeScore{},
 		},
-		// both value=1; instance-a-1 (price 1.0) < instance-a-2 (price 2.0) → instance-a-1 wins
 		"different prices": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8")},
+			input: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-a-2", 1, 2),
+				},
 			},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
+			expectedIn: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)}},
 		},
-		// both value=1; instance-a-1 and instance-c-1 both have price 1.0 → either may be returned
 		"identical prices": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", "2", "4")},
+			input: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),
+				},
 			},
 			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-c-1"}, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-c-1", "2", "4")},
-			},
-		},
-		// sim1: value=10, instance-a-1 (price 1.0); sim2: value=20, instance-b-2 (price 8.0)
-		// lowest value wins regardless of price → sim1 wins
-		"different values: lowest value wins regardless of price": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-b-2"}, Value: 20, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-b-2", "16", "32")},
-			},
-			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")},
-			},
-		},
-		// sim1: value=5, instance-b-2 (price 8.0); sim2: value=5, instance-a-1 (price 1.0); sim3: value=10, instance-a-2 (price 2.0)
-		// sim1 and sim2 tie on lowest value; sim2 is cheaper → sim2 wins; sim3 excluded despite lower price
-		"tied value: cheapest price wins": {
-			input: []plannerapi.NodeScore{
-				{Name: "sim1", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-b-2"}, Value: 5, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-b-2", "16", "32")},
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 5, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-1", "2", "4")},
-				{Name: "sim3", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-2"}, Value: 10, ScaledNodeResource: createNodeResourceInfo("simNode3", "instance-a-2", "4", "8")},
-			},
-			expectedErr: nil,
-			expectedIn: []plannerapi.NodeScore{
-				{Name: "sim2", Placement: sacorev1alpha1.NodePlacement{Region: region, InstanceType: "instance-a-1"}, Value: 5, ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-1", "2", "4")},
+			expectedIn: []planner.NodeScore{
+				{
+					Name:               "testing1",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode1", "instance-a-1", 2, 4)},
+				{
+					Name:               "testing2",
+					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-c-1"},
+					UnscheduledPods:    nil,
+					Value:              1,
+					ScaledNodeResource: CreateMockNode("simNode2", "instance-c-1", 1, 2),
+				},
 			},
 		},
 	}
-	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := scorer.Select(ctx, tc.input)
+			winningNodeScore, err := scorer.Select(tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -528,24 +548,24 @@ func TestSelectMinPrice(t *testing.T) {
 
 func TestGetNodeScorer(t *testing.T) {
 	tests := map[string]struct {
-		expectedError error
 		input         commontypes.NodeScoringStrategy
 		expectedType  string
+		expectedError error
 	}{
 		"least-cost strategy": {
-			input:         commontypes.NodeScoringStrategyLeastCost,
+			input:         commontypes.LeastCostNodeScoringStrategy,
 			expectedType:  "*scorer.LeastCost",
 			expectedError: nil,
 		},
 		"least-waste strategy": {
-			input:         commontypes.NodeScoringStrategyLeastWaste,
+			input:         commontypes.LeastWasteNodeScoringStrategy,
 			expectedType:  "*scorer.LeastWaste",
 			expectedError: nil,
 		},
 		"invalid strategy": {
 			input:         "invalid",
 			expectedType:  "",
-			expectedError: plannerapi.ErrCreateNodeScorer,
+			expectedError: planner.ErrCreateNodeScorer,
 		},
 	}
 	for name, tc := range tests {
@@ -554,7 +574,7 @@ func TestGetNodeScorer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, &testWeigher{})
+			got, err := GetNodeScorer(tc.input, access, planner.GetResourceWeightsFunc(testWeightsFunc))
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
@@ -581,38 +601,34 @@ func TestGetNodeScorer(t *testing.T) {
 }
 
 // Helper function to create mock nodes
-func createNodeResourceInfo(name, instanceType string, cpu, memory string) plannerapi.NodeResourceInfo {
-	return plannerapi.NodeResourceInfo{
+func createNodeResourceInfo(name, instanceType string, cpu, memory int64) planner.NodeResourceInfo {
+	return planner.NodeResourceInfo{
 		Name:         name,
 		InstanceType: instanceType,
-		Allocatable: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse(cpu),
-			corev1.ResourceMemory: resource.MustParse(memory),
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
 		},
 	}
 }
 
 // Helper function to create mock pods with cpu and memory requests
-func createPodResourceInfo(name string, cpu, memory string) plannerapi.PodResourceInfo {
-	return plannerapi.PodResourceInfo{
-		NamespacedName: commontypes.NamespacedName{Namespace: metav1.NamespaceDefault, Name: name},
-		AggregatedRequests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse(cpu),
-			corev1.ResourceMemory: resource.MustParse(memory),
+func createPodResourceInfo(name string, cpu, memory int64) planner.PodResourceInfo {
+	return planner.PodResourceInfo{
+		UID: "pod-12345",
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: metav1.NamespaceDefault,
+		},
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    cpu,
+			corev1.ResourceMemory: memory,
 		},
 	}
 }
 
-var _ plannerapi.ResourceWeigher = (*testWeigher)(nil)
-
-type testWeigher struct {
-	inError bool
-}
-
-func (t *testWeigher) GetWeights(_ string) (map[corev1.ResourceName]float64, error) {
-	if t.inError {
-		return nil, errors.New("testing error")
-	}
+// Helper weights function for testing
+func testWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
 
@@ -621,6 +637,6 @@ type testInfoAccess struct {
 }
 
 // Helper function to create stub instance pricing access that returns an error
-func (m *testInfoAccess) GetInfo(_, _ string) (info pricingapi.InstancePriceInfo, err error) {
-	return pricingapi.InstancePriceInfo{}, m.err
+func (m *testInfoAccess) GetInfo(_, _ string) (info planner.InstancePriceInfo, err error) {
+	return planner.InstancePriceInfo{}, m.err
 }

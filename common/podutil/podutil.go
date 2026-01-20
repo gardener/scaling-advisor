@@ -5,8 +5,11 @@
 package podutil
 
 import (
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"slices"
+
 	"github.com/gardener/scaling-advisor/common/objutil"
+
+	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -56,8 +59,8 @@ func GetPodCondition(status *corev1.PodStatus, conditionType corev1.PodCondition
 	return -1, nil
 }
 
-// AsPod converts a svcapi.PodInfo to a corev1.Pod object.
-func AsPod(info svcapi.PodInfo) *corev1.Pod {
+// AsPod converts a planner.PodInfo to a corev1.Pod object.
+func AsPod(info planner.PodInfo) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            info.Name,
@@ -92,10 +95,13 @@ func AsPod(info svcapi.PodInfo) *corev1.Pod {
 		},
 	}
 }
-func PodResourceInfosFromPodInfo(podInfos []svcapi.PodInfo) []svcapi.PodResourceInfo {
-	podResourceInfos := make([]svcapi.PodResourceInfo, 0, len(podInfos))
+
+// PodResourceInfosFromPodInfo extracts the AggregatedRequests for each pod
+// from podInfos alongwith its identification into a PodResourceInfo slice.
+func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResourceInfo {
+	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
-		podResourceInfos = append(podResourceInfos, svcapi.PodResourceInfo{
+		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
 			UID:                podInfo.UID,
 			NamespacedName:     podInfo.NamespacedName,
 			AggregatedRequests: podInfo.AggregatedRequests,
@@ -104,16 +110,20 @@ func PodResourceInfosFromPodInfo(podInfos []svcapi.PodInfo) []svcapi.PodResource
 	return podResourceInfos
 }
 
-func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []svcapi.PodResourceInfo {
-	podResourceInfos := make([]svcapi.PodResourceInfo, 0, len(pods))
+// PodResourceInfosFromCoreV1Pods extracts the AggregatedRequests for each pod
+// from a corev1 Pod slice alongwith its identification into a PodResourceInfo slice.
+func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodResourceInfo {
+	podResourceInfos := make([]planner.PodResourceInfo, 0, len(pods))
 	for _, p := range pods {
 		podResourceInfos = append(podResourceInfos, PodResourceInfoFromCoreV1Pod(&p))
 	}
 	return podResourceInfos
 }
 
-func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) svcapi.PodResourceInfo {
-	return svcapi.PodResourceInfo{
+// PodResourceInfoFromCoreV1Pod extracts the AggregatedRequests for a single
+// corev1 pod resource alongwith its identification into a PodResourceInfo object.
+func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
+	return planner.PodResourceInfo{
 		UID:                p.UID,
 		NamespacedName:     types.NamespacedName{Namespace: p.Namespace, Name: p.Name},
 		AggregatedRequests: AggregatePodRequests(p),
@@ -133,10 +143,38 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
 }
 
 // GetObjectNamesFromPodResourceInfos maps a slice of PodResourceInfo to pod names of the form "namespace/name"
-func GetObjectNamesFromPodResourceInfos(pods []svcapi.PodResourceInfo) []string {
+func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
 		objectNames = append(objectNames, pod.NamespacedName.String())
 	}
 	return objectNames
+}
+
+// AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
+func AsPodInfo(pod corev1.Pod) planner.PodInfo {
+	return planner.PodInfo{
+		ResourceMeta: planner.ResourceMeta{
+			UID:               pod.UID,
+			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
+			Labels:            pod.Labels,
+			Annotations:       pod.Annotations,
+			DeletionTimestamp: pod.DeletionTimestamp,
+			OwnerReferences:   pod.OwnerReferences,
+		},
+		AggregatedRequests:        AggregatePodRequests(&pod),
+		Volumes:                   pod.Spec.Volumes,
+		NodeSelector:              pod.Spec.NodeSelector,
+		NodeName:                  pod.Spec.NodeName,
+		Affinity:                  pod.Spec.Affinity,
+		SchedulerName:             pod.Spec.SchedulerName,
+		Tolerations:               pod.Spec.Tolerations,
+		PriorityClassName:         pod.Spec.PriorityClassName,
+		Priority:                  pod.Spec.Priority,
+		PreemptionPolicy:          pod.Spec.PreemptionPolicy,
+		RuntimeClassName:          pod.Spec.RuntimeClassName,
+		Overhead:                  objutil.ResourceListToInt64Map(pod.Spec.Overhead),
+		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
+		ResourceClaims:            pod.Spec.ResourceClaims,
+	}
 }

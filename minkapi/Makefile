@@ -55,14 +55,22 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./cli ./server .
+	@$(REPO_HACK_DIR)/format.sh ./...
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
 
-## test-unit: run all unit tests with coverage
-.PHONY: test-unit
-test-unit:
-	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
-	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html
+## run: run the  planner
+.PHONY: run
+run: build
+	bin/${binary_name}
+
+## run/live: run the planner with reloading on file changes
+.PHONY: run/live
+run/live:
+	go run github.com/cosmtrek/air@v1.43.0 \
+	    --build.cmd "make build" --build.bin "bin/${binary_name}" --build.delay "100" \
+	    --build.exclude_dir "" \
+	    --build.include_ext "go, tpl, tmpl, html, css, scss, js, ts, sql, jpeg, jpg, gif, png, bmp, svg, webp, ico" \
+	    --misc.clean_on_exit "true"

@@ -10,76 +10,24 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 
-	"github.com/gardener/scaling-advisor/common/objutil"
-
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-)
-
-// DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
-const (
-	DefaultDumpVerbosity = 5
+	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
-func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
-	val := ctx.Value(commontypes.VerbosityCtxKey)
-	if val == nil {
-		return
+func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
+	v := ctx.Value(commonconstants.VerbosityCtxKey)
+	if v == nil {
+		return 0
 	}
-	var ok bool
-	verbosity, ok = val.(uint32)
-	if ok {
-		return
+	verbosity, ok := v.(uint32)
+	if !ok {
+		return 0
 	}
-	v, ok := val.(int) // check if int
-	if ok && v >= 0 {
-		verbosity = uint32(v) // #nosec G115 -- safe: v >= 0 already checked
-	}
-	return
-}
-
-// VerbosityTraceFromContext retrieves the verbosity level, the trace dir and the trace log path from the given context.
-func VerbosityTraceFromContext(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
-	verbosity = VerbosityFromContext(ctx)
-	d := ctx.Value(commontypes.TraceDirCtxKey)
-	if d != nil {
-		traceDir = d.(string)
-	}
-	l := ctx.Value(commontypes.TraceLogPathCtxKey)
-	if l != nil {
-		traceLogPath = l.(string)
-	}
-	return
-}
-
-// DumpObjectIfNeeded dumps the YAML for the given object into a `object-name.yaml` file within a `traceDir` obtained
-// from the context if any
-func DumpObjectIfNeeded(ctx context.Context, obj metav1.Object) error {
-	l := logr.FromContextOrDiscard(ctx)
-	verbosity, traceDir, _ := VerbosityTraceFromContext(ctx)
-	if verbosity < DefaultDumpVerbosity || traceDir == "" {
-		return nil
-	}
-	runtimeObj := obj.(runtime.Object)
-	var yamlDumpPath string
-	yamlDumpPath, err := objutil.SaveRuntimeObjAsYAMLToPath(runtimeObj, traceDir, obj.GetName()+".yaml")
-	if err != nil {
-		return err
-	}
-	l.V(DefaultDumpVerbosity).Info("dumped object", "kind", runtimeObj.GetObjectKind().GroupVersionKind().Kind,
-		"yamlDumpPath", yamlDumpPath, "name", obj.GetName(), "namespace", obj.GetNamespace())
-	return nil
-}
-
-// GetCleanLogFileName removes all special characters from fileName and returns the clean fileName
-func GetCleanLogFileName(fileName string) string {
-	return fileNameCleanRe.ReplaceAllString(fileName, "")
+	return logsapiv1.VerbosityLevel(verbosity)
 }
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
@@ -106,6 +54,9 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 
 	combined := base.WithSink(mSink)
 	logCtx = context.WithValue(logr.NewContext(ctx, combined), commontypes.TraceLogPathCtxKey, logPath)
+
+	combined := logr.New(mSink).WithCallDepth(1)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, path)
 
 	return
 }

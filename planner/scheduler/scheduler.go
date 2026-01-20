@@ -38,6 +38,7 @@ var _ planner.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context
+	name      string
 	scheduler *scheduler.Scheduler
 	cancelFn  context.CancelFunc
 	params    *planner.SchedulerLaunchParams
@@ -109,10 +110,9 @@ func (s *schedulerLauncher) Launch(ctx context.Context, params *planner.Schedule
 	}
 
 	go func() {
-		log.V(5).Info("Begin run scheduler", "name", handle.name)
+		log.Info("Begin run scheduler", "name", handle.name)
 		handle.scheduler.Run(schedulerCtx)
-		log.V(5).Info("End run scheduler", "name", handle.name)
-		s.semaphore.Release(1)
+		log.Info("End run scheduler", "name", handle.name)
 	}()
 	return handle, nil
 }
@@ -124,25 +124,23 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			err = fmt.Errorf("%w: %w", planner.ErrLaunchScheduler, err)
 		}
 	}()
-	log := logr.FromContextOrDiscard(ctx)
 
 	verbosity := logutil.VerbosityFromContext(ctx)
 	if verbosity > 0 {
-		apiVerbosity := logsapiv1.VerbosityLevel(verbosity)
 		loggingConfig := logsapiv1.LoggingConfiguration{
 			Format:         logsapiv1.DefaultLogFormat,
 			FlushFrequency: logsapiv1.TimeOrMetaDuration{Duration: metav1.Duration{Duration: time.Second * 1}},
-			Verbosity:      apiVerbosity,
+			Verbosity:      verbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
-		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
 		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
 		if err != nil {
-			log.Info("Failed to apply logging configuration for the scheduler", "error", err.Error())
-			err = nil //reset the error
+			err = fmt.Errorf("failed to apply logging configuration: %w", err)
+			return
 		}
 	}
 
+	log := logr.FromContextOrDiscard(ctx)
 	broadcaster := events.NewBroadcaster(params.EventSink)
 	broadcaster.StartRecordingToSink(ctx.Done())
 	name := "embedded-scheduler-" + rand.String(5)
@@ -185,9 +183,9 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 
 func (s *schedulerHandle) Close() error {
 	log := logr.FromContextOrDiscard(s.ctx)
-	log.V(5).Info("Stopping scheduler", "name", s.name)
+	log.Info("Stopping scheduler", "name", s.name)
 	s.cancelFn()
-	log.V(5).Info("Stopped scheduler", "name", s.name)
+	log.Info("Stopped scheduler", "name", s.name)
 	return nil
 }
 

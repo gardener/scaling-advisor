@@ -38,23 +38,64 @@ const (
 const (
 	// LabelSimulationName is the label key to identify name of the simulation inside a simulation group.
 	LabelSimulationName = "sa.gardener.cloud/simulation-name"
-	// LabelSimulationGroupPassNum is the label key to identify the pass number of the simulation group.
-	LabelSimulationGroupPassNum = "sa.gardener.cloud/simulation-group-pass-num"
+	// LabelSimulationGroupName is the label key to identify the name of the simulation group.
+	LabelSimulationGroupName = "sa.gardener.cloud/simulation-group-name"
+	// LabelSimulationGroupNumPasses is the label key to identify the number of passes made for this simulation group.
+	LabelSimulationGroupNumPasses = "sa.gardener.cloud/simulation-group-num-passes"
+	// LabelTotalSimulations is the label key to identify the total number of simulations across all simulation groups at the time the group run result was produced.
+	LabelTotalSimulations = "sa.gardener.cloud/total-simulations"
 	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
 	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
 	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
 	LabelNodeTemplateName = "sa.gardener.cloud/node-template-name"
-	// LabelRequestID is the label key to identify the request ID of scaling advice request.
+	// LabelRequestID is the label key to identify the request Name of scaling advice request.
 	LabelRequestID = "sa.gardener.cloud/request-id"
-	// LabelCorrelationID is the label key to identify the correlation ID of the scaling advice request.
+	// LabelCorrelationID is the label key to identify the correlation Name of the scaling advice request.
 	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
 )
 
 const (
-	DefaultOperatorServerPort      = 8080
+	// DefaultOperatorHealthProbePort is the default port for the operator health probe endpoints.
 	DefaultOperatorHealthProbePort = 8081
-	DefaultOperatorMetricsPort     = 8082
-	DefaultOperatorProfilingPort   = 8083
-	DefaultAdvisorServicePort      = 8090
-	DefaultMinKAPIPort             = 8091
+	// DefaultOperatorMetricsPort is the default port for the operator metrics endpoint.
+	DefaultOperatorMetricsPort = 8082
+	// DefaultOperatorProfilingPort is the default port for the operator profiling endpoints.
+	DefaultOperatorProfilingPort = 8083
+	// DefaultAdvisorServicePort is the default port for the scaling advisor service.
+	DefaultAdvisorServicePort = 8090
+	// DefaultMinKAPIPort is the default port for the MinKAPI core.
+	DefaultMinKAPIPort = 8091
+
+	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown of a server
+	DefaultGracefulShutdownTimeout = 10 * time.Second
+)
+
+var (
+	// DefaultOperatorHealthProbeBindAddress is the default bind address serving the /healthz (liveness) and /readyz (readiness) endpoints for the scaling-advisor operator
+	DefaultOperatorHealthProbeBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultOperatorHealthProbePort))
+
+	// DefaultOperatorMetricsBindAddress is the default bind address serving the /metrics endpoint for the scaling-advisor operator.
+	DefaultOperatorMetricsBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultOperatorMetricsPort))
+
+	// DefaultOperatorProfilingBindAddress is the default bind address serving the standard Go pprof (/debug/pprof/*) endpoints for the scaling-advisor operator
+	DefaultOperatorProfilingBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultOperatorProfilingPort))
+
+	// DefaultAdvisorServiceBindAddress is the default bind address for the standard scaling-advisor service.
+	// This service maybe used standalone or embedded within the scaling-advisor operator.
+	DefaultAdvisorServiceBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultAdvisorServicePort))
+
+	// DefaultMinKAPIBindAddress is the default bind address for the MinKAPI server.
+	// This server maybe used standalone or embedded within the scaling-advisor operator.
+	DefaultMinKAPIBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultMinKAPIPort))
+)
+
+// ContextKey is the type alias for scaling advisor related context keys
+type ContextKey string
+
+const (
+	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
+	VerbosityCtxKey ContextKey = "verbosity"
+
+	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
+	TraceLogPathCtxKey ContextKey = "traceLogPath"
 )

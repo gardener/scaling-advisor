@@ -47,13 +47,14 @@ spec:
                   that this advice is based on.
                 properties:
                   name:
-                    description: Name is the name of the object.
+                    description: Name is the name of the ClusterScalingConstraint.
                     type: string
                   namespace:
-                    description: Namespace is the namespace of the object.
+                    description: Namespace is the namespace of the ClusterScalingConstraint.
                     type: string
                 required:
                 - name
+                - namespace
                 type: object
               scaleInPlan:
                 description: ScaleInPlan is the plan for scaling in across node pools.
@@ -76,22 +77,22 @@ spec:
                           description: NodeName is the name of the node to be scaled
                             in.
                           type: string
-                        poolName:
-                          description: PoolName is the name of the node pool.
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
+                          type: string
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
                           type: string
                         region:
                           description: Region is the region of the instance
-                          type: string
-                        templateName:
-                          description: TemplateName is the name of the node template.
                           type: string
                       required:
                       - availabilityZone
                       - instanceType
                       - nodeName
-                      - poolName
+                      - nodePoolName
+                      - nodeTemplateName
                       - region
-                      - templateName
                       type: object
                     type: array
                 required:
@@ -101,7 +102,7 @@ spec:
                 description: ScaleOutPlan is the plan for scaling out across node
                   pools.
                 properties:
-                  items:
+                  Items:
                     description: Items is the slice of scaling-out advice for a node
                       pool.
                     items:
@@ -125,23 +126,23 @@ spec:
                         instanceType:
                           description: InstanceType is the instance type of the Node
                           type: string
-                        poolName:
-                          description: PoolName is the name of the node pool.
+                        nodePoolName:
+                          description: NodePoolName is the name of the node pool.
+                          type: string
+                        nodeTemplateName:
+                          description: NodeTemplateName is the name of the node template.
                           type: string
                         region:
                           description: Region is the region of the instance
-                          type: string
-                        templateName:
-                          description: TemplateName is the name of the node template.
                           type: string
                       required:
                       - availabilityZone
                       - currentReplicas
                       - delta
                       - instanceType
-                      - poolName
+                      - nodePoolName
+                      - nodeTemplateName
                       - region
-                      - templateName
                       type: object
                     type: array
                   unsatisfiedPodNames:
@@ -151,7 +152,8 @@ spec:
                       type: string
                     type: array
                 required:
-                - items
+                - Items
+                - unsatisfiedPodNames
                 type: object
             required:
             - constraintRef

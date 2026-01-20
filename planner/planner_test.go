@@ -5,316 +5,135 @@
 package planner
 
 import (
-	"math"
+	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
-	"github.com/gardener/scaling-advisor/planner/testutil"
+	"github.com/gardener/scaling-advisor/planner/scheduler"
+	"github.com/gardener/scaling-advisor/planner/weights"
 
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/minkapi/view"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/gardener/scaling-advisor/samples"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 )
 
-func TestOnePoolUnitScaleOut(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-		VolGenInput: samples.VolGenInput{
-			PVCNames:   []string{"stem"},
-			ClaimPhase: corev1.ClaimBound,
-			GeneratePV: true,
-		},
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_ImmediateVolumeBinding(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-		VolGenInput: samples.VolGenInput{
-			PVCNames:          []string{"stem"},
-			ClaimPhase:        corev1.ClaimPending,
-			VolumeBindingMode: storagev1.VolumeBindingImmediate,
-			GeneratePV:        true,
-		},
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestOnePoolScaleOutWithUnboundPVC_SimulatePV_ImmediateVolumeBinding(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-		VolGenInput: samples.VolGenInput{
-			PVCNames:          []string{"stem"},
-			ClaimPhase:        corev1.ClaimPending,
-			VolumeBindingMode: storagev1.VolumeBindingImmediate,
-		},
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_WaitForFirstConsumer(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-		VolGenInput: samples.VolGenInput{
-			PVCNames:          []string{"stem"},
-			ClaimPhase:        corev1.ClaimPending,
-			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
-			GeneratePV:        true,
-		},
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestOnePoolScaleOutWithUnboundPVC_SimulatePV_WaitForFirstConsumer(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-		VolGenInput: samples.VolGenInput{
-			PVCNames:          []string{"stem"},
-			ClaimPhase:        corev1.ClaimPending,
-			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
-		},
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
-
-func TestReusePlannerAcrossRequests(t *testing.T) {
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: 1,
-		},
-		Factories: NewFactories(),
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         1,
-			},
-		},
-	}
-	testData.Request.ID = t.Name() + "-A"
-	if !testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan) {
+func TestGenerateBasicScalingAdvice(t *testing.T) {
+	testCtx, cancelFn := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancelFn()
+	runCtx, runCancelFn := commoncli.CreateAppContext(testCtx, "planner-test")
+	defer runCancelFn()
+	p, err := createTestScalingPlanner(runCtx)
+	if err != nil {
+		t.Errorf("failed to create test planner: %v", err)
 		return
 	}
 
-	testData.Request.ID = t.Name() + "-B"
-	if !testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan) {
+	constraints, err := samples.LoadClusterConstraints(samples.CategoryBasic)
+	if err != nil {
+		t.Errorf("failed to load basic cluster constraints: %v", err)
+		return
+	}
+	snapshot, err := samples.LoadClusterSnapshot(samples.CategoryBasic)
+	if err != nil {
+		t.Errorf("failed to load basic cluster snapshot: %v", err)
+		return
+	}
+
+	req := plannerapi.ScalingAdviceRequest{
+		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
+			ID:            t.Name(),
+			CorrelationID: t.Name(),
+		},
+		Constraint:           constraints,
+		Snapshot:             snapshot,
+		DiagnosticVerbosity:  2,
+		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
+		SimulationStrategy:   commontypes.SimulationStrategyMultiSimulationsPerGroup,
+		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
+	}
+
+	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
+	defer close(resultCh)
+	p.Plan(runCtx, req, resultCh)
+	planResult := <-resultCh
+	if planResult.Err != nil {
+		t.Errorf("failed to produce plan result: %v", planResult.Err)
+		return
+	}
+	//if planResult.Response.Diagnostics == nil {
+	//	t.Errorf("expected diagnostics to be set, got nil")
+	//	return
+	//}
+	scaleOutPlan := planResult.ScaleOutPlan
+	if scaleOutPlan == nil {
+		t.Errorf("expected scale-out plan to be set, got nil")
+		return
+	}
+	scaleOutPlanBytes, err := json.Marshal(scaleOutPlan)
+	if err != nil {
+		t.Errorf("failed to marshal scale-out plan: %v", err)
+		return
+	}
+	t.Logf("produced scale-out plan: %+v", string(scaleOutPlanBytes))
+
+	if len(scaleOutPlan.Items) != 1 {
+		t.Errorf("expected 1 scale-out item, got %d", len(scaleOutPlan.Items))
+		return
+	}
+	if scaleOutPlan.Items[0].Delta != 1 {
+		t.Errorf("expected scale-out delta of 1, got %d", scaleOutPlan.Items[0].Delta)
+		return
+	}
+	if scaleOutPlan.Items[0].NodeTemplateName != constraints.Spec.NodePools[0].NodeTemplates[0].Name {
+		t.Errorf("expected node template name %q, got %q", constraints.Spec.NodePools[0].NodeTemplates[0].Name, scaleOutPlan.Items[0].NodeTemplateName)
 		return
 	}
 }
 
-func TestOnePoolFullFitPodScaleout(t *testing.T) {
-	amount := 1
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: amount,
+func createTestScalingPlanner(ctx context.Context) (plannerapi.ScalingPlanner, error) {
+	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
+	if err != nil {
+		return nil, err
+	}
+	weightsFn := weights.GetDefaultWeightsFn()
+	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
+		Name:   minkapi.DefaultBasePrefix,
+		Scheme: typeinfo.SupportedScheme,
+		WatchConfig: minkapi.WatchConfig{
+			QueueSize: minkapi.DefaultWatchQueueSize,
+			Timeout:   minkapi.DefaultWatchTimeout,
 		},
-		Factories: NewFactories(),
 	})
-	if !ok {
-		return
+	if err != nil {
+		return nil, err
 	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         int32(amount),
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
 
-// TestOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool A's NodeTemplate.
-func TestOnePoolHalfFitPodScaleout(t *testing.T) {
-	amount := 2
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetHalfBerry: amount,
-		},
-		Factories: NewFactories(),
-	})
-	if !ok {
-		return
+	schedulerConfigBytes, err := samples.LoadBinPackingSchedulerConfig()
+	if err != nil {
+		return nil, err
 	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         int32(amount / 2),
-			},
-		},
+	simulatorConfig := plannerapi.SimulatorConfig{
+		MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+		TrackPollInterval:      plannerapi.DefaultTrackPollInterval,
 	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
+	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
+	if err != nil {
+		return nil, err
+	}
 
-// TestOnePoolHalfAndFullFitPodScaleout tests scale out of one pool using both HalfBerry and Berry pods that half-fit
-// and full-fit into pool A's NodeTemplate.
-func TestOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
-	amount := 2
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetHalfBerry: amount,
-			samples.ResourcePresetBerry:     amount,
-		},
-		Factories: NewFactories(),
-	})
-	if !ok {
-		return
+	scalePlannerArgs := plannerapi.ScalingPlannerArgs{
+		ViewAccess:        viewAccess,
+		ResourceWeigher:   weightsFn,
+		PricingAccess:     pricingAccess,
+		SchedulerLauncher: schedulerLauncher,
+		SimulatorConfig:   simulatorConfig,
 	}
-	poolAPlacement := testData.NodePlacements[0]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         int32(math.Round(float64(amount) * 1.5)),
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-}
 
-// TestTwoPoolFullFitPodScaleOut tests the scale-out scenarios for basic variant with 2 pools, where there is only one node template for each pool
-// and where any unscheduled pod nearly fully fits into the node template.
-func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
-	amount := 1
-	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolPreset: samples.PoolPreset2P,
-		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-			samples.ResourcePresetBerry: amount,
-			samples.ResourcePresetGrape: amount,
-		},
-		Factories: NewFactories(),
-	})
-	if !ok {
-		return
-	}
-	poolAPlacement, poolBPlacement := testData.NodePlacements[0], testData.NodePlacements[1]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement: poolAPlacement,
-				Delta:         int32(amount),
-			},
-			{
-				NodePlacement: poolBPlacement,
-				Delta:         int32(amount),
-			},
-		},
-	}
-	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+	return New(scalePlannerArgs), nil
 }

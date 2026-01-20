@@ -9,7 +9,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -20,11 +19,11 @@ import (
 // ScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
 type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the specification of the ScalingConstraint.
 	Spec ScalingConstraintSpec `json:"spec"`
 	// Status defines the status of the ScalingConstraint.
-	Status ScalingConstraintStatus `json:"status,omitzero"`
+	Status ScalingConstraintStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -45,30 +44,18 @@ type ScalingConstraintSpec struct {
 	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
 	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
 	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
-	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advice.
-	// It allows a consumer to accept or reject the advice by checking the ConsumerID for which the scaling advice has been created.
-	// +optional
-	ConsumerID string `json:"consumerID,omitempty"`
+	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
+	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
+	// It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
+	ConsumerID string `json:"consumerID"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools,omitempty"`
-}
-
-// GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
-func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
-	zoneSet := sets.NewString()
-	for _, p := range c.NodePools {
-		zoneSet.Insert(p.AvailabilityZones...)
-	}
-	zones := zoneSet.List()
-	slices.Sort(zones)
-	return zones
 }
 
 // ScalingConstraintStatus defines the observed state of ScalingConstraint.
 type ScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ScalingConstraint.
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions"`
 }
 
 // NodePool defines a node pool configuration for a cluster.

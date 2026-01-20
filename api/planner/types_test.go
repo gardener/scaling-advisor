@@ -8,19 +8,17 @@ import (
 	"testing"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
 	tests := []struct {
-		snapshot *ClusterSnapshot
 		name     string
+		snapshot *ClusterSnapshot
 		expected int
 	}{
 		{
@@ -76,53 +74,44 @@ func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
 
 func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 	tests := []struct {
-		snapshot    *ClusterSnapshot
-		expected    map[sacorev1alpha1.NodePlacement]int32
 		name        string
+		snapshot    *ClusterSnapshot
 		expectError bool
+		expected    map[sacorev1alpha1.NodePlacement]int32
 	}{
 		{
 			name: "nodes with complete placement info",
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
 								corev1.LabelTopologyZone:              "us-east-1a",
-								corev1.LabelInstanceTypeStable:        "m5.large",
-								corev1.LabelHostname:                  "host1",
-								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.large",
 					},
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
 								corev1.LabelTopologyZone:              "us-east-1a",
-								corev1.LabelHostname:                  "host1",
-								corev1.LabelInstanceTypeStable:        "m5.large",
-								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.large",
 					},
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-b",
 								commonconstants.LabelNodePoolName:     "pool-b",
 								corev1.LabelTopologyRegion:            "us-west-2",
 								corev1.LabelTopologyZone:              "us-west-2a",
-								corev1.LabelInstanceTypeStable:        "m5.large",
-								corev1.LabelHostname:                  "host1",
-								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.xlarge",
@@ -132,15 +121,15 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			expectError: false,
 			expected: map[sacorev1alpha1.NodePlacement]int32{
 				{
-					PoolName:         "pool-a",
-					TemplateName:     "template-a",
+					NodePoolName:     "pool-a",
+					NodeTemplateName: "template-a",
 					InstanceType:     "m5.large",
 					Region:           "us-east-1",
 					AvailabilityZone: "us-east-1a",
 				}: 2,
 				{
-					PoolName:         "pool-b",
-					TemplateName:     "template-b",
+					NodePoolName:     "pool-b",
+					NodeTemplateName: "template-b",
 					InstanceType:     "m5.xlarge",
 					Region:           "us-west-2",
 					AvailabilityZone: "us-west-2a",
@@ -152,7 +141,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodePoolName: "pool-a",
 								corev1.LabelTopologyRegion:        "us-east-1",
@@ -170,7 +159,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
@@ -188,7 +177,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -206,7 +195,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ObjectMeta: metav1.ObjectMeta{
+						ResourceMeta: ResourceMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -254,25 +243,28 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 
 func TestPodInfo_GetResourceInfo(t *testing.T) {
 	podInfo := PodInfo{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       "pod-uid-123",
-			Namespace: "default",
-			Name:      "test-pod",
+		ResourceMeta: ResourceMeta{
+			UID: "pod-uid-123",
+			NamespacedName: types.NamespacedName{
+				Namespace: "default",
+				Name:      "test-pod",
+			},
 		},
-		AggregatedRequests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    1000,
+			corev1.ResourceMemory: 2048,
 		},
 	}
 
 	expected := PodResourceInfo{
-		NamespacedName: commontypes.NamespacedName{
+		UID: "pod-uid-123",
+		NamespacedName: types.NamespacedName{
 			Namespace: "default",
 			Name:      "test-pod",
 		},
-		AggregatedRequests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		AggregatedRequests: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    1000,
+			corev1.ResourceMemory: 2048,
 		},
 	}
 
@@ -285,30 +277,32 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 
 func TestNodeInfo_GetResourceInfo(t *testing.T) {
 	nodeInfo := NodeInfo{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "node-1",
+		ResourceMeta: ResourceMeta{
+			NamespacedName: types.NamespacedName{
+				Name: "node-1",
+			},
 		},
 		InstanceType: "m5.large",
-		Capacity: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    resource.MustParse("4000"),
-			corev1.ResourceMemory: resource.MustParse("8192"),
+		Capacity: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    4000,
+			corev1.ResourceMemory: 8192,
 		},
-		Allocatable: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    resource.MustParse("3800"),
-			corev1.ResourceMemory: resource.MustParse("7680"),
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    3800,
+			corev1.ResourceMemory: 7680,
 		},
 	}
 
 	expected := NodeResourceInfo{
 		Name:         "node-1",
 		InstanceType: "m5.large",
-		Capacity: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    resource.MustParse("4000"),
-			corev1.ResourceMemory: resource.MustParse("8192"),
+		Capacity: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    4000,
+			corev1.ResourceMemory: 8192,
 		},
-		Allocatable: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    resource.MustParse("3800"),
-			corev1.ResourceMemory: resource.MustParse("7680"),
+		Allocatable: map[corev1.ResourceName]int64{
+			corev1.ResourceCPU:    3800,
+			corev1.ResourceMemory: 7680,
 		},
 	}
 
@@ -322,30 +316,30 @@ func TestNodeInfo_GetResourceInfo(t *testing.T) {
 func TestSimGroupKey_String(t *testing.T) {
 	tests := []struct {
 		name     string
+		key      SimGroupKey
 		expected string
-		key      commontypes.PriorityKey
 	}{
 		{
 			name: "both priorities positive",
-			key: commontypes.PriorityKey{
-				First:  1,
-				Second: 2,
+			key: SimGroupKey{
+				NodePoolPriority:     1,
+				NodeTemplatePriority: 2,
 			},
 			expected: "1-2",
 		},
 		{
 			name: "zero priorities",
-			key: commontypes.PriorityKey{
-				First:  0,
-				Second: 0,
+			key: SimGroupKey{
+				NodePoolPriority:     0,
+				NodeTemplatePriority: 0,
 			},
 			expected: "0-0",
 		},
 		{
 			name: "large priorities",
-			key: commontypes.PriorityKey{
-				First:  100,
-				Second: 200,
+			key: SimGroupKey{
+				NodePoolPriority:     100,
+				NodeTemplatePriority: 200,
 			},
 			expected: "100-200",
 		},

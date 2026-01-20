@@ -48,13 +48,14 @@ spec:
                   that this advice is based on.
                 properties:
                   name:
-                    description: Name is the name of the object.
+                    description: Name is the name of the ClusterScalingConstraint.
                     type: string
                   namespace:
-                    description: Namespace is the namespace of the object.
+                    description: Namespace is the namespace of the ClusterScalingConstraint.
                     type: string
                 required:
                 - name
+                - namespace
                 type: object
               scaleInErrorInfo:
                 description: ScaleInErrorInfo is the scale-in error information for

@@ -48,8 +48,22 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./cli ./cmd ./internal ./pricing ./scorer .
+	@$(REPO_HACK_DIR)/format.sh ./...
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
+
+## run: run the service
+.PHONY: run
+run: build
+	bin/${binary_name}
+
+## run/live: run the service with reloading on file changes
+.PHONY: run/live
+run/live:
+	go run github.com/cosmtrek/air@v1.43.0 \
+	    --build.cmd "make build" --build.bin "bin/${binary_name}" --build.delay "100" \
+	    --build.exclude_dir "" \
+	    --build.include_ext "go, tpl, tmpl, html, css, scss, js, ts, sql, jpeg, jpg, gif, png, bmp, svg, webp, ico" \
+	    --misc.clean_on_exit "true"

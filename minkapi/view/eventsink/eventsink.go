@@ -7,6 +7,7 @@ package eventsink
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	eventsv1 "k8s.io/api/events/v1"
@@ -20,6 +21,7 @@ var _ mkapi.EventSink = (*InMemEventSink)(nil)
 // InMemEventSink is plain implementation of minkapi EventSink that holds events in a backing slice.
 type InMemEventSink struct {
 	events []eventsv1.Event
+	mu     sync.Mutex
 }
 
 // New constructs a minkapi event-sink that sinks events to a backing in-memory slice of events.
@@ -31,12 +33,16 @@ func New() mkapi.EventSink {
 
 // Create appends the given event to the backing in-memory event slice.
 func (s *InMemEventSink) Create(_ context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.events = append(s.events, *event)
 	return event, nil
 }
 
 // Update updates the given event within the backing in-memory slice.
 func (s *InMemEventSink) Update(_ context.Context, event *eventsv1.Event) (*eventsv1.Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, e := range s.events {
 		if e.Name == event.Name && e.Namespace == event.Namespace {
 			s.events[i] = *event
@@ -48,6 +54,8 @@ func (s *InMemEventSink) Update(_ context.Context, event *eventsv1.Event) (*even
 
 // Patch updates the given event within the backing in-memory slice.
 func (s *InMemEventSink) Patch(_ context.Context, oldEvent *eventsv1.Event, patchData []byte) (patched *eventsv1.Event, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, e := range s.events {
 		if e.Name == oldEvent.Name && e.Namespace == oldEvent.Namespace {
 			originalJSON, err := json.Marshal(e)
@@ -73,10 +81,14 @@ func (s *InMemEventSink) Patch(_ context.Context, oldEvent *eventsv1.Event, patc
 
 // List lists all the events in the backing in-memory slice.
 func (s *InMemEventSink) List() []eventsv1.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.events
 }
 
 // Reset clears the backing in-memory slice.
 func (s *InMemEventSink) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.events = nil
 }

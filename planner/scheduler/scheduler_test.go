@@ -6,14 +6,17 @@ package scheduler
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/planner"
+	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
@@ -21,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
+
+var state suiteState
 
 type suiteState struct {
 	ctx             context.Context
@@ -34,40 +39,59 @@ type suiteState struct {
 	schedulerHandle svcapi.SchedulerHandle
 }
 
-var log = klog.NewKlogr()
-
-func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
-	suite, err := initSuite(context.Background())
+// TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
+func TestMain(m *testing.M) {
+	// There is a data race between go test and klog. We need to disable go test parallelism.
+	err := flag.Set("test.parallel", "1") // disable go test parallelism
 	if err != nil {
-		t.Fatalf("failed to init suit: %v", err)
-		return
+		_, _ = fmt.Fprintf(os.Stderr, "failed to set test flags: %v\n", err)
+		os.Exit(commoncli.ExitErrStart)
 	}
-	defer shutdownSuite(&suite)
 
+	klog.InitFlags(nil)
+	defer klog.Flush()
+
+	// Initialize suite state
+	err = initSuite(context.Background())
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
+		os.Exit(commoncli.ExitErrStart)
+	}
+	// Run integration tests
+	exitCode := m.Run()
+	err = shutdownSuite()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to stop suite state: %v\n", err)
+		os.Exit(commoncli.ExitErrShutdown)
+	}
+	os.Exit(exitCode)
+}
+
+func TestPodNodeAssignment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	clientFacades, err := suite.baseView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
 		t.Fatalf("failed to get client facades: %v", err)
 		return
 	}
 	client := clientFacades.Client
 
-	createdNode, err := client.CoreV1().Nodes().Create(ctx, &suite.nodeA, metav1.CreateOptions{})
+	createdNode, err := client.CoreV1().Nodes().Create(ctx, &state.nodeA, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("failed to create nodeA: %v", err)
 		return
 	}
 	t.Logf("Created nodeA with name %q", createdNode.Name)
 
-	createdPod, err := client.CoreV1().Pods("").Create(ctx, &suite.podA, metav1.CreateOptions{})
+	createdPod, err := client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("failed to create podA: %v", err)
 		return
 	}
 	t.Logf("Created podA with name %q", createdPod.Name)
-	<-time.After(6 * time.Second) // TODO: replace with better approach.
-	evList := suite.app.Server.GetBaseView().GetEventSink().List()
+	<-time.After(5 * time.Second) // TODO: replace with better approach.
+	evList := state.app.Server.GetBaseView().GetEventSink().List()
 	if len(evList) == 0 {
 		t.Fatalf("got no evList, want at least one")
 		return
@@ -92,12 +116,14 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 	}
 }
 
-func initSuite(ctx context.Context) (suite suiteState, err error) {
+func initSuite(ctx context.Context) error {
+	var err error
+	var exitCode int
 	ctx = logr.NewContext(ctx, log)
-	ctx = context.WithValue(ctx, commontypes.VerbosityCtxKey, 1)
-	app, _, err := cli.LaunchApp(ctx)
+	ctx = context.WithValue(ctx, commonconstants.VerbosityCtxKey, 1)
+	app, exitCode, err := cli.LaunchApp(ctx)
 	if err != nil {
-		return
+		os.Exit(exitCode)
 	}
 
 	// Wait for the MinKAPI server to fully initialize and create the config file
@@ -116,59 +142,54 @@ func initSuite(ctx context.Context) (suite suiteState, err error) {
 
 	// Final check that the config file exists
 	if _, err = os.Stat(configPath); err != nil {
-		err = fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
-		return
+		return fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
 	}
 
-	suite.app = &app
-	suite.ctx, suite.cancel = app.Ctx, app.Cancel
-	suite.baseView = app.Server.GetBaseView()
-	suite.wamView, err = app.Server.GetSandboxView(suite.ctx, "wam")
+	state.app = &app
+	state.ctx, state.cancel = app.Ctx, app.Cancel
+	state.baseView = app.Server.GetBaseView()
+	state.wamView, err = app.Server.GetSandboxView(state.ctx, "wam")
 	if err != nil {
-		return
+		return err
 	}
-	suite.bamView, err = app.Server.GetSandboxView(suite.ctx, "bam")
+	state.bamView, err = app.Server.GetSandboxView(state.ctx, "bam")
 	if err != nil {
-		return
+		return err
 	}
 
-	launcher, err := NewLauncher(configPath, 1)
+	launcher, err := NewLauncher("/tmp/minkapi-kube-scheduler-config.yaml", 1)
 	if err != nil {
-		return
+		return err
 	}
-	clientFacades, err := suite.baseView.GetClientFacades(suite.ctx, commontypes.ClientAccessModeInMemory)
+	clientFacades, err := state.baseView.GetClientFacades(state.ctx, commontypes.ClientAccessInMemory)
 	if err != nil {
-		return
+		return err
 	}
-	suite.schedulerHandle, err = launcher.Launch(suite.ctx, &svcapi.SchedulerLaunchParams{
+	state.schedulerHandle, err = launcher.Launch(state.ctx, &svcapi.SchedulerLaunchParams{
 		ClientFacades: clientFacades,
 		EventSink:     app.Server.GetBaseView().GetEventSink(),
-	})
+	}
+	state.schedulerHandle, err = launcher.Launch(app.Ctx, params)
 	if err != nil {
-		return
+		return err
 	}
 	nodes, err := testutil.LoadTestNodes()
 	if err != nil {
-		return
+		return err
 	}
-	suite.nodeA = nodes[0]
+	state.nodeA = nodes[0]
 
 	pods, err := testutil.LoadTestPods()
 	if err != nil {
-		return
+		return err
 	}
-	suite.podA = pods[0]
+	state.podA = pods[0]
 
-	return
+	return nil
 }
 
-func shutdownSuite(state *suiteState) {
-	err := state.schedulerHandle.Close()
-	if err != nil {
-		klog.Errorf("failed to close schedulerHandle: %v", err)
-	}
-	exitCode := cli.ShutdownApp(state.app)
-	if exitCode != 0 {
-		klog.Errorf("failed to shutdown minkapi api: %v, exitCode: %d", state.app, exitCode)
-	}
+func shutdownSuite() error {
+	var err = state.schedulerHandle.Close()
+	_ = cli.ShutdownApp(state.app)
+	return err
 }

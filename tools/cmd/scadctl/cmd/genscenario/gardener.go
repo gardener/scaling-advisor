@@ -6,10 +6,19 @@ package genscenario
 
 import (
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/ioutil"
+	"maps"
+	"os"
+	"path"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	apiv1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
@@ -31,9 +40,9 @@ var shootCoords ShootCoordinate
 // for creating ClusterSnapshot and ClusterScalingConstraints.
 type ShootAccess interface {
 	// ListNodes fetches the nodes on a shoot cluster matching the given criteria.
-	ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) ([]corev1.Node, error)
+	ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) ([]corev1.Node, error)
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
-	ListPods(ctx context.Context, criteria mkapi.MatchCriteria, excludeKubeSystemPods bool) ([]corev1.Pod, error)
+	ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeKubeSystemPods bool) ([]corev1.Pod, error)
 	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
 	ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
@@ -94,10 +103,69 @@ func init() {
 // for generating scaling scenario(s) for a gardener cluster.
 var gardenerCmd = &cobra.Command{
 	Use:   "gardener <scenario-dir>",
-	Short: "generate scaling scenarios into <scenario-dir> for the gardener cluster manager",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("gardener called")
+	Short: "generate scaling data into <scenario-dir> for the gardener cluster manager (needs landscape oidc-kubeconfig to be present on the system)",
+	PreRunE: func(_ *cobra.Command, _ []string) (err error) {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		trimmedLandscape := strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-")
+		landscapeKubeconfigPath := path.Join(homeDir, ".garden", "landscapes", trimmedLandscape, "oidc-kubeconfig.yaml")
+		_, err = os.Stat(landscapeKubeconfigPath)
+		if err != nil {
+			return fmt.Errorf("cannot find kubeconfig for landscape %q: %w", shootCoords.Landscape, err)
+		}
+		return
+	},
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		// Create scaling scenario directory
+		if len(args) == 0 {
+			scenarioDir = "/tmp/" + shootCoords.getFullyQualifiedName()
+		} else {
+			scenarioDir = path.Join(args[0], shootCoords.getFullyQualifiedName())
+		}
+		fmt.Printf("Generating scaling data for shoot in %s\n", scenarioDir)
+		err = os.MkdirAll(scenarioDir, 0750)
+		if err != nil {
+			return fmt.Errorf("error creating scenario directory: %v", err)
+		}
+
+		// Create shoot access with shoot and control plane clients
+		ctx := cmd.Context()
+		shootAccess, err := createShootAccess(ctx)
+		if err != nil {
+			return fmt.Errorf("error creating shoot access: %v", err)
+		}
+
+		// Generate cluster snapshot
+		snap, err := createClusterSnapshot(ctx, shootAccess)
+		if err != nil {
+			return fmt.Errorf("error creating cluster snapshot: %v", err)
+		}
+		fmt.Printf("Created cluster snapshot with %d nodes and %d pods\n", len(snap.Nodes), len(snap.Pods))
+		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
+			return fmt.Errorf("error creating snapshot variants: %v", err)
+		}
+
+		// Generate cluster scaling constraint
+		extensionWorker, err := shootAccess.GetShootWorker(ctx)
+		if err != nil {
+			return fmt.Errorf("error getting shoot worker: %v", err)
+		}
+
+		csc, err := createScalingConstraint(extensionWorker)
+		if err != nil {
+			return fmt.Errorf("error creating cluster scaling constraint: %v", err)
+		}
+		clusterScalingConstraintFileName := path.Join(
+			scenarioDir,
+			"cluster-scaling-constraints-"+time.Now().UTC().Format("20060102T150405Z")+".json",
+		)
+		if err := saveDataToFile(csc, clusterScalingConstraintFileName); err != nil {
+			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
+		}
+		fmt.Printf("Created cluster scaling constraints at %s\n", clusterScalingConstraintFileName)
+		return nil
 	},
 }
 
@@ -246,7 +314,7 @@ func getClient(kubeConfigPath string, scheme *runtime.Scheme) (client.Client, er
 // Cluster Snapshot
 // ---------------------------------------------------------------------------------
 
-func (a *access) ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) (nodes []corev1.Node, err error) {
+func (a *access) ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) (nodes []corev1.Node, err error) {
 	var nodeList corev1.NodeList
 	err = a.shootClient.List(ctx, &nodeList, &client.ListOptions{
 		LabelSelector: criteria.LabelSelector,
@@ -265,7 +333,7 @@ func (a *access) ListNodes(ctx context.Context, criteria mkapi.MatchCriteria) (n
 	return nodes, err
 }
 
-func (a *access) ListPods(ctx context.Context, criteria mkapi.MatchCriteria, excludeKubeSystemPods bool) (pods []corev1.Pod, err error) {
+func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeKubeSystemPods bool) (pods []corev1.Pod, err error) {
 	var podList corev1.PodList
 	err = a.shootClient.List(ctx, &podList, &client.ListOptions{
 		Namespace:     criteria.Namespace,
@@ -344,10 +412,10 @@ func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, 
 	return volMap, nil
 }
 
-func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapshot, error) {
-	var snap svcapi.ClusterSnapshot
+func createClusterSnapshot(ctx context.Context, a *access) (planner.ClusterSnapshot, error) {
+	var snap planner.ClusterSnapshot
 
-	nodes, err := a.ListNodes(ctx, mkapi.MatchCriteria{})
+	nodes, err := a.ListNodes(ctx, minkapi.MatchCriteria{})
 	if err != nil {
 		return snap, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -355,16 +423,16 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 	slices.SortFunc(nodes, func(nodeA, nodeB corev1.Node) int {
 		return nodeB.CreationTimestamp.Compare(nodeA.CreationTimestamp.Time)
 	})
-	snap.Nodes = make([]svcapi.NodeInfo, 0, len(nodes))
+	snap.Nodes = make([]planner.NodeInfo, 0, len(nodes))
 	volMap, err := a.GetCSIDriverToVolCount(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to create volume map: %w", err)
 	}
-	pods, err := a.ListPods(ctx, mkapi.MatchCriteria{}, excludeKubeSystemPods)
+	pods, err := a.ListPods(ctx, minkapi.MatchCriteria{}, excludeKubeSystemPods)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
-	snap.Pods = make([]svcapi.PodInfo, 0, len(pods))
+	snap.Pods = make([]planner.PodInfo, 0, len(pods))
 	for i, pod := range pods {
 		sanitizePod(&pod, i)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
@@ -399,7 +467,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (svcapi.ClusterSnapsh
 // of the snapshot without a few of the most recent scaled nodes and
 // unbinds the pods scheduled on those nodes. This is useful to compare
 // the removed nodes with the nodes scaled up by autoscaling component.
-func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
+func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
 	formattedTime := time.Now().UTC().Format("20060102T150405Z")
 	baseSnapshotFileName := path.Join(dir, "snapshot-"+formattedTime+"-baseline.json")
 	if err := saveDataToFile(snap, baseSnapshotFileName); err != nil {
@@ -424,7 +492,7 @@ func genSnapshotVariants(snap svcapi.ClusterSnapshot, dir string) error {
 	return nil
 }
 
-func removeNodesFromSnapshot(snap svcapi.ClusterSnapshot, count int) svcapi.ClusterSnapshot {
+func removeNodesFromSnapshot(snap planner.ClusterSnapshot, count int) planner.ClusterSnapshot {
 	newSnap := snap
 
 	newSnap.Nodes = snap.Nodes[count:]
@@ -446,7 +514,7 @@ func removeNodesFromSnapshot(snap svcapi.ClusterSnapshot, count int) svcapi.Clus
 // ScalingConstraint
 // ---------------------------------------------------------------------------------
 
-// Get Worker extension objects from control plane
+// GetShootWorker retrieves the shoot worker extension objects from control plane
 func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	var worker unstructured.Unstructured
 	worker.SetAPIVersion("extensions.gardener.cloud/v1alpha1")
@@ -464,16 +532,15 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	return worker.Object, nil
 }
 
-func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ClusterScalingConstraint, err error) {
+func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ScalingConstraint, err error) {
 	nodePools, err := createNodePools(extensionWorker)
 	if err != nil {
 		err = fmt.Errorf("error creating node pools: %v", err)
 		return
 	}
 
-	csc = &apiv1alpha1.ClusterScalingConstraint{}
+	csc = &apiv1alpha1.ScalingConstraint{}
 	csc.Spec.NodePools = nodePools
-	csc.Spec.AdviceGenerationMode = apiv1alpha1.ScalingAdviceGenerationModeAllAtOnce // FIXME hardcoded for now
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }
@@ -585,14 +652,14 @@ func saveDataToFile(data any, path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer ioutil.CloseQuietly(file)
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }
 
-func obfuscateNodeNames(snap *svcapi.ClusterSnapshot) error {
+func obfuscateNodeNames(snap *planner.ClusterSnapshot) error {
 	snapData, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("could not marshal snapshot: %w", err)

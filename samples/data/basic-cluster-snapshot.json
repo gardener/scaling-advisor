@@ -3,7 +3,7 @@
     {
       "UID": "7854d99d-4d4a-41ba-9acc-bc9e539aa9b5",
       "Namespace": "default",
-      "Name": "nginx-7r552",
+      "Name": "five-gig-workload-7r552",
       "AggregatedRequests": {
         "memory": 5662310400
       },
@@ -29,9 +29,9 @@
     {
       "UID": "d85f610a-ee11-4670-b807-bde9e1c0929d",
       "Namespace": "default",
-      "Name": "nginx-w4hnm",
+      "Name": "three-gig-workload-w4hnm",
       "AggregatedRequests": {
-        "memory": 5662310400
+        "memory": 3230000000
       },
       "NodeName": "",
       "SchedulerName": "default-scheduler",

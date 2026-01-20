@@ -16,7 +16,7 @@ import (
 	"github.com/gardener/scaling-advisor/tools/pricing/awsprice"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	svcapi "github.com/gardener/scaling-advisor/api/service"
+	svcapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/spf13/cobra"
 )
 

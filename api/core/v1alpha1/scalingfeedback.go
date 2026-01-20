@@ -37,7 +37,7 @@ type ScalingFeedbackList struct {
 // ScalingFeedbackSpec defines the specification of the ScalingFeedback.
 type ScalingFeedbackSpec struct {
 	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
+	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 	// ScaleOutErrorInfos is the list of scale-out errors for the scaling advice.
 	ScaleOutErrorInfos []ScaleOutErrorInfo `json:"scaleOutErrorInfos,omitempty"`
 	// ScaleInErrorInfo is the scale-in error information for the scaling advice.

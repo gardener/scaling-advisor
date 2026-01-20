@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package v1alpha1
 
 import (
@@ -22,5 +26,16 @@ func ValidateNodePool(np *NodePool, fldPath *field.Path) field.ErrorList {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("priority"), np.Priority, "priority must be non-negative"))
 	}
 	// TODO add checks for Quota
+	return allErrs
+}
+
+// ValidateClusterScalingConstraint validates the given scaling constraints under the given fieldPath and returns a list of validation errors encapsulated in field.ErrorList
+func ValidateClusterScalingConstraint(constraint *ScalingConstraint, fieldPath *field.Path) (allErrs field.ErrorList) {
+	if strings.TrimSpace(constraint.Name) == "" {
+		allErrs = append(allErrs, field.Required(fieldPath.Child("name"), "constraint name must not be empty"))
+	}
+	if strings.TrimSpace(constraint.Namespace) == "" {
+		allErrs = append(allErrs, field.Required(fieldPath.Child("namespace"), "constraint namespace must not be empty"))
+	}
 	return allErrs
 }
