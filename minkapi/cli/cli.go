@@ -86,7 +86,6 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 
 // ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
 func ShutdownApp(app *minkapi.App) (exitCode int) {
-	// Create a context with a 5-second timeout for shutdown
 	shutDownCtx, cancel := context.WithTimeout(context.Background(), commonconstants.DefaultGracefulShutdownTimeout)
 	defer cancel()
 	log := logr.FromContextOrDiscard(app.Ctx)
