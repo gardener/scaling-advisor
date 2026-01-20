@@ -410,7 +410,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				}
 			}
 			if found == false {
-				t.Fatalf("Winning NodeResources Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
+				t.Fatalf("Winning Node Score not returned. Expected winning node score to be in: %v, got: %v", tc.expectedIn, winningNodeScore)
 			}
 			if errDiff != "" {
 				t.Fatalf("Difference: %s", errDiff)
