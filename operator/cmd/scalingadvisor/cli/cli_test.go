@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/gardener/scaling-advisor/api/common/constants"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -50,7 +49,7 @@ func TestParseLaunchOptions(t *testing.T) {
 
 func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 	tests := []struct {
-		want       *configv1alpha1.ScalingAdvisorConfiguration
+		want       *configv1alpha1.OperatorConfig
 		name       string
 		configFile string
 		wantErr    bool
@@ -58,18 +57,7 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 		{
 			name:       "ShouldLoadMinimalScalingAdvisorConfig",
 			configFile: "testdata/basic-operator-config.yaml",
-			want: updateOperatorConfigWithDefaults(&configv1alpha1.ScalingAdvisorConfiguration{
-				Server: configv1alpha1.ScalingAdvisorServerConfiguration{
-					ServerConfig: commontypes.ServerConfig{
-						HostPort: commontypes.HostPort{
-							Host: "localhost",
-							Port: 9090,
-						},
-						KubeConfigPath:   "/tmp/kube-config.yaml",
-						ProfilingEnabled: false,
-					},
-				},
-			}),
+			want:       updateOperatorConfigWithDefaults(&configv1alpha1.OperatorConfig{}),
 		},
 	}
 	for _, tt := range tests {
@@ -82,17 +70,17 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 				t.Errorf("LoadAndValidateOperatorConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(configv1alpha1.ScalingAdvisorConfiguration{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(configv1alpha1.OperatorConfig{})); diff != "" {
 				t.Errorf("operator config mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
 
-func updateOperatorConfigWithDefaults(operatorConfig *configv1alpha1.ScalingAdvisorConfiguration) *configv1alpha1.ScalingAdvisorConfiguration {
-	configv1alpha1.SetObjectDefaults_ScalingAdvisorConfiguration(operatorConfig)
+func updateOperatorConfigWithDefaults(operatorConfig *configv1alpha1.OperatorConfig) *configv1alpha1.OperatorConfig {
+	configv1alpha1.SetDefaults_ScalingAdvisorServerConfiguration(&operatorConfig.Server)
 	operatorConfig.TypeMeta = metav1.TypeMeta{
-		Kind:       constants.KindScalingAdvisorConfiguration,
+		Kind:       constants.KindOperatorConfig,
 		APIVersion: configv1alpha1.SchemeGroupVersion.String(),
 	}
 	return operatorConfig

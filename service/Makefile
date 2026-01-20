@@ -54,13 +54,13 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./cli ./cmd ./internal ./pricing ./scorer .
+	@$(REPO_HACK_DIR)/format.sh ./...
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
 
-## run: run the  service
+## run: run the service
 .PHONY: run
 run: build
 	bin/${binary_name}

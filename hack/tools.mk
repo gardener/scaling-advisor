@@ -16,7 +16,7 @@ GOLANGCI_LINT_VERSION     ?= v2.1.1
 GOIMPORTS_REVISER_VERSION ?= v3.9.1
 GO_ADD_LICENSE_VERSION    ?= v1.1.1
 CONTROLLER_GEN_VERSION    ?= $(call version_gomod,sigs.k8s.io/controller-tools)
-CRD_REF_DOCS_VERSION      ?= v0.1.0
+CRD_REF_DOCS_VERSION      ?= v0.2.0
 GOSEC_VERSION             ?= v2.22.8
 
 export PATH := $(abspath $(TOOLS_BIN_DIR)):$(PATH)

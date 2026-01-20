@@ -7,75 +7,54 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={csc}
+// +kubebuilder:resource:shortName={sc}
 
-// ClusterScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
-type ClusterScalingConstraint struct {
+// ScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
+type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the specification of the ClusterScalingConstraint.
-	Spec ClusterScalingConstraintSpec `json:"spec"`
-	// Status defines the status of the ClusterScalingConstraint.
-	Status ClusterScalingConstraintStatus `json:"status,omitempty"`
+	// Spec defines the specification of the ScalingConstraint.
+	Spec ScalingConstraintSpec `json:"spec"`
+	// Status defines the status of the ScalingConstraint.
+	Status ScalingConstraintStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterScalingConstraintList is a list of ClusterScalingConstraint.
-type ClusterScalingConstraintList struct {
+// ScalingConstraintList is a list of ScalingConstraint.
+type ScalingConstraintList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of ClusterScalingConstraint's.
-	Items []ClusterScalingConstraint `json:"items"`
+	// Items is a slice of ScalingConstraint's.
+	Items []ScalingConstraint `json:"items"`
 }
 
-// ClusterScalingConstraintSpec defines the specification of the ClusterScalingConstraint.
-type ClusterScalingConstraintSpec struct {
+// ScalingConstraintSpec defines the specification of the ScalingConstraint.
+type ScalingConstraintSpec struct {
 	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
 	// +optional
 	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
 	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
 	// +optional
 	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
-	// ConsumerID is the ID of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
+	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
 	// It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
 	ConsumerID string `json:"consumerID"`
-	// AdviceGenerationMode defines the mode in which scaling advice is generated.
-	AdviceGenerationMode ScalingAdviceGenerationMode `json:"adviceGenerationMode"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools"`
 }
 
-// ClusterScalingConstraintStatus defines the observed state of ClusterScalingConstraint.
-type ClusterScalingConstraintStatus struct {
-	// Conditions contains the conditions for the ClusterScalingConstraint.
+// ScalingConstraintStatus defines the observed state of ScalingConstraint.
+type ScalingConstraintStatus struct {
+	// Conditions contains the conditions for the ScalingConstraint.
 	Conditions []metav1.Condition `json:"conditions"`
 }
-
-// ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
-type ScalingAdviceGenerationMode string
-
-const (
-	// ScalingAdviceGenerationModeIncremental is the mode in which scaling advice is generated incrementally.
-	// In this mode, scaling advisor will dish out scaling advice as soon as it has the first scale-out/in advice from a simulation run.
-	ScalingAdviceGenerationModeIncremental = "incremental"
-	// ScalingAdviceGenerationModeAllAtOnce is the mode in which scaling advice is generated all at once.
-	// In this mode, scaling advisor will generate scaling advice after it has run the complete set of simulations wher either
-	// all pending pods have been scheduled or stabilised.
-	ScalingAdviceGenerationModeAllAtOnce = "all-at-once"
-)
-
-var (
-	// AllScalingAdviceGenerationModes is the set of all ScalingAdviceGenerationMode's
-	AllScalingAdviceGenerationModes = sets.New[ScalingAdviceGenerationMode](ScalingAdviceGenerationModeIncremental, ScalingAdviceGenerationModeAllAtOnce)
-)
 
 // NodePool defines a node pool configuration for a cluster.
 type NodePool struct {

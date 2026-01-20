@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package ioutil
 
 import "io"
@@ -12,5 +16,7 @@ func (f CloserFunc) Close() error {
 
 // CloseQuietly safely closes an io.Closer, ignoring and suppressing any error during the close operation.
 func CloseQuietly(closer io.Closer) {
-	_ = closer.Close()
+	if closer != nil {
+		_ = closer.Close()
+	}
 }

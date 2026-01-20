@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package coreaccess
 
 import (
@@ -25,7 +29,7 @@ type nodeAccess struct {
 	access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]
 }
 
-// NewNodeAccess creates a Node access facade for managing Node resources using the given minkapi View.
+// NewNodeAccess creates the k8s client core facade for Nodes leveraging the given view.
 func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
 	return &nodeAccess{
 		access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]{

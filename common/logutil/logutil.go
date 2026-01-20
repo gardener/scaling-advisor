@@ -6,13 +6,29 @@ package logutil
 
 import (
 	"context"
-	"github.com/go-logr/logr"
-	"github.com/go-logr/stdr"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	"github.com/go-logr/logr"
+	"github.com/go-logr/stdr"
+	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
+
+// VerbosityFromContext retrieves the verbosity level from the given context.
+func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
+	v := ctx.Value(commonconstants.VerbosityCtxKey)
+	if v == nil {
+		return 0
+	}
+	verbosity, ok := v.(uint32)
+	if !ok {
+		return 0
+	}
+	return logsapiv1.VerbosityLevel(verbosity)
+}
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
 // logs to the original sink as well as a sink to the given filePath.
@@ -30,7 +46,8 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, path string) 
 	mSink := &multiSink{sinks: []logr.LogSink{base.GetSink(), fileSink}}
 
 	combined := logr.New(mSink).WithCallDepth(1)
-	logCtx = logr.NewContext(ctx, combined)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, path)
+
 	return
 }
 

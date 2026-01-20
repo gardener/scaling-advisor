@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package v1alpha1
 
 import (
@@ -25,15 +29,12 @@ func ValidateNodePool(np *NodePool, fldPath *field.Path) (allErrs field.ErrorLis
 }
 
 // ValidateClusterScalingConstraint validates the given scaling constraints under the given fieldPath and returns a list of validation errors encapsulated in field.ErrorList
-func ValidateClusterScalingConstraint(constraint *ClusterScalingConstraint, fieldPath *field.Path) (allErrs field.ErrorList) {
+func ValidateClusterScalingConstraint(constraint *ScalingConstraint, fieldPath *field.Path) (allErrs field.ErrorList) {
 	if strings.TrimSpace(constraint.Name) == "" {
 		allErrs = append(allErrs, field.Required(fieldPath.Child("name"), "constraint name must not be empty"))
 	}
 	if strings.TrimSpace(constraint.Namespace) == "" {
 		allErrs = append(allErrs, field.Required(fieldPath.Child("namespace"), "constraint namespace must not be empty"))
-	}
-	if !AllScalingAdviceGenerationModes.Has(constraint.Spec.AdviceGenerationMode) {
-		allErrs = append(allErrs, field.Invalid(fieldPath.Child("spec.adviceGenerationMode"), constraint.Spec.AdviceGenerationMode, "invalid AdviceGenerationMode"))
 	}
 	return allErrs
 }

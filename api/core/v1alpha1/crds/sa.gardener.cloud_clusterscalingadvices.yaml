@@ -43,7 +43,7 @@ spec:
             description: Spec defines the specification of ClusterScalingAdvice.
             properties:
               constraintRef:
-                description: ConstraintRef is a reference to the ClusterScalingConstraint
+                description: ConstraintRef is a reference to the ScalingConstraint
                   that this advice is based on.
                 properties:
                   name:
@@ -71,7 +71,7 @@ spec:
                             the node pool.
                           type: string
                         instanceType:
-                          description: InstanceType is the instance type of the Node.
+                          description: InstanceType is the instance type of the Node
                           type: string
                         nodeName:
                           description: NodeName is the name of the node to be scaled
@@ -124,7 +124,7 @@ spec:
                           format: int32
                           type: integer
                         instanceType:
-                          description: InstanceType is the instance type of the Node.
+                          description: InstanceType is the instance type of the Node
                           type: string
                         nodePoolName:
                           description: NodePoolName is the name of the node pool.
@@ -223,7 +223,7 @@ spec:
                 description: |-
                   Diagnostic provides diagnostics information for the scaling advice.
                   This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-                  set on the corresponding ClusterScalingConstraint resource.
+                  set on the corresponding ScalingConstraint resource.
                 properties:
                   simRunResults:
                     description: SimRunResults is the list of simulation run results
@@ -267,13 +267,13 @@ spec:
                       - scheduledPodNames
                       type: object
                     type: array
-                  traceLogURL:
-                    description: TraceLogURL is the URL to the transient trace log
-                      for the scaling simulation run.
+                  traceLogName:
+                    description: TraceLogName is the name of the trace log. This can
+                      be used to fetch the trace log from the scaling advisor core.
                     type: string
                 required:
                 - simRunResults
-                - traceLogURL
+                - traceLogName
                 type: object
             type: object
         required:

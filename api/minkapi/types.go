@@ -10,19 +10,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
-
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 )
 
@@ -31,7 +31,7 @@ const (
 	ProgramName = "minkapi"
 	// DefaultWatchQueueSize is the default maximum number of events to queue per watcher.
 	DefaultWatchQueueSize = 100
-	// DefaultWatchTimeout is the default timeout for watches after which MinKAPI service closes the connection.
+	// DefaultWatchTimeout is the default timeout for watches after which MinKAPI core closes the connection.
 	DefaultWatchTimeout = 5 * time.Minute
 	// DefaultKubeConfigPath is the default kubeconfig path if none is specified.
 	DefaultKubeConfigPath = "/tmp/minkapi.yaml"
@@ -43,13 +43,13 @@ const (
 type WatchConfig struct {
 	// QueueSize is the maximum number of events to queue per watcher
 	QueueSize int
-	// Timeout represents the timeout for watches following which MinKAPI service will close the connection and ends the watch.
+	// Timeout represents the timeout for watches following which MinKAPI core will close the connection and ends the watch.
 	Timeout time.Duration
 }
 
 // Config holds the configuration for MinKAPI.
 type Config struct {
-	// BasePrefix is the path prefix at which the base View of the minkapi service is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
+	// BasePrefix is the path prefix at which the base View of the minkapi core is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
 	commontypes.ServerConfig
@@ -57,18 +57,12 @@ type Config struct {
 	WatchConfig WatchConfig
 }
 
-// Resettable defines types that can reset their state to a default or initial configuration.
-type Resettable interface {
-	// Reset resets the state of the implementing type.
-	Reset()
-}
-
 // WatchEventCallback is a function type for handling watch events from a ResourceStore.
 type WatchEventCallback func(watch.Event) (err error)
 
 // ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	Resettable
+	commontypes.Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
@@ -119,7 +113,7 @@ type ResourceStoreArgs struct {
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	Resettable
+	commontypes.Resettable
 	events.EventSink
 	// List returns all events in the sink.
 	List() []eventsv1.Event
@@ -128,7 +122,7 @@ type EventSink interface {
 // View is the high-level facade to a repository of objects of different types (GVK).
 // TODO: Think of a better name. Rename this to ObjectRepository or something else, also add godoc ?
 type View interface {
-	Resettable
+	commontypes.Resettable
 	io.Closer
 	// GetName returns the name of this view.
 	GetName() string
@@ -210,29 +204,34 @@ type ViewAccess interface {
 	io.Closer
 	// GetBaseView returns the foundational View of the KAPI Server which is exposed at http://<MinKAPIHost>:<MinKAPIPort>/basePrefix
 	GetBaseView() View
-	// GetOrCreateSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
+	// GetSandboxView creates or returns a sandboxed KAPI View with the given name that is also served as a KAPI Service
 	// at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig named `minkapi-<name>.yaml` is also generated
 	// in the same directory as the base `minkapi.yaml`.  The sandbox name should be a valid path-prefix, ie no-spaces.
 	// TODO: discuss whether the above is OK.
-	GetOrCreateSandboxView(ctx context.Context, name string) (View, error)
+	GetSandboxView(ctx context.Context, name string) (View, error)
+	// GetSandboxViewOverDelegate creates or returns a sandboxed KAPI View with the given name over the provided
+	// delegateView that is also served as a KAPI Service at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName. A kubeconfig
+	// named `minkapi-<name>.yaml` is also generated in the same directory as the base `minkapi.yaml`.  The sandbox name
+	// should be a valid path-prefix, ie no-spaces.
+	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
 }
 
-// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) service accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
+// Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
 	commontypes.Service
 	ViewAccess
 }
 
-// App represents an application process that wraps a minkapi Server, an application context and application cancel func.
-// Main entry-point functions that embed minkapi are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+// App represents a MinKAPI application process that wraps a minkapi Server, an application context and application cancel func.
+// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp and shutdown applications via minkapi cli.ShutdownApp
 type App struct {
-	// Server is the MinKAPI server instance.
-	Server Server
 	// Ctx is the application context.
 	Ctx context.Context
 	// Cancel is the context cancellation function.
 	Cancel context.CancelFunc
+	// Server is the MinKAPI server instance.
+	Server Server
 }
 
 // MatchCriteria defines criteria for matching Kubernetes objects.

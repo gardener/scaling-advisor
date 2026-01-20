@@ -5,11 +5,9 @@
 package controller
 
 import (
-	"net"
-	"strconv"
-
 	"github.com/gardener/scaling-advisor/operator/internal/controller/scalingconstraints"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	corev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/go-logr/logr"
@@ -23,7 +21,7 @@ import (
 )
 
 // CreateManagerAndRegisterControllers creates a controller manager and registers all controllers.
-func CreateManagerAndRegisterControllers(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorConfiguration) (ctrl.Manager, error) {
+func CreateManagerAndRegisterControllers(log logr.Logger, saCfg *configv1alpha1.OperatorConfig) (ctrl.Manager, error) {
 	mgrOpts, err := createManagerOptions(log, saCfg)
 	if err != nil {
 		return nil, err
@@ -38,17 +36,17 @@ func CreateManagerAndRegisterControllers(log logr.Logger, saCfg *configv1alpha1.
 	return mgr, nil
 }
 
-func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorConfiguration) (ctrl.Options, error) {
+func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.OperatorConfig) (ctrl.Options, error) {
 	scheme, err := createScalingAdvisorScheme()
 	if err != nil {
 		return ctrl.Options{}, err
 	}
 	opts := ctrl.Options{
 		Scheme:                  scheme,
-		GracefulShutdownTimeout: &saCfg.Server.GracefulShutdownTimeout.Duration,
+		GracefulShutdownTimeout: ptr.To(commonconstants.DefaultGracefulShutdownTimeout),
 		Logger:                  log,
 		Metrics: ctrlmetricsserver.Options{
-			BindAddress: net.JoinHostPort(saCfg.Server.Metrics.Host, strconv.Itoa(saCfg.Server.Metrics.Port)),
+			BindAddress: saCfg.Server.MetricsBindAddress,
 		},
 		LeaderElection:                saCfg.LeaderElection.Enabled,
 		LeaderElectionID:              saCfg.LeaderElection.ResourceName,
@@ -62,12 +60,12 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.ScalingAdvisorC
 		},
 	}
 	if saCfg.Server.ProfilingEnabled {
-		opts.PprofBindAddress = net.JoinHostPort(saCfg.Server.Profiling.Host, strconv.Itoa(saCfg.Server.Profiling.Port))
+		opts.PprofBindAddress = saCfg.Server.ProfilingBindAddress
 	}
 	return opts, nil
 }
 
-func getRestConfig(operatorCfg *configv1alpha1.ScalingAdvisorConfiguration) *rest.Config {
+func getRestConfig(operatorCfg *configv1alpha1.OperatorConfig) *rest.Config {
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg != nil {
 		restCfg.Burst = operatorCfg.ClientConnection.Burst
@@ -91,7 +89,7 @@ func createScalingAdvisorScheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func registerControllers(mgr ctrl.Manager, controllersConfig configv1alpha1.ControllersConfiguration) error {
+func registerControllers(mgr ctrl.Manager, controllersConfig configv1alpha1.ControllersConfig) error {
 	scalingConstraintsController := scalingconstraints.NewReconciler(mgr, controllersConfig.ScalingConstraints)
 	return scalingConstraintsController.SetupWithManager(mgr)
 }

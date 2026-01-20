@@ -12,9 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
-	"time"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -43,10 +44,9 @@ var (
 
 // MapServerConfigFlags adds the constants flags to the passed FlagSet.
 func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig) {
-	flagSet.StringVarP(&opts.Host, "host", "H", "", "host name to bind this service. Use 0.0.0.0 for all interfaces")
-	flagSet.IntVarP(&opts.Port, "port", "P", opts.Port, "listen port for REST API")
+	flagSet.StringVar(&opts.BindAddress, "bind-address", commonconstants.DefaultMinKAPIBindAddress, "bind address of the form <host>:<port>")
 	flagSet.BoolVarP(&opts.ProfilingEnabled, "pprof", "p", false, "enable pprof profiling")
-	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", time.Second*6, "graceful shutdown timeout")
+	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", commonconstants.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
 
 	klogFlagSet := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(klogFlagSet)
@@ -88,19 +88,20 @@ func HandleErrorAndExit(err error) {
 
 // ValidateServerConfigFlags validates server config flags.
 func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
-	if opts.Port <= 0 {
-		return fmt.Errorf("%w: --port must be greater than 0", ErrInvalidOpt)
+	if strings.TrimSpace(opts.BindAddress) == "" {
+		return fmt.Errorf("%w: --bind-address must be specified", ErrInvalidOpt)
 	}
 	return nil
 }
 
 // CreateAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
 // a cancellation function for the returned context.
-func CreateAppContext(ctx context.Context) (context.Context, context.CancelFunc) {
+// NOTE: Should be invoked only AFTER parsing program flags, so that the logger instance is initialized with logger flags.
+func CreateAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	// Set up logr with klog backend using NewKlogr
-	log := klog.NewKlogr()
+	log := klog.NewKlogr().WithValues("program", programName)
 	ctx = logr.NewContext(ctx, log)
 	return ctx, stop
 }

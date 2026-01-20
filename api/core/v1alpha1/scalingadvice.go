@@ -13,45 +13,45 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={csa}
+// +kubebuilder:resource:shortName={sa}
 
-// ClusterScalingAdvice is the schema to define cluster scaling advice for a cluster.
-type ClusterScalingAdvice struct {
+// ScalingAdvice is the schema to define cluster scaling advice for a cluster.
+type ScalingAdvice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the specification of ClusterScalingAdvice.
-	Spec ClusterScalingAdviceSpec `json:"spec"`
-	// Status defines the status of ClusterScalingAdvice.
-	Status ClusterScalingAdviceStatus `json:"status,omitempty"`
+	// Spec defines the specification of ScalingAdvice.
+	Spec ScalingAdviceSpec `json:"spec"`
+	// Status defines the status of ScalingAdvice.
+	Status ScalingAdviceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterScalingAdviceList is a list of ClusterScalingAdvice.
-type ClusterScalingAdviceList struct {
+// ScalingAdviceList is a list of ScalingAdvice.
+type ScalingAdviceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of ClusterScalingAdvice.
-	Items []ClusterScalingAdvice `json:"items"`
+	// Items is a slice of ScalingAdvice.
+	Items []ScalingAdvice `json:"items"`
 }
 
-// ClusterScalingAdviceSpec defines the desired state of ClusterScalingAdvice.
-type ClusterScalingAdviceSpec struct {
+// ScalingAdviceSpec defines the desired state of ScalingAdvice.
+type ScalingAdviceSpec struct {
 	// ScaleOutPlan is the plan for scaling out across node pools.
 	// +optional
 	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
 	// ScaleInPlan is the plan for scaling in across node pools.
 	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
-	// ConstraintRef is a reference to the ClusterScalingConstraint that this advice is based on.
+	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
 	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
 }
 
-// ClusterScalingAdviceStatus defines the observed state of ClusterScalingAdvice.
-type ClusterScalingAdviceStatus struct {
+// ScalingAdviceStatus defines the observed state of ScalingAdvice.
+type ScalingAdviceStatus struct {
 	// Diagnostic provides diagnostics information for the scaling advice.
 	// This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-	// set on the corresponding ClusterScalingConstraint resource.
+	// set on the corresponding ScalingConstraint resource.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
 	// Conditions represents additional information
@@ -94,7 +94,7 @@ type NodePlacement struct {
 	NodePoolName string `json:"nodePoolName"`
 	// NodeTemplateName is the name of the node template.
 	NodeTemplateName string `json:"nodeTemplateName"`
-	// InstanceType is the instance type of the Node.
+	// InstanceType is the instance type of the Node
 	InstanceType string `json:"instanceType"`
 	// Region is the region of the instance
 	Region string `json:"region"`
@@ -104,8 +104,8 @@ type NodePlacement struct {
 
 // ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
 type ScalingAdviceDiagnostic struct {
-	// TraceLogURL is the URL to the transient trace log for the scaling simulation run.
-	TraceLogURL string `json:"traceLogURL"`
+	// TraceLogName is the name of the trace log. This can be used to fetch the trace log from the scaling advisor core.
+	TraceLogName string `json:"traceLogName"`
 	// SimRunResults is the list of simulation run results for the scaling advice.
 	SimRunResults []ScalingSimRunResult `json:"simRunResults"`
 }

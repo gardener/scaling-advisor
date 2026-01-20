@@ -16,15 +16,5 @@ import (
 // Public to allow building arbitrary schemes.
 // All generated defaulters are covering - they call all nested defaulters.
 func RegisterDefaults(scheme *runtime.Scheme) error {
-	scheme.AddTypeDefaultingFunc(&ScalingAdvisorConfiguration{}, func(obj interface{}) {
-		SetObjectDefaults_ScalingAdvisorConfiguration(obj.(*ScalingAdvisorConfiguration))
-	})
 	return nil
-}
-
-func SetObjectDefaults_ScalingAdvisorConfiguration(in *ScalingAdvisorConfiguration) {
-	SetDefaults_ScalingConstraintsControllerConfiguration(&in.Controllers.ScalingConstraints)
-	SetDefaults_ClientConnectionConfiguration(&in.ClientConnection)
-	SetDefaults_ScalingAdvisorServerConfiguration(&in.Server)
-	SetDefaults_LeaderElectionConfiguration(&in.LeaderElection)
 }

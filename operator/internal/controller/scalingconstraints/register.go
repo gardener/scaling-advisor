@@ -20,15 +20,15 @@ import (
 
 const controllerName = "scaling-constraints-controller"
 
-// SetupWithManager sets up the Reconciler with the given Controller Manager to reconcile ClusterScalingConstraint resources.
+// SetupWithManager sets up the Reconciler with the given Controller Manager to reconcile ScalingConstraint resources.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return builder.ControllerManagedBy(mgr).
 		Named(controllerName).
 		WithOptions(controller.Options{
-			MaxConcurrentReconciles: *r.config.ConcurrentSyncs,
+			MaxConcurrentReconciles: r.config.ConcurrentSyncs,
 		}).
-		For(&corev1alpha1.ClusterScalingConstraint{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&corev1alpha1.ClusterScalingFeedback{},
+		For(&corev1alpha1.ScalingConstraint{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&corev1alpha1.ScalingFeedback{},
 			handler.EnqueueRequestsFromMapFunc(mapScalingFeedbackToScalingConstraints()),
 			builder.WithPredicates(clusterScalingFeedbackPredicate())).
 		Complete(r)
@@ -36,7 +36,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func mapScalingFeedbackToScalingConstraints() handler.MapFunc {
 	return func(_ context.Context, obj client.Object) []ctrl.Request {
-		csa, ok := obj.(*corev1alpha1.ClusterScalingFeedback)
+		csa, ok := obj.(*corev1alpha1.ScalingFeedback)
 		if !ok {
 			return nil
 		}

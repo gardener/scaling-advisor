@@ -15,8 +15,8 @@ import (
 // genscenarioCmd represents the genscenario command
 var genscenarioCmd = &cobra.Command{
 	Use:   "genscenario <cluster-manager>",
-	Short: "Generate scaling scenarios for the given cluster-manager",
-	Long: `genscenario generates scaling scenarios for the given cluster-manager.
+	Short: "Generate scaling data for the given cluster-manager",
+	Long: `genscenario generates scaling data for the given cluster-manager.
 Generate scaling scenario(s) for the gardener cluster identified by the given gardener landscape, gardener project
 and gardener shoot name and write the scenario(s) to the scenario-dir.
 	 genscenario gardener -l <landscape> -p <project> -t <shoot-name> -d <scenario-dir>

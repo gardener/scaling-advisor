@@ -12,35 +12,43 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ScalingAdvisorConfiguration defines the configuration for the scalingadvisor operator.
-type ScalingAdvisorConfiguration struct {
-	// Controllers defines the configuration for controllers.
-	Controllers     ControllersConfiguration `json:"controllers"`
+// OperatorConfig defines the configuration for the scalingadvisor operator.
+//
+//nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
+type OperatorConfig struct {
 	metav1.TypeMeta `json:",inline"`
-	// ClientConnection defines the configuration for constructing a kube client.
-	ClientConnection ClientConnectionConfiguration `json:"clientConnection"`
 	// Server is basic server configuration for the scaling advisor.
-	Server ScalingAdvisorServerConfiguration `json:"server"`
+	Server ScalingAdvisorServerConfig `json:"server"`
+	// AdviceGeneration contains configuration for scaling advice generation.
+	AdviceGeneration ScalingAdviceGenerationConfig
+	// CloudProvider specifies the cloud provider for which the scaling advisor is configured.
+	CloudProvider commontypes.CloudProvider `json:"cloudProvider"`
+	// ClientConnection defines the configuration for constructing a kube client.
+	ClientConnection ClientConnectionConfig `json:"clientConnection"`
 	// LeaderElection defines the configuration for leader election.
-	LeaderElection LeaderElectionConfiguration `json:"leaderElection"`
+	LeaderElection LeaderElectionConfig `json:"leaderElection"`
+	// Controllers defines the configuration for controllers.
+	Controllers ControllersConfig `json:"controllers"`
 }
 
-// ClientConnectionConfiguration contains details for constructing a client.
-type ClientConnectionConfiguration struct {
+// ClientConnectionConfig contains details for constructing a client.
+type ClientConnectionConfig struct {
+	// KubeConfigPath is the path to kube-config.
+	KubeConfigPath string `json:"kubeConfigPath,omitempty"`
 	// ContentType is the content type used when sending data to the server from this client.
-	ContentType string `json:"contentType"`
+	ContentType string `json:"contentType,omitempty"`
 	// AcceptContentTypes defines the Accept header sent by clients when connecting to the server,
 	// overriding the default value of 'application/json'. This field will control all connections
 	// to the server used by a particular client.
-	AcceptContentTypes string `json:"acceptContentTypes"`
+	AcceptContentTypes string `json:"acceptContentTypes,omitempty"`
 	// Burst allows extra queries to accumulate when a client is exceeding its rate.
-	Burst int `json:"burst"`
+	Burst int `json:"burst,omitempty"`
 	// QPS controls the number of queries per second allowed for this connection.
-	QPS float32 `json:"qps"`
+	QPS float32 `json:"qps,omitempty"`
 }
 
-// LeaderElectionConfiguration defines the configuration for the leader election.
-type LeaderElectionConfiguration struct {
+// LeaderElectionConfig defines the configuration for the leader election.
+type LeaderElectionConfig struct {
 	// ResourceLock determines which resource lock to use for leader election.
 	// This is only applicable if leader election is enabled.
 	ResourceLock string `json:"resourceLock"`
@@ -73,30 +81,36 @@ type LeaderElectionConfiguration struct {
 	Enabled bool `json:"enabled"`
 }
 
-// ScalingAdvisorServerConfiguration is the configuration for Scaling Advisor server.
-type ScalingAdvisorServerConfiguration struct {
-	// HealthProbes is the host and port for serving the healthz and readyz endpoints.
-	HealthProbes commontypes.HostPort `json:"healthProbes,omitempty"`
-	// Metrics is the host and port for serving the metrics endpoint.
-	Metrics commontypes.HostPort `json:"metrics,omitempty"`
-	// Profiling is the host and port for serving the profiling endpoints.
-	Profiling                commontypes.HostPort `json:"profiling,omitempty"`
-	commontypes.ServerConfig `json:",inline"`
+// ScalingAdvisorServerConfig is the configuration for Scaling Advisor server.
+type ScalingAdvisorServerConfig struct {
+	// HealthProbesBindAddress is the host and port for serving health probes.
+	HealthProbeBindAddress string `json:"healthProbeBindAddress,omitempty"`
+	// Metrics is the host and port for serving metrics.
+	MetricsBindAddress string `json:"metricsBindAddress,omitempty"`
+	// ProfilingBindAddress is the host and port for serving profiling data.
+	ProfilingBindAddress string `json:"profilingBindAddress,omitempty"`
+	// ProfilingEnable indicates whether profiling is enabled.
+	ProfilingEnabled bool `json:"profilingEnabled"`
 }
 
-// ControllersConfiguration defines the configuration for controllers that are run as part of the scaling-advisor.
-type ControllersConfiguration struct {
-	// ScalingConstraints is the configuration for then controller that reconciles ScalingConstraints.
-	ScalingConstraints ScalingConstraintsControllerConfiguration `json:"scalingConstraints"`
-}
-
-// ScalingConstraintsControllerConfiguration is the configuration for then controller that reconciles ScalingConstraints.
-// TODO: unhappy with this name
-type ScalingConstraintsControllerConfiguration struct {
-	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
-	ConcurrentSyncs *int `json:"concurrentSyncs"`
+// ScalingAdviceGenerationConfig contains configuration for scaling advice generation.
+type ScalingAdviceGenerationConfig struct {
+	// Mode defines the mode in which scaling advice is generated.
+	Mode commontypes.ScalingAdviceGenerationMode `json:"mode"`
+	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
+	SimulationStrategy commontypes.SimulationStrategy `json:"simulationStrategy"`
 	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
 	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
-	// CloudProvider specifies the cloud provider for which the scaling advisor is configured.
-	CloudProvider commontypes.CloudProvider `json:"cloudProvider"`
+}
+
+// ControllersConfig defines the configuration for controllers that are run as part of the scaling-advisor.
+type ControllersConfig struct {
+	// ScalingConstraints is the configuration for then controller that reconciles ScalingConstraints.
+	ScalingConstraints ScalingConstraintsControllerConfig `json:"scalingConstraints"`
+}
+
+// ScalingConstraintsControllerConfig is the configuration for then controller that reconciles ScalingConstraints.
+type ScalingConstraintsControllerConfig struct {
+	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
+	ConcurrentSyncs int `json:"concurrentSyncs"`
 }

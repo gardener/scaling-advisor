@@ -17,13 +17,13 @@ import (
 
 // Reconciler is the operator controller type responsible for reconciling ClusterScalingConstraints to produce ScalingAdvice for a cluster.
 type Reconciler struct {
-	config v1alpha1.ScalingConstraintsControllerConfiguration
 	client client.Client
 	log    logr.Logger
+	config v1alpha1.ScalingConstraintsControllerConfig
 }
 
 // NewReconciler creates a new instance of Reconciler with the provided manager and configuration.
-func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControllerConfiguration) *Reconciler {
+func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControllerConfig) *Reconciler {
 	return &Reconciler{
 		config: config,
 		client: mgr.GetClient(),
@@ -31,11 +31,11 @@ func NewReconciler(mgr ctrl.Manager, config v1alpha1.ScalingConstraintsControlle
 	}
 }
 
-// Reconcile handles reconciliation for ClusterScalingConstraint objects and produces ClusterScalingAdvice
+// Reconcile handles reconciliation for ScalingConstraint objects and produces ScalingAdvice
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.log.WithValues("namespace", req.Namespace, "name", req.Name)
 
-	scalingConstraints := &corev1alpha1.ClusterScalingConstraint{}
+	scalingConstraints := &corev1alpha1.ScalingConstraint{}
 	if err := r.client.Get(ctx, req.NamespacedName, scalingConstraints); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ClusterScalingConstraints not found. Skipping reconcile", "scalingConstraintsObjectKey", req.NamespacedName)

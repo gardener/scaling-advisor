@@ -5,8 +5,9 @@
 package webutil
 
 import (
-	"github.com/go-logr/logr"
 	"net/http"
+
+	"github.com/go-logr/logr"
 )
 
 // LoggerMiddleware creates a middleware that injects the logger into the request context.

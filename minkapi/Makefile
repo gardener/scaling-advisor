@@ -46,7 +46,7 @@ upgradeable:
 tidy:
 	@env GO111MODULE=on go mod tidy
 
-## build: build the service
+## build: build the planner
 .PHONY: build
 build:
 	mkdir -p bin
@@ -55,18 +55,18 @@ build:
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
-	@$(REPO_HACK_DIR)/format.sh ./cli ./server .
+	@$(REPO_HACK_DIR)/format.sh ./...
 
 .PHONY: check
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
 
-## run: run the  service
+## run: run the  planner
 .PHONY: run
 run: build
 	bin/${binary_name}
 
-## run/live: run the service with reloading on file changes
+## run/live: run the planner with reloading on file changes
 .PHONY: run/live
 run/live:
 	go run github.com/cosmtrek/air@v1.43.0 \

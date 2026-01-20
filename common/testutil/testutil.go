@@ -9,14 +9,15 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	"reflect"
-	"runtime"
 	sigyaml "sigs.k8s.io/yaml"
-	"strings"
-	"testing"
 )
 
 //go:embed testdata/*

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package server
+package server_test
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gardener/scaling-advisor/minkapi/cli"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -35,13 +37,12 @@ type suiteState struct {
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
 func TestMain(m *testing.M) {
-	err := initSuite(context.Background())
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
-		os.Exit(commoncli.ExitErrStart)
+	exitCode := initSuite(context.Background())
+	if exitCode != commoncli.ExitSuccess {
+		os.Exit(exitCode)
 	}
 	// Run integration tests
-	exitCode := m.Run()
+	exitCode = m.Run()
 	shutdownSuite()
 	os.Exit(exitCode)
 }
@@ -168,37 +169,43 @@ func checkNodeIsSame(t *testing.T, got, want *corev1.Node) {
 	}
 }
 
-func initSuite(ctx context.Context) error {
+func initSuite(ctx context.Context) (exitCode int) {
 	var err error
-	var exitCode int
-
-	state.app, exitCode = LaunchApp(ctx)
+	defer func() {
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to initialize suite state: %v\n", err)
+			if exitCode == commoncli.ExitSuccess {
+				exitCode = commoncli.ExitErrStart
+			}
+		}
+	}()
+	state.app, exitCode, err = cli.LaunchApp(ctx)
 	if exitCode != commoncli.ExitSuccess {
-		os.Exit(exitCode)
+		return
 	}
-	<-time.After(1 * time.Second) // give minmal time for startup
+	<-time.After(1 * time.Second) // give minimal time for startup
 
 	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, commontypes.ClientAccessModeNetwork)
 	if err != nil {
-		return err
+		return
 	}
-
 	nodes, err := testutil.LoadTestNodes()
 	if err != nil {
-		return err
+		return
 	}
 	state.nodeA = nodes[0]
 
 	pods, err := testutil.LoadTestPods()
 	if err != nil {
-		return err
+		return
 	}
 	state.podA = pods[0]
 
-	return nil
+	exitCode = commoncli.ExitSuccess
+	return
 }
 
 func shutdownSuite() {
 	state.app.Cancel()
-	_ = ShutdownApp(&state.app)
+	_ = cli.ShutdownApp(&state.app)
 }
