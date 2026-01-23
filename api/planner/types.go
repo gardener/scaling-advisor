@@ -42,7 +42,7 @@ type ScalingAdviceRequest struct {
 	// DiagnosticVerbosity indicates the level of  diagnostics produced during scaling advice generation.
 	// By default, its value is 0 which disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
-	DiagnosticVerbosity int
+	DiagnosticVerbosity uint32
 	// AdviceGenerationTimeout is the maximum duration allowed for generating scaling advice.
 	AdviceGenerationTimeout time.Duration
 }
@@ -609,10 +609,10 @@ type GetSimulationViewFunc func(ctx context.Context, name string) (minkapi.View,
 //		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
 //		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
 //
-//		p1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c}
-//		p2: {PoolPriority: 1, NTPriority: 2, nt-b}
-//		p3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//		p4: {PoolPriority: 2, NTPriority: 2, nt-q}
+//		g1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c}
+//		g2: {PoolPriority: 1, NTPriority: 2, nt-b}
+//		g3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
+//		g4: {PoolPriority: 2, NTPriority: 2, nt-q}
 //
 //	Example:2
 //		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}

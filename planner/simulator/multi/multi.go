@@ -162,7 +162,7 @@ func (m *multiSimulator) runAllPassesForGroup(ctx context.Context, groupView min
 			err = ctx.Err()
 			return
 		default:
-			log := logr.FromContextOrDiscard(ctx).WithValues("numGroupRunPass", sgrr.NumPasses)
+			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunNumPass", sgrr.NumPasses)
 			passCtx := logr.NewContext(ctx, log)
 			sgrr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgrr.NextGroupView, group)
 			if err != nil {
@@ -215,6 +215,8 @@ func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, passView min
 	}
 	winnerNodeScore = groupScores.WinnerNodeScore
 	nextPassView = winnerView
+	nextPassView.GetEventSink().Reset()
+	group.Reset()
 	return
 }
 

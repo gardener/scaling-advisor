@@ -19,6 +19,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/api/service"
+	"github.com/gardener/scaling-advisor/common/logutil"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/planner"
@@ -159,7 +160,7 @@ func setServiceConfigDefaults(cfg *service.ScalingAdvisorServiceConfig) {
 		cfg.ServerConfig.BindAddress = commonconstants.DefaultAdvisorServiceBindAddress
 	}
 	if cfg.TraceLogBaseDir == "" {
-		cfg.TraceLogBaseDir = os.TempDir()
+		cfg.TraceLogBaseDir = logutil.GetTraceLogsParentDir()
 	}
 }
 

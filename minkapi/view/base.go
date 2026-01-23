@@ -398,6 +398,7 @@ func patchObjectStatus(ctx context.Context, v minkapi.View, gvk schema.GroupVers
 	if err != nil {
 		return
 	}
+	obj = obj.DeepCopyObject()
 	err = objutil.PatchObjectStatus(obj, objName, patchData)
 	if err != nil {
 		err = fmt.Errorf("failed to patch object status of %q: %w", objName, err)

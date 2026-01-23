@@ -9,6 +9,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,6 +39,7 @@ type InMemResourceStore struct {
 	broadcaster *watch.Broadcaster
 	// versionCounter is the atomic counter for generating monotonically increasing resource versions
 	versionCounter *atomic.Int64
+	mu             sync.Mutex
 }
 
 // GetVersionCounter returns the atomic resource version counter for resources in this store.
@@ -66,13 +68,17 @@ func NewInMemResourceStore(args *mkapi.ResourceStoreArgs) *InMemResourceStore {
 
 // Reset resets the backing cache for this story and re-initializes the watch broadcasters.
 func (s *InMemResourceStore) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
-	s.broadcaster = watch.NewBroadcaster(s.args.WatchConfig.QueueSize, watch.WaitIfChannelFull)
 }
 
 // Add adds the given metav1 Object to this store, setting the right resource version, updating the resource version counter and broadcasting the Add event to any watchers.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	log := logr.FromContextOrDiscard(ctx)
 	o, err := s.validateRuntimeObj(mo)
 	if err != nil {
@@ -98,6 +104,9 @@ func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
 // Update updates the given metav1.Object in the store, setting the next resource version and broadcasting a Modified event.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	log := logr.FromContextOrDiscard(ctx)
 	o, err := s.validateRuntimeObj(mo)
 	if err != nil {
@@ -154,6 +163,9 @@ func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectNam
 
 // GetByKey gets the object identified by the given key from the store and returns the same as a runtime.Object.
 func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtime.Object, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	log := logr.FromContextOrDiscard(ctx)
 	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
@@ -183,6 +195,9 @@ func (s *InMemResourceStore) Get(ctx context.Context, objName cache.ObjectName) 
 
 // List queries the store according to the given MatchCriteria, gets objects and creates and returns the List object wrapping individual objects.
 func (s *InMemResourceStore) List(ctx context.Context, c mkapi.MatchCriteria) (listObj runtime.Object, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	log := logr.FromContextOrDiscard(ctx)
 	items := s.cache.List()
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
@@ -246,6 +261,9 @@ func (s *InMemResourceStore) List(ctx context.Context, c mkapi.MatchCriteria) (l
 
 // ListMetaObjects queries the store according to the given MatchCriteria, gets objects and returns them as a slice, including the maximum resource version found in the returned objects.
 func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c mkapi.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	items := s.cache.List()
 	sliceSize := int(math.Min(float64(len(items)), float64(100)))
 	metaObjs = make([]metav1.Object, 0, sliceSize)
@@ -329,12 +347,16 @@ func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Obj
 }
 
 func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespace string, labelSelector labels.Selector) (watchEvents []watch.Event, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	var skip bool
 	allItems := s.cache.List()
 	objs, err := objutil.SliceOfAnyToRuntimeObj(allItems)
 	if err != nil {
 		return
 	}
+	objs = objutil.CloneRuntimeObjects(objs) // Needed to avoid data races if some caller in the chain is introspecting obj fields of objs
 	for _, o := range objs {
 		skip, err = shouldSkipObject(o, startVersion, namespace, labelSelector)
 		if err != nil {
@@ -444,6 +466,9 @@ func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 
 // Close clears the resources associated with the store, including gracefully shutting down the event broadcaster if it is initialized.
 func (s *InMemResourceStore) Close() error {
+	if s.cache != nil {
+		_ = s.cache.Replace([]any{}, "0")
+	}
 	if s.broadcaster != nil {
 		s.broadcaster.Shutdown()
 	}

@@ -28,7 +28,7 @@ type App struct {
 	Cancel context.CancelFunc
 }
 
-// ScalingAdvisorService is the high-level facade for the scaling advisor planner.
+// ScalingAdvisorService is the high-level facade for the scaling advisor service.
 type ScalingAdvisorService interface {
 	commontypes.Service
 	// GenerateAdvice begins generating scaling advice for the given request.

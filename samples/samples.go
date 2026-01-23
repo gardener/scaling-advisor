@@ -7,11 +7,13 @@ package samples
 import (
 	"embed"
 	"fmt"
+	"strconv"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -50,6 +52,21 @@ func LoadClusterSnapshot(categoryName string) (*planner.ClusterSnapshot, error) 
 		return nil, fmt.Errorf("%w: unknown %q", commonerrors.ErrUnimplemented, categoryName)
 	}
 	return &clusterSnapshot, nil
+}
+
+// IncreaseUnscheduledWorkLoad increases the unscheduled pods by delta for the given cluster snapshot
+func IncreaseUnscheduledWorkLoad(snapshot *planner.ClusterSnapshot, amount int) error {
+	var extra []planner.PodInfo
+	for _, upod := range snapshot.GetUnscheduledPods() {
+		for i := 1; i <= amount; i++ {
+			p := upod
+			p.Name = p.Name + "-" + strconv.Itoa(i)
+			p.UID = types.UID(fmt.Sprintf("%s-%d", p.UID, i))
+			extra = append(extra, p)
+		}
+	}
+	snapshot.Pods = append(snapshot.Pods, extra...)
+	return nil
 }
 
 // LoadBinPackingSchedulerConfig loads the kube-scheduler configuration from the sample data filesystem.

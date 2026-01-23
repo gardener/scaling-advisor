@@ -6,6 +6,7 @@ package minkapi
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
@@ -259,4 +260,9 @@ func (c MatchCriteria) Matches(obj metav1.Object) bool {
 		return false
 	}
 	return true
+}
+
+// String ges a human-readable string value for the MatchCriteria
+func (c MatchCriteria) String() string {
+	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
 }
