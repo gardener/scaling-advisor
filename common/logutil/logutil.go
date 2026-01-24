@@ -53,7 +53,7 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	mSink := &multiSink{sinks: []logr.LogSink{base.GetSink(), fileSink}}
 
 	combined := logr.New(mSink).WithCallDepth(1)
-	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, path)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, logPath)
 
 	return
 }

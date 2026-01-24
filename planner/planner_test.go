@@ -24,52 +24,69 @@ import (
 	"github.com/gardener/scaling-advisor/samples"
 )
 
-func TestGenerateBasicScalingAdvice(t *testing.T) {
-	testCtx, cancelFn := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancelFn()
-	runCtx, runCancelFn := commoncli.CreateAppContext(testCtx, "planner-test")
-	defer runCancelFn()
-
-	p, ok := createTestScalingPlanner(runCtx, t)
+func TestBasicScenarioWithUnitScaling(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, "unit-scaling", time.Second*30)
 	if !ok {
 		return
 	}
-
 	constraints, snapshot, ok := loadConstraintsAndSnapshot(t, samples.CategoryBasic)
 	if !ok {
 		return
 	}
+	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+	// TODO: Add sub-tests for different simulator, generation mode and scoring strategy later
+	planResult := getScalingPlanResult(ctx, p, req)
+	if !assertScaleOutPlan(t, constraints, planResult, 1, 1) {
+		return
+	}
+}
 
-	req := plannerapi.ScalingAdviceRequest{
+func TestBasicScenarioWithMultiScaling(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, "multi-scaling", time.Second*30)
+	if !ok {
+		return
+	}
+	constraints, snapshot, ok := loadConstraintsAndSnapshot(t, samples.CategoryBasic)
+	if !ok {
+		return
+	}
+	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+	if err := samples.IncreaseUnscheduledWorkLoad(req.Snapshot, 2); err != nil {
+		t.Error(err)
+		return
+	}
+	planResult := getScalingPlanResult(ctx, p, req)
+	if !assertScaleOutPlan(t, constraints, planResult, 1, 2) {
+		return
+	}
+}
+
+func createScalingAdviceRequest(t *testing.T,
+	constraints *sacorev1alpha1.ScalingConstraint,
+	snapshot *plannerapi.ClusterSnapshot,
+	simulationStrategy commontypes.SimulationStrategy,
+	scoringStrategy commontypes.NodeScoringStrategy,
+	generationMode commontypes.ScalingAdviceGenerationMode) plannerapi.ScalingAdviceRequest {
+	return plannerapi.ScalingAdviceRequest{
 		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
 			ID:            t.Name(),
 			CorrelationID: t.Name(),
 		},
 		Constraint:           constraints,
 		Snapshot:             snapshot,
-		DiagnosticVerbosity:  0,
-		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
-		SimulationStrategy:   commontypes.SimulationStrategyMultiSimulationsPerGroup,
-		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
+		DiagnosticVerbosity:  1,
+		SimulationStrategy:   simulationStrategy,
+		ScoringStrategy:      scoringStrategy,
+		AdviceGenerationMode: generationMode,
 	}
+}
 
-	t.Run("singleScaling", func(t *testing.T) {
-		planResult := getScalingPlanResult(runCtx, p, req)
-		if !assertScaleOutPlan(t, constraints, planResult, 1, 1) {
-			return
-		}
-	})
-
-	t.Run("multiScaling", func(t *testing.T) {
-		if err := samples.IncreaseUnscheduledWorkLoad(req.Snapshot, 2); err != nil {
-			t.Error(err)
-			return
-		}
-		planResult := getScalingPlanResult(runCtx, p, req)
-		if !assertScaleOutPlan(t, constraints, planResult, 1, 2) {
-			return
-		}
-	})
+func createRunContext(t *testing.T, name string, duration time.Duration) context.Context {
+	t.Helper()
+	testCtx, cancelFn := context.WithTimeout(t.Context(), duration)
+	t.Cleanup(cancelFn) // enough — no need to clean up the child cancel func separately
+	runCtx, _ := commoncli.CreateAppContext(testCtx, name)
+	return runCtx
 }
 
 func loadConstraintsAndSnapshot(t *testing.T, categoryName string) (constraints *sacorev1alpha1.ScalingConstraint, snapshot *plannerapi.ClusterSnapshot, ok bool) {
@@ -126,21 +143,22 @@ func logScaleOutPlan(t *testing.T, scaleOutPlan *sacorev1alpha1.ScaleOutPlan) bo
 	return true
 }
 
-func createTestScalingPlanner(ctx context.Context, t *testing.T) (planner plannerapi.ScalingPlanner, ok bool) {
+func createScalingPlanner(t *testing.T, testName string, duration time.Duration) (runCtx context.Context, planner plannerapi.ScalingPlanner, ok bool) {
 	var err error
 	defer func() {
 		if err != nil {
 			ok = false
-			t.Errorf("failed to create test planner: %v", err)
+			t.Errorf("failed to create test planner for test %q: %v", testName, err)
 			return
 		}
 	}()
+	runCtx = createRunContext(t, testName, duration)
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return
 	}
 	weightsFn := weights.GetDefaultWeightsFn()
-	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
+	viewAccess, err := view.NewAccess(runCtx, &minkapi.ViewArgs{
 		Name:   minkapi.DefaultBasePrefix,
 		Scheme: typeinfo.SupportedScheme,
 		WatchConfig: minkapi.WatchConfig{
