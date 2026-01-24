@@ -269,6 +269,16 @@ func SliceOfAnyToRuntimeObj(objs []any) ([]runtime.Object, error) {
 	return result, nil
 }
 
+// CloneRuntimeObjects creates a cloned slice of the given slice of runtime objects.
+func CloneRuntimeObjects(objs []runtime.Object) []runtime.Object {
+	result := make([]runtime.Object, 0, len(objs))
+	for _, obj := range objs {
+		objCopy := obj.DeepCopyObject()
+		result = append(result, objCopy)
+	}
+	return result
+}
+
 // SliceOfMetaObjToRuntimeObj converts a slice of metav1.Objects to a slice of runtime.Objects.
 func SliceOfMetaObjToRuntimeObj(objs []metav1.Object) ([]runtime.Object, error) {
 	result := make([]runtime.Object, 0, len(objs))

@@ -176,7 +176,7 @@ func TestEventDeletion(t *testing.T) {
 			}
 			t.Logf("Number of Events before deletion is %d", len(events))
 
-			t.Logf("Deleting Event")
+			t.Logf("Deleting Event with criteria: %s", tc.c)
 			err = baseView.DeleteObjects(t.Context(), tc.gvk, tc.c)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)

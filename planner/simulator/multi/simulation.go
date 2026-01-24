@@ -23,6 +23,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -128,10 +129,14 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	}
 
 	if logutil.VerbosityFromContext(ctx) > 1 {
-		log.Info("created simulation node", "nodeName", s.state.simNode.Name, "instanceType", s.state.simNode.Labels[corev1.LabelInstanceTypeStable], "capacity", s.state.simNode.Status.Capacity, "allocatable", s.state.simNode.Status.Allocatable)
-		log.Info("unscheduled pods at start of simulation", "numUnscheduledPods", len(s.state.unscheduledPods))
+		log.Info("created simulation node",
+			"nodeName", s.state.simNode.Name,
+			"instanceType", s.state.simNode.Labels[corev1.LabelInstanceTypeStable],
+			"capacity", s.state.simNode.Status.Capacity,
+			"allocatable", s.state.simNode.Status.Allocatable,
+			"numUnscheduledPods", len(s.state.unscheduledPods))
 	}
-
+	simCtx = logr.NewContext(ctx, log.WithValues("simNodeName", s.state.simNode.Name))
 	// Launch scheduler to operate on the simulation view and wait until stabilization
 	schedulerHandle, err := s.launchSchedulerForSimulation(simCtx, view)
 	if err != nil {
@@ -232,7 +237,7 @@ func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.C
 }
 
 func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
-	simNodeName := fmt.Sprintf("n-%d.%s.%s.%s", s.args.RunCounter.Load(), s.args.AvailabilityZone, s.args.NodeTemplateName, s.args.NodePool.Name)
+	simNodeName := fmt.Sprintf("node-%s.%s.%s.%d", s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone, s.args.RunCounter.Load())
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -251,7 +256,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedReconciles = 10
+const maxUnchangedReconciles = 2
 
 // trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
@@ -259,21 +264,27 @@ const maxUnchangedReconciles = 10
 func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	s.state.status = planner.ActivityStatusRunning
+	var stabilized bool
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			err = ctx.Err()
+			return
 		default:
-			err = s.state.reconcile(ctx, view)
+			stabilized, err = s.state.reconcile(ctx, view)
 			if err != nil {
+				return
+			}
+			if stabilized {
+				log.Info("simulation has stabilized - no more scheduling in this run possible")
 				return
 			}
 			if len(s.state.unscheduledPods) == 0 {
 				log.Info("no unscheduled pods left")
 				return
 			}
+			<-time.After(s.args.Config.TrackPollInterval)
 		}
-		<-time.After(s.args.Config.TrackPollInterval)
 	}
 }
 
@@ -312,7 +323,7 @@ type trackState struct {
 	numUnchangedReconciles   int
 }
 
-func (t *trackState) reconcile(ctx context.Context, view minkapi.View) error {
+func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
 	var (
 		eventTime metav1.MicroTime
 	)
@@ -338,49 +349,53 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) error {
 			continue
 		}
 		log.Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-
-		podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
-		log.Info("pod was scheduled", "namespacedName", podNsName, "eventNote", ev.Note)
-		podObjName := cache.NamespacedNameAsObjectName(podNsName)
-		obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
-		if err != nil {
-			return err
+		if err = t.handleScheduledPodEvent(ctx, view, ev); err != nil {
+			return
 		}
-		pod, ok := obj.(*corev1.Pod)
-		if !ok {
-			err = fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
-			return err
-		}
-		if pod.Spec.NodeName == "" {
-			err = fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
-			return err
-		}
-		podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
-		found := slices.ContainsFunc(podsOnNode, func(podOnNode planner.PodResourceInfo) bool {
-			return podOnNode.NamespacedName == podNsName
-		})
-		if found {
-			continue
-		}
-		podsOnNode = append(podsOnNode, podutil.PodResourceInfoFromCoreV1Pod(pod))
-		t.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
-		log.V(4).Info("pod added to trackState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", len(t.scheduledPodsByNode))
-		delete(t.unscheduledPods, podNsName)
 	}
 
 	nodes, _ := view.ListNodes(ctx)
-	log.Info("nodes", "count", len(nodes))
 	pods, _ := view.ListPods(ctx, minkapi.MatchAllCriteria)
-	log.Info("pods", "count", len(pods))
+	log.Info("podNodeCount", "podCount", len(pods), "nodeCount", len(nodes))
 
 	if lastRecordedReconcileEventTime.Equal(&t.latestReconcileEventTime) {
 		t.numUnchangedReconciles++
 	}
 	if t.numUnchangedReconciles >= maxUnchangedReconciles {
 		log.Info("no new scheduling events observed", "numUnchangedReconciles", t.numUnchangedReconciles, "lastRecordedReconcileEventTime", t.latestReconcileEventTime)
-		return fmt.Errorf("%w: no new scheduling events observed in the last %d reconciles", planner.ErrSimulationStabilizationTimeout, t.numUnchangedReconciles)
+		stabilized = true
 	}
 
+	return
+}
+
+func (t *trackState) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
+	log := logr.FromContextOrDiscard(ctx)
+	podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
+	log.Info("pod was scheduled", "namespacedName", podNsName, "eventNote", ev.Note)
+	podObjName := cache.NamespacedNameAsObjectName(podNsName)
+	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
+	if err != nil {
+		return err
+	}
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
+	}
+	if pod.Spec.NodeName == "" {
+		return fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
+	}
+	podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
+	found := slices.ContainsFunc(podsOnNode, func(podOnNode planner.PodResourceInfo) bool {
+		return podOnNode.NamespacedName == podNsName
+	})
+	if found {
+		return nil
+	}
+	podsOnNode = append(podsOnNode, podutil.PodResourceInfoFromCoreV1Pod(pod))
+	t.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
+	log.V(4).Info("pod added to trackState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", len(t.scheduledPodsByNode))
+	delete(t.unscheduledPods, podNsName)
 	return nil
 }
 

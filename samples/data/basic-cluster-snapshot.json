@@ -3,52 +3,24 @@
     {
       "UID": "7854d99d-4d4a-41ba-9acc-bc9e539aa9b5",
       "Namespace": "default",
-      "Name": "five-gig-workload-7r552",
+      "Name": "five-gig-workload",
       "AggregatedRequests": {
         "memory": 5662310400
       },
       "NodeName": "ip-10-180-25-137.eu-west-1.compute.internal",
       "SchedulerName": "default-scheduler",
-      "Tolerations": [
-        {
-          "key": "node.kubernetes.io/not-ready",
-          "operator": "Exists",
-          "effect": "NoExecute",
-          "tolerationSeconds": 300
-        },
-        {
-          "key": "node.kubernetes.io/unreachable",
-          "operator": "Exists",
-          "effect": "NoExecute",
-          "tolerationSeconds": 300
-        }
-      ],
       "Priority": 0,
       "PreemptionPolicy": "PreemptLowerPriority"
     },
     {
       "UID": "d85f610a-ee11-4670-b807-bde9e1c0929d",
       "Namespace": "default",
-      "Name": "three-gig-workload-w4hnm",
+      "Name": "three-gig-workload",
       "AggregatedRequests": {
         "memory": 3230000000
       },
       "NodeName": "",
       "SchedulerName": "default-scheduler",
-      "Tolerations": [
-        {
-          "key": "node.kubernetes.io/not-ready",
-          "operator": "Exists",
-          "effect": "NoExecute",
-          "tolerationSeconds": 300
-        },
-        {
-          "key": "node.kubernetes.io/unreachable",
-          "operator": "Exists",
-          "effect": "NoExecute",
-          "tolerationSeconds": 300
-        }
-      ],
       "Priority": 0,
       "PreemptionPolicy": "PreemptLowerPriority"
     }

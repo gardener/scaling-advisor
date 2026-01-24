@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
@@ -89,12 +88,12 @@ func wrapPlanContext(ctx context.Context, traceLogsDir string, req planner.Scali
 	genCtx = context.WithValue(genCtx, commonconstants.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 0 {
 		if traceLogsDir == "" {
-			traceLogsDir = os.TempDir()
+			traceLogsDir = logutil.GetTraceLogsParentDir()
 		}
 		logPath := path.Join(traceLogsDir, fmt.Sprintf("%s-%s.log", req.CorrelationID, req.ID))
 		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, req.CorrelationID, logPath)
 		log := logr.FromContextOrDiscard(genCtx)
-		log.Info("Diagnostics enabled for this request", "logPath", logPath)
+		log.Info("Diagnostics enabled for this request", "logPath", logPath, "diagnosticVerbosity", req.DiagnosticVerbosity)
 	}
 	return
 }

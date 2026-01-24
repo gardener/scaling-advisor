@@ -112,6 +112,7 @@ func (s *schedulerLauncher) Launch(ctx context.Context, params *planner.Schedule
 		log.Info("Begin run scheduler", "name", handle.name)
 		handle.scheduler.Run(schedulerCtx)
 		log.Info("End run scheduler", "name", handle.name)
+		s.semaphore.Release(1)
 	}()
 	return handle, nil
 }
@@ -132,6 +133,7 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			Verbosity:      verbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
+		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
 		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
 		if err != nil {
 			err = fmt.Errorf("failed to apply logging configuration: %w", err)

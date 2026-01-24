@@ -17,6 +17,13 @@ import (
 	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
 
+var slashTmpDirExists bool
+
+func init() {
+	info, err := os.Stat("/tmp")
+	slashTmpDirExists = (err == nil) && info.IsDir()
+}
+
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 	v := ctx.Value(commonconstants.VerbosityCtxKey)
@@ -33,8 +40,8 @@ func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
 // logs to the original sink as well as a sink to the given filePath.
 // It returns a new context containing this new multi-sink logr logger, a closer for the log file at path or any error encountered during setup.
-func WrapContextWithFileLogger(ctx context.Context, prefix string, path string) (logCtx context.Context, closer io.Closer, err error) {
-	logFile, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath string) (logCtx context.Context, closer io.Closer, err error) {
+	logFile, err := os.Create(filepath.Clean(logPath))
 	if err != nil {
 		return
 	}
@@ -46,9 +53,18 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, path string) 
 	mSink := &multiSink{sinks: []logr.LogSink{base.GetSink(), fileSink}}
 
 	combined := logr.New(mSink).WithCallDepth(1)
-	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, path)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, logPath)
 
 	return
+}
+
+// GetTraceLogsParentDir gets the parent directory for trace logs.
+func GetTraceLogsParentDir() string {
+	if slashTmpDirExists {
+		return "/tmp"
+	} else {
+		return os.TempDir()
+	}
 }
 
 // multiSink forwards to multiple sinks (e.g., original + file).
