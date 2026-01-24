@@ -262,7 +262,7 @@ func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	return true
 }
 
-// String ges a human-readable string value for the MatchCriteria
+// String gets a human-readable string value for the MatchCriteria
 func (c MatchCriteria) String() string {
 	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
 }
