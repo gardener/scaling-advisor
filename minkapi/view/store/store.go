@@ -466,6 +466,8 @@ func (s *InMemResourceStore) CurrentResourceVersion() int64 {
 
 // Close clears the resources associated with the store, including gracefully shutting down the event broadcaster if it is initialized.
 func (s *InMemResourceStore) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cache != nil {
 		_ = s.cache.Replace([]any{}, "0")
 	}

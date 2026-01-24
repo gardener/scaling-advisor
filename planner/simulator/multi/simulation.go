@@ -271,7 +271,6 @@ func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, 
 			err = ctx.Err()
 			return
 		default:
-			//<-time.After(s.args.Config.TrackPollInterval)
 			stabilized, err = s.state.reconcile(ctx, view)
 			if err != nil {
 				return

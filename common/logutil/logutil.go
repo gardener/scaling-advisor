@@ -21,15 +21,7 @@ var slashTmpDirExists bool
 
 func init() {
 	info, err := os.Stat("/tmp")
-	if err != nil {
-		if os.IsNotExist(err) {
-			slashTmpDirExists = false
-			return
-		}
-		slashTmpDirExists = false
-		return
-	}
-	slashTmpDirExists = info.IsDir()
+	slashTmpDirExists = (err == nil) && info.IsDir()
 }
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
@@ -48,9 +40,8 @@ func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
 // logs to the original sink as well as a sink to the given filePath.
 // It returns a new context containing this new multi-sink logr logger, a closer for the log file at path or any error encountered during setup.
-func WrapContextWithFileLogger(ctx context.Context, prefix string, path string) (logCtx context.Context, closer io.Closer, err error) {
-	logPath := filepath.Clean(path)
-	logFile, err := os.Create(logPath)
+func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath string) (logCtx context.Context, closer io.Closer, err error) {
+	logFile, err := os.Create(filepath.Clean(logPath))
 	if err != nil {
 		return
 	}
