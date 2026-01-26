@@ -4,8 +4,6 @@
     "namespace": "default"
   },
   "spec": {
-    "consumerID": "",
-    "adviceGenerationMode": "all-at-once",
     "nodePools": [
       {
         "name": "p",
@@ -28,7 +26,6 @@
             "name": "m5l",
             "architecture": "amd64",
             "instanceType": "m5.large",
-            "priority": 0,
             "capacity": {
               "cpu": "2",
               "gpu": "0",
@@ -38,8 +35,7 @@
               "cpu": "80m",
               "memory": "1Gi",
               "pid": "20k"
-            },
-            "maxVolumes": 0
+            }
           }
         ]
       }
