@@ -209,7 +209,7 @@ func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, passView min
 		return
 	}
 	if groupScores.WinnerNodeScore == nil {
-		log.Info("simulation group did not produce any winning score. Skipping this group.", "simulationGroupName", groupResult.Name)
+		log.Info("simulation group did not produce any WinnerNodeScore for this pass.")
 		nextPassView = passView
 		return
 	}
