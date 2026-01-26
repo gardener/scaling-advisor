@@ -256,7 +256,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedReconciles = 5
+const maxUnchangedReconciles = 2
 
 // trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
@@ -271,19 +271,19 @@ func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, 
 			err = ctx.Err()
 			return
 		default:
+			<-time.After(s.args.Config.TrackPollInterval)
 			stabilized, err = s.state.reconcile(ctx, view)
 			if err != nil {
 				return
 			}
 			if stabilized {
-				log.Info("simulation has stabilized - no more scheduling in this run possible")
+				log.Info("simulation has stabilized - no more scheduling possible in this simulation run")
 				return
 			}
 			if len(s.state.unscheduledPods) == 0 {
 				log.Info("no unscheduled pods left")
 				return
 			}
-			<-time.After(s.args.Config.TrackPollInterval)
 		}
 	}
 }

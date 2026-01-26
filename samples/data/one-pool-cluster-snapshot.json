@@ -8,9 +8,7 @@
         "memory": 5662310400
       },
       "NodeName": "ip-10-180-25-137.eu-west-1.compute.internal",
-      "SchedulerName": "default-scheduler",
-      "Priority": 0,
-      "PreemptionPolicy": "PreemptLowerPriority"
+      "SchedulerName": "bin-packing-scheduler"
     },
     {
       "UID": "d85f610a-ee11-4670-b807-bde9e1c0929d",
@@ -19,16 +17,15 @@
       "AggregatedRequests": {
         "memory": 3230000000
       },
-      "NodeName": "",
-      "SchedulerName": "default-scheduler",
-      "Priority": 0,
-      "PreemptionPolicy": "PreemptLowerPriority"
+      "SchedulerName": "bin-packing-scheduler"
     }
   ],
   "Nodes": [
     {
       "UID": "61869f8b-ad8a-4e42-ba15-a7fe07366952",
       "Name": "ip-10-180-25-137.eu-west-1.compute.internal",
+      "InstanceType": "m5.large",
+      "Unschedulable": false,
       "Labels": {
         "kubernetes.io/arch": "amd64",
         "kubernetes.io/hostname": "ip-10-180-25-137.eu-west-1.compute.internal",
@@ -46,21 +43,13 @@
         "worker.gardener.cloud/system-components": "true",
         "sa.gardener.cloud/node-template-name": "m5l"
       },
-      "InstanceType": "m5.large",
-      "Unschedulable": false,
       "Capacity": {
         "cpu": 2,
-        "ephemeral-storage": 51371081728,
-        "hugepages-1Gi": 0,
-        "hugepages-2Mi": 0,
         "memory": 8119189504,
         "pods": 110
       },
       "Allocatable": {
         "cpu": 2,
-        "ephemeral-storage": 48802527604,
-        "hugepages-1Gi": 0,
-        "hugepages-2Mi": 0,
         "memory": 6940590080,
         "pods": 110
       },

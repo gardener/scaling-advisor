@@ -16,7 +16,8 @@
         "cpu": 1,
         "memory": 5347737600
       },
-      "nodeName": "node-0"
+      "nodeName": "node-0",
+      "SchedulerName": "bin-packing-scheduler"
     },
     {
       "uid": "fc9237ac-4d9f-4822-9f15-5df808120349",
@@ -33,7 +34,8 @@
       "aggregatedRequests": {
         "cpu": 1,
         "memory": 5347737600
-      }
+      },
+      "SchedulerName": "bin-packing-scheduler"
     },
     {
       "uid": "d52a5273-811e-4881-a6f1-fef7833a6573",
@@ -50,30 +52,21 @@
       "aggregatedRequests": {
         "cpu": 3,
         "memory": 13958643712
-      }
+      },
+      "SchedulerName": "bin-packing-scheduler"
     }
   ],
   "Nodes": [
     {
-      "capacity": {
-        "cpu": 2,
-        "memory": 8119185408,
-        "pods": 110
-      },
-      "allocatable": {
-        "cpu": 2,
-        "memory": 6940585984,
-        "pods": 110
-      },
-      "instanceType": "m5.large",
-      "uid": "d6240321-d364-4bee-95b5-262c7a85a718",
+      "UID": "d6240321-d364-4bee-95b5-262c7a85a718",
       "Name": "node-0",
+      "instanceType": "m5.large",
+      "Unschedulable": false,
       "labels": {
         "kubernetes.io/arch": "amd64",
         "kubernetes.io/hostname": "node-0",
         "kubernetes.io/os": "linux",
         "topology.ebs.csi.aws.com/zone": "eu-west-1a",
-        "node.kubernetes.io/instance-type": "m5.large",
         "node.kubernetes.io/role": "node",
         "topology.k8s.aws/zone-id": "euw1-az3",
         "topology.kubernetes.io/region": "eu-west-1",
@@ -82,7 +75,19 @@
         "worker.gardener.cloud/cri-name": "containerd",
         "worker.gardener.cloud/kubernetes-version": "1.33.7",
         "worker.gardener.cloud/pool": "p",
-        "worker.gardener.cloud/system-components": "true"
+        "sa.gardener.cloud/node-pool-name": "p",
+        "worker.gardener.cloud/system-components": "true",
+        "sa.gardener.cloud/node-template-name": "m5l"
+      },
+      "Capacity": {
+        "cpu": 2,
+        "memory": 8119185408,
+        "pods": 110
+      },
+      "Allocatable": {
+        "cpu": 2,
+        "memory": 6940585984,
+        "pods": 110
       },
       "conditions": [
         {
@@ -93,10 +98,7 @@
           "reason": "KubeletReady",
           "message": "kubelet is posting ready status"
         }
-      ],
-      "CSIDriverVolumeMaximums": {
-        "ebs.csi.aws.com": 26
-      }
+      ]
     }
   ]
 }

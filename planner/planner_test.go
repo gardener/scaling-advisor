@@ -42,7 +42,7 @@ func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
 }
 
 func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "one-pool-multi-scaling", time.Second*30)
+	ctx, p, ok := createScalingPlanner(t, "one-pool-multi-scaling", time.Second*20)
 	if !ok {
 		return
 	}
@@ -63,7 +63,7 @@ func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
 
 // TestTwoPoolBasicScenario tests the basic variant of the scaling scenario with 2 pools.
 func TestTwoPoolBasicScenario(t *testing.T) {
-	//ctx, p, ok := createScalingPlanner(t, "two-pool-test", time.Second*30)
+	//ctx, p, ok := createScalingPlanner(t, "two-pool-test", time.Second*20)
 	ctx, p, ok := createScalingPlanner(t, "two-pool-test", time.Minute*10)
 	if !ok {
 		return
@@ -73,7 +73,7 @@ func TestTwoPoolBasicScenario(t *testing.T) {
 		return
 	}
 	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	req.DiagnosticVerbosity = 4
+	req.DiagnosticVerbosity = 6
 
 	t.Run("1PNodeWith2BerryPodAnd1GrapePod", func(t *testing.T) {
 		planResult := getScalingPlanResult(ctx, p, req)
