@@ -256,7 +256,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedReconciles = 2
+const maxUnchangedReconciles = 5
 
 // trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
@@ -321,16 +321,20 @@ type trackState struct {
 	status                   planner.ActivityStatus
 	result                   planner.SimulationResult
 	numUnchangedReconciles   int
+	numInvokedReconciles     int
 }
 
 func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
 	var (
 		eventTime metav1.MicroTime
 	)
+	t.numInvokedReconciles++
 
 	lastRecordedReconcileEventTime := t.latestReconcileEventTime
 
 	log := logr.FromContextOrDiscard(ctx)
+	evList := view.GetEventSink().List()
+	log.Info("reconcile Invoked", "numEvents", len(evList), "numInvokedReconciles", t.numInvokedReconciles, "numUnchangedReconciles", t.numUnchangedReconciles)
 	for idx, ev := range view.GetEventSink().List() {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime

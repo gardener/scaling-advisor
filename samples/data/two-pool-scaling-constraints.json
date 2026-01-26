@@ -22,6 +22,9 @@
         ],
         "nodeTemplates": [
           {
+            "name": "m5l",
+            "architecture": "amd64",
+            "instanceType": "m5.large",
             "capacity": {
               "cpu": "2",
               "gpu": "0",
@@ -31,10 +34,7 @@
               "cpu": "80m",
               "memory": "1Gi",
               "pid": "20k"
-            },
-            "name": "m5l",
-            "architecture": "amd64",
-            "instanceType": "m5.large"
+            }
           }
         ],
         "priority": 0
