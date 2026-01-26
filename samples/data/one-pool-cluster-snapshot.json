@@ -36,7 +36,6 @@
         "networking.gardener.cloud/node-local-dns-enabled": "true",
         "node.kubernetes.io/instance-type": "m5.large",
         "node.kubernetes.io/role": "node",
-        "topology.ebs.csi.aws.com/zone": "eu-west-1a",
         "topology.k8s.aws/zone-id": "euw1-az3",
         "topology.kubernetes.io/region": "eu-west-1",
         "topology.kubernetes.io/zone": "eu-west-1a",
@@ -114,10 +113,7 @@
           "reason": "KubeletReady",
           "message": "kubelet is posting ready status"
         }
-      ],
-      "CSIDriverVolumeMaximums": {
-        "ebs.csi.aws.com": 26
-      }
+      ]
     }
   ]
 }

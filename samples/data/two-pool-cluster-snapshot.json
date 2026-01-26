@@ -72,7 +72,7 @@
         "kubernetes.io/arch": "amd64",
         "kubernetes.io/hostname": "node-0",
         "kubernetes.io/os": "linux",
-        "node-role.kubernetes.io/worker": "",
+        "topology.ebs.csi.aws.com/zone": "eu-west-1a",
         "node.kubernetes.io/instance-type": "m5.large",
         "node.kubernetes.io/role": "node",
         "topology.k8s.aws/zone-id": "euw1-az3",
@@ -94,7 +94,9 @@
           "message": "kubelet is posting ready status"
         }
       ],
-      "unschedulable": false
+      "CSIDriverVolumeMaximums": {
+        "ebs.csi.aws.com": 26
+      }
     }
   ]
 }
