@@ -66,46 +66,6 @@
       },
       "Conditions": [
         {
-          "type": "KernelDeadlock",
-          "status": "False",
-          "lastHeartbeatTime": "2025-11-05T07:30:54Z",
-          "lastTransitionTime": "2025-11-05T02:35:15Z",
-          "reason": "KernelHasNoDeadlock",
-          "message": "kernel has no deadlock"
-        },
-        {
-          "type": "ReadonlyFilesystem",
-          "status": "False",
-          "lastHeartbeatTime": "2025-11-05T07:30:54Z",
-          "lastTransitionTime": "2025-11-05T02:35:15Z",
-          "reason": "FilesystemIsNotReadOnly",
-          "message": "Filesystem is not read-only"
-        },
-        {
-          "type": "MemoryPressure",
-          "status": "False",
-          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
-          "lastTransitionTime": "2025-11-05T02:34:17Z",
-          "reason": "KubeletHasSufficientMemory",
-          "message": "kubelet has sufficient memory available"
-        },
-        {
-          "type": "DiskPressure",
-          "status": "False",
-          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
-          "lastTransitionTime": "2025-11-05T02:34:17Z",
-          "reason": "KubeletHasNoDiskPressure",
-          "message": "kubelet has no disk pressure"
-        },
-        {
-          "type": "PIDPressure",
-          "status": "False",
-          "lastHeartbeatTime": "2025-11-05T07:32:47Z",
-          "lastTransitionTime": "2025-11-05T02:34:17Z",
-          "reason": "KubeletHasSufficientPID",
-          "message": "kubelet has sufficient PID available"
-        },
-        {
           "type": "Ready",
           "status": "True",
           "lastHeartbeatTime": "2025-11-05T07:32:47Z",
