@@ -88,7 +88,7 @@ func wrapPlanContext(ctx context.Context, traceLogsDir string, req planner.Scali
 	genCtx = context.WithValue(genCtx, commonconstants.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 0 {
 		if traceLogsDir == "" {
-			traceLogsDir = logutil.GetTraceLogsParentDir()
+			traceLogsDir = ioutil.GetTempDir()
 		}
 		logPath := path.Join(traceLogsDir, fmt.Sprintf("%s-%s.log", req.CorrelationID, req.ID))
 		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, req.CorrelationID, logPath)

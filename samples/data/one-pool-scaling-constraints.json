@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "name": "basic-cluster-constraints",
+    "name": "basic-scaling-constraints",
     "namespace": "default"
   },
   "spec": {

@@ -24,12 +24,12 @@ import (
 	"github.com/gardener/scaling-advisor/samples"
 )
 
-func TestBasicScenarioWithUnitScaling(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "unit-scaling", time.Second*30)
+func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Second*30)
 	if !ok {
 		return
 	}
-	constraints, snapshot, ok := loadConstraintsAndSnapshot(t, samples.CategoryBasic)
+	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
 	if !ok {
 		return
 	}
@@ -41,12 +41,12 @@ func TestBasicScenarioWithUnitScaling(t *testing.T) {
 	}
 }
 
-func TestBasicScenarioWithMultiScaling(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "multi-scaling", time.Second*30)
+func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, "one-pool-multi-scaling", time.Second*30)
 	if !ok {
 		return
 	}
-	constraints, snapshot, ok := loadConstraintsAndSnapshot(t, samples.CategoryBasic)
+	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
 	if !ok {
 		return
 	}
@@ -59,6 +59,28 @@ func TestBasicScenarioWithMultiScaling(t *testing.T) {
 	if !assertScaleOutPlan(t, constraints, planResult, 1, 2) {
 		return
 	}
+}
+
+// TestTwoPoolBasicScenario tests the basic variant of the scaling scenario with 2 pools.
+func TestTwoPoolBasicScenario(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, "two-pool", time.Second*30)
+	if !ok {
+		return
+	}
+	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityTwo)
+	if !ok {
+		return
+	}
+	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+
+	//if err := samples.IncreaseUnscheduledWorkLoad(req.Snapshot, 2); err != nil {
+	//	t.Error(err)
+	//	return
+	//}
+	t.Run("2BerriesAnd1Grape", func(t *testing.T) {
+		planResult := getScalingPlanResult(ctx, p, req)
+		logScaleOutPlan(t, planResult.ScaleOutPlan)
+	})
 }
 
 func createScalingAdviceRequest(t *testing.T,
@@ -89,15 +111,15 @@ func createRunContext(t *testing.T, name string, duration time.Duration) context
 	return runCtx
 }
 
-func loadConstraintsAndSnapshot(t *testing.T, categoryName string) (constraints *sacorev1alpha1.ScalingConstraint, snapshot *plannerapi.ClusterSnapshot, ok bool) {
-	constraints, err := samples.LoadClusterConstraints(categoryName)
+func loadBasicConstraintsAndSnapshot(t *testing.T, poolCardinality samples.PoolCardinality) (constraints *sacorev1alpha1.ScalingConstraint, snapshot *plannerapi.ClusterSnapshot, ok bool) {
+	constraints, err := samples.LoadBasicScalingConstraints(poolCardinality)
 	if err != nil {
-		t.Errorf("failed to load basic cluster constraints: %v", err)
+		t.Error(err)
 		return
 	}
-	snapshot, err = samples.LoadClusterSnapshot(categoryName)
+	snapshot, err = samples.LoadBasicClusterSnapshot(poolCardinality)
 	if err != nil {
-		t.Errorf("failed to load basic cluster snapshot: %v", err)
+		t.Errorf("failed to load basic cluster snapshot for poolCardinality %q: %v", poolCardinality, err)
 		return
 	}
 	ok = true

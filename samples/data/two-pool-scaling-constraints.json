@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "name": "two-pool",
+    "namespace": "default"
+  },
+  "spec": {
+    "nodePools": [
+      {
+        "labels": {
+          "kubernetes.io/arch": "amd64",
+          "networking.gardener.cloud/node-local-dns-enabled": "true",
+          "node.kubernetes.io/role": "node",
+          "worker.garden.sapcloud.io/group": "p",
+          "worker.gardener.cloud/cri-name": "containerd",
+          "worker.gardener.cloud/pool": "p",
+          "worker.gardener.cloud/system-components": "true"
+        },
+        "name": "p",
+        "region": "eu-west-1",
+        "availabilityZones": [
+          "eu-west-1a"
+        ],
+        "nodeTemplates": [
+          {
+            "capacity": {
+              "cpu": "2",
+              "gpu": "0",
+              "memory": "8Gi"
+            },
+            "kubeReservedCapacity": {
+              "cpu": "80m",
+              "memory": "1Gi",
+              "pid": "20k"
+            },
+            "name": "p",
+            "architecture": "amd64",
+            "instanceType": "m5.large"
+          }
+        ],
+        "priority": 0
+      },
+      {
+        "labels": {
+          "kubernetes.io/arch": "amd64",
+          "networking.gardener.cloud/node-local-dns-enabled": "true",
+          "node.kubernetes.io/role": "node",
+          "worker.garden.sapcloud.io/group": "q",
+          "worker.gardener.cloud/cri-name": "containerd",
+          "worker.gardener.cloud/pool": "q"
+        },
+        "name": "q",
+        "region": "eu-west-1",
+        "availabilityZones": [
+          "eu-west-1a",
+          "eu-west-1b",
+          "eu-west-1c"
+        ],
+        "nodeTemplates": [
+          {
+            "capacity": {
+              "cpu": "4",
+              "gpu": "0",
+              "memory": "16Gi"
+            },
+            "kubeReservedCapacity": {
+              "cpu": "80m",
+              "memory": "1Gi",
+              "pid": "20k"
+            },
+            "name": "q",
+            "architecture": "amd64",
+            "instanceType": "m5.xlarge"
+          }
+        ],
+        "priority": 1
+      }
+    ]
+  }
+}

@@ -143,14 +143,23 @@ func Int64MapToResourceList(intMap map[corev1.ResourceName]int64) corev1.Resourc
 	return result
 }
 
-// StringMapToResourceList converts the given map from ResourceName(string) to
-// ResourceValue(any) into a ResourceList object.
-func StringMapToResourceList(stringMap map[string]any) corev1.ResourceList {
+// StringKeyValueMapToResourceList converts the given map (resource name string to
+// resource quantity string) into a corev1.ResourceList object.
+func StringKeyValueMapToResourceList(stringMap map[string]any) corev1.ResourceList {
 	result := make(corev1.ResourceList, len(stringMap))
 	for resourceName, stringValue := range stringMap {
 		result[corev1.ResourceName(resourceName)] = resource.MustParse(stringValue.(string))
 	}
 	return result
+}
+
+// ResourceNameStringValueMapToResourceList converts the given resources map (corev1.ResourceName to human-readable quantity string) into a corev1.ResourceList
+func ResourceNameStringValueMapToResourceList(resources map[corev1.ResourceName]string) corev1.ResourceList {
+	res := make(corev1.ResourceList, len(resources))
+	for n, q := range resources {
+		res[n] = resource.MustParse(q)
+	}
+	return res
 }
 
 // IsResourceListEqual compares the given resource lists and checks for equality.

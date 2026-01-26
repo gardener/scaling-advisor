@@ -17,13 +17,6 @@ import (
 	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
 
-var slashTmpDirExists bool
-
-func init() {
-	info, err := os.Stat("/tmp")
-	slashTmpDirExists = (err == nil) && info.IsDir()
-}
-
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 	v := ctx.Value(commonconstants.VerbosityCtxKey)
@@ -56,15 +49,6 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, logPath)
 
 	return
-}
-
-// GetTraceLogsParentDir gets the parent directory for trace logs.
-func GetTraceLogsParentDir() string {
-	if slashTmpDirExists {
-		return "/tmp"
-	} else {
-		return os.TempDir()
-	}
 }
 
 // multiSink forwards to multiple sinks (e.g., original + file).
