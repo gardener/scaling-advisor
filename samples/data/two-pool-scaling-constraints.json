@@ -32,7 +32,7 @@
               "memory": "1Gi",
               "pid": "20k"
             },
-            "name": "p",
+            "name": "m5l",
             "architecture": "amd64",
             "instanceType": "m5.large"
           }
@@ -67,7 +67,7 @@
               "memory": "1Gi",
               "pid": "20k"
             },
-            "name": "q",
+            "name": "m5xl",
             "architecture": "amd64",
             "instanceType": "m5.xlarge"
           }
