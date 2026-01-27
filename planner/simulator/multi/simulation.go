@@ -35,7 +35,7 @@ var _ planner.Simulation = (*singleNodeScalingSimulation)(nil)
 type singleNodeScalingSimulation struct {
 	args         *planner.SimulationArgs
 	nodeTemplate *sacorev1alpha1.NodeTemplate
-	state        *trackState
+	state        *runState
 	name         string
 }
 
@@ -57,7 +57,7 @@ func NewSimulation(name string, args *planner.SimulationArgs) (planner.Simulatio
 		name:         name,
 		args:         args,
 		nodeTemplate: nodeTemplate,
-		state: &trackState{
+		state: &runState{
 			status:              planner.ActivityStatusPending,
 			scheduledPodsByNode: make(map[string][]planner.PodResourceInfo),
 		},
@@ -66,7 +66,7 @@ func NewSimulation(name string, args *planner.SimulationArgs) (planner.Simulatio
 }
 
 func (s *singleNodeScalingSimulation) Reset() {
-	s.state = &trackState{
+	s.state = &runState{
 		status:              planner.ActivityStatusPending,
 		scheduledPodsByNode: make(map[string][]planner.PodResourceInfo),
 	}
@@ -258,7 +258,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 
 const maxUnchangedReconciles = 2
 
-// trackUntilStabilized starts a loop which updates the track state of the simulation until one of the following conditions is met:
+// trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
 //  2. Stabilization period is over and there are still unscheduled pods.
 func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
@@ -272,7 +272,7 @@ func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, 
 			return
 		default:
 			<-time.After(s.args.Config.TrackPollInterval)
-			stabilized, err = s.state.reconcile(ctx, view)
+			stabilized, err = s.track(ctx, view)
 			if err != nil {
 				return
 			}
@@ -311,30 +311,17 @@ func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, v
 	return assignments, nil
 }
 
-// trackState is regularly populated when simulation is running.
-type trackState struct {
-	latestReconcileEventTime metav1.MicroTime
-	err                      error
-	simNode                  *corev1.Node
-	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
-	status                   planner.ActivityStatus
-	result                   planner.SimulationResult
-	numUnchangedReconciles   int
-	numInvokedReconciles     int
-}
-
-func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
+func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
 	var (
 		eventTime metav1.MicroTime
 	)
-	t.numInvokedReconciles++
+	s.state.numInvokedReconciles++
 
-	lastRecordedReconcileEventTime := t.latestReconcileEventTime
+	lastRecordedReconcileEventTime := s.state.latestReconcileEventTime
 
 	log := logr.FromContextOrDiscard(ctx)
 	evList := view.GetEventSink().List()
-	log.Info("reconcile Invoked", "numEvents", len(evList), "numInvokedReconciles", t.numInvokedReconciles, "numUnchangedReconciles", t.numUnchangedReconciles)
+	log.Info("track Invoked", "numEvents", len(evList), "numInvokedReconciles", s.state.numInvokedReconciles, "numUnchangedReconciles", s.state.numUnchangedReconciles)
 	for idx, ev := range view.GetEventSink().List() {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime
@@ -342,10 +329,10 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabiliz
 			eventTime = ev.EventTime
 		}
 		log.V(5).Info("checking event", "index", idx, "id", ev.UID, "eventTime", eventTime, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-		if t.latestReconcileEventTime.Equal(&eventTime) || t.latestReconcileEventTime.After(eventTime.Time) {
+		if s.state.latestReconcileEventTime.Equal(&eventTime) || s.state.latestReconcileEventTime.After(eventTime.Time) {
 			continue
 		}
-		t.latestReconcileEventTime = eventTime
+		s.state.latestReconcileEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
 				log.Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
@@ -353,7 +340,7 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabiliz
 			continue
 		}
 		log.Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-		if err = t.handleScheduledPodEvent(ctx, view, ev); err != nil {
+		if err = s.handleScheduledPodEvent(ctx, view, ev); err != nil {
 			return
 		}
 	}
@@ -362,21 +349,24 @@ func (t *trackState) reconcile(ctx context.Context, view minkapi.View) (stabiliz
 	pods, _ := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	log.Info("podNodeCount", "podCount", len(pods), "nodeCount", len(nodes))
 
-	if lastRecordedReconcileEventTime.Equal(&t.latestReconcileEventTime) {
-		t.numUnchangedReconciles++
+	if lastRecordedReconcileEventTime.Equal(&s.state.latestReconcileEventTime) {
+		s.state.numUnchangedReconciles++
 	}
-	if t.numUnchangedReconciles >= maxUnchangedReconciles {
-		log.Info("no new scheduling events observed", "numUnchangedReconciles", t.numUnchangedReconciles, "lastRecordedReconcileEventTime", t.latestReconcileEventTime)
+	if s.state.numUnchangedReconciles >= maxUnchangedReconciles {
+		log.Info("no new scheduling events observed", "numUnchangedReconciles", s.state.numUnchangedReconciles, "lastRecordedReconcileEventTime", s.state.latestReconcileEventTime)
 		stabilized = true
+		if s.state.numScheduledPods == 0 {
+			err = fmt.Errorf("%w: No scheduledPod for simulationNode %q or any one of %d existing node(s)", planner.ErrSimulationStabilizedWithNoScheduledPods, s.state.simNode)
+		}
 	}
 
 	return
 }
 
-func (t *trackState) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
+func (s *singleNodeScalingSimulation) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
 	log := logr.FromContextOrDiscard(ctx)
 	podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
-	log.Info("pod was scheduled", "namespacedName", podNsName, "eventNote", ev.Note)
+	log.Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
 	podObjName := cache.NamespacedNameAsObjectName(podNsName)
 	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
 	if err != nil {
@@ -387,9 +377,9 @@ func (t *trackState) handleScheduledPodEvent(ctx context.Context, view minkapi.V
 		return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
 	}
 	if pod.Spec.NodeName == "" {
-		return fmt.Errorf("pod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
+		return fmt.Errorf("scheduledPod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
 	}
-	podsOnNode := t.scheduledPodsByNode[pod.Spec.NodeName]
+	podsOnNode := s.state.scheduledPodsByNode[pod.Spec.NodeName]
 	found := slices.ContainsFunc(podsOnNode, func(podOnNode planner.PodResourceInfo) bool {
 		return podOnNode.NamespacedName == podNsName
 	})
@@ -397,9 +387,10 @@ func (t *trackState) handleScheduledPodEvent(ctx context.Context, view minkapi.V
 		return nil
 	}
 	podsOnNode = append(podsOnNode, podutil.PodResourceInfoFromCoreV1Pod(pod))
-	t.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
-	log.V(4).Info("pod added to trackState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", len(t.scheduledPodsByNode))
-	delete(t.unscheduledPods, podNsName)
+	s.state.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
+	s.state.numScheduledPods++
+	log.V(4).Info("scheduledPod added to runState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", s.state.numScheduledPods)
+	delete(s.state.unscheduledPods, podNsName)
 	return nil
 }
 
@@ -411,4 +402,18 @@ func getNodeResourceInfo(node *corev1.Node) planner.NodeResourceInfo {
 		Capacity:     objutil.ResourceListToInt64Map(node.Status.Capacity),
 		Allocatable:  objutil.ResourceListToInt64Map(node.Status.Allocatable),
 	}
+}
+
+// runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when singleNodeScalingSimulation.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
+type runState struct {
+	latestReconcileEventTime metav1.MicroTime
+	err                      error
+	simNode                  *corev1.Node
+	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
+	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
+	status                   planner.ActivityStatus
+	result                   planner.SimulationResult
+	numUnchangedReconciles   int
+	numInvokedReconciles     int
+	numScheduledPods         int
 }

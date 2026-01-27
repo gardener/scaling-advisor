@@ -51,9 +51,7 @@
         "name": "q",
         "region": "eu-west-1",
         "availabilityZones": [
-          "eu-west-1a",
-          "eu-west-1b",
-          "eu-west-1c"
+          "eu-west-1a"
         ],
         "nodeTemplates": [
           {
