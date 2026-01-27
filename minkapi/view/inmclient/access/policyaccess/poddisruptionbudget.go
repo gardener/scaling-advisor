@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type podDisruptionBudgetAccess struct {
 }
 
 // NewPodDisruptionBudgetAccess creates a new access facade for managing PodDisruptionBudget resources within a specific namespace using the given minkapi View.
-func NewPodDisruptionBudgetAccess(view mkapi.View, namespace string) clientpolicyv1.PodDisruptionBudgetInterface {
+func NewPodDisruptionBudgetAccess(view minkapi.View, namespace string) clientpolicyv1.PodDisruptionBudgetInterface {
 	return &podDisruptionBudgetAccess{
 		access.GenericResourceAccess[*policyv1.PodDisruptionBudget, *policyv1.PodDisruptionBudgetList]{
 			View:      view,

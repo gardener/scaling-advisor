@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"sync"
 
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 )
 
-var _ mkapi.EventSink = (*InMemEventSink)(nil)
+var _ minkapi.EventSink = (*InMemEventSink)(nil)
 
 // InMemEventSink is plain implementation of minkapi EventSink that holds events in a backing slice.
 type InMemEventSink struct {
@@ -25,7 +25,7 @@ type InMemEventSink struct {
 }
 
 // New constructs a minkapi event-sink that sinks events to a backing in-memory slice of events.
-func New() mkapi.EventSink {
+func New() minkapi.EventSink {
 	return &InMemEventSink{
 		events: make([]eventsv1.Event, 0, 100),
 	}

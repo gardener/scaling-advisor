@@ -9,14 +9,14 @@ import (
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 )
 
 // NewInMemClientFacades returns ClientFacades populated with in-memory client and informer facades.
-func NewInMemClientFacades(view mkapi.View, resyncPeriod time.Duration) commontypes.ClientFacades {
+func NewInMemClientFacades(view minkapi.View, resyncPeriod time.Duration) commontypes.ClientFacades {
 	client := &inMemClient{view: view}
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	return commontypes.ClientFacades{

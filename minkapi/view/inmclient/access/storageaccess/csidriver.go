@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type csiDriverAccess struct {
 }
 
 // NewCSIDriverAccess creates an access facade for managing CSIDriver resources using the given minkapi View.
-func NewCSIDriverAccess(view mkapi.View) clientstoragev1.CSIDriverInterface {
+func NewCSIDriverAccess(view minkapi.View) clientstoragev1.CSIDriverInterface {
 	return &csiDriverAccess{
 		access.GenericResourceAccess[*storagev1.CSIDriver, *storagev1.CSIDriverList]{
 			View:      view,
