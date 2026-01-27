@@ -50,6 +50,8 @@ const (
 	LabelRequestID = "sa.gardener.cloud/request-id"
 	// LabelCorrelationID is the label key to identify the correlation Name of the scaling advice request.
 	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
+	// LabelTotalSimulationRuns is the label key to indicate the total number of simulation runs made across all simulation groups to produce ScaleOutPlan
+	LabelTotalSimulationRuns = "sa.gardener.cloud/total-simulation-runs"
 )
 
 const (

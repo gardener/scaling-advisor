@@ -131,7 +131,8 @@ func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView min
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
 			log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
-			if err = util.SendPlanResult(ctx, m.request, resultCh, []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
+			m.simulationRunCounter.Load()
+			if err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
 		}
@@ -148,7 +149,7 @@ func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView min
 	}
 	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
 		log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
-		err = util.SendPlanResult(ctx, m.request, resultCh, allSimGroupCycleResults)
+		err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), allSimGroupCycleResults)
 	}
 	return
 }
@@ -163,7 +164,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 		winningNodeScore *plannerapi.NodeScore
 	)
 	sgcr.NextGroupView = groupView
-	sgcr.NumPasses = 1 // it will run at least once.
+	sgcr.NumPasses = 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -172,6 +173,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 		default:
 			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunNumPasses", sgcr.NumPasses)
 			passCtx := logr.NewContext(ctx, log)
+			sgcr.NumPasses++
 			sgcr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgcr.NextGroupView, group)
 			if err != nil {
 				return
@@ -197,7 +199,6 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 				return
 			}
 		}
-		sgcr.NumPasses++
 	}
 }
 

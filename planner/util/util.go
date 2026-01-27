@@ -6,11 +6,12 @@ package util
 
 import (
 	"context"
+	"fmt"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
@@ -20,46 +21,45 @@ import (
 )
 
 // SendPlanError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.
-func SendPlanError(resultsCh chan<- planner.ScalingPlanResult, requestRef planner.ScalingAdviceRequestRef, err error) {
-	err = planner.AsPlanError(requestRef.ID, requestRef.CorrelationID, err)
-	resultsCh <- planner.ScalingPlanResult{
+func SendPlanError(resultsCh chan<- plannerapi.ScalingPlanResult, requestRef plannerapi.ScalingAdviceRequestRef, err error) {
+	err = plannerapi.AsPlanError(requestRef.ID, requestRef.CorrelationID, err)
+	resultsCh <- plannerapi.ScalingPlanResult{
 		Name: objutil.GenerateName("plan-error"),
 		Err:  err,
 	}
 }
 
 // SendPlanResult creates a ScalingPlanResult from the given SimulationGroupCycleResults and sends it to the provided result channel.
-func SendPlanResult(ctx context.Context, req *planner.ScalingAdviceRequest, resultCh chan<- planner.ScalingPlanResult, groupCycleResults []planner.SimulationGroupCycleResult) error {
+func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, resultCh chan<- plannerapi.ScalingPlanResult, simulationRunCount uint32, groupCycleResults []plannerapi.SimulationGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
 	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
 		return err
 	}
 	labels := map[string]string{
-		commonconstants.LabelRequestID:     req.ID,
-		commonconstants.LabelCorrelationID: req.CorrelationID,
-		//commonconstants.LabelSimulationGroupName:      gcr.Name, // FIXME, TODO: discuss with madhav.
-		//commonconstants.LabelSimulationGroupNumPasses: strconv.Itoa(gcr.NumPasses),
+		commonconstants.LabelRequestID:           req.ID,
+		commonconstants.LabelCorrelationID:       req.CorrelationID,
+		commonconstants.LabelTotalSimulationRuns: fmt.Sprintf("%d", simulationRunCount),
 	}
-	var allWinnerNodeScores []planner.NodeScore
+	var allWinnerNodeScores []plannerapi.NodeScore
 	var leftOverUnscheduledPods []types.NamespacedName
 	for _, gcr := range groupCycleResults {
 		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
 	}
 	scaleOutPlan := CreateScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
-	planResult := planner.ScalingPlanResult{
+	planResult := plannerapi.ScalingPlanResult{
 		Name:         objutil.GenerateName("scaling-plan"),
 		Labels:       labels,
 		ScaleOutPlan: &scaleOutPlan,
 	}
-	resultCh <- planResult
 	log.Info("Sent ScalingPlanResult", "scalingPlanResult", planResult)
+	resultCh <- planResult
 	return nil
 }
 
 // CreateScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func CreateScaleOutPlan(winningNodeScores []planner.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+func CreateScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := GroupByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {
@@ -78,8 +78,8 @@ func CreateScaleOutPlan(winningNodeScores []planner.NodeScore, existingNodeCount
 }
 
 // GroupByNodePlacement groups the given nodeScores by their NodePlacement and returns a map of NodePlacement to slice of NodeScores.
-func GroupByNodePlacement(nodeScores []planner.NodeScore) map[sacorev1alpha1.NodePlacement][]planner.NodeScore {
-	groupByPlacement := make(map[sacorev1alpha1.NodePlacement][]planner.NodeScore)
+func GroupByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacorev1alpha1.NodePlacement][]plannerapi.NodeScore {
+	groupByPlacement := make(map[sacorev1alpha1.NodePlacement][]plannerapi.NodeScore)
 	for _, ns := range nodeScores {
 		groupByPlacement[ns.Placement] = append(groupByPlacement[ns.Placement], ns)
 	}
@@ -87,7 +87,7 @@ func GroupByNodePlacement(nodeScores []planner.NodeScore) map[sacorev1alpha1.Nod
 }
 
 // SynchronizeBaseView synchronizes the given view with the given cluster snapshot.
-func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *planner.ClusterSnapshot) error {
+func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
 	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
 	// the base view with the current state of the target cluster.
 	view.Reset()
