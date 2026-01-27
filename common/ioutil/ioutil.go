@@ -7,11 +7,12 @@ package ioutil
 import (
 	"embed"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"io"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"text/template"
+
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // CloserFunc is a function type that implements io.Closer.

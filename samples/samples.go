@@ -8,9 +8,6 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/ioutil"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"os"
 	"path"
 	"strconv"
@@ -20,7 +17,10 @@ import (
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -121,6 +121,7 @@ func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTem
 	}
 	return podTmplData
 }
+
 func fillAppLabelDefaults(appLabels AppLabels) AppLabels {
 	if appLabels.Name == "" {
 		appLabels.Name = "test"

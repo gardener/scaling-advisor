@@ -1,9 +1,10 @@
 package samples
 
 import (
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"testing"
 )
 
 func TestGenerateSimplePodsWithResources(t *testing.T) {
@@ -49,7 +50,6 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 					t.Errorf("ResourceList mismatch for %q (-want +got):\n%s", resourcePairsLabel, diff)
 				}
 			}
-
 		})
 	}
 }

@@ -6,10 +6,10 @@ package viewutil
 
 import (
 	"context"
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/go-logr/logr"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
 

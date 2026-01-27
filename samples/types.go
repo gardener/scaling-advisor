@@ -22,6 +22,7 @@ const (
 	PoolCardinalityMany PoolCardinality = "multi-pool"
 )
 
+// ScenarioVariant is the enum type representing variants of a scaling scenario.
 type ScenarioVariant string
 
 const (
@@ -56,13 +57,17 @@ const (
 	HalfGrape ResourcePairsName = "half-grape"
 )
 
+// AsResourceList creates a corev1.ResourceList for the resources associated with this name
 func (c ResourcePairsName) AsResourceList() corev1.ResourceList {
 	return objutil.ResourceNameStringValueMapToResourceList(resourcePairsLabelToResourcePairsMap[c])
 }
+
+// AsResourcePairs creates ResourcePairs for the resources associated with this name
 func (c ResourcePairsName) AsResourcePairs() ResourcePairs {
 	return resourcePairsLabelToResourcePairsMap[c]
 }
 
+// ResourcePairs represents a map of resource names to  succinct, human-readable resource quantity. (corev1 resource.Quantity's string rep is NOT human-readable nor succinct)
 type ResourcePairs map[corev1.ResourceName]string
 
 // AppLabels represents standard k8s app labels
@@ -84,8 +89,8 @@ type SimplePodMetadata struct {
 
 // SimplePodTemplateData holds all the pod template data for the simple pod template.
 type SimplePodTemplateData struct {
-	SimplePodMetadata
 	Resources map[corev1.ResourceName]string
+	SimplePodMetadata
 }
 
 var (

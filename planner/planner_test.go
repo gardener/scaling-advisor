@@ -24,6 +24,8 @@ import (
 	"github.com/gardener/scaling-advisor/samples"
 )
 
+const defaultVerbosity = 3
+
 func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Second*30)
 	if !ok {
@@ -73,7 +75,6 @@ func TestTwoPoolBasicScenario(t *testing.T) {
 		return
 	}
 	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	req.DiagnosticVerbosity = 6
 
 	t.Run("1PNodeWith2BerryPodAnd1GrapePod", func(t *testing.T) {
 		planResult := getScalingPlanResult(ctx, p, req)
@@ -98,7 +99,7 @@ func createScalingAdviceRequest(t *testing.T,
 		},
 		Constraint:           constraints,
 		Snapshot:             snapshot,
-		DiagnosticVerbosity:  1,
+		DiagnosticVerbosity:  defaultVerbosity,
 		SimulationStrategy:   simulationStrategy,
 		ScoringStrategy:      scoringStrategy,
 		AdviceGenerationMode: generationMode,

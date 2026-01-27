@@ -8,10 +8,11 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"os"
 	"text/template"
+
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 )
 
 //go:embed templates/*.yaml

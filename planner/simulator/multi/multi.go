@@ -7,9 +7,6 @@ package multi
 import (
 	"context"
 	"fmt"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/logutil"
-	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"sync/atomic"
 
 	"github.com/gardener/scaling-advisor/planner/util"
@@ -17,6 +14,9 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 )
 
@@ -174,7 +174,6 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 			passCtx := logr.NewContext(ctx, log)
 			sgcr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgcr.NextGroupView, group)
 			if err != nil {
-				// FIXME: Should Check for ErrSimulationStabilizedWithNoScheduledPods for all simulations
 				return
 			}
 			// winningNodeScore being nil indicates that there are no more winning node score, further passes can be aborted.

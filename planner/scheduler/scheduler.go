@@ -32,6 +32,7 @@ var _ planner.SchedulerLauncher = (*schedulerLauncher)(nil)
 type schedulerLauncher struct {
 	schedulerConfig *schedulerapiconfig.KubeSchedulerConfiguration
 	semaphore       *semaphore.Weighted
+	verbosity       logsapiv1.VerbosityLevel
 }
 
 var _ planner.SchedulerHandle = (*schedulerHandle)(nil)
@@ -124,6 +125,7 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			err = fmt.Errorf("%w: %w", planner.ErrLaunchScheduler, err)
 		}
 	}()
+	log := logr.FromContextOrDiscard(ctx)
 
 	verbosity := logutil.VerbosityFromContext(ctx)
 	if verbosity > 0 {
@@ -133,15 +135,18 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			Verbosity:      verbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
-		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
-		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
-		if err != nil {
-			err = fmt.Errorf("failed to apply logging configuration: %w", err)
-			return
+		if s.verbosity > 0 && verbosity != s.verbosity {
+			log.Info("cannot change scheduler verbosity", "currentVerbosity", s.verbosity, "newVerbosity", verbosity)
+		} else {
+			logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
+			err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
+			if err != nil {
+				err = fmt.Errorf("failed to apply logging configuration: %w", err)
+				return
+			}
 		}
 	}
 
-	log := logr.FromContextOrDiscard(ctx)
 	broadcaster := events.NewBroadcaster(params.EventSink)
 	broadcaster.StartRecordingToSink(ctx.Done())
 	name := "embedded-scheduler-" + rand.String(5)
