@@ -94,6 +94,7 @@ func (g *simGroup) Reset() {
 // createSimulationGroups groups the given Simulation instances into one or more SimulationGroups
 func createSimulationGroups(simulations []planner.Simulation) ([]planner.SimulationGroup, error) {
 	groupsByKey := make(map[planner.SimGroupKey]planner.SimulationGroup)
+	groupCount := 0
 	for _, sim := range simulations {
 		gk := planner.SimGroupKey{
 			NodePoolPriority:     sim.NodePool().Priority,
@@ -101,7 +102,8 @@ func createSimulationGroups(simulations []planner.Simulation) ([]planner.Simulat
 		}
 		g, ok := groupsByKey[gk]
 		if !ok {
-			name := fmt.Sprintf("%s_%s_%s", sim.NodePool().Name, sim.NodeTemplate().Name, gk)
+			groupCount++
+			name := fmt.Sprintf("sg-%d_%s_%s_%s", groupCount, sim.NodePool().Name, sim.NodeTemplate().Name, gk)
 			g = NewGroup(name, gk)
 		}
 		g.AddSimulation(sim)

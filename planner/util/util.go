@@ -11,6 +11,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -28,7 +29,8 @@ func SendPlanError(resultsCh chan<- planner.ScalingPlanResult, requestRef planne
 }
 
 // SendPlanResult creates a ScalingPlanResult from the given SimulationGroupCycleResults and sends it to the provided result channel.
-func SendPlanResult(req *planner.ScalingAdviceRequest, resultCh chan<- planner.ScalingPlanResult, groupCycleResults []planner.SimulationGroupCycleResult) error {
+func SendPlanResult(ctx context.Context, req *planner.ScalingAdviceRequest, resultCh chan<- planner.ScalingPlanResult, groupCycleResults []planner.SimulationGroupCycleResult) error {
+	log := logr.FromContextOrDiscard(ctx)
 	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
 		return err
@@ -46,11 +48,13 @@ func SendPlanResult(req *planner.ScalingAdviceRequest, resultCh chan<- planner.S
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
 	}
 	scaleOutPlan := CreateScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
-	resultCh <- planner.ScalingPlanResult{
+	planResult := planner.ScalingPlanResult{
 		Name:         objutil.GenerateName("scaling-plan"),
 		Labels:       labels,
 		ScaleOutPlan: &scaleOutPlan,
 	}
+	resultCh <- planResult
+	log.Info("Sent ScalingPlanResult", "scalingPlanResult", planResult)
 	return nil
 }
 

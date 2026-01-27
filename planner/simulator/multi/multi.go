@@ -69,6 +69,7 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 
 func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdviceRequest) ([]plannerapi.SimulationGroup, error) {
 	var allSimulations []plannerapi.Simulation
+	simCount := 0
 	for _, nodePool := range request.Constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
 			for _, zone := range nodePool.AvailabilityZones {
@@ -76,7 +77,8 @@ func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdvic
 					sim plannerapi.Simulation
 					err error
 				)
-				simulationName := fmt.Sprintf("%s_%s_%s", nodePool.Name, nodeTemplate.Name, zone)
+				simCount++
+				simulationName := fmt.Sprintf("sim-%d_%s_%s_%s", simCount, nodePool.Name, nodeTemplate.Name, zone)
 				sim, err = m.createSimulation(simulationName, &nodePool, nodeTemplate.Name, zone)
 				if err != nil {
 					return nil, err
@@ -105,18 +107,18 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 // If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
 func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
 	var (
-		groupView               = baseView
 		allWinnerNodeScores     []plannerapi.NodeScore
 		simGroupCycleResult     plannerapi.SimulationGroupCycleResult
 		allSimGroupCycleResults []plannerapi.SimulationGroupCycleResult
 		log                     = logr.FromContextOrDiscard(ctx)
 	)
+	simGroupCycleResult.NextGroupView = baseView
 	for groupIndex := 0; groupIndex < len(simGroups); {
 		group := simGroups[groupIndex]
 		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
 		grpCtx := logr.NewContext(ctx, log)
 		log.Info("Invoking runStabilizationCycleForGroup")
-		simGroupCycleResult, err = m.runStabilizationCycleForGroup(grpCtx, groupView, group)
+		simGroupCycleResult, err = m.runStabilizationCycleForGroup(grpCtx, simGroupCycleResult.NextGroupView, group)
 		if err != nil {
 			err = fmt.Errorf("failed to run all passes for group %q: %w", group.Name(), err)
 			return
@@ -128,8 +130,8 @@ func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView min
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
-			log.Info("Sending incremental scale-out plan")
-			if err = util.SendPlanResult(m.request, resultCh, []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
+			log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
+			if err = util.SendPlanResult(ctx, m.request, resultCh, []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
 		}
@@ -145,8 +147,8 @@ func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView min
 		return
 	}
 	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
-		log.Info("Sending all-at-once scale-out plan")
-		err = util.SendPlanResult(m.request, resultCh, allSimGroupCycleResults)
+		log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
+		err = util.SendPlanResult(ctx, m.request, resultCh, allSimGroupCycleResults)
 	}
 	return
 }
