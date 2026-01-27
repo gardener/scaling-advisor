@@ -46,7 +46,7 @@ func (g *simGroup) AddSimulation(sim planner.Simulation) {
 	g.simulations = append(g.simulations, sim)
 }
 
-func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewFunc) (result planner.SimulationGroupResult, err error) {
+func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewFunc) (result planner.SimulationGroupRunResult, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: simulation group %q failed: %w", planner.ErrRunSimulationGroup, g.Name(), err)
@@ -68,8 +68,8 @@ func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewF
 		return
 	}
 
-	var simResults []planner.SimulationResult
-	var simResult planner.SimulationResult
+	var simResults []planner.SimulationRunResult
+	var simResult planner.SimulationRunResult
 	for _, sim := range g.simulations {
 		simResult, err = sim.Result()
 		if err != nil {
@@ -77,7 +77,7 @@ func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewF
 		}
 		simResults = append(simResults, simResult)
 	}
-	result = planner.SimulationGroupResult{
+	result = planner.SimulationGroupRunResult{
 		Name:              g.name,
 		Key:               g.key,
 		SimulationResults: simResults,

@@ -93,7 +93,7 @@ func (s *singleNodeScalingSimulation) ActivityStatus() planner.ActivityStatus {
 	return s.state.status
 }
 
-func (s *singleNodeScalingSimulation) Result() (planner.SimulationResult, error) {
+func (s *singleNodeScalingSimulation) Result() (planner.SimulationRunResult, error) {
 	return s.state.result, s.state.err
 }
 
@@ -156,12 +156,12 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	}
 
 	// create simulation result
-	s.state.result = planner.SimulationResult{
+	s.state.result = planner.SimulationRunResult{
 		Name:                     s.name,
 		View:                     view,
 		ScaledNodes:              []*corev1.Node{s.state.simNode},
 		ScaledNodePlacements:     []sacorev1alpha1.NodePlacement{s.getScaledNodePlacementInfo()},
-		ScaledNodePodAssignments: []planner.NodePodAssignment{s.getScaledNodeAssignment()},
+		ScaledNodePodAssignments: s.getScaledNodeAssignments(),
 		OtherNodePodAssignments:  otherAssignments,
 		LeftoverUnscheduledPods:  slices.Collect(maps.Keys(s.state.unscheduledPods)),
 	}
@@ -217,10 +217,16 @@ func (s *singleNodeScalingSimulation) getScaledNodePlacementInfo() sacorev1alpha
 	}
 }
 
-func (s *singleNodeScalingSimulation) getScaledNodeAssignment() planner.NodePodAssignment {
-	return planner.NodePodAssignment{
-		NodeResources: getNodeResourceInfo(s.state.simNode),
-		ScheduledPods: s.state.scheduledPodsByNode[s.state.simNode.Name],
+func (s *singleNodeScalingSimulation) getScaledNodeAssignments() []planner.NodePodAssignment {
+	simNodeScheduledPods := s.state.scheduledPodsByNode[s.state.simNode.Name]
+	if len(simNodeScheduledPods) == 0 {
+		return nil
+	}
+	return []planner.NodePodAssignment{
+		{
+			NodeResources: getNodeResourceInfo(s.state.simNode),
+			ScheduledPods: s.state.scheduledPodsByNode[s.state.simNode.Name],
+		},
 	}
 }
 
@@ -237,7 +243,7 @@ func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.C
 }
 
 func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
-	simNodeName := fmt.Sprintf("node-%s.%s.%s.%d", s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone, s.args.RunCounter.Load())
+	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.args.RunCounter.Load(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -256,7 +262,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedReconciles = 2
+const maxUnchangedReconciles = 1
 
 // trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled within the stabilization period OR
@@ -353,11 +359,8 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 		s.state.numUnchangedReconciles++
 	}
 	if s.state.numUnchangedReconciles >= maxUnchangedReconciles {
-		log.Info("no new scheduling events observed", "numUnchangedReconciles", s.state.numUnchangedReconciles, "lastRecordedReconcileEventTime", s.state.latestReconcileEventTime)
+		log.Info("simulation run has stabilized - no new scheduling events observed in maxUnchangedReconciles", "maxUnchangedReconciles", maxUnchangedReconciles, "numUnchangedReconciles", s.state.numUnchangedReconciles, "lastRecordedReconcileEventTime", s.state.latestReconcileEventTime, "numScheduledPods", s.state.numScheduledPods)
 		stabilized = true
-		if s.state.numScheduledPods == 0 {
-			err = fmt.Errorf("%w: No scheduledPod for simulationNode %q or any one of %d existing node(s)", planner.ErrSimulationStabilizedWithNoScheduledPods, s.state.simNode)
-		}
 	}
 
 	return
@@ -412,7 +415,7 @@ type runState struct {
 	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
 	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
 	status                   planner.ActivityStatus
-	result                   planner.SimulationResult
+	result                   planner.SimulationRunResult
 	numUnchangedReconciles   int
 	numInvokedReconciles     int
 	numScheduledPods         int

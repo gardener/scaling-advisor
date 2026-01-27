@@ -52,8 +52,6 @@ var (
 	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
 	// ErrUnsupportedSimulationStrategy is a sentinel error indicating that an unsupported simulation strategy was specified.
 	ErrUnsupportedSimulationStrategy = errors.New("unsupported simulation strategy")
-	// ErrSimulationStabilizedWithNoScheduledPods is a sentinel error indicating that the simulation stabilization timed out.
-	ErrSimulationStabilizedWithNoScheduledPods = errors.New("simulation stabilized with no scheduled pods")
 	// ErrInvalidScalingAdviceRequest is a sentinel error indicating that the scaling advice request is invalid.
 	ErrInvalidScalingAdviceRequest = errors.New("invalid scaling advice request")
 )
