@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"path/filepath"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
 	"github.com/gardener/scaling-advisor/planner/simulator/multi"
@@ -90,7 +91,8 @@ func wrapPlanContext(ctx context.Context, traceLogsDir string, req planner.Scali
 		if traceLogsDir == "" {
 			traceLogsDir = ioutil.GetTempDir()
 		}
-		logPath := path.Join(traceLogsDir, fmt.Sprintf("%s-%s.log", req.CorrelationID, req.ID))
+		filepath.Clean(traceLogsDir)
+		logPath := path.Join(traceLogsDir, logutil.GetCleanLogFileName(fmt.Sprintf("%s.log", req.ID)))
 		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, req.CorrelationID, logPath)
 		log := logr.FromContextOrDiscard(genCtx)
 		log.Info("Diagnostics enabled for this request", "logPath", logPath, "diagnosticVerbosity", req.DiagnosticVerbosity)

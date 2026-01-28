@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +126,7 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 		AvailabilityZone: qPool.AvailabilityZones[0],
 	}
 	t.Run("With1PNodeAnd2BerryPlus1GrapePods", func(t *testing.T) {
+		req.ID = t.Name()
 		wantPlan := &sacorev1alpha1.ScaleOutPlan{
 			UnsatisfiedPodNames: nil,
 			Items: []sacorev1alpha1.ScaleOutItem{
@@ -144,6 +146,7 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 		assertExactScaleOutPlan(wantPlan, gotPlan, t)
 	})
 	t.Run("With1PNodeAnd3BerryPlus2GrapePods", func(t *testing.T) {
+		req.ID = t.Name()
 		wantPlan := &sacorev1alpha1.ScaleOutPlan{
 			UnsatisfiedPodNames: nil,
 			Items: []sacorev1alpha1.ScaleOutItem{
@@ -184,6 +187,12 @@ func assertExactScaleOutPlan(want, got *sacorev1alpha1.ScaleOutPlan, t *testing.
 	if got == nil {
 		t.Fatalf("got nil ScaleOutPlan, want not nil ScaleOutPlan")
 	}
+	slices.SortFunc(want.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
+		return strings.Compare(a.NodePoolName, b.NodePoolName)
+	})
+	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
+		return strings.Compare(a.NodePoolName, b.NodePoolName)
+	})
 	logScaleOutPlan(got, t)
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)

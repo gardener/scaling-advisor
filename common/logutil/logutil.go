@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
@@ -28,6 +29,13 @@ func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 		return 0
 	}
 	return logsapiv1.VerbosityLevel(verbosity)
+}
+
+var fileNameCleanRe = regexp.MustCompile(`[^\w.-]`)
+
+// GetCleanLogFileName removes all special characters from fileName and returns the clean fileName
+func GetCleanLogFileName(fileName string) string {
+	return fileNameCleanRe.ReplaceAllString(fileName, "")
 }
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
