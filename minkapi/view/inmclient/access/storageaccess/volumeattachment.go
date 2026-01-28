@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type volumeAttachmentAccess struct {
 }
 
 // NewVolumeAttachmentAccess creates an access facade for managing VolumeAttachmentList resources using the given minkapi View.
-func NewVolumeAttachmentAccess(view mkapi.View) clientstoragev1.VolumeAttachmentInterface {
+func NewVolumeAttachmentAccess(view minkapi.View) clientstoragev1.VolumeAttachmentInterface {
 	return &volumeAttachmentAccess{
 		access.GenericResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
 			View:      view,

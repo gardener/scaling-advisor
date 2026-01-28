@@ -61,7 +61,7 @@ type ScalingAdviceStatus struct {
 // ScaleOutPlan is the plan for scaling out a node pool.
 type ScaleOutPlan struct {
 	// UnsatisfiedPodNames is the list of all pods (namespace/name) that could not be satisfied by the scale out plan.
-	UnsatisfiedPodNames []string `json:"unsatisfiedPodNames"`
+	UnsatisfiedPodNames []string `json:"unsatisfiedPodNames,omitempty"`
 	// Items is the slice of scaling-out advice for a node pool.
 	Items []ScaleOutItem `json:"Items"`
 }

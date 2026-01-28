@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{.Name}}"
+  labels:
+    app.kubernetes.io/name: "{{.AppLabels.Name}}"
+    app.kubernetes.io/instance: "{{.AppLabels.Instance}}"
+    app.kubernetes.io/version: "{{.AppLabels.Version}}"
+    app.kubernetes.io/component: "{{.AppLabels.Component}}"
+    app.kubernetes.io/part-of: "{{.AppLabels.PartOf}}"
+    app.kubernetes.io/managed-by: "{{.AppLabels.ManagedBy}}"
+  namespace: {{.Namespace}}
+spec:
+  containers:
+    - image: registry.k8s.io/pause:3.5
+      name: pause
+      resources:
+        requests:
+          {{- range $k, $v := .Resources }}
+          {{ $k }}: {{ toString $v }}
+          {{- end }}
+  terminationGracePeriodSeconds: 0

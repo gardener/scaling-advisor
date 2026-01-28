@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +33,7 @@ type eventAccess struct {
 }
 
 // NewEventAccess creates a new access facade for managing ReplicaSet resources within a specific namespace using the given minkapi View.
-func NewEventAccess(view mkapi.View, namespace string) clientcorev1.EventInterface {
+func NewEventAccess(view minkapi.View, namespace string) clientcorev1.EventInterface {
 	return &eventAccess{
 		access.GenericResourceAccess[*corev1.Event, *corev1.EventList]{
 			View:      view,

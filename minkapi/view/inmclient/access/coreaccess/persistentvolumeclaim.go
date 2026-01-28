@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type pvcAccess struct {
 }
 
 // NewPersistentVolumeClaimAccess creates a new access facade for managing PersistentVolumeClaim resources within a specific namespace using the given minkapi View.
-func NewPersistentVolumeClaimAccess(view mkapi.View, namespace string) clientcorev1.PersistentVolumeClaimInterface {
+func NewPersistentVolumeClaimAccess(view minkapi.View, namespace string) clientcorev1.PersistentVolumeClaimInterface {
 	return &pvcAccess{
 		access.GenericResourceAccess[*corev1.PersistentVolumeClaim, *corev1.PersistentVolumeClaimList]{
 			View:      view,

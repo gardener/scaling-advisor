@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +31,7 @@ type replicationControllerAccess struct {
 }
 
 // NewReplicationControllerAccess creates a new access facade for managing ReplicationController resources within a specific namespace using the given minkapi View.
-func NewReplicationControllerAccess(view mkapi.View, namespace string) clientcorev1.ReplicationControllerInterface {
+func NewReplicationControllerAccess(view minkapi.View, namespace string) clientcorev1.ReplicationControllerInterface {
 	return &replicationControllerAccess{
 		access.GenericResourceAccess[*corev1.ReplicationController, *corev1.ReplicationControllerList]{
 			View:      view,

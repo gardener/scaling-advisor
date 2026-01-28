@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
@@ -34,7 +34,7 @@ type podAccess struct {
 }
 
 // NewPodAccess creates a new access facade for managing Pod resources within a specific namespace using the given minkapi View.
-func NewPodAccess(view mkapi.View, namespace string) clientcorev1.PodInterface {
+func NewPodAccess(view minkapi.View, namespace string) clientcorev1.PodInterface {
 	return &podAccess{
 		access.GenericResourceAccess[*corev1.Pod, *corev1.PodList]{
 			View:      view,

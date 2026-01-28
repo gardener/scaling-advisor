@@ -20,10 +20,6 @@ var (
 	ErrClientFacadesFailed = errors.New("failed to create client facades")
 	// ErrServiceFailed is a sentinel error indicating that the core failed.
 	ErrServiceFailed = fmt.Errorf("%s core failed", ProgramName)
-	// ErrLoadConfigTemplate is a sentinel error indicating that config template loading failed.
-	ErrLoadConfigTemplate = errors.New("cannot load config template")
-	// ErrExecuteConfigTemplate is a sentinel error indicating that config template execution failed.
-	ErrExecuteConfigTemplate = errors.New("cannot execute config template")
 	// ErrStoreNotFound is a sentinel error indicating that a resource store was not found.
 	ErrStoreNotFound = errors.New("store not found")
 	// ErrCreateWatcher is a sentinel error indicating that watcher creation failed.

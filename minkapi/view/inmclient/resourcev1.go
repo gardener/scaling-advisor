@@ -8,7 +8,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/resourceaccess"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	clientresourcev1 "k8s.io/client-go/kubernetes/typed/resource/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,7 +18,7 @@ var (
 )
 
 type resourceV1Impl struct {
-	view mkapi.View
+	view minkapi.View
 }
 
 func (r *resourceV1Impl) RESTClient() rest.Interface {

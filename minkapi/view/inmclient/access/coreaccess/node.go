@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type nodeAccess struct {
 }
 
 // NewNodeAccess creates the k8s client core facade for Nodes leveraging the given view.
-func NewNodeAccess(view mkapi.View) clientcorev1.NodeInterface {
+func NewNodeAccess(view minkapi.View) clientcorev1.NodeInterface {
 	return &nodeAccess{
 		access.GenericResourceAccess[*corev1.Node, *corev1.NodeList]{
 			View:      view,
