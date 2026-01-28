@@ -86,8 +86,8 @@ func GroupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 	return groupByPlacement
 }
 
-// SynchronizeBaseView synchronizes the given view with the given cluster snapshot.
-func SynchronizeBaseView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
+// SynchronizeView synchronizes the given view with the given cluster snapshot.
+func SynchronizeView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
 	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
 	// the base view with the current state of the target cluster.
 	view.Reset()

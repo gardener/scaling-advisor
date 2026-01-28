@@ -3,7 +3,7 @@
     {
       "uid": "1bc485b3-b699-4809-8422-37e9a95db065",
       "Namespace": "default",
-      "Name": "berry-1",
+      "Name": "berry-assigned",
       "labels": {
         "app.kubernetes.io/component": "fruit",
         "app.kubernetes.io/instance": "berry-instance",
@@ -22,7 +22,7 @@
     {
       "uid": "fc9237ac-4d9f-4822-9f15-5df808120349",
       "Namespace": "default",
-      "Name": "berry-2",
+      "Name": "berry-1",
       "labels": {
         "app.kubernetes.io/component": "fruit",
         "app.kubernetes.io/instance": "berry-instance",

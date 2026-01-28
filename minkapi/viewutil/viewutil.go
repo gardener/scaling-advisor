@@ -39,12 +39,12 @@ func LogNodeAndPodNames(ctx context.Context, view minkapi.View) error {
 	if err != nil {
 		return err
 	}
-	log.Info("Found nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
+	log.Info("Count nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
 	for idx, pod := range allPods {
-		log.Info("Found pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
+		log.Info("pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
 	}
 	for _, node := range allNodes {
-		log.Info("Found node in view",
+		log.Info("node in view",
 			"viewName", view.GetName(), "nodeName", node.Name, "nodePool", node.Labels[commonconstants.LabelNodePoolName],
 			"region", node.Labels[corev1.LabelTopologyRegion], "zone", node.Labels[corev1.LabelTopologyZone])
 	}

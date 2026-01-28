@@ -58,9 +58,21 @@ func LoadBasicClusterSnapshot(poolCardinality PoolCardinality) (*planner.Cluster
 func IncreaseUnscheduledWorkLoad(snapshot *planner.ClusterSnapshot, amount int) error {
 	var extra []planner.PodInfo
 	for _, upod := range snapshot.GetUnscheduledPods() {
+		lastCharOfName := upod.Name[len(upod.Name)-1:]
+		endsWithDigit := strings.ContainsAny(lastCharOfName, "0123456789")
+		existingBase := 0
+		prefix := upod.Name
+		if endsWithDigit {
+			existingBase, _ = strconv.Atoi(lastCharOfName)
+			prefix = upod.Name[0 : len(upod.Name)-1]
+		}
 		for i := 1; i <= amount; i++ {
 			p := upod
-			p.Name = p.Name + "-" + strconv.Itoa(i)
+			if endsWithDigit {
+				p.Name = prefix + strconv.Itoa(existingBase+i)
+			} else {
+				p.Name = prefix + "-" + strconv.Itoa(existingBase+i)
+			}
 			p.UID = types.UID(fmt.Sprintf("%s-%d", p.UID, i))
 			extra = append(extra, p)
 		}

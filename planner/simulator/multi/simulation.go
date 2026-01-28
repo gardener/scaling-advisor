@@ -121,15 +121,16 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	s.state.unscheduledPods = unscheduledPods
 
 	// Create simulation node
-	s.state.simNode = s.buildSimulationNode()
-	_, err = view.CreateObject(simCtx, typeinfo.NodesDescriptor.GVK, s.state.simNode)
+	simNode := s.buildSimulationNode()
+	simNodeRuntimeObj, err := view.CreateObject(simCtx, typeinfo.NodesDescriptor.GVK, simNode)
 	if err != nil {
 		return
 	}
-
+	s.state.simNode = simNodeRuntimeObj.(*corev1.Node)
 	if logutil.VerbosityFromContext(ctx) > 1 {
 		log.Info("created simulation node",
 			"nodeName", s.state.simNode.Name,
+			"UID", s.state.simNode.UID,
 			"instanceType", s.state.simNode.Labels[corev1.LabelInstanceTypeStable],
 			"capacity", s.state.simNode.Status.Capacity,
 			"allocatable", s.state.simNode.Status.Allocatable,
@@ -261,7 +262,7 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedTrackAttempts = 1
+const maxUnchangedTrackAttempts = 2
 
 // trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled.

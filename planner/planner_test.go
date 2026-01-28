@@ -30,7 +30,7 @@ import (
 const defaultVerbosity = 2
 
 func Test1PoolBasicUnitScaleOut(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Minute*15)
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
 	if !ok {
 		return
 	}
@@ -38,15 +38,8 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPool := constraints.Spec.NodePools[0]
-	pPoolPlacement := sacorev1alpha1.NodePlacement{
-		NodePoolName:     pPool.Name,
-		NodeTemplateName: pPool.NodeTemplates[0].Name,
-		InstanceType:     pPool.NodeTemplates[0].InstanceType,
-		Region:           pPool.Region,
-		AvailabilityZone: pPool.AvailabilityZones[0],
-	}
-	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
+	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		UnsatisfiedPodNames: nil,
 		Items: []sacorev1alpha1.ScaleOutItem{
@@ -57,13 +50,12 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	// TODO: Add sub-tests for different simulator, generation mode and scoring strategy later
 	gotPlan := getScaleOutPlan(ctx, p, req, t)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
-func Test1PoolBasicMultiScaling(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "one-pool-multi-scaling", time.Second*20)
+func Test1PoolBasicMultiScaleout(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*20)
 	if !ok {
 		return
 	}
@@ -71,16 +63,10 @@ func Test1PoolBasicMultiScaling(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPool := constraints.Spec.NodePools[0]
-	pPoolPlacement := sacorev1alpha1.NodePlacement{
-		NodePoolName:     pPool.Name,
-		NodeTemplateName: pPool.NodeTemplates[0].Name,
-		InstanceType:     pPool.NodeTemplates[0].InstanceType,
-		Region:           pPool.Region,
-		AvailabilityZone: pPool.AvailabilityZones[0],
-	}
-	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	req, ok = increaseUnscheduledWorkload(req, 2, t) // req now has 2 unscheduled berry pods
+	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
+	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	numExtraBerries := 2
+	req, ok = increaseUnscheduledWorkload(req, numExtraBerries, t)
 	if !ok {
 		return
 	}
@@ -90,7 +76,7 @@ func Test1PoolBasicMultiScaling(t *testing.T) {
 			{
 				NodePlacement:   pPoolPlacement,
 				CurrentReplicas: 1,
-				Delta:           2, //  2 P-pool scale-ups for 2 unscheduled berry pods
+				Delta:           int32(numExtraBerries + 1),
 			},
 		},
 	}
@@ -98,9 +84,9 @@ func Test1PoolBasicMultiScaling(t *testing.T) {
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
-// Test2PoolBasicScaleOut tests the scale-out scenarios for basic variant with 2 pools.
-func Test2PoolBasicScaleOut(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "two-pool-scale-out", time.Minute*10)
+// Test2PoolBasicUnitScaleOut tests the scale-out scenarios for basic variant with 2 pools, unit scaling each pool..
+func Test2PoolBasicUnitScaleOut(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
 	if !ok {
 		return
 	}
@@ -108,67 +94,76 @@ func Test2PoolBasicScaleOut(t *testing.T) {
 	if !ok {
 		return
 	}
-	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	pPool := constraints.Spec.NodePools[0]
-	qPool := constraints.Spec.NodePools[1]
-	pPoolPlacement := sacorev1alpha1.NodePlacement{
-		NodePoolName:     pPool.Name,
-		NodeTemplateName: pPool.NodeTemplates[0].Name,
-		InstanceType:     pPool.NodeTemplates[0].InstanceType,
-		Region:           pPool.Region,
-		AvailabilityZone: pPool.AvailabilityZones[0],
-	}
-	qPoolPlacement := sacorev1alpha1.NodePlacement{
-		NodePoolName:     qPool.Name,
-		NodeTemplateName: qPool.NodeTemplates[0].Name,
-		InstanceType:     qPool.NodeTemplates[0].InstanceType,
-		Region:           qPool.Region,
-		AvailabilityZone: qPool.AvailabilityZones[0],
-	}
-	t.Run("With1PNodeAnd2Berry1GrapePods", func(t *testing.T) {
-		req.ID = t.Name()
-		wantPlan := &sacorev1alpha1.ScaleOutPlan{
-			UnsatisfiedPodNames: nil,
-			Items: []sacorev1alpha1.ScaleOutItem{
-				{
-					NodePlacement:   pPoolPlacement,
-					CurrentReplicas: 1,
-					Delta:           1,
-				},
-				{
-					NodePlacement:   qPoolPlacement,
-					CurrentReplicas: 0,
-					Delta:           1,
-				},
+	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
+	pPlacement, qPlacement := placements[0], placements[1]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		UnsatisfiedPodNames: nil,
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement:   pPlacement,
+				CurrentReplicas: 1,
+				Delta:           1,
 			},
-		}
-		gotPlan := getScaleOutPlan(ctx, p, req, t)
-		assertExactScaleOutPlan(wantPlan, gotPlan, t)
-	})
-	t.Run("With1PNodeAnd3Berry2GrapePods", func(t *testing.T) {
-		req.ID = t.Name()
-		req, ok := increaseUnscheduledWorkload(req, 1, t)
-		if !ok {
-			return
-		}
-		wantPlan := &sacorev1alpha1.ScaleOutPlan{
-			UnsatisfiedPodNames: nil,
-			Items: []sacorev1alpha1.ScaleOutItem{
-				{
-					NodePlacement:   pPoolPlacement,
-					CurrentReplicas: 1,
-					Delta:           2,
-				},
-				{
-					NodePlacement:   qPoolPlacement,
-					CurrentReplicas: 0,
-					Delta:           2,
-				},
+			{
+				NodePlacement:   qPlacement,
+				CurrentReplicas: 0,
+				Delta:           1,
 			},
-		}
-		gotPlan := getScaleOutPlan(ctx, p, req, t)
-		assertExactScaleOutPlan(wantPlan, gotPlan, t)
-	})
+		},
+	}
+	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+}
+
+// Test2PoolBasicMultiScaleout tests the basic variant of the scale-out scenario for 2 pools, with more than one scaling for each pool.
+func Test2PoolBasicMultiScaleout(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*30)
+	if !ok {
+		return
+	}
+	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityTwo)
+	if !ok {
+		return
+	}
+	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
+	unitIncrease := 1
+	req, ok = increaseUnscheduledWorkload(req, unitIncrease, t)
+	if !ok {
+		return
+	}
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		UnsatisfiedPodNames: nil,
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement:   placements[0],
+				CurrentReplicas: 1,
+				Delta:           int32(1 + unitIncrease),
+			},
+			{
+				NodePlacement:   placements[1],
+				CurrentReplicas: 0,
+				Delta:           int32(1 + unitIncrease),
+			},
+		},
+	}
+	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+}
+
+func placementsForFirstTemplateAndFirstAvailabilityZone(pools []sacorev1alpha1.NodePool) []sacorev1alpha1.NodePlacement {
+	placements := make([]sacorev1alpha1.NodePlacement, 0, len(pools))
+	for _, pool := range pools {
+		placements = append(placements, sacorev1alpha1.NodePlacement{
+			NodePoolName:     pool.Name,
+			NodeTemplateName: pool.NodeTemplates[0].Name,
+			InstanceType:     pool.NodeTemplates[0].InstanceType,
+			Region:           pool.Region,
+			AvailabilityZone: pool.AvailabilityZones[0],
+		})
+	}
+	return placements
 }
 
 func increaseUnscheduledWorkload(in plannerapi.ScalingAdviceRequest, amount int, t *testing.T) (out plannerapi.ScalingAdviceRequest, ok bool) {
@@ -199,12 +194,9 @@ func assertExactScaleOutPlan(want, got *sacorev1alpha1.ScaleOutPlan, t *testing.
 	}
 }
 
-func createScalingAdviceRequest(t *testing.T,
+func requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t *testing.T,
 	constraints *sacorev1alpha1.ScalingConstraint,
-	snapshot *plannerapi.ClusterSnapshot,
-	simulationStrategy commontypes.SimulationStrategy,
-	scoringStrategy commontypes.NodeScoringStrategy,
-	generationMode commontypes.ScalingAdviceGenerationMode) plannerapi.ScalingAdviceRequest {
+	snapshot *plannerapi.ClusterSnapshot) plannerapi.ScalingAdviceRequest {
 	return plannerapi.ScalingAdviceRequest{
 		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
 			ID:            t.Name(),
@@ -213,9 +205,9 @@ func createScalingAdviceRequest(t *testing.T,
 		Constraint:           constraints,
 		Snapshot:             snapshot,
 		DiagnosticVerbosity:  defaultVerbosity,
-		SimulationStrategy:   simulationStrategy,
-		ScoringStrategy:      scoringStrategy,
-		AdviceGenerationMode: generationMode,
+		SimulationStrategy:   commontypes.SimulationStrategyMultiSimulationsPerGroup,
+		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
+		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
 	}
 }
 

@@ -55,15 +55,18 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 			util.SendPlanError(resultCh, m.request.GetRef(), err)
 		}
 	}()
-	baseView := m.viewAccess.GetBaseView()
-	if err = util.SynchronizeBaseView(ctx, baseView, m.request.Snapshot); err != nil {
+	requestView, err := m.viewAccess.GetSandboxView(ctx, "request-"+m.request.ID)
+	if err != nil {
+		return
+	}
+	if err = util.SynchronizeView(ctx, requestView, m.request.Snapshot); err != nil {
 		return
 	}
 	simulationGroups, err := m.createSimulationGroups(m.request)
 	if err != nil {
 		return
 	}
-	err = m.runCyclesForAllGroups(ctx, baseView, simulationGroups, resultCh)
+	err = m.runCyclesForAllGroups(ctx, requestView, simulationGroups, resultCh)
 }
 
 func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdviceRequest) ([]plannerapi.SimulationGroup, error) {
