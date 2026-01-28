@@ -663,7 +663,7 @@ type SimulationGroupCycleResult struct {
 	WinnerNodeScores []NodeScore
 	// LeftoverUnscheduledPods contains the namespaced names of pods that could not be scheduled.
 	LeftoverUnscheduledPods []types.NamespacedName
-	// NumPasses is the number of passes executed in this group before moving to the next group.
+	// PassNum is the number of passes executed in this group before moving to the next group.
 	// A pass is defined as the execution of all simulations in a group.
-	NumPasses int
+	PassNum int
 }

@@ -38,12 +38,13 @@ type multiSimulator struct {
 // NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.
 func NewScaleOutSimulator(viewAccess minkapi.ViewAccess, schedulerLauncher plannerapi.SchedulerLauncher, nodeScorer plannerapi.NodeScorer, simulatorConfig plannerapi.SimulatorConfig, req *plannerapi.ScalingAdviceRequest) (plannerapi.ScaleOutSimulator, error) {
 	return &multiSimulator{
-		viewAccess:        viewAccess,
-		schedulerLauncher: schedulerLauncher,
-		nodeScorer:        nodeScorer,
-		simulatorConfig:   simulatorConfig,
-		simulationCreator: plannerapi.SimulationCreatorFunc(NewSimulation),
-		request:           req,
+		viewAccess:           viewAccess,
+		schedulerLauncher:    schedulerLauncher,
+		nodeScorer:           nodeScorer,
+		simulatorConfig:      simulatorConfig,
+		simulationCreator:    plannerapi.SimulationCreatorFunc(NewSimulation),
+		simulationRunCounter: atomic.Uint32{},
+		request:              req,
 	}, nil
 }
 
@@ -58,8 +59,6 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 	if err = util.SynchronizeBaseView(ctx, baseView, m.request.Snapshot); err != nil {
 		return
 	}
-
-	m.simulationRunCounter.Store(0) // initialize it to 0.
 	simulationGroups, err := m.createSimulationGroups(m.request)
 	if err != nil {
 		return
@@ -164,16 +163,16 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 		winningNodeScore *plannerapi.NodeScore
 	)
 	sgcr.NextGroupView = groupView
-	sgcr.NumPasses = 0
+	sgcr.PassNum = 0
 	for {
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
 		default:
-			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunNumPasses", sgcr.NumPasses)
+			sgcr.PassNum++
+			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunPassNum", sgcr.PassNum)
 			passCtx := logr.NewContext(ctx, log)
-			sgcr.NumPasses++
 			sgcr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgcr.NextGroupView, group)
 			if err != nil {
 				return

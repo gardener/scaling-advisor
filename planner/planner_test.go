@@ -27,9 +27,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-const defaultVerbosity = 3
+const defaultVerbosity = 2
 
-func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
+func Test1PoolBasicUnitScaleOut(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Minute*15)
 	if !ok {
 		return
@@ -62,18 +62,13 @@ func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
-func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
+func Test1PoolBasicMultiScaling(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, "one-pool-multi-scaling", time.Second*20)
 	if !ok {
 		return
 	}
 	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
 	if !ok {
-		return
-	}
-	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	if err := samples.IncreaseUnscheduledWorkLoad(req.Snapshot, 2); err != nil {
-		t.Error(err)
 		return
 	}
 	pPool := constraints.Spec.NodePools[0]
@@ -84,13 +79,18 @@ func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
 		Region:           pPool.Region,
 		AvailabilityZone: pPool.AvailabilityZones[0],
 	}
+	req := createScalingAdviceRequest(t, constraints, snapshot, commontypes.SimulationStrategyMultiSimulationsPerGroup, commontypes.NodeScoringStrategyLeastCost, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+	req, ok = increaseUnscheduledWorkload(req, 2, t) // req now has 2 unscheduled berry pods
+	if !ok {
+		return
+	}
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		UnsatisfiedPodNames: nil,
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
 				NodePlacement:   pPoolPlacement,
 				CurrentReplicas: 1,
-				Delta:           2,
+				Delta:           2, //  2 P-pool scale-ups for 2 unscheduled berry pods
 			},
 		},
 	}
@@ -98,8 +98,8 @@ func TestOnePoolBasicScenarioWithMultiScaling(t *testing.T) {
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
-// TestTwoPoolBasicScaleOutScenarios tests the scale-out scenarios for basic variant with 2 pools.
-func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
+// Test2PoolBasicScaleOut tests the scale-out scenarios for basic variant with 2 pools.
+func Test2PoolBasicScaleOut(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, "two-pool-scale-out", time.Minute*10)
 	if !ok {
 		return
@@ -125,7 +125,7 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 		Region:           qPool.Region,
 		AvailabilityZone: qPool.AvailabilityZones[0],
 	}
-	t.Run("With1PNodeAnd2BerryPlus1GrapePods", func(t *testing.T) {
+	t.Run("With1PNodeAnd2Berry1GrapePods", func(t *testing.T) {
 		req.ID = t.Name()
 		wantPlan := &sacorev1alpha1.ScaleOutPlan{
 			UnsatisfiedPodNames: nil,
@@ -145,8 +145,12 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 		gotPlan := getScaleOutPlan(ctx, p, req, t)
 		assertExactScaleOutPlan(wantPlan, gotPlan, t)
 	})
-	t.Run("With1PNodeAnd3BerryPlus2GrapePods", func(t *testing.T) {
+	t.Run("With1PNodeAnd3Berry2GrapePods", func(t *testing.T) {
 		req.ID = t.Name()
+		req, ok := increaseUnscheduledWorkload(req, 1, t)
+		if !ok {
+			return
+		}
 		wantPlan := &sacorev1alpha1.ScaleOutPlan{
 			UnsatisfiedPodNames: nil,
 			Items: []sacorev1alpha1.ScaleOutItem{
@@ -161,10 +165,6 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 					Delta:           2,
 				},
 			},
-		}
-		req, ok := increaseUnscheduledWorkload(req, 1, t)
-		if !ok {
-			return
 		}
 		gotPlan := getScaleOutPlan(ctx, p, req, t)
 		assertExactScaleOutPlan(wantPlan, gotPlan, t)

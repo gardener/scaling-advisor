@@ -105,11 +105,10 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 			s.state.status = planner.ActivityStatusFailure
 		}
 	}()
-
-	log := logr.FromContextOrDiscard(ctx)
-	simCtx := logr.NewContext(ctx, log.WithValues("simulationName", s.name))
 	s.state.status = planner.ActivityStatusRunning
 	s.args.RunCounter.Add(1)
+	log := logr.FromContextOrDiscard(ctx).WithValues("simulationName", s.name, "simulationRunNum", s.args.RunCounter.Load())
+	simCtx := logr.NewContext(ctx, log)
 
 	// Get unscheduled pods from the view
 	unscheduledPods, err := getUnscheduledPodsMap(simCtx, view)

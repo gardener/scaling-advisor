@@ -49,7 +49,7 @@ func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, r
 	}
 	scaleOutPlan := CreateScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
 	planResult := plannerapi.ScalingPlanResult{
-		Name:         objutil.GenerateName("scaling-plan"),
+		Name:         objutil.GenerateName("scaling-plan-"),
 		Labels:       labels,
 		ScaleOutPlan: &scaleOutPlan,
 	}
