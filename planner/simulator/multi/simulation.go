@@ -262,14 +262,15 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 	}
 }
 
-const maxUnchangedReconciles = 1
+const maxUnchangedTrackAttempts = 1
 
 // trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
-//  1. All the pods are scheduled within the stabilization period OR
-//  2. Stabilization period is over and there are still unscheduled pods.
+//  1. All the pods are scheduled.
+//  2. Events have stabilized. ie no more scheduling events within maxUnchangedTrackAttempts
+//  3. Context timeout.
+//  4. Any error
 func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
-	s.state.status = planner.ActivityStatusRunning
 	var stabilized bool
 	for {
 		select {
@@ -323,11 +324,11 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 	)
 	s.state.numInvokedReconciles++
 
-	lastRecordedReconcileEventTime := s.state.latestReconcileEventTime
+	lastRecordedTrackEventTime := s.state.latestTrackEventTime
 
 	log := logr.FromContextOrDiscard(ctx)
 	evList := view.GetEventSink().List()
-	log.Info("track Invoked", "numEvents", len(evList), "numInvokedReconciles", s.state.numInvokedReconciles, "numUnchangedReconciles", s.state.numUnchangedReconciles)
+	log.Info("track Invoked", "numEvents", len(evList), "numInvokedReconciles", s.state.numInvokedReconciles, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
 	for idx, ev := range view.GetEventSink().List() {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime
@@ -335,10 +336,10 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 			eventTime = ev.EventTime
 		}
 		log.V(5).Info("checking event", "index", idx, "id", ev.UID, "eventTime", eventTime, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-		if s.state.latestReconcileEventTime.Equal(&eventTime) || s.state.latestReconcileEventTime.After(eventTime.Time) {
+		if s.state.latestTrackEventTime.Equal(&eventTime) || s.state.latestTrackEventTime.After(eventTime.Time) {
 			continue
 		}
-		s.state.latestReconcileEventTime = eventTime
+		s.state.latestTrackEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
 				log.Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
@@ -355,11 +356,11 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 	pods, _ := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	log.Info("podNodeCount", "podCount", len(pods), "nodeCount", len(nodes))
 
-	if lastRecordedReconcileEventTime.Equal(&s.state.latestReconcileEventTime) {
-		s.state.numUnchangedReconciles++
+	if lastRecordedTrackEventTime.Equal(&s.state.latestTrackEventTime) {
+		s.state.numUnchangedTrackAttempts++
 	}
-	if s.state.numUnchangedReconciles >= maxUnchangedReconciles {
-		log.Info("simulation run has stabilized - no new scheduling events observed in maxUnchangedReconciles", "maxUnchangedReconciles", maxUnchangedReconciles, "numUnchangedReconciles", s.state.numUnchangedReconciles, "lastRecordedReconcileEventTime", s.state.latestReconcileEventTime, "numScheduledPods", s.state.numScheduledPods)
+	if s.state.numUnchangedTrackAttempts >= maxUnchangedTrackAttempts {
+		log.Info("simulation run has stabilized - no new scheduling events observed in maxUnchangedTrackAttempts", "maxUnchangedTrackAttempts", maxUnchangedTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts, "lastRecordedTrackEventTime", s.state.latestTrackEventTime, "numScheduledPods", s.state.numScheduledPods)
 		stabilized = true
 	}
 
@@ -409,14 +410,14 @@ func getNodeResourceInfo(node *corev1.Node) planner.NodeResourceInfo {
 
 // runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when singleNodeScalingSimulation.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
 type runState struct {
-	latestReconcileEventTime metav1.MicroTime
-	err                      error
-	simNode                  *corev1.Node
-	unscheduledPods          map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode      map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
-	status                   planner.ActivityStatus
-	result                   planner.SimulationRunResult
-	numUnchangedReconciles   int
-	numInvokedReconciles     int
-	numScheduledPods         int
+	latestTrackEventTime      metav1.MicroTime
+	err                       error
+	simNode                   *corev1.Node
+	unscheduledPods           map[types.NamespacedName]planner.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
+	scheduledPodsByNode       map[string][]planner.PodResourceInfo             // map of node names to PodReosurceInfo
+	status                    planner.ActivityStatus
+	result                    planner.SimulationRunResult
+	numUnchangedTrackAttempts int
+	numInvokedReconciles      int
+	numScheduledPods          int
 }

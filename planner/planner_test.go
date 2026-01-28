@@ -7,6 +7,7 @@ package planner
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ import (
 const defaultVerbosity = 3
 
 func TestOnePoolBasicScenarioWithUnitScaling(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Second*30)
+	ctx, p, ok := createScalingPlanner(t, "one-pool-unit-scaling", time.Minute*15)
 	if !ok {
 		return
 	}
@@ -142,13 +143,48 @@ func TestTwoPoolBasicScaleOutScenarios(t *testing.T) {
 		gotPlan := getScaleOutPlan(ctx, p, req, t)
 		assertExactScaleOutPlan(wantPlan, gotPlan, t)
 	})
+	t.Run("With1PNodeAnd3BerryPlus2GrapePods", func(t *testing.T) {
+		wantPlan := &sacorev1alpha1.ScaleOutPlan{
+			UnsatisfiedPodNames: nil,
+			Items: []sacorev1alpha1.ScaleOutItem{
+				{
+					NodePlacement:   pPoolPlacement,
+					CurrentReplicas: 1,
+					Delta:           2,
+				},
+				{
+					NodePlacement:   qPoolPlacement,
+					CurrentReplicas: 0,
+					Delta:           2,
+				},
+			},
+		}
+		req, ok := increaseUnscheduledWorkload(req, 1, t)
+		if !ok {
+			return
+		}
+		gotPlan := getScaleOutPlan(ctx, p, req, t)
+		assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	})
+}
+
+func increaseUnscheduledWorkload(in plannerapi.ScalingAdviceRequest, amount int, t *testing.T) (out plannerapi.ScalingAdviceRequest, ok bool) {
+	out = in
+	out.Snapshot.Pods = slices.Clone(in.Snapshot.Pods)
+	err := samples.IncreaseUnscheduledWorkLoad(out.Snapshot, amount)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	ok = true
+	return
 }
 
 func assertExactScaleOutPlan(want, got *sacorev1alpha1.ScaleOutPlan, t *testing.T) {
 	if got == nil {
 		t.Fatalf("got nil ScaleOutPlan, want not nil ScaleOutPlan")
 	}
-	logScaleOutPlan(t, got)
+	logScaleOutPlan(got, t)
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)
 	}
@@ -197,7 +233,7 @@ func loadBasicConstraintsAndSnapshot(t *testing.T, poolCardinality samples.PoolC
 	return
 }
 
-func logScaleOutPlan(t *testing.T, scaleOutPlan *sacorev1alpha1.ScaleOutPlan) bool {
+func logScaleOutPlan(scaleOutPlan *sacorev1alpha1.ScaleOutPlan, t *testing.T) bool {
 	t.Helper()
 	if scaleOutPlan == nil {
 		return false

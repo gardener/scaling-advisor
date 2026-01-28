@@ -103,7 +103,7 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 }
 
 // runCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
-// If the request AdviceGenerationMode is Incremental, after running passes for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
+// If the request AdviceGenerationMode is Incremental, after running stabilization cycles for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
 // If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
 func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
 	var (

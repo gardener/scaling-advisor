@@ -465,46 +465,9 @@ type ScalingPlanner interface {
 	Plan(ctx context.Context, req ScalingAdviceRequest, resultCh chan<- ScalingPlanResult)
 }
 
-// ScaleOutSimulator executes simulations to generate scale-out plans based on a commontypes.SimulationStrategy.
+// ScaleOutSimulator is a facade that executes simulations to generate ScaleOutPlan's. Implementations vary depending on the commontypes.SimulationStrategy.
 type ScaleOutSimulator interface {
-	// Simulate executes the ScalingStrategy specific process to generate a ScaleOutPlan and sends the plan result(s) on the resultCh channel.
-	// TODO indent and format the comments below and clean where necessary.
-	// TODO fix the godoc as it is no longer accurate.
-	// Calls CreateSimulationGroups:
-	// 	* Type 1: Creates a SimulationGroup having Simulation(s) for each combination of 1 NT + 1 NP + 1 AZ
-	//	* Type 2: Creates a SimulationGroup having a single Simulation for multiple NTs + multiple NPs + multiple AZs
-	//
-	// The SimulationGroups are ordered by priority of NodePool and NodeTemplate for Type1 or Type2.
-	// Increments the pass counter and calls runPass on the SimulationGroups. This is done until one of the following happens:
-	// The context is cancelled or timeout occurs.
-	// There is no pass winner NodeScore(s) from a SimulationGroup in the current pass.
-	// There are no leftover unscheduled pods.
-	// RunPass of Type1:
-	// Iterate over the SimulationGroups based on priority.
-	// Call ScaleOutSimulator.RunGroup which executes each simulation in the group concurrently.
-	// Simulation.Run:
-	// Scales a single node for a combination of NT + NP + AZ.
-	// Runs a scheduler and gives pod-to-node assignment for the scaled node and existing node(s) and leftover unscheduled pods.
-	// For each simulation, gets the `SimulationRunResult`.
-	// If there are at least one Pod scheduled in this pass then convert it into NodeScoreArgs and computes the NodeScoreResult.
-	// If there are no pods scheduled in this pass then there is no need to compute a NodeScoreResult. This simulation does not participate further in winning NodeScoreResult selection.
-	// If there are no computed NodeScoreResult's for the SimulationGroup, then it will consider the next group.
-	// Selects the winning NodeScoreResult amongst all computed NodeScoreResult's for the SimulationGroup.
-	// If there are no winning NodeScoreResult's, then it will consider the next group.
-	// If there is a winning NodeScoreResult:
-	// Get the unscheduled pods from the winning NodeScoreResult. If there are no unscheduled pods, then constructs the ScaleOutPlan and returns the same to the PlanGenerator.
-	// If there are leftover unscheduled pods, it will re-run the simulations for the same group. In each such run it may choose a different winning NodeScoreResult.
-	// RunPass of Type2:
-	// Iterate over the SimulationGroups based on priority.
-	// Call ScaleOutSimulator.RunGroup which executes the single simulation in the group.
-	// Calls Simulation.Run:
-	// Scales one Node per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
-	// Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
-	// For the simulation, gets the `SimulationRunResult`.
-	// If there are no leftover unscheduled pods, constructs the ScaleOutPlan and returns the same to the PlanGenerator.
-	// If there are leftover unscheduled pods, it will re-run the simulation for the same group.
-	// If there are no pods scheduled in this pass then it will consider the next group.
-	// If there is at least one pod scheduled in this pass, it will continue re-running the simulation for the same group.
+	// Simulate executes the ScalingStrategy specific process to generate ScaleOutPlan encapsulated within a ScalingPlanResult and sends the result on the resultCh channel.
 	Simulate(ctx context.Context, resultCh chan<- ScalingPlanResult)
 }
 

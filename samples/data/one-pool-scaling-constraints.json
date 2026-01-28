@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "name": "basic-scaling-constraints",
+    "name": "one-pool-scaling-constraints",
     "namespace": "default"
   },
   "spec": {
