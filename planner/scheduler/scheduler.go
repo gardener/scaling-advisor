@@ -32,7 +32,6 @@ var _ planner.SchedulerLauncher = (*schedulerLauncher)(nil)
 type schedulerLauncher struct {
 	schedulerConfig *schedulerapiconfig.KubeSchedulerConfiguration
 	semaphore       *semaphore.Weighted
-	verbosity       logsapiv1.VerbosityLevel
 }
 
 var _ planner.SchedulerHandle = (*schedulerHandle)(nil)
