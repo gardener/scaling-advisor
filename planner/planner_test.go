@@ -179,7 +179,6 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 
 	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-B"
-	req.DiagnosticVerbosity = 4
 	gotPlan = getScaleOutPlan(ctx, p, req, t)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }

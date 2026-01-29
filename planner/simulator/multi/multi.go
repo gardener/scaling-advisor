@@ -107,7 +107,7 @@ func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdvic
 			}
 		}
 	}
-	return createSimulationGroups(allSimulations)
+	return createSimulationGroups(m.request.GetRef(), allSimulations)
 }
 
 func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (plannerapi.Simulation, error) {

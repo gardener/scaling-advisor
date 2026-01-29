@@ -20,13 +20,15 @@ type simGroup struct {
 	name        string
 	simulations []planner.Simulation
 	key         planner.SimGroupKey
+	requestRef  planner.ScalingAdviceRequestRef
 }
 
 // NewGroup creates a new SimulationGroup with the given name and simulation group key.
-func NewGroup(name string, key planner.SimGroupKey) planner.SimulationGroup {
+func NewGroup(name string, key planner.SimGroupKey, requestRef planner.ScalingAdviceRequestRef) planner.SimulationGroup {
 	return &simGroup{
-		name: name,
-		key:  key,
+		name:       name,
+		key:        key,
+		requestRef: requestRef,
 	}
 }
 
@@ -56,7 +58,7 @@ func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewF
 	// TODO: Create pool of similar NodeTemplate + Zone targets to scale and randomize over it so that we can have a balanced allocation across AZ.
 	for _, sim := range g.simulations {
 		eg.Go(func() error {
-			view, err := getViewFn(ctx, sim.Name())
+			view, err := getViewFn(ctx, fmt.Sprintf("%s_%s", g.requestRef.ID, sim.Name()))
 			if err != nil {
 				return err
 			}
@@ -92,7 +94,7 @@ func (g *simGroup) Reset() {
 }
 
 // createSimulationGroups groups the given Simulation instances into one or more SimulationGroups
-func createSimulationGroups(simulations []planner.Simulation) ([]planner.SimulationGroup, error) {
+func createSimulationGroups(requestRef planner.ScalingAdviceRequestRef, simulations []planner.Simulation) ([]planner.SimulationGroup, error) {
 	groupsByKey := make(map[planner.SimGroupKey]planner.SimulationGroup)
 	groupCount := 0
 	for _, sim := range simulations {
@@ -104,7 +106,7 @@ func createSimulationGroups(simulations []planner.Simulation) ([]planner.Simulat
 		if !ok {
 			groupCount++
 			name := fmt.Sprintf("sg-%d_%s_%s_%s", groupCount, sim.NodePool().Name, sim.NodeTemplate().Name, gk)
-			g = NewGroup(name, gk)
+			g = NewGroup(name, gk, requestRef)
 		}
 		g.AddSimulation(sim)
 		groupsByKey[gk] = g

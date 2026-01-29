@@ -135,15 +135,11 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			Verbosity:      verbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
-		if s.verbosity > 0 && verbosity != s.verbosity {
-			log.Info("cannot change scheduler verbosity", "currentVerbosity", s.verbosity, "newVerbosity", verbosity)
-		} else {
-			logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
-			err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
-			if err != nil {
-				err = fmt.Errorf("failed to apply logging configuration: %w", err)
-				return
-			}
+		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
+		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
+		if err != nil {
+			log.Info("Failed to apply logging configuration for the scheduler", "error", err.Error())
+			err = nil //reset the error
 		}
 	}
 
