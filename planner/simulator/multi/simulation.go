@@ -133,7 +133,7 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	}
 	s.state.simNode = simNodeRuntimeObj.(*corev1.Node)
 	if logutil.VerbosityFromContext(ctx) > 1 {
-		log.Info("created simulation node",
+		log.V(4).Info("created simulation node",
 			"nodeName", s.state.simNode.Name,
 			"UID", s.state.simNode.UID,
 			"instanceType", s.state.simNode.Labels[corev1.LabelInstanceTypeStable],
@@ -203,9 +203,7 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map
 	unscheduled = make(map[types.NamespacedName]planner.PodResourceInfo, len(pods))
 	for _, p := range pods {
 		if IsUnscheduledPod(&p) {
-			if logutil.VerbosityFromContext(ctx) > 2 {
-				log.Info("found unscheduled pod", "pod", p)
-			}
+			log.V(5).Info("found unscheduled pod", "pod", p)
 			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
 		}
 	}
@@ -289,11 +287,11 @@ func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, 
 				return
 			}
 			if stabilized {
-				log.Info("simulation has stabilized - no more scheduling possible in this simulation run")
+				log.V(4).Info("simulation has stabilized - no more scheduling possible in this simulation run")
 				return
 			}
 			if len(s.state.unscheduledPods) == 0 {
-				log.Info("no unscheduled pods left")
+				log.V(5).Info("no unscheduled pods left")
 				return
 			}
 		}
@@ -333,7 +331,7 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 
 	log := logr.FromContextOrDiscard(ctx)
 	evList := view.GetEventSink().List()
-	log.Info("track Invoked", "numEvents", len(evList), "numInvokedReconciles", s.state.numInvokedReconciles, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
+	log.V(5).Info("track Invoked", "numEvents", len(evList), "numInvokedReconciles", s.state.numInvokedReconciles, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
 	for idx, ev := range view.GetEventSink().List() {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime
@@ -347,25 +345,21 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 		s.state.latestTrackEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
-				log.Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+				log.V(4).Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 			}
 			continue
 		}
-		log.Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+		log.V(4).Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 		if err = s.handleScheduledPodEvent(ctx, view, ev); err != nil {
 			return
 		}
 	}
 
-	nodes, _ := view.ListNodes(ctx)
-	pods, _ := view.ListPods(ctx, minkapi.MatchAllCriteria)
-	log.Info("podNodeCount", "podCount", len(pods), "nodeCount", len(nodes))
-
 	if lastRecordedTrackEventTime.Equal(&s.state.latestTrackEventTime) {
 		s.state.numUnchangedTrackAttempts++
 	}
 	if s.state.numUnchangedTrackAttempts >= maxUnchangedTrackAttempts {
-		log.Info("simulation run has stabilized - no new scheduling events observed in maxUnchangedTrackAttempts", "maxUnchangedTrackAttempts", maxUnchangedTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts, "lastRecordedTrackEventTime", s.state.latestTrackEventTime, "numScheduledPods", s.state.numScheduledPods)
+		log.V(4).Info("simulation run has stabilized - no new scheduling events observed in maxUnchangedTrackAttempts", "maxUnchangedTrackAttempts", maxUnchangedTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts, "lastRecordedTrackEventTime", s.state.latestTrackEventTime, "numScheduledPods", s.state.numScheduledPods)
 		stabilized = true
 	}
 
@@ -375,7 +369,7 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 func (s *singleNodeScalingSimulation) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
 	log := logr.FromContextOrDiscard(ctx)
 	podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
-	log.Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
+	log.V(4).Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
 	podObjName := cache.NamespacedNameAsObjectName(podNsName)
 	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
 	if err != nil {

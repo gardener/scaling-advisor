@@ -75,7 +75,7 @@ func (v *viewAccess) GetSandboxViewOverDelegate(ctx context.Context, name string
 		return nil, fmt.Errorf("%w: cannot create sandbox view %q over delegate view %q: %w", minkapi.ErrCreateView, name, delegateView.GetName(), err)
 	}
 	v.sandboxViews[name] = sv
-	log.Info("created sandbox view", "name", name, "delegateView", delegateView.GetName())
+	log.V(5).Info("created sandbox view", "name", name, "delegateView", delegateView.GetName())
 	return sv, nil
 }
 

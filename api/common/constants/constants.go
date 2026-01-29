@@ -55,6 +55,12 @@ const (
 
 	// LabelPlanGenerateDuration is the label key for the duration taken for the scaling planner to generate a scaling plan for a request.
 	LabelPlanGenerateDuration = "sa.gardener.cloud/plan-generate-duration"
+
+	// LabelConstraintNumPools is the label key for the number of pools in the scaling constraint.
+	LabelConstraintNumPools = "sa.gardener.cloud/constraint-num-pools"
+
+	// LabelSnapshotNumUnscheduledPods is the label key for the number of unscheduled pods in the snapshot.
+	LabelSnapshotNumUnscheduledPods = "sa.gardener.cloud/snapshot-num-unscheduled-pods"
 )
 
 const (

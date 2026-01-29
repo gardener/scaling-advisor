@@ -27,7 +27,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-const defaultVerbosity = 2
+const defaultVerbosity = 0
 
 func Test1PoolBasicUnitScaleOut(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
@@ -55,7 +55,7 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 }
 
 func Test1PoolBasicMultiScaleout(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Minute*20)
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*20)
 	if !ok {
 		return
 	}
@@ -128,7 +128,7 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 	}
 	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
-	unscheduledUnitIncrease := 1
+	unscheduledUnitIncrease := 2
 	req, ok = increaseUnscheduledWorkload(req, unscheduledUnitIncrease, t)
 	if !ok {
 		return
@@ -344,6 +344,12 @@ func getScaleOutPlan(t *testing.T, ctx context.Context, p plannerapi.ScalingPlan
 		t.Fatalf("failed to generate scale-out plan: %v", result.Err)
 		return nil
 	} else {
+		planResultJson, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			t.Fatalf("failed to marshal ScalingPlanResult: %v", err)
+			return nil
+		}
+		t.Logf("Obtained ScalingPlanResult %s", planResultJson)
 		return result.ScaleOutPlan
 	}
 }
