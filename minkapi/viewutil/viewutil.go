@@ -29,7 +29,7 @@ func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, 
 }
 
 // LogNodeAndPodNames logs the node and pod names in the given minkapi view using logger from the given context if any.
-func LogNodeAndPodNames(ctx context.Context, view minkapi.View) error {
+func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
@@ -39,12 +39,12 @@ func LogNodeAndPodNames(ctx context.Context, view minkapi.View) error {
 	if err != nil {
 		return err
 	}
-	log.Info("Count nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
+	log.Info(prefix+"|Count nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
 	for idx, pod := range allPods {
-		log.Info("pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
+		log.Info(prefix+"|pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
 	}
 	for _, node := range allNodes {
-		log.Info("node in view",
+		log.Info(prefix+"|node in view",
 			"viewName", view.GetName(), "nodeName", node.Name, "nodePool", node.Labels[commonconstants.LabelNodePoolName],
 			"region", node.Labels[corev1.LabelTopologyRegion], "zone", node.Labels[corev1.LabelTopologyZone])
 	}

@@ -15,6 +15,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
@@ -59,14 +60,17 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 	if err != nil {
 		return
 	}
+	defer ioutil.CloseQuietly(requestView)
+
 	if err = util.SynchronizeView(ctx, requestView, m.request.Snapshot); err != nil {
 		return
 	}
+
 	simulationGroups, err := m.createSimulationGroups(m.request)
 	if err != nil {
 		return
 	}
-	err = m.runCyclesForAllGroups(ctx, requestView, simulationGroups, resultCh)
+	err = m.runStabilizationCyclesForAllGroups(ctx, requestView, simulationGroups, resultCh)
 }
 
 func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdviceRequest) ([]plannerapi.SimulationGroup, error) {
@@ -104,22 +108,22 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 	return m.simulationCreator.Create(simulationName, simArgs)
 }
 
-// runCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
+// runStabilizationCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
 // If the request AdviceGenerationMode is Incremental, after running stabilization cycles for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
 // If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
-func (m *multiSimulator) runCyclesForAllGroups(ctx context.Context, baseView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
+func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context, initView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
 	var (
 		allWinnerNodeScores     []plannerapi.NodeScore
 		simGroupCycleResult     plannerapi.SimulationGroupCycleResult
 		allSimGroupCycleResults []plannerapi.SimulationGroupCycleResult
 		log                     = logr.FromContextOrDiscard(ctx)
 	)
-	simGroupCycleResult.NextGroupView = baseView
+	simGroupCycleResult.NextGroupView = initView
 	for groupIndex := 0; groupIndex < len(simGroups); {
 		group := simGroups[groupIndex]
 		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
 		grpCtx := logr.NewContext(ctx, log)
-		log.Info("Invoking runStabilizationCycleForGroup")
+		log.V(3).Info("Invoking runStabilizationCycleForGroup")
 		simGroupCycleResult, err = m.runStabilizationCycleForGroup(grpCtx, simGroupCycleResult.NextGroupView, group)
 		if err != nil {
 			err = fmt.Errorf("failed to run all passes for group %q: %w", group.Name(), err)
@@ -186,7 +190,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 				return
 			}
 			if logutil.VerbosityFromContext(passCtx) >= 2 {
-				err = viewutil.LogNodeAndPodNames(passCtx, sgcr.NextGroupView)
+				err = viewutil.LogNodeAndPodNames(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupView)
 				if err != nil {
 					return
 				}

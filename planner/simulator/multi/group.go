@@ -11,6 +11,8 @@ import (
 	"slices"
 
 	"github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -56,10 +58,11 @@ func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewF
 	// TODO: Create pool of similar NodeTemplate + Zone targets to scale and randomize over it so that we can have a balanced allocation across AZ.
 	for _, sim := range g.simulations {
 		eg.Go(func() error {
-			view, err := getViewFn(ctx, sim.Name())
+			view, err := getViewFn(ctx, objutil.GenerateName(sim.Name()+"_"))
 			if err != nil {
 				return err
 			}
+			defer ioutil.CloseQuietly(view)
 			return sim.Run(groupCtx, view)
 		})
 	}

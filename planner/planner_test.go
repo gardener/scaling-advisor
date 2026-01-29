@@ -152,6 +152,37 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
+func TestReusePlannerAcrossRequests(t *testing.T) {
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
+	if !ok {
+		return
+	}
+	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
+	if !ok {
+		return
+	}
+	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
+	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req.ID = "TestReusePlannerAcrossRequests-A"
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		UnsatisfiedPodNames: nil,
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement:   pPoolPlacement,
+				CurrentReplicas: 1,
+				Delta:           1,
+			},
+		},
+	}
+	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+
+	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req.ID = "TestReusePlannerAcrossRequests-B"
+	gotPlan = getScaleOutPlan(ctx, p, req, t)
+	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+}
+
 func placementsForFirstTemplateAndFirstAvailabilityZone(pools []sacorev1alpha1.NodePool) []sacorev1alpha1.NodePlacement {
 	placements := make([]sacorev1alpha1.NodePlacement, 0, len(pools))
 	for _, pool := range pools {
