@@ -467,7 +467,7 @@ type ScalingPlanner interface {
 	Plan(ctx context.Context, req ScalingAdviceRequest, resultCh chan<- ScalingPlanResult)
 }
 
-// ScaleOutSimulator is a facade that executes simulations to generate ScaleOutPlan's. Implementations vary depending on the commontypes.SimulationStrategy.
+// ScaleOutSimulator is a facade that executes simulations to generate ScaleOutPlans. Implementations vary depending on the commontypes.SimulationStrategy used.
 type ScaleOutSimulator interface {
 	io.Closer
 	// Simulate executes the ScalingStrategy specific process to generate ScaleOutPlan encapsulated within a ScalingPlanResult and sends the result on the resultCh channel.
@@ -639,7 +639,7 @@ type SimulationGroupRunResult struct {
 	Key SimGroupKey
 }
 
-// SimulationGroupRunScores represents the scoring results for the simulation group after running the NodeScorer against the SimulationGroupRunResult.
+// SimulationGroupRunScores represents the scoring results for the simulation group after running the NodeScorer against the SimulationGroupCycleResult.
 type SimulationGroupRunScores struct {
 	// WinnerScore is the highest scoring node in the group.
 	WinnerScore *NodeScore

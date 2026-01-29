@@ -65,7 +65,7 @@ func Test1PoolBasicMultiScaleout(t *testing.T) {
 	}
 	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
 	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
-	numExtraBerries := 2
+	numExtraBerryPods := 2
 	req, ok = increaseUnscheduledWorkload(req, numExtraBerries, t)
 	if !ok {
 		return

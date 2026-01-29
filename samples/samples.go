@@ -89,7 +89,7 @@ func LoadBinPackingSchedulerConfig() ([]byte, error) {
 var simplePodTemplatePath = "data/simple-pod-template.yaml"
 
 // GenerateSimplePodsWithTemplateData generates a slice of corev1.Pod objects with count length using the given pod template data in podTmplData.
-// Also generates the pod YAML's for these pods within the temp directory.
+// Also generates the pod YAMLs for these pods within the temp directory.
 func GenerateSimplePodsWithTemplateData(count int, podTmplData SimplePodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, simplePodTemplatePath)
 	if err != nil {
