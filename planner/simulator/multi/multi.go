@@ -151,7 +151,6 @@ func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context,
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
 			log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
-			m.simulationRunCounter.Load()
 			if err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
