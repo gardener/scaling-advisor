@@ -261,7 +261,7 @@ func (m *multiSimulator) createSandboxView(ctx context.Context, name string, gro
 		return nil, err
 	}
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Creating sandbox view", "name", name, "sandboxView", sandboxView)
+	log.Info("CREATED sandbox view", "sandboxView", name, "delegateView", groupPassView.GetName())
 
 	if logutil.VerbosityFromContext(ctx) > 3 {
 		_ = viewutil.LogNodeAndPodNames(ctx, "CREATE-SANDBOX-VIEW", sandboxView)
