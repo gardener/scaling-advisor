@@ -39,7 +39,7 @@ func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) e
 	if err != nil {
 		return err
 	}
-	log.Info(prefix+"|Count nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
+	log.Info(prefix+"|Count of nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
 	for idx, pod := range allPods {
 		log.Info(prefix+"|pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
 	}

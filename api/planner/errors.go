@@ -22,8 +22,6 @@ var (
 	ErrRunSimulation = errors.New("failed to run simulation")
 	// ErrRunSimulationGroup is a sentinel error indicating that a scaling simulation group failed
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
-	// ErrSimulationTimeout is a sentinel error indicating that the simulation timed out
-	ErrSimulationTimeout = errors.New("simulation timed out")
 	// ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore
@@ -42,8 +40,6 @@ var (
 	ErrNoScalingAdvice = errors.New("no scaling advice")
 	// ErrCreateNodeScorer is a sentinel error indicating that the planner failed to create a NodeScorer.
 	ErrCreateNodeScorer = errors.New("failed to create node scorer")
-	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
-	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 	// ErrLoadInstanceTypeInfo is a sentinel error indicating that instance type information could not be loaded.
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
 	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.

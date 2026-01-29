@@ -223,7 +223,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 }
 
 // runSinglePassForGroup runs all simulations in the given simulation group once over the provided passView, obtains the SimulationGroupRunResult,
-// , invokes the NodeScorer for each valid SimulationRunResult to compute the NodeScore and aggregates scores into the SimulationGroupRunScores - which includes the WinnerScore if any.
+// invokes the NodeScorer for each valid SimulationRunResult to compute the NodeScore and aggregates scores into the SimulationGroupRunScores - which includes the WinnerScore if any.
 // If there is a WinnerScore among the SimulationRunResults within the SimulationGroupRunResult, it is returned along with the nextGroupView.
 // If there is no WinnerScore then return nil for both winnerNodeScore and the nextPassView.
 func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.SimulationGroup) (nextGroupPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
@@ -272,9 +272,8 @@ func (m *multiSimulator) createSandboxView(ctx context.Context, name string, gro
 }
 
 func (m *multiSimulator) processSimulationGroupRunResults(log logr.Logger, scorer plannerapi.NodeScorer, groupResult *plannerapi.SimulationGroupRunResult) (simGroupRunScores plannerapi.SimulationGroupRunScores, winningView minkapi.View, err error) {
-	var (
-		nodeScore plannerapi.NodeScore
-	)
+	var nodeScore plannerapi.NodeScore
+
 	for _, sr := range groupResult.SimulationResults {
 		if len(sr.ScaledNodePodAssignments) == 0 {
 			log.Info("No ScaledNodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name, "simulatedNodePlacement", sr.ScaledNodePlacements[0])

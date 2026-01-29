@@ -50,7 +50,7 @@ func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, r
 		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
 	}
-	scaleOutPlan := CreateScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
+	scaleOutPlan := createScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
 	planResult := plannerapi.ScalingPlanResult{
 		Name:         objutil.GenerateName("scaling-plan-"),
 		Labels:       labels,
@@ -61,10 +61,10 @@ func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, r
 	return nil
 }
 
-// CreateScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func CreateScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+// createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
+func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
-	nodeScoresByPlacement := GroupNodeScoresByNodePlacement(winningNodeScores)
+	nodeScoresByPlacement := groupNodeScoresByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {
 		delta := int32(len(nodeScores)) // #nosec G115 -- length of nodeScores cannot be greater than max int32.
 		currentReplicas := existingNodeCountByPlacement[placement]
@@ -80,8 +80,8 @@ func CreateScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCo
 	}
 }
 
-// GroupNodeScoresByNodePlacement groups the given nodeScores by their NodePlacement and returns a map of NodePlacement to slice of NodeScores.
-func GroupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacorev1alpha1.NodePlacement][]plannerapi.NodeScore {
+// groupNodeScoresByNodePlacement groups the given nodeScores by their NodePlacement and returns a map of NodePlacement to slice of NodeScores.
+func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacorev1alpha1.NodePlacement][]plannerapi.NodeScore {
 	groupByPlacement := make(map[sacorev1alpha1.NodePlacement][]plannerapi.NodeScore)
 	for _, ns := range nodeScores {
 		groupByPlacement[ns.Placement] = append(groupByPlacement[ns.Placement], ns)

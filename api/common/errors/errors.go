@@ -22,6 +22,8 @@ var (
 	ErrLoadTemplate = errors.New("failed to load template")
 	// ErrExecuteTemplate is a sentinel error indicating that template execution failed.
 	ErrExecuteTemplate = errors.New("cannot execute template")
+	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
+	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 )
 
 var (

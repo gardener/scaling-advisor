@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
@@ -135,7 +137,7 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	case "openstack":
 		return CloudProviderOpenStack, nil
 	default:
-		return "", fmt.Errorf("unuspported cloud provider: %s", cloudProvider)
+		return "", fmt.Errorf("%w: unknown %q", commonerrors.ErrUnsupportedCloudProvider, cloudProvider)
 	}
 }
 
