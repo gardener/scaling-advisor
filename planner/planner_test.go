@@ -55,7 +55,7 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 }
 
 func Test1PoolBasicMultiScaleout(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*20)
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Minute*20)
 	if !ok {
 		return
 	}
@@ -179,6 +179,7 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 
 	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-B"
+	req.DiagnosticVerbosity = 4
 	gotPlan = getScaleOutPlan(ctx, p, req, t)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }

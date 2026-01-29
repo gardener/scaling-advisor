@@ -6,6 +6,7 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -15,7 +16,6 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
@@ -34,6 +34,7 @@ type multiSimulator struct {
 	request              *plannerapi.ScalingAdviceRequest
 	simulatorConfig      plannerapi.SimulatorConfig
 	simulationRunCounter atomic.Uint32
+	sandboxViews         []minkapi.View
 }
 
 // NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.
@@ -56,14 +57,17 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 			util.SendPlanError(resultCh, m.request.GetRef(), err)
 		}
 	}()
-	requestView, err := m.viewAccess.GetSandboxView(ctx, "request-"+m.request.ID)
+	requestView, err := m.createSandboxView(ctx, "request-"+m.request.ID, m.viewAccess.GetBaseView())
 	if err != nil {
 		return
 	}
-	defer ioutil.CloseQuietly(requestView)
 
 	if err = util.SynchronizeView(ctx, requestView, m.request.Snapshot); err != nil {
 		return
+	}
+
+	if logutil.VerbosityFromContext(ctx) > 3 {
+		_ = viewutil.LogNodeAndPodNames(ctx, "REQUEST-VIEW_BEFORE-SIMULATE", requestView)
 	}
 
 	simulationGroups, err := m.createSimulationGroups(m.request)
@@ -71,6 +75,16 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 		return
 	}
 	err = m.runStabilizationCyclesForAllGroups(ctx, requestView, simulationGroups, resultCh)
+}
+
+func (m *multiSimulator) Close() error {
+	var errs []error
+	for _, v := range m.sandboxViews {
+		if err := v.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdviceRequest) ([]plannerapi.SimulationGroup, error) {
@@ -111,20 +125,20 @@ func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacor
 // runStabilizationCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
 // If the request AdviceGenerationMode is Incremental, after running stabilization cycles for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
 // If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
-func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context, initView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
+func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context, requestView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
 	var (
 		allWinnerNodeScores     []plannerapi.NodeScore
 		simGroupCycleResult     plannerapi.SimulationGroupCycleResult
 		allSimGroupCycleResults []plannerapi.SimulationGroupCycleResult
 		log                     = logr.FromContextOrDiscard(ctx)
 	)
-	simGroupCycleResult.NextGroupView = initView
+	simGroupCycleResult.NextGroupPassView = requestView
 	for groupIndex := 0; groupIndex < len(simGroups); {
 		group := simGroups[groupIndex]
 		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
 		grpCtx := logr.NewContext(ctx, log)
 		log.V(3).Info("Invoking runStabilizationCycleForGroup")
-		simGroupCycleResult, err = m.runStabilizationCycleForGroup(grpCtx, simGroupCycleResult.NextGroupView, group)
+		simGroupCycleResult, err = m.runStabilizationCycleForGroup(grpCtx, simGroupCycleResult.NextGroupPassView, group)
 		if err != nil {
 			err = fmt.Errorf("failed to run all passes for group %q: %w", group.Name(), err)
 			return
@@ -165,11 +179,11 @@ func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context,
 //   - the simulation group has stabilized with no scheduled pods for all its child simulations.
 //   - there is no winner node score after running a pass for the group
 //   - the context is done.
-func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, groupView minkapi.View, group plannerapi.SimulationGroup) (sgcr plannerapi.SimulationGroupCycleResult, err error) {
+func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.SimulationGroup) (sgcr plannerapi.SimulationGroupCycleResult, err error) {
 	var (
 		winningNodeScore *plannerapi.NodeScore
 	)
-	sgcr.NextGroupView = groupView
+	sgcr.NextGroupPassView = groupPassView
 	sgcr.PassNum = 0
 	for {
 		select {
@@ -180,7 +194,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 			sgcr.PassNum++
 			log := logr.FromContextOrDiscard(ctx).WithValues("groupRunPassNum", sgcr.PassNum)
 			passCtx := logr.NewContext(ctx, log)
-			sgcr.NextGroupView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgcr.NextGroupView, group)
+			sgcr.NextGroupPassView, winningNodeScore, err = m.runSinglePassForGroup(passCtx, sgcr.NextGroupPassView, group)
 			if err != nil {
 				return
 			}
@@ -190,7 +204,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 				return
 			}
 			if logutil.VerbosityFromContext(passCtx) >= 2 {
-				err = viewutil.LogNodeAndPodNames(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupView)
+				err = viewutil.LogNodeAndPodNames(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupPassView)
 				if err != nil {
 					return
 				}
@@ -212,17 +226,16 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 // , invokes the NodeScorer for each valid SimulationRunResult to compute the NodeScore and aggregates scores into the SimulationGroupRunScores - which includes the WinnerScore if any.
 // If there is a WinnerScore among the SimulationRunResults within the SimulationGroupRunResult, it is returned along with the nextGroupView.
 // If there is no WinnerScore then return nil for both winnerNodeScore and the nextPassView.
-func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, passView minkapi.View, group plannerapi.SimulationGroup) (nextPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
+func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.SimulationGroup) (nextGroupPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
 		groupRunResult plannerapi.SimulationGroupRunResult
 		groupScores    plannerapi.SimulationGroupRunScores
 		winnerView     minkapi.View
 	)
-	getSimViewFn := func(ctx context.Context, name string) (minkapi.View, error) {
-		return m.viewAccess.GetSandboxViewOverDelegate(ctx, name, passView)
-	}
-	groupRunResult, err = group.Run(ctx, getSimViewFn)
+	groupRunResult, err = group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
+		return m.createSandboxView(ctx, name, groupPassView)
+	})
 	if err != nil {
 		return
 	}
@@ -232,14 +245,30 @@ func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, passView min
 	}
 	if groupScores.WinnerScore == nil {
 		log.Info("simulation group did not produce any WinnerScore for this pass.")
-		nextPassView = passView
+		nextGroupPassView = groupPassView
 		return
 	}
 	winnerNodeScore = groupScores.WinnerScore
-	nextPassView = winnerView
-	nextPassView.GetEventSink().Reset()
+	nextGroupPassView = winnerView
+	nextGroupPassView.GetEventSink().Reset()
 	group.Reset()
 	return
+}
+
+func (m *multiSimulator) createSandboxView(ctx context.Context, name string, groupPassView minkapi.View) (minkapi.View, error) {
+	sandboxView, err := m.viewAccess.GetSandboxViewOverDelegate(ctx, name, groupPassView)
+	if err != nil {
+		return nil, err
+	}
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Creating sandbox view", "name", name, "sandboxView", sandboxView)
+
+	if logutil.VerbosityFromContext(ctx) > 3 {
+		_ = viewutil.LogNodeAndPodNames(ctx, "CREATE-SANDBOX-VIEW", sandboxView)
+	}
+
+	m.sandboxViews = append(m.sandboxViews, sandboxView)
+	return sandboxView, nil
 }
 
 func (m *multiSimulator) processSimulationGroupRunResults(log logr.Logger, scorer plannerapi.NodeScorer, groupResult *plannerapi.SimulationGroupRunResult) (simGroupRunScores plannerapi.SimulationGroupRunScores, winningView minkapi.View, err error) {

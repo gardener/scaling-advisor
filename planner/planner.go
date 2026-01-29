@@ -57,6 +57,7 @@ func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequ
 	if err != nil {
 		return
 	}
+	defer ioutil.CloseQuietly(scaleOutSimulator)
 	scaleOutSimulator.Simulate(planCtx, resultCh)
 }
 

@@ -469,6 +469,7 @@ type ScalingPlanner interface {
 
 // ScaleOutSimulator is a facade that executes simulations to generate ScaleOutPlan's. Implementations vary depending on the commontypes.SimulationStrategy.
 type ScaleOutSimulator interface {
+	io.Closer
 	// Simulate executes the ScalingStrategy specific process to generate ScaleOutPlan encapsulated within a ScalingPlanResult and sends the result on the resultCh channel.
 	Simulate(ctx context.Context, resultCh chan<- ScalingPlanResult)
 }
@@ -656,9 +657,9 @@ type ScaleOutPlanConsumeFunc func(plan sacorev1alpha1.ScaleOutPlan) error
 type SimulationGroupCycleResult struct {
 	// CreatedAt is the time when this group run result was created.
 	CreatedAt time.Time
-	// NextGroupView is the updated view after executing all passes in this group.
+	// NextGroupPassView is the updated view after executing all passes in this group.
 	// The next group if any should use this view as its base view.
-	NextGroupView minkapi.View
+	NextGroupPassView minkapi.View
 	// Name is the name of the simulation group.
 	Name string
 	// WinnerNodeScores contains the node scores of the winning nodes.

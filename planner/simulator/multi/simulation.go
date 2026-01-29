@@ -21,6 +21,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -109,6 +110,10 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	s.args.RunCounter.Add(1)
 	log := logr.FromContextOrDiscard(ctx).WithValues("simulationName", s.name, "simulationRunNum", s.args.RunCounter.Load())
 	simCtx := logr.NewContext(ctx, log)
+
+	if logutil.VerbosityFromContext(simCtx) > 3 {
+		_ = viewutil.LogNodeAndPodNames(simCtx, "SIMULATION-VIEW_BEFORE-RUN", view)
+	}
 
 	// Get unscheduled pods from the view
 	unscheduledPods, err := getUnscheduledPodsMap(simCtx, view)
