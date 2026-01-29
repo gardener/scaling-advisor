@@ -45,8 +45,12 @@ func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) e
 	}
 	for _, node := range allNodes {
 		log.Info(prefix+"|node in view",
-			"viewName", view.GetName(), "nodeName", node.Name, "nodePool", node.Labels[commonconstants.LabelNodePoolName],
-			"region", node.Labels[corev1.LabelTopologyRegion], "zone", node.Labels[corev1.LabelTopologyZone])
+			"viewName", view.GetName(),
+			"nodeName", node.Name,
+			"nodePool", node.Labels[commonconstants.LabelNodePoolName],
+			"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
+			"region", node.Labels[corev1.LabelTopologyRegion],
+			"zone", node.Labels[corev1.LabelTopologyZone])
 	}
 	return nil
 }

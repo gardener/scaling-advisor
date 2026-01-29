@@ -50,7 +50,7 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
@@ -80,7 +80,7 @@ func Test1PoolBasicMultiScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
@@ -112,7 +112,7 @@ func Test2PoolBasicUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
@@ -148,7 +148,7 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
@@ -174,12 +174,12 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, p, req, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 
 	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-B"
-	gotPlan = getScaleOutPlan(ctx, p, req, t)
+	gotPlan = getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(wantPlan, gotPlan, t)
 }
 
@@ -219,7 +219,9 @@ func assertExactScaleOutPlan(want, got *sacorev1alpha1.ScaleOutPlan, t *testing.
 	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
 		return strings.Compare(a.NodePoolName, b.NodePoolName)
 	})
-	logScaleOutPlan(got, t)
+	if !logScaleOutPlan(t, got) {
+		return
+	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)
 	}
@@ -266,7 +268,7 @@ func loadBasicConstraintsAndSnapshot(t *testing.T, poolCardinality samples.PoolC
 	return
 }
 
-func logScaleOutPlan(scaleOutPlan *sacorev1alpha1.ScaleOutPlan, t *testing.T) bool {
+func logScaleOutPlan(t *testing.T, scaleOutPlan *sacorev1alpha1.ScaleOutPlan) bool {
 	t.Helper()
 	if scaleOutPlan == nil {
 		return false
@@ -331,7 +333,7 @@ func createScalingPlanner(t *testing.T, testName string, duration time.Duration)
 	return
 }
 
-func getScaleOutPlan(ctx context.Context, p plannerapi.ScalingPlanner, req plannerapi.ScalingAdviceRequest, t *testing.T) *sacorev1alpha1.ScaleOutPlan {
+func getScaleOutPlan(t *testing.T, ctx context.Context, p plannerapi.ScalingPlanner, req plannerapi.ScalingAdviceRequest) *sacorev1alpha1.ScaleOutPlan {
 	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
 	defer close(resultCh)
 	p.Plan(ctx, req, resultCh)
