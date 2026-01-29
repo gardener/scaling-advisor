@@ -50,8 +50,8 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 func Test1PoolBasicMultiScaleout(t *testing.T) {
@@ -80,8 +80,8 @@ func Test1PoolBasicMultiScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 // Test2PoolBasicUnitScaleOut tests the scale-out scenarios for basic variant with 2 pools, unit scaling each pool..
@@ -112,8 +112,8 @@ func Test2PoolBasicUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 // Test2PoolBasicMultiScaleout tests the basic variant of the scale-out scenario for 2 pools, with more than one scaling for each pool.
@@ -148,8 +148,8 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 func TestReusePlannerAcrossRequests(t *testing.T) {
@@ -174,13 +174,13 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 
 	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-B"
-	gotPlan = getScaleOutPlan(ctx, t, p, req)
-	assertExactScaleOutPlan(wantPlan, gotPlan, t)
+	gotPlan = getScaleOutPlan(t, ctx, p, req)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 func placementsForFirstTemplateAndFirstAvailabilityZone(pools []sacorev1alpha1.NodePool) []sacorev1alpha1.NodePlacement {
@@ -209,9 +209,10 @@ func increaseUnscheduledWorkload(in plannerapi.ScalingAdviceRequest, amount int,
 	return
 }
 
-func assertExactScaleOutPlan(want, got *sacorev1alpha1.ScaleOutPlan, t *testing.T) {
+func assertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPlan) {
 	if got == nil {
 		t.Fatalf("got nil ScaleOutPlan, want not nil ScaleOutPlan")
+		return
 	}
 	slices.SortFunc(want.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
 		return strings.Compare(a.NodePoolName, b.NodePoolName)
@@ -333,7 +334,8 @@ func createScalingPlanner(t *testing.T, testName string, duration time.Duration)
 	return
 }
 
-func getScaleOutPlan(ctx context.Context, t *testing.T, p plannerapi.ScalingPlanner, req plannerapi.ScalingAdviceRequest) *sacorev1alpha1.ScaleOutPlan {
+//revive:disable:context-as-argument
+func getScaleOutPlan(t *testing.T, ctx context.Context, p plannerapi.ScalingPlanner, req plannerapi.ScalingAdviceRequest) *sacorev1alpha1.ScaleOutPlan {
 	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
 	defer close(resultCh)
 	p.Plan(ctx, req, resultCh)
