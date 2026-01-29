@@ -32,9 +32,9 @@ type multiSimulator struct {
 	// with mock simulations.
 	simulationCreator    plannerapi.SimulationCreator
 	request              *plannerapi.ScalingAdviceRequest
+	sandboxViews         []minkapi.View
 	simulatorConfig      plannerapi.SimulatorConfig
 	simulationRunCounter atomic.Uint32
-	sandboxViews         []minkapi.View
 }
 
 // NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.

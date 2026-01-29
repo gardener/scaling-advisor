@@ -17,10 +17,10 @@ import (
 var _ planner.SimulationGroup = (*simGroup)(nil)
 
 type simGroup struct {
+	requestRef  planner.ScalingAdviceRequestRef
 	name        string
 	simulations []planner.Simulation
 	key         planner.SimGroupKey
-	requestRef  planner.ScalingAdviceRequestRef
 }
 
 // NewGroup creates a new SimulationGroup with the given name and simulation group key.
