@@ -26,6 +26,8 @@ import (
 
 // ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
 type ScalingAdviceRequest struct {
+	// CreationTime is the time at which request was created
+	CreationTime time.Time
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
@@ -461,7 +463,7 @@ type ScalingPlanResult struct {
 
 // ScalingPlanner defines the interface for computing scaling plans.
 type ScalingPlanner interface {
-	// Plan computes a scaling plan for a scaling request and offers the ScalingPlanResult on the result channel.
+	// Plan generates a scaling plan for a ScalingAdviceRequest and offers the ScalingPlanResult on the result channel.
 	Plan(ctx context.Context, req ScalingAdviceRequest, resultCh chan<- ScalingPlanResult)
 }
 

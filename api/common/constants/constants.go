@@ -52,6 +52,9 @@ const (
 	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
 	// LabelTotalSimulationRuns is the label key to indicate the total number of simulation runs made across all simulation groups to produce ScaleOutPlan
 	LabelTotalSimulationRuns = "sa.gardener.cloud/total-simulation-runs"
+
+	// LabelPlanGenerateDuration is the label key for the duration taken for the scaling planner to generate a scaling plan for a request.
+	LabelPlanGenerateDuration = "sa.gardener.cloud/plan-generate-duration"
 )
 
 const (

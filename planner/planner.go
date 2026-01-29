@@ -61,6 +61,9 @@ func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequ
 }
 
 func validateRequest(req planner.ScalingAdviceRequest) error {
+	if req.CreationTime.IsZero() {
+		return fmt.Errorf("%w: createdTime not set", planner.ErrInvalidScalingAdviceRequest)
+	}
 	if !commontypes.SupportedAdviceGenerationModes.Has(req.AdviceGenerationMode) {
 		return fmt.Errorf("%w: unsupported advice generation mode %q", planner.ErrInvalidScalingAdviceRequest, req.AdviceGenerationMode)
 	}

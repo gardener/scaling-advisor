@@ -128,8 +128,8 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 	}
 	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
 	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
-	unitIncrease := 1
-	req, ok = increaseUnscheduledWorkload(req, unitIncrease, t)
+	unscheduledUnitIncrease := 1
+	req, ok = increaseUnscheduledWorkload(req, unscheduledUnitIncrease, t)
 	if !ok {
 		return
 	}
@@ -139,12 +139,12 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 			{
 				NodePlacement:   placements[0],
 				CurrentReplicas: 1,
-				Delta:           int32(1 + unitIncrease),
+				Delta:           int32(1 + unscheduledUnitIncrease),
 			},
 			{
 				NodePlacement:   placements[1],
 				CurrentReplicas: 0,
-				Delta:           int32(1 + unitIncrease),
+				Delta:           int32(1 + unscheduledUnitIncrease),
 			},
 		},
 	}
@@ -229,6 +229,7 @@ func requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t *testing.T,
 	constraints *sacorev1alpha1.ScalingConstraint,
 	snapshot *plannerapi.ClusterSnapshot) plannerapi.ScalingAdviceRequest {
 	return plannerapi.ScalingAdviceRequest{
+		CreationTime: time.Now(),
 		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
 			ID:            t.Name(),
 			CorrelationID: t.Name(),
