@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type deviceClassAccess struct {
 }
 
 // NewDeviceClassAccess creates an access facade for managing DeviceClass resources using the given minkapi View.
-func NewDeviceClassAccess(view mkapi.View) clientresourcev1.DeviceClassInterface {
+func NewDeviceClassAccess(view minkapi.View) clientresourcev1.DeviceClassInterface {
 	return &deviceClassAccess{
 		access.GenericResourceAccess[*resourcev1.DeviceClass, *resourcev1.DeviceClassList]{
 			View:      view,

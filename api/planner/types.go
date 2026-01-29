@@ -26,6 +26,8 @@ import (
 
 // ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
 type ScalingAdviceRequest struct {
+	// CreationTime is the time at which request was created
+	CreationTime time.Time
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
@@ -461,50 +463,14 @@ type ScalingPlanResult struct {
 
 // ScalingPlanner defines the interface for computing scaling plans.
 type ScalingPlanner interface {
-	// Plan computes a scaling plan for a scaling request and offers the ScalingPlanResult on the result channel.
+	// Plan generates a scaling plan for a ScalingAdviceRequest and offers the ScalingPlanResult on the result channel.
 	Plan(ctx context.Context, req ScalingAdviceRequest, resultCh chan<- ScalingPlanResult)
 }
 
-// ScaleOutSimulator executes simulations to generate scale-out plans based on a commontypes.SimulationStrategy.
+// ScaleOutSimulator is a facade that executes simulations to generate ScaleOutPlans. Implementations vary depending on the commontypes.SimulationStrategy used.
 type ScaleOutSimulator interface {
-	// Simulate executes the ScalingStrategy specific process to generate a ScaleOutPlan and sends the plan result(s) on the resultCh channel.
-	// TODO indent and format the comments below and clean where necessary.
-	// TODO fix the godoc as it is no longer accurate.
-	// Calls CreateSimulationGroups:
-	// 	* Type 1: Creates a SimulationGroup having Simulation(s) for each combination of 1 NT + 1 NP + 1 AZ
-	//	* Type 2: Creates a SimulationGroup having a single Simulation for multiple NTs + multiple NPs + multiple AZs
-	//
-	// The SimulationGroups are ordered by priority of NodePool and NodeTemplate for Type1 or Type2.
-	// Increments the pass counter and calls runPass on the SimulationGroups. This is done until one of the following happens:
-	// The context is cancelled or timeout occurs.
-	// There is no pass winner NodeScore(s) from a SimulationGroup in the current pass.
-	// There are no leftover unscheduled pods.
-	// RunPass of Type1:
-	// Iterate over the SimulationGroups based on priority.
-	// Call ScaleOutSimulator.RunGroup which executes each simulation in the group concurrently.
-	// Simulation.Run:
-	// Scales a single node for a combination of NT + NP + AZ.
-	// Runs a scheduler and gives pod-to-node assignment for the scaled node and existing node(s) and leftover unscheduled pods.
-	// For each simulation, gets the `SimulationResult`.
-	// If there are at least one Pod scheduled in this pass then convert it into NodeScoreArgs and computes the NodeScoreResult.
-	// If there are no pods scheduled in this pass then there is no need to compute a NodeScoreResult. This simulation does not participate further in winning NodeScoreResult selection.
-	// If there are no computed NodeScoreResult's for the SimulationGroup, then it will consider the next group.
-	// Selects the winning NodeScoreResult amongst all computed NodeScoreResult's for the SimulationGroup.
-	// If there are no winning NodeScoreResult's, then it will consider the next group.
-	// If there is a winning NodeScoreResult:
-	// Get the unscheduled pods from the winning NodeScoreResult. If there are no unscheduled pods, then constructs the ScaleOutPlan and returns the same to the PlanGenerator.
-	// If there are leftover unscheduled pods, it will re-run the simulations for the same group. In each such run it may choose a different winning NodeScoreResult.
-	// RunPass of Type2:
-	// Iterate over the SimulationGroups based on priority.
-	// Call ScaleOutSimulator.RunGroup which executes the single simulation in the group.
-	// Calls Simulation.Run:
-	// Scales one Node per unique combination of NT + NP + AZ for all NTs + NPs + AZs associated with the SimulationGroup.
-	// Runs a scheduler and gives pod-to-node assignments for all the scaled nodes and existing node(s) and leftover unscheduled pods.
-	// For the simulation, gets the `SimulationResult`.
-	// If there are no leftover unscheduled pods, constructs the ScaleOutPlan and returns the same to the PlanGenerator.
-	// If there are leftover unscheduled pods, it will re-run the simulation for the same group.
-	// If there are no pods scheduled in this pass then it will consider the next group.
-	// If there is at least one pod scheduled in this pass, it will continue re-running the simulation for the same group.
+	io.Closer
+	// Simulate executes the ScalingStrategy specific process to generate ScaleOutPlan encapsulated within a ScalingPlanResult and sends the result on the resultCh channel.
 	Simulate(ctx context.Context, resultCh chan<- ScalingPlanResult)
 }
 
@@ -536,16 +502,16 @@ type Simulation interface {
 	// NodeTemplate returns the target node template against which the simulation should be run
 	NodeTemplate() *sacorev1alpha1.NodeTemplate
 	// Run executes the simulation against the given view to completion and returns any encountered error.
-	// This is a blocking call and callers are expected to manage concurrency and SimulationResult consumption.
+	// This is a blocking call and callers are expected to manage concurrency and SimulationRunResult consumption.
 	Run(ctx context.Context, view minkapi.View) error
-	// Result returns the latest SimulationResult if the simulation is in ActivityStatusSuccess,
+	// Result returns the latest SimulationRunResult if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
-	Result() (SimulationResult, error)
+	Result() (SimulationRunResult, error)
 }
 
-// SimulationResult contains the results of a completed simulation run.
-type SimulationResult struct {
+// SimulationRunResult contains the results of a completed simulation run.
+type SimulationRunResult struct {
 	// Name of the Simulation that produced this result.
 	Name string
 	// View is the minkapi View against which the simulation was run.
@@ -634,7 +600,7 @@ type SimulationGroup interface {
 	// AddSimulation adds a simulation to the group.
 	AddSimulation(simulation Simulation)
 	// Run executes all simulations in the group and returns the results.
-	Run(ctx context.Context, getViewFn GetSimulationViewFunc) (SimulationGroupResult, error)
+	Run(ctx context.Context, getViewFn GetSimulationViewFunc) (SimulationGroupRunResult, error)
 }
 
 // SimulationGrouperFunc represents a factory function for grouping Simulation instances into one or more SimulationGroups
@@ -663,46 +629,44 @@ func (k SimGroupKey) String() string {
 	return fmt.Sprintf("%d-%d", k.NodePoolPriority, k.NodeTemplatePriority)
 }
 
-// SimulationGroupResult contains the results of running a simulation group.
-type SimulationGroupResult struct {
+// SimulationGroupRunResult contains the results of running a simulation group.
+type SimulationGroupRunResult struct {
 	// Name of the group that produced this result.
 	Name string
 	// SimulationResults contains the results from all simulations in the group.
-	SimulationResults []SimulationResult
+	SimulationResults []SimulationRunResult
 	// Key is the simulation group key (partition key)
 	Key SimGroupKey
 }
 
-// SimulationGroupScores represents the scoring results for the simulation group after running the NodeScorer against the SimulationGroupResult.
-type SimulationGroupScores struct {
-	// WinnerNodeScore is the highest scoring node in the group.
-	WinnerNodeScore *NodeScore
+// SimulationGroupRunScores represents the scoring results for the simulation group after running the NodeScorer against the SimulationGroupCycleResult.
+type SimulationGroupRunScores struct {
+	// WinnerScore is the highest scoring node in the group.
+	WinnerScore *NodeScore
 	// WinnerNode is the actual node corresponding to the winner score.
 	WinnerNode *corev1.Node
-	// AllNodeScores contains all computed node scores for the group.
-	AllNodeScores []NodeScore
+	// AllScores contains all computed node scores for the group.
+	AllScores []NodeScore
 }
 
 // ScaleOutPlanConsumeFunc consumes a ScaleOutPlan and returns an error if unsuccessful.
 // Used by the ScaleOutSimulator to pass generated ScaleOutPlans to callers and abort if consumption was unsuccessful.
 type ScaleOutPlanConsumeFunc func(plan sacorev1alpha1.ScaleOutPlan) error
 
-// SimulationGroupRunResult represents the result of running all passes for a SimulationGroup.
-type SimulationGroupRunResult struct {
+// SimulationGroupCycleResult represents the result of running all passes for a SimulationGroup.
+type SimulationGroupCycleResult struct {
 	// CreatedAt is the time when this group run result was created.
 	CreatedAt time.Time
-	// NextGroupView is the updated view after executing all passes in this group.
+	// NextGroupPassView is the updated view after executing all passes in this group.
 	// The next group if any should use this view as its base view.
-	NextGroupView minkapi.View
+	NextGroupPassView minkapi.View
 	// Name is the name of the simulation group.
 	Name string
 	// WinnerNodeScores contains the node scores of the winning nodes.
 	WinnerNodeScores []NodeScore
 	// LeftoverUnscheduledPods contains the namespaced names of pods that could not be scheduled.
 	LeftoverUnscheduledPods []types.NamespacedName
-	// NumPasses is the number of passes executed in this group before moving to the next group.
+	// PassNum is the number of passes executed in this group before moving to the next group.
 	// A pass is defined as the execution of all simulations in a group.
-	NumPasses int
-	// TotalSimulations is the total number of simulations executed across all groups until now.
-	TotalSimulations int
+	PassNum int
 }

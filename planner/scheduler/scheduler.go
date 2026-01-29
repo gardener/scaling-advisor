@@ -124,6 +124,7 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 			err = fmt.Errorf("%w: %w", planner.ErrLaunchScheduler, err)
 		}
 	}()
+	log := logr.FromContextOrDiscard(ctx)
 
 	verbosity := logutil.VerbosityFromContext(ctx)
 	if verbosity > 0 {
@@ -136,12 +137,11 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged
 		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)
 		if err != nil {
-			err = fmt.Errorf("failed to apply logging configuration: %w", err)
-			return
+			log.Info("Failed to apply logging configuration for the scheduler", "error", err.Error())
+			err = nil //reset the error
 		}
 	}
 
-	log := logr.FromContextOrDiscard(ctx)
 	broadcaster := events.NewBroadcaster(params.EventSink)
 	broadcaster.StartRecordingToSink(ctx.Done())
 	name := "embedded-scheduler-" + rand.String(5)

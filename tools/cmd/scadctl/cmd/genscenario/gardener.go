@@ -660,8 +660,8 @@ func constructNodeTemplate(pool map[string]any, name string, priority int32) (*a
 		Architecture: pool["architecture"].(string),
 		InstanceType: pool["machineType"].(string),
 		Priority:     priority,
-		Capacity:     objutil.StringMapToResourceList(capacity),
-		KubeReserved: objutil.StringMapToResourceList(kubeReserved),
+		Capacity:     objutil.StringKeyValueMapToResourceList(capacity),
+		KubeReserved: objutil.StringKeyValueMapToResourceList(kubeReserved),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
 		// TODO:
 		// MaxVolumes:     0,

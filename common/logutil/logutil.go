@@ -10,19 +10,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
-
-var slashTmpDirExists bool
-
-func init() {
-	info, err := os.Stat("/tmp")
-	slashTmpDirExists = (err == nil) && info.IsDir()
-}
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
@@ -35,6 +29,13 @@ func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
 		return 0
 	}
 	return logsapiv1.VerbosityLevel(verbosity)
+}
+
+var fileNameCleanRe = regexp.MustCompile(`[^\w.-]`)
+
+// GetCleanLogFileName removes all special characters from fileName and returns the clean fileName
+func GetCleanLogFileName(fileName string) string {
+	return fileNameCleanRe.ReplaceAllString(fileName, "")
 }
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
@@ -56,15 +57,6 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, logPath)
 
 	return
-}
-
-// GetTraceLogsParentDir gets the parent directory for trace logs.
-func GetTraceLogsParentDir() string {
-	if slashTmpDirExists {
-		return "/tmp"
-	} else {
-		return os.TempDir()
-	}
 }
 
 // multiSink forwards to multiple sinks (e.g., original + file).

@@ -14,7 +14,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/tools/types/awsprice"
 
-	svcapi "github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 )
 
 // ParseRegionPrices parses the raw pricing JSON for a given AWS region and OS,
@@ -33,9 +33,9 @@ import (
 //     per (InstanceType, Region, OS).
 //
 // Returns:
-//   - A slice of svcapi.InstancePriceInfo with normalized pricing data.
+//   - A slice of plannerapi.InstancePriceInfo with normalized pricing data.
 //   - An error if the input JSON cannot be parsed.
-func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePriceInfo, error) {
+func ParseRegionPrices(region, osName string, data []byte) ([]plannerapi.InstancePriceInfo, error) {
 	var raw awsprice.PriceList
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 		OS           string
 	}
 
-	best := make(map[priceKey]svcapi.InstancePriceInfo, 1000)
+	best := make(map[priceKey]plannerapi.InstancePriceInfo, 1000)
 
 	for sku, prod := range raw.Products {
 		attrs := prod.Attributes
@@ -96,7 +96,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 
 		key := priceKey{InstanceType: attrs.InstanceType, OS: attrs.OperatingSys}
 		if existing, ok := best[key]; !ok || price < existing.HourlyPrice {
-			best[key] = svcapi.InstancePriceInfo{
+			best[key] = plannerapi.InstancePriceInfo{
 				InstanceType: attrs.InstanceType,
 				Region:       region,
 				VCPU:         vcpu,
@@ -109,7 +109,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]svcapi.InstancePri
 		}
 	}
 
-	infos := make([]svcapi.InstancePriceInfo, 0, len(best))
+	infos := make([]plannerapi.InstancePriceInfo, 0, len(best))
 	for _, v := range best {
 		infos = append(infos, v)
 	}

@@ -7,7 +7,7 @@
 //
 // It extracts OnDemand hourly prices for EC2 instance types, filtered by
 // operating system, region, and tenancy. Results are returned as
-// svcapi.InstanceTypeInfo values suitable for consumption in higher-level
+// plannerapi.InstanceTypeInfo values suitable for consumption in higher-level
 // tools.
 
 package awsprice
@@ -28,7 +28,7 @@ type Product struct {
 
 // Attributes describes the key attributes of an EC2 instance SKU.
 // Not all attributes are relevant for pricing; we keep only the fields
-// required for building [svcapi.InstanceTypeInfo] records.
+// required for building [plannerapi.InstanceTypeInfo] records.
 type Attributes struct {
 	InstanceType string `json:"instanceType"`
 	VCPU         string `json:"vcpu"`

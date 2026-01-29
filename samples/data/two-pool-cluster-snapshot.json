@@ -1,0 +1,104 @@
+{
+  "Pods": [
+    {
+      "uid": "1bc485b3-b699-4809-8422-37e9a95db065",
+      "Namespace": "default",
+      "Name": "berry-assigned",
+      "labels": {
+        "app.kubernetes.io/component": "fruit",
+        "app.kubernetes.io/instance": "berry-instance",
+        "app.kubernetes.io/managed-by": "logistics",
+        "app.kubernetes.io/name": "berry",
+        "app.kubernetes.io/part-of": "food",
+        "app.kubernetes.io/version": "1.0.0"
+      },
+      "aggregatedRequests": {
+        "cpu": 1,
+        "memory": 5347737600
+      },
+      "nodeName": "node-0",
+      "SchedulerName": "bin-packing-scheduler"
+    },
+    {
+      "uid": "fc9237ac-4d9f-4822-9f15-5df808120349",
+      "Namespace": "default",
+      "Name": "berry-1",
+      "labels": {
+        "app.kubernetes.io/component": "fruit",
+        "app.kubernetes.io/instance": "berry-instance",
+        "app.kubernetes.io/managed-by": "logistics",
+        "app.kubernetes.io/name": "berry",
+        "app.kubernetes.io/part-of": "food",
+        "app.kubernetes.io/version": "1.0.0"
+      },
+      "aggregatedRequests": {
+        "cpu": 1,
+        "memory": 5347737600
+      },
+      "SchedulerName": "bin-packing-scheduler"
+    },
+    {
+      "uid": "d52a5273-811e-4881-a6f1-fef7833a6573",
+      "Namespace": "default",
+      "Name": "grape-1",
+      "labels": {
+        "app.kubernetes.io/component": "fruit",
+        "app.kubernetes.io/instance": "grape-instance",
+        "app.kubernetes.io/managed-by": "logistics",
+        "app.kubernetes.io/name": "grape",
+        "app.kubernetes.io/part-of": "food",
+        "app.kubernetes.io/version": "1.0.0"
+      },
+      "aggregatedRequests": {
+        "cpu": 3,
+        "memory": 13958643712
+      },
+      "SchedulerName": "bin-packing-scheduler"
+    }
+  ],
+  "Nodes": [
+    {
+      "UID": "d6240321-d364-4bee-95b5-262c7a85a718",
+      "Name": "node-0",
+      "instanceType": "m5.large",
+      "Unschedulable": false,
+      "labels": {
+        "kubernetes.io/arch": "amd64",
+        "kubernetes.io/hostname": "node-0",
+        "kubernetes.io/os": "linux",
+        "topology.ebs.csi.aws.com/zone": "eu-west-1a",
+        "node.kubernetes.io/role": "node",
+        "topology.k8s.aws/zone-id": "euw1-az3",
+        "topology.kubernetes.io/region": "eu-west-1",
+        "topology.kubernetes.io/zone": "eu-west-1a",
+        "worker.garden.sapcloud.io/group": "p",
+        "worker.gardener.cloud/cri-name": "containerd",
+        "worker.gardener.cloud/kubernetes-version": "1.33.7",
+        "worker.gardener.cloud/pool": "p",
+        "sa.gardener.cloud/node-pool-name": "p",
+        "worker.gardener.cloud/system-components": "true",
+        "sa.gardener.cloud/node-template-name": "m5l"
+      },
+      "Capacity": {
+        "cpu": 2,
+        "memory": 8119185408,
+        "pods": 110
+      },
+      "Allocatable": {
+        "cpu": 2,
+        "memory": 6940585984,
+        "pods": 110
+      },
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "True",
+          "lastHeartbeatTime": "2026-01-26T09:55:13Z",
+          "lastTransitionTime": "2026-01-26T09:16:09Z",
+          "reason": "KubeletReady",
+          "message": "kubelet is posting ready status"
+        }
+      ]
+    }
+  ]
+}

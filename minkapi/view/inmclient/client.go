@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	clientadmissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
@@ -73,7 +73,7 @@ var (
 )
 
 type inMemClient struct {
-	view mkapi.View
+	view minkapi.View
 }
 
 // AppsV1 retrieves the AppsV1Client

@@ -18,6 +18,12 @@ var (
 	ErrUnimplemented = errors.New("not implemented")
 	// ErrUnexpectedType is a sentinel error representing an unexpected type error which should not happen - generally encountered when casting. Use this in lieu of a panic.
 	ErrUnexpectedType = errors.New("unexpected type")
+	// ErrLoadTemplate is a sentinel error representing a problem loading a template file
+	ErrLoadTemplate = errors.New("failed to load template")
+	// ErrExecuteTemplate is a sentinel error indicating that template execution failed.
+	ErrExecuteTemplate = errors.New("cannot execute template")
+	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
+	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 )
 
 var (

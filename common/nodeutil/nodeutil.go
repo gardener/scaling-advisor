@@ -80,6 +80,7 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels[corev1.LabelTopologyRegion] = nodePool.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
 	nodeLabels[corev1.LabelHostname] = nodeName
+	nodeLabels[commonconstants.LabelNodePoolName] = nodePool.Name
 
 	return nodeLabels
 }
