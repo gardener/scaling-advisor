@@ -1,0 +1,45 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+package "api" {
+ [scaling-advisor versioned api,\nplanner api, ...]
+}
+
+note top of "api"
+Consumers need not import
+full scaling-advisor dependency
+end note
+
+package "minkapi" {
+[server,cli,view\npackages]
+}
+
+package "common" {
+[util packages]
+}
+
+package "operator" {
+ ["scadop"]
+}
+
+package "service" {
+ [ScalingAdvisorService \n "scadsvc"]
+}
+package "pricing" {
+ [CloudProvider \n InstancePricing]
+}
+"minkapi" --> "api"
+"minkapi" ..> "common"
+"common" ..> "api"
+"service" ..> "api"
+"service" ..> "pricing"
+"pricing" ..> "api"
+"pricing" ..> "common"
+"service" ..> "common"
+"service" ..> "minkapi"
+"operator" ..> "common"
+"operator" ..> "service"
+"operator" ..> "api"
+
+
+@enduml

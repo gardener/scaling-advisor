@@ -1,0 +1,31 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+package "api" {
+  [common] as commonapi
+  [coreapi] as coreapi
+  [plannerapi] as plannerapi
+  [minkapi] as minkapi
+  [serviceapi] as serviceapi
+  (ViewAccess\nView\nResourcStore\nEventSink\nWatchConfig\netc)  as (minkapitypes)
+  (ScalingAdvisorService\nApp) as (serviceapitypes)
+
+  commonapi #..# (commonapitypes)
+  (SimulationStrategy\nScalingAdviceGenerationMode\ncommon-sentinel-errors,etc)  as (commonapitypes)
+  (ScalingConstraints\nScalingConstraintSpec\nNodePool\nNodeTemplate\n...) as coreapitypes
+  coreapi #..# (coreapitypes)
+  plannerapi #..# (ScalingPlanner\nScaleOutSimulator\nSimulation\nSimulationRunResult\nSimulationGroup\nSimulationGroupRunResult\n...)
+  plannerapi ..> coreapi
+  serviceapi #..# (serviceapitypes)
+  minkapi #..# (minkapitypes)
+
+  coreapi ..> commonapi
+  plannerapi ..> commonapi
+  minkapi ..> commonapi
+  serviceapi ..> commonapi
+  serviceapi ..> plannerapi
+  serviceapi ..> minkapi
+}
+
+
+@enduml
