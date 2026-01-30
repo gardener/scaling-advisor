@@ -447,15 +447,15 @@ type ScalingPlannerArgs struct {
 // ScalingPlanResult encapsulates the result of a scaling plan generation.
 type ScalingPlanResult struct {
 	// Err is any error encountered during plan generation.
-	Err error
+	Err error `json:",omitempty"`
 	// Labels is the associated metadata.
-	Labels map[string]string
+	Labels map[string]string `json:",omitempty"`
 	// ScaleOutPlan is the generated scale-out plan.
-	ScaleOutPlan *sacorev1alpha1.ScaleOutPlan
+	ScaleOutPlan *sacorev1alpha1.ScaleOutPlan `json:",omitempty"`
 	// ScaleInPlan is the generated scale-in plan.
-	ScaleInPlan *sacorev1alpha1.ScaleInPlan
+	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:",omitempty"`
 	// Diagnostics provides diagnostics information for the scaling plan.
-	Diagnostics *sacorev1alpha1.ScalingAdviceDiagnostic
+	Diagnostics *sacorev1alpha1.ScalingAdviceDiagnostic `json:",omitempty"`
 	// Name is the name of this plan result.
 	// For incremental generation mode, this can be used to disambiguate one plan results from another for the same ScalingAdviceRequest.
 	Name string

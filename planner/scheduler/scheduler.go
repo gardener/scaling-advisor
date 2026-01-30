@@ -109,9 +109,9 @@ func (s *schedulerLauncher) Launch(ctx context.Context, params *planner.Schedule
 	}
 
 	go func() {
-		log.Info("Begin run scheduler", "name", handle.name)
+		log.V(5).Info("Begin run scheduler", "name", handle.name)
 		handle.scheduler.Run(schedulerCtx)
-		log.Info("End run scheduler", "name", handle.name)
+		log.V(5).Info("End run scheduler", "name", handle.name)
 		s.semaphore.Release(1)
 	}()
 	return handle, nil
@@ -184,9 +184,9 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 
 func (s *schedulerHandle) Close() error {
 	log := logr.FromContextOrDiscard(s.ctx)
-	log.Info("Stopping scheduler", "name", s.name)
+	log.V(5).Info("Stopping scheduler", "name", s.name)
 	s.cancelFn()
-	log.Info("Stopped scheduler", "name", s.name)
+	log.V(5).Info("Stopped scheduler", "name", s.name)
 	return nil
 }
 

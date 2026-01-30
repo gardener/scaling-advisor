@@ -75,13 +75,13 @@ func (p *defaultPlanner) getScaleOutSimulator(req *planner.ScalingAdviceRequest)
 	switch req.SimulationStrategy {
 	case "":
 		return nil, fmt.Errorf("%w: simulation strategy must be specified", planner.ErrCreateSimulator)
-	case commontypes.SimulationStrategyMultiSimulationsPerGroup:
+	case commontypes.SimulationStrategyOneNodeManySimulationsPerGroup:
 		nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", planner.ErrCreateSimulator, err)
 		}
 		return multi.NewScaleOutSimulator(p.args.ViewAccess, p.args.SchedulerLauncher, nodeScorer, p.args.SimulatorConfig, req)
-	case commontypes.SimulationStrategySingleSimulationPerGroup:
+	case commontypes.SimulationStrategyManyNodesOneSimulationPerGroup:
 		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulationStrategy)
 	default:
 		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", planner.ErrUnsupportedSimulationStrategy, req.SimulationStrategy)

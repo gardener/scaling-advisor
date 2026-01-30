@@ -150,7 +150,7 @@ func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context,
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
-			log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
+			log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
 			if err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
@@ -167,7 +167,7 @@ func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context,
 		return
 	}
 	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
-		log.Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
+		log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
 		err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), allSimGroupCycleResults)
 	}
 	return
@@ -259,13 +259,6 @@ func (m *multiSimulator) createSandboxView(ctx context.Context, name string, gro
 	if err != nil {
 		return nil, err
 	}
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("CREATED sandbox view", "sandboxView", name, "delegateView", groupPassView.GetName())
-
-	if logutil.VerbosityFromContext(ctx) > 3 {
-		_ = viewutil.LogNodeAndPodNames(ctx, "CREATE-SANDBOX-VIEW", sandboxView)
-	}
-
 	m.sandboxViews = append(m.sandboxViews, sandboxView)
 	return sandboxView, nil
 }

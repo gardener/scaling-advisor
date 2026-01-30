@@ -27,7 +27,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-const defaultVerbosity = 2
+const defaultVerbosity = 0
 
 func Test1PoolBasicUnitScaleOut(t *testing.T) {
 	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
@@ -39,7 +39,7 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 		return
 	}
 	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		UnsatisfiedPodNames: nil,
 		Items: []sacorev1alpha1.ScaleOutItem{
@@ -55,7 +55,7 @@ func Test1PoolBasicUnitScaleOut(t *testing.T) {
 }
 
 func Test1PoolBasicMultiScaleout(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Minute*20)
+	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*20)
 	if !ok {
 		return
 	}
@@ -64,7 +64,7 @@ func Test1PoolBasicMultiScaleout(t *testing.T) {
 		return
 	}
 	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	numExtraBerryPods := 2
 	req, ok = increaseUnscheduledWorkload(req, numExtraBerryPods, t)
 	if !ok {
@@ -94,7 +94,7 @@ func Test2PoolBasicUnitScaleOut(t *testing.T) {
 	if !ok {
 		return
 	}
-	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
 	pPlacement, qPlacement := placements[0], placements[1]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
@@ -126,9 +126,9 @@ func Test2PoolBasicMultiScaleout(t *testing.T) {
 	if !ok {
 		return
 	}
-	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
-	unscheduledUnitIncrease := 1
+	unscheduledUnitIncrease := 2
 	req, ok = increaseUnscheduledWorkload(req, unscheduledUnitIncrease, t)
 	if !ok {
 		return
@@ -162,7 +162,7 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 		return
 	}
 	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-A"
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		UnsatisfiedPodNames: nil,
@@ -177,7 +177,7 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 	gotPlan := getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 
-	req = requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t, constraints, snapshot)
+	req = requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
 	req.ID = "TestReusePlannerAcrossRequests-B"
 	gotPlan = getScaleOutPlan(t, ctx, p, req)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
@@ -228,7 +228,7 @@ func assertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 	}
 }
 
-func requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t *testing.T,
+func requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t *testing.T,
 	constraints *sacorev1alpha1.ScalingConstraint,
 	snapshot *plannerapi.ClusterSnapshot) plannerapi.ScalingAdviceRequest {
 	return plannerapi.ScalingAdviceRequest{
@@ -240,7 +240,7 @@ func requestForAllAtOnceAdviceWithLeastCostMultiSimulationStrategy(t *testing.T,
 		Constraint:           constraints,
 		Snapshot:             snapshot,
 		DiagnosticVerbosity:  defaultVerbosity,
-		SimulationStrategy:   commontypes.SimulationStrategyMultiSimulationsPerGroup,
+		SimulationStrategy:   commontypes.SimulationStrategyOneNodeManySimulationsPerGroup,
 		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
 		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
 	}
@@ -344,6 +344,12 @@ func getScaleOutPlan(t *testing.T, ctx context.Context, p plannerapi.ScalingPlan
 		t.Fatalf("failed to generate scale-out plan: %v", result.Err)
 		return nil
 	} else {
+		planResultJson, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			t.Fatalf("failed to marshal ScalingPlanResult: %v", err)
+			return nil
+		}
+		t.Logf("Obtained ScalingPlanResult %s", planResultJson)
 		return result.ScaleOutPlan
 	}
 }

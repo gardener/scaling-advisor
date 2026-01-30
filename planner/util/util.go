@@ -7,6 +7,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -38,11 +39,14 @@ func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, r
 		return err
 	}
 	planGenerateDuration := time.Since(req.CreationTime)
+	numUnscheduledPods := len(req.Snapshot.GetUnscheduledPods())
 	labels := map[string]string{
-		commonconstants.LabelRequestID:            req.ID,
-		commonconstants.LabelCorrelationID:        req.CorrelationID,
-		commonconstants.LabelTotalSimulationRuns:  fmt.Sprintf("%d", simulationRunCount),
-		commonconstants.LabelPlanGenerateDuration: fmt.Sprintf("%d", planGenerateDuration),
+		commonconstants.LabelRequestID:                  req.ID,
+		commonconstants.LabelCorrelationID:              req.CorrelationID,
+		commonconstants.LabelTotalSimulationRuns:        fmt.Sprintf("%d", simulationRunCount),
+		commonconstants.LabelPlanGenerateDuration:       planGenerateDuration.String(),
+		commonconstants.LabelSnapshotNumUnscheduledPods: strconv.Itoa(numUnscheduledPods),
+		commonconstants.LabelConstraintNumPools:         strconv.Itoa(len(req.Constraint.Spec.NodePools)),
 	}
 	var allWinnerNodeScores []plannerapi.NodeScore
 	var leftOverUnscheduledPods []types.NamespacedName

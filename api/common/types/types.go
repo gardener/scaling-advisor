@@ -67,12 +67,12 @@ type ConstraintReference struct {
 type SimulationStrategy string
 
 const (
-	// SimulationStrategyMultiSimulationsPerGroup represents a simulation strategy which runs independent multiple simulations differentiated by scaling a node for a combination
+	// SimulationStrategyOneNodeManySimulationsPerGroup represents a simulation strategy which runs independent multiple simulations differentiated by scaling a single node for a combination
 	// of NodePool, NodeTemplate and AvailabilityZone.
-	SimulationStrategyMultiSimulationsPerGroup SimulationStrategy = "multi-simulations-per-group"
-	// SimulationStrategySingleSimulationPerGroup represents a simulation strategy which runs a single simulation by scaling multiple nodes for a given
-	// group for all combinations of NodePool, NodeTemplate and AvailabilityZone.
-	SimulationStrategySingleSimulationPerGroup SimulationStrategy = "single-simulation-per-group"
+	SimulationStrategyOneNodeManySimulationsPerGroup SimulationStrategy = "one-node-many-simulations-per-group"
+	// SimulationStrategyManyNodesOneSimulationPerGroup represents a simulation strategy which runs a single simulation per group by scaling multiple nodes for
+	//all combinations of NodePool, NodeTemplate and AvailabilityZone.
+	SimulationStrategyManyNodesOneSimulationPerGroup SimulationStrategy = "many-nodes-one-simulation-per-group"
 )
 
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
