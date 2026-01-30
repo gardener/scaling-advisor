@@ -1,0 +1,71 @@
+@startuml Scaling Advisor Module Dependencies
+
+!define INTERNAL_MODULE #E1F5FF
+!define EXTERNAL_MODULE #F5F5F5
+
+' Internal modules
+package "github.com/gardener/scaling-advisor" {
+  [api] INTERNAL_MODULE
+  [common] INTERNAL_MODULE
+  [minkapi] INTERNAL_MODULE
+  [operator] INTERNAL_MODULE
+  [planner] INTERNAL_MODULE
+  [pricing] INTERNAL_MODULE
+  [samples] INTERNAL_MODULE
+  [service] INTERNAL_MODULE
+  [tools] INTERNAL_MODULE
+}
+
+' External dependencies
+package "Kubernetes" {
+  [k8s.io/api] EXTERNAL_MODULE
+  [k8s.io/client-go] EXTERNAL_MODULE
+  [k8s.io/kube-scheduler] EXTERNAL_MODULE
+  [sigs.k8s.io/controller-runtime] EXTERNAL_MODULE
+}
+
+' Planner dependencies
+[planner] --> [api]
+[planner] --> [common]
+[planner] ..> [k8s.io/kube-scheduler] : uses
+
+' Service dependencies
+[service] --> [api]
+[service] --> [planner]
+[service] --> [common]
+
+' Operator dependencies
+[operator] --> [api]
+[operator] --> [common]
+[operator] ..> [sigs.k8s.io/controller-runtime] : uses
+
+' MinkAPI dependencies
+[minkapi] --> [api]
+[minkapi] --> [common]
+
+' Pricing dependencies
+[pricing] --> [api]
+[pricing] --> [common]
+
+' Samples dependencies
+[samples] --> [api]
+[samples] --> [planner]
+[samples] --> [service]
+
+' API dependencies
+[api] ..> [k8s.io/api] : uses
+[api] ..> [k8s.io/client-go] : uses
+
+' Common dependencies
+[common] ..> [k8s.io/client-go] : uses
+
+' Legend
+legend right
+  |= Color |= Type |
+  | <INTERNAL_MODULE>   </INTERNAL_MODULE> | Internal Module |
+  | <EXTERNAL_MODULE>   </EXTERNAL_MODULE> | External Dependency |
+  | --> | Direct Dependency |
+  | ..> | External Dependency |
+endlegend
+
+@enduml
