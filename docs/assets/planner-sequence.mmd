@@ -1,0 +1,145 @@
+sequenceDiagram
+    participant Client
+    participant Planner as defaultPlanner
+    participant Multi as multiSimulator
+    participant Group as SimulationGroup
+    participant Sim as Simulation
+    participant View as SandboxView
+    participant Scheduler as Scheduler
+    participant Scorer as NodeScorer
+
+    Client->>+Planner: Plan(ctx, ScalingAdviceRequest, resultCh)
+
+    Note over Planner: Validate request and<br/>wrap context with logging
+
+    Planner->>Planner: validateRequest()
+    Planner->>Planner: wrapPlanContext()
+
+    Planner->>+Multi: getScaleOutSimulator()
+    Note over Multi: Create multiSimulator<br/>with ViewAccess, SchedulerLauncher,<br/>NodeScorer
+    Multi-->>-Planner: multiSimulator
+
+    Planner->>+Multi: Simulate(ctx, resultCh)
+
+    Note over Multi: Create request view and<br/>synchronize with snapshot
+    Multi->>+View: createSandboxView("request-{ID}")
+    View-->>-Multi: requestView
+
+    Multi->>Multi: SynchronizeView(requestView, snapshot)
+
+    Note over Multi: Create simulation groups<br/>by NodePool, NodeTemplate, Zone
+    Multi->>Multi: createSimulationGroups()
+
+    loop For each NodePool
+        loop For each NodeTemplate
+            loop For each Zone
+                Multi->>+Sim: createSimulation(name, args)
+                Note over Sim: Create singleNodeScalingSimulation<br/>with NodePool, NodeTemplate, Zone
+                Sim-->>-Multi: simulation
+                Multi->>Group: AddSimulation(simulation)
+            end
+        end
+    end
+
+    Note over Multi: Run stabilization cycles<br/>for all groups
+    Multi->>Multi: runStabilizationCyclesForAllGroups()
+
+    loop For each SimulationGroup
+        loop Until stabilized or no unscheduled pods
+            Multi->>Multi: runStabilizationCycleForGroup()
+            Multi->>Multi: runSinglePassForGroup()
+
+            Note over Multi,Group: Run all simulations in group<br/>concurrently
+            Multi->>+Group: Run(ctx, getViewFn)
+
+            par For each Simulation in Group
+                Group->>+View: getViewFn(sim.Name())
+                View-->>-Group: simView
+
+                Group->>+Sim: Run(ctx, simView)
+
+                Note over Sim: Get unscheduled pods<br/>from view
+                Sim->>View: ListPods()
+                View-->>Sim: pods
+                Sim->>Sim: getUnscheduledPodsMap()
+
+                Note over Sim: Create simulation node<br/>based on NodeTemplate
+                Sim->>Sim: buildSimulationNode()
+                Sim->>View: CreateObject(node)
+                View-->>Sim: simNode
+
+                Note over Sim: Launch scheduler for<br/>this simulation
+                Sim->>+Scheduler: launchSchedulerForSimulation()
+                Scheduler-->>-Sim: schedulerHandle
+
+                Note over Sim: Track until stabilized<br/>(poll events periodically)
+                Sim->>Sim: trackUntilStabilized()
+
+                loop Until stabilized or all pods scheduled
+                    Sim->>Sim: track(ctx, view)
+                    Sim->>View: GetEventSink().List()
+                    View-->>Sim: events
+
+                    loop For each scheduling event
+                        alt Event is "Scheduled"
+                            Sim->>View: GetObject(pod)
+                            View-->>Sim: scheduledPod
+                            Sim->>Sim: handleScheduledPodEvent()
+                            Note over Sim: Update scheduledPodsByNode<br/>Remove from unscheduledPods
+                        else Event is "FailedScheduling"
+                            Note over Sim: Log failure, continue
+                        end
+                    end
+
+                    alt No new events for maxUnchangedTrackAttempts
+                        Note over Sim: Simulation stabilized
+                    end
+                end
+
+                Note over Sim: Get assignments to other nodes
+                Sim->>Sim: getOtherAssignments()
+
+                Note over Sim: Create SimulationRunResult
+                Sim->>Sim: Result()
+                Sim-->>-Group: SimulationRunResult
+            end
+
+            Group-->>-Multi: SimulationGroupRunResult
+
+            Note over Multi: Process results and<br/>score nodes
+            Multi->>Multi: processSimulationGroupRunResults()
+
+            loop For each valid SimulationRunResult
+                Multi->>+Scorer: Compute(nodeScoreArgs)
+                Note over Scorer: Calculate node score based on<br/>resources, cost, etc.
+                Scorer-->>-Multi: NodeScore
+            end
+
+            Multi->>+Scorer: Select(allScores)
+            Note over Scorer: Select best NodeScore<br/>from all candidates
+            Scorer-->>-Multi: winnerScore
+
+            alt Winner found
+                Note over Multi: Get winner's view as<br/>next group pass view
+                Multi->>View: Reset EventSink
+                Multi->>Group: Reset()
+
+                alt AdviceGenerationMode == Incremental
+                    Multi->>Client: Send ScalingPlanResult<br/>via resultCh
+                end
+
+                Note over Multi: Append winner to results<br/>Continue to next pass
+            else No winner
+                Note over Multi: No more scaling possible<br/>Continue to next group
+            end
+        end
+    end
+
+    alt AdviceGenerationMode == AllAtOnce
+        Multi->>Client: Send consolidated<br/>ScalingPlanResult via resultCh
+    end
+
+    Multi->>Multi: Close() - cleanup sandbox views
+    Multi-->>-Planner: complete
+
+    Planner-->>-Client: Plan complete
