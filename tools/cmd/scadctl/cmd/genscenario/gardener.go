@@ -182,13 +182,10 @@ var gardenerCmd = &cobra.Command{
 		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
 			return fmt.Errorf("error creating snapshot variants: %v", err)
 		}
-
-		scalingConstraintSavePath := path.Join(
-			scenarioDir,
-			"scaling-constraints-"+time.Now().UTC().Format("20060102T150405Z")+".json",
-		)
-		if err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scalingConstraintSavePath); err != nil {
-			return fmt.Errorf("error saving scaling constraint: %v", err)
+		saveFilename := "scaling-constraints-" + time.Now().UTC().Format("20060102T150405Z") + ".json"
+		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, saveFilename)
+		if err != nil {
+			return fmt.Errorf("cannot save scaling constraint at %q: %v", scalingConstraintSavePath, err)
 		}
 		fmt.Printf("Saved scaling constraints at %s\n", scalingConstraintSavePath)
 		return nil

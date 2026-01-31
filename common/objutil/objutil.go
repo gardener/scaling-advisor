@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"time"
@@ -84,18 +85,22 @@ func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
 }
 
 // SaveRuntimeObjAsJSONToPath saves the given runtime object ToYAML serializes the given k8s runtime.Object as json using
-// the ScalingAdvisorScheme and saves the serialized data to the given filePath.
-func SaveRuntimeObjAsJSONToPath(obj runtime.Object, jsonPath string) error {
+// the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
+// NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
+func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
 	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: false, Pretty: true})
-	f, err := os.OpenFile(jsonPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
+	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
+	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("failed to open file %q: %w", jsonPath, err)
+		err = fmt.Errorf("failed to open file %q: %w", savePath, err)
+		return
 	}
 	err = ser.Encode(obj, f)
 	if err != nil {
-		return fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), jsonPath, err)
+		err = fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
 	}
-	return nil
+	return
 }
 
 // SetMetaObjectGVK checks if the given object has missing Kind and Version.
