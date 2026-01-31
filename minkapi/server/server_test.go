@@ -17,7 +17,7 @@ import (
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"

@@ -97,14 +97,3 @@ var (
 	// This server maybe used standalone or embedded within the scaling-advisor operator.
 	DefaultMinKAPIBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultMinKAPIPort))
 )
-
-// ContextKey is the type alias for scaling advisor related context keys
-type ContextKey string
-
-const (
-	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
-	VerbosityCtxKey ContextKey = "verbosity"
-
-	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-	TraceLogPathCtxKey ContextKey = "traceLogPath"
-)

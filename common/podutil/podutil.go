@@ -7,12 +7,12 @@ package podutil
 import (
 	"slices"
 
-	"github.com/gardener/scaling-advisor/common/objutil"
-
 	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 // UpdatePodCondition updates existing pod condition or creates a new one. Sets LastTransitionTime to now if the
@@ -77,17 +77,17 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 			SchedulerName:             info.SchedulerName,
 			Tolerations:               info.Tolerations,
 			PriorityClassName:         info.PriorityClassName,
-			Priority:                  info.Priority,
-			RuntimeClassName:          info.RuntimeClassName,
-			PreemptionPolicy:          info.PreemptionPolicy,
-			Overhead:                  objutil.Int64MapToResourceList(info.Overhead),
+			Priority:                  ptr.To(info.Priority),
+			RuntimeClassName:          ptr.To(info.RuntimeClassName),
+			PreemptionPolicy:          ptr.To(info.PreemptionPolicy),
+			Overhead:                  info.Overhead,
 			TopologySpreadConstraints: info.TopologySpreadConstraints,
 			ResourceClaims:            info.ResourceClaims,
 			Containers: []corev1.Container{
 				{
 					Name: info.Name + "-aggregated-container",
 					Resources: corev1.ResourceRequirements{
-						Requests: objutil.Int64MapToResourceList(info.AggregatedRequests),
+						Requests: info.AggregatedRequests,
 					},
 				},
 			},
@@ -119,8 +119,17 @@ func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodResourceInfo
 	return podResourceInfos
 }
 
+// PodInfosFromCoreV1Pods converts the given slice of corev1 Pod objects into a slice of planner.PodInfo objects.
+func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
+	podInfos := make([]planner.PodInfo, 0, len(pods))
+	for _, p := range pods {
+		podInfos = append(podInfos, AsPodInfo(p))
+	}
+	return podInfos
+}
+
 // PodResourceInfoFromCoreV1Pod extracts the AggregatedRequests for a single
-// corev1 pod resource alongwith its identification into a PodResourceInfo object.
+// corev1 pod resource along with its identification into a PodResourceInfo object.
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 	return planner.PodResourceInfo{
 		UID:                p.UID,
@@ -131,13 +140,14 @@ func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 
 // AggregatePodRequests computes the sum of resource requirements
 // for all the init containers and containers present in a pod.
-func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
-	aggregate := map[corev1.ResourceName]int64{}
+func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]resource.Quantity {
+	aggregate := map[corev1.ResourceName]resource.Quantity{}
 	containers := slices.AppendSeq(p.Spec.InitContainers, slices.Values(p.Spec.Containers))
 	for _, c := range containers {
-		cmap := objutil.ResourceListToInt64Map(c.Resources.Requests)
-		for k, v := range cmap {
-			aggregate[k] += v
+		for k, v := range c.Resources.Requests {
+			current := aggregate[k]
+			current.Add(v)
+			aggregate[k] = current
 		}
 	}
 	return aggregate
@@ -155,12 +165,12 @@ func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string
 // AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
 func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
-		ResourceMeta: planner.ResourceMeta{
+		BasicMeta: planner.BasicMeta{
 			UID:               pod.UID,
 			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
 			Labels:            pod.Labels,
 			Annotations:       pod.Annotations,
-			DeletionTimestamp: pod.DeletionTimestamp,
+			DeletionTimestamp: ptr.Deref(pod.DeletionTimestamp, metav1.Time{}).Time,
 			OwnerReferences:   pod.OwnerReferences,
 		},
 		AggregatedRequests:        AggregatePodRequests(&pod),
@@ -171,11 +181,26 @@ func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 		SchedulerName:             pod.Spec.SchedulerName,
 		Tolerations:               pod.Spec.Tolerations,
 		PriorityClassName:         pod.Spec.PriorityClassName,
-		Priority:                  pod.Spec.Priority,
-		PreemptionPolicy:          pod.Spec.PreemptionPolicy,
-		RuntimeClassName:          pod.Spec.RuntimeClassName,
-		Overhead:                  objutil.ResourceListToInt64Map(pod.Spec.Overhead),
+		Priority:                  ptr.Deref(pod.Spec.Priority, 0),
+		PreemptionPolicy:          ptr.Deref(pod.Spec.PreemptionPolicy, ""),
+		RuntimeClassName:          ptr.Deref(pod.Spec.RuntimeClassName, ""),
+		Overhead:                  pod.Spec.Overhead,
 		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
 		ResourceClaims:            pod.Spec.ResourceClaims,
 	}
+}
+
+// CountUnscheduledPods returns the count of unscheduled pods in the given slice of pods
+func CountUnscheduledPods(pods []corev1.Pod) (count int) {
+	for _, p := range pods {
+		if IsUnscheduledPod(&p) {
+			count++
+		}
+	}
+	return
+}
+
+// IsUnscheduledPod determines if a given pod is unscheduled by checking if the NodeName in its spec is empty.
+func IsUnscheduledPod(pod *corev1.Pod) bool {
+	return pod.Spec.NodeName == ""
 }

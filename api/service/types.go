@@ -34,13 +34,24 @@ type ScalingAdvisorService interface {
 	// GenerateAdvice begins generating scaling advice for the given request.
 	//
 	// It returns a channel of ScalingAdviceResult values. The channel will be closed
-	// when advice generation is completed or a fatal error has occurred.
+	// when advice generation is completed, an error has occurred, or the context is canceled or timed-out.
 	//
 	// The caller must consume all events from the channel until it is closed to
-	// avoid leaking goroutines inside the planner implementation.
+	// avoid leaking goroutines inside the service.
 	//
 	// The provided context can be used to cancel generation prematurely. In this
 	// case, the channel will be closed without further events.
+	//
+	// Usage:
+	//
+	//	results := svc.GenerateAdvice(ctx, req)
+	//	for r := range results {
+	//	    if r.Err != nil {
+	//	        log.Printf("advice generation failed: %v", r.Err)
+	//	        break
+	//	    }
+	//	    process(r.Response)
+	//	}
 	GenerateAdvice(ctx context.Context, req planner.ScalingAdviceRequest) <-chan planner.ScalingAdviceResult
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/common/constants"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	configv1alpha1validation "github.com/gardener/scaling-advisor/api/config/v1alpha1/validation"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"

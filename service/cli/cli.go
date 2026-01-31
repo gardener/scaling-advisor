@@ -19,7 +19,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/api/service"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/planner/weights"
 	"github.com/gardener/scaling-advisor/pricing"
@@ -74,7 +74,7 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int, err error) {
 		return
 	}
 
-	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx, service.ProgramName)
+	app.Ctx, app.Cancel = commoncli.NewAppContext(ctx, service.ProgramName)
 	log := logr.FromContextOrDiscard(app.Ctx)
 	commoncli.PrintVersion(service.ProgramName)
 	embeddedMinKAPIKubeConfigPath := path.Join(os.TempDir(), "embedded-minkapi.yaml")

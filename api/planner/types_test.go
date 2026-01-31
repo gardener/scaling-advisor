@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -84,34 +85,43 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
 								corev1.LabelTopologyZone:              "us-east-1a",
+								corev1.LabelInstanceTypeStable:        "m5.large",
+								corev1.LabelHostname:                  "host1",
+								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.large",
 					},
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
 								corev1.LabelTopologyZone:              "us-east-1a",
+								corev1.LabelHostname:                  "host1",
+								corev1.LabelInstanceTypeStable:        "m5.large",
+								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.large",
 					},
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-b",
 								commonconstants.LabelNodePoolName:     "pool-b",
 								corev1.LabelTopologyRegion:            "us-west-2",
 								corev1.LabelTopologyZone:              "us-west-2a",
+								corev1.LabelInstanceTypeStable:        "m5.large",
+								corev1.LabelHostname:                  "host1",
+								corev1.LabelArchStable:                "amd64",
 							},
 						},
 						InstanceType: "m5.xlarge",
@@ -141,7 +151,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodePoolName: "pool-a",
 								corev1.LabelTopologyRegion:        "us-east-1",
@@ -159,7 +169,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
@@ -177,7 +187,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -195,7 +205,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicMeta: BasicMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -243,16 +253,16 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 
 func TestPodInfo_GetResourceInfo(t *testing.T) {
 	podInfo := PodInfo{
-		ResourceMeta: ResourceMeta{
+		BasicMeta: BasicMeta{
 			UID: "pod-uid-123",
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
 				Name:      "test-pod",
 			},
 		},
-		AggregatedRequests: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    1000,
-			corev1.ResourceMemory: 2048,
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
 		},
 	}
 
@@ -262,9 +272,9 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 			Namespace: "default",
 			Name:      "test-pod",
 		},
-		AggregatedRequests: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    1000,
-			corev1.ResourceMemory: 2048,
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
 		},
 	}
 
@@ -277,32 +287,32 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 
 func TestNodeInfo_GetResourceInfo(t *testing.T) {
 	nodeInfo := NodeInfo{
-		ResourceMeta: ResourceMeta{
+		BasicMeta: BasicMeta{
 			NamespacedName: types.NamespacedName{
 				Name: "node-1",
 			},
 		},
 		InstanceType: "m5.large",
-		Capacity: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    4000,
-			corev1.ResourceMemory: 8192,
+		Capacity: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU:    resource.MustParse("4000"),
+			corev1.ResourceMemory: resource.MustParse("8192"),
 		},
-		Allocatable: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    3800,
-			corev1.ResourceMemory: 7680,
+		Allocatable: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU:    resource.MustParse("3800"),
+			corev1.ResourceMemory: resource.MustParse("7680"),
 		},
 	}
 
 	expected := NodeResourceInfo{
 		Name:         "node-1",
 		InstanceType: "m5.large",
-		Capacity: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    4000,
-			corev1.ResourceMemory: 8192,
+		Capacity: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU:    resource.MustParse("4000"),
+			corev1.ResourceMemory: resource.MustParse("8192"),
 		},
-		Allocatable: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    3800,
-			corev1.ResourceMemory: 7680,
+		Allocatable: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU:    resource.MustParse("3800"),
+			corev1.ResourceMemory: resource.MustParse("7680"),
 		},
 	}
 

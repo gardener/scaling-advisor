@@ -44,8 +44,8 @@ spec:
             properties:
               consumerID:
                 description: |-
-                  ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
-                  It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
+                  ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advice.
+                  It allows a consumer to accept or reject the advice by checking the ConsumerID for which the scaling advice has been created.
                 type: string
               defaultBackoffPolicy:
                 description: DefaultBackoffPolicy defines a default backoff policy
@@ -243,9 +243,6 @@ spec:
                 description: ScaleInPolicy defines the default scale in policy to
                   be used when scaling in a node pool.
                 type: object
-            required:
-            - consumerID
-            - nodePools
             type: object
           status:
             description: Status defines the status of the ScalingConstraint.
@@ -307,11 +304,10 @@ spec:
                   - type
                   type: object
                 type: array
-            required:
-            - conditions
             type: object
         required:
         - spec
+        - status
         type: object
     served: true
     storage: true

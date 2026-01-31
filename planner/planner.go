@@ -15,7 +15,6 @@ import (
 	"github.com/gardener/scaling-advisor/planner/simulator/multi"
 	"github.com/gardener/scaling-advisor/planner/util"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
@@ -72,25 +71,25 @@ func validateRequest(req planner.ScalingAdviceRequest) error {
 }
 
 func (p *defaultPlanner) getScaleOutSimulator(req *planner.ScalingAdviceRequest) (planner.ScaleOutSimulator, error) {
-	switch req.SimulationStrategy {
+	switch req.SimulatorStrategy {
 	case "":
 		return nil, fmt.Errorf("%w: simulation strategy must be specified", planner.ErrCreateSimulator)
-	case commontypes.SimulationStrategyOneNodeManySimulationsPerGroup:
+	case commontypes.SimulatorStrategySingleNodeMultiSim:
 		nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", planner.ErrCreateSimulator, err)
 		}
 		return multi.NewScaleOutSimulator(p.args.ViewAccess, p.args.SchedulerLauncher, nodeScorer, p.args.SimulatorConfig, req)
-	case commontypes.SimulationStrategyManyNodesOneSimulationPerGroup:
-		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulationStrategy)
+	case commontypes.SimulatorStrategyMultiNodeSingleSim:
+		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulatorStrategy)
 	default:
-		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", planner.ErrUnsupportedSimulationStrategy, req.SimulationStrategy)
+		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", planner.ErrUnsupportedSimulatorStrategy, req.SimulatorStrategy)
 	}
 }
 
 func wrapPlanContext(ctx context.Context, traceLogsDir string, req planner.ScalingAdviceRequest) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
-	genCtx = context.WithValue(genCtx, commonconstants.VerbosityCtxKey, req.DiagnosticVerbosity)
+	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 0 {
 		if traceLogsDir == "" {
 			traceLogsDir = ioutil.GetTempDir()

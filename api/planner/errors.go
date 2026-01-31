@@ -42,12 +42,10 @@ var (
 	ErrCreateNodeScorer = errors.New("failed to create node scorer")
 	// ErrLoadInstanceTypeInfo is a sentinel error indicating that instance type information could not be loaded.
 	ErrLoadInstanceTypeInfo = errors.New("cannot load provider instance type info")
-	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
-	ErrMissingRequiredLabel = errors.New("missing required label")
 	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
 	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
-	// ErrUnsupportedSimulationStrategy is a sentinel error indicating that an unsupported simulation strategy was specified.
-	ErrUnsupportedSimulationStrategy = errors.New("unsupported simulation strategy")
+	// ErrUnsupportedSimulatorStrategy is a sentinel error indicating that an unsupported simulator strategy was specified.
+	ErrUnsupportedSimulatorStrategy = errors.New("unsupported simulator strategy")
 	// ErrInvalidScalingAdviceRequest is a sentinel error indicating that the scaling advice request is invalid.
 	ErrInvalidScalingAdviceRequest = errors.New("invalid scaling advice request")
 )

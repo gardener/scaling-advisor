@@ -7,7 +7,7 @@ package genscenario
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	stdjson "encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -18,14 +18,14 @@ import (
 	"strings"
 	"time"
 
-	apiv1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -163,8 +163,18 @@ var gardenerCmd = &cobra.Command{
 			return fmt.Errorf("error creating shoot access: %v", err)
 		}
 
-		// Generate cluster snapshot
-		snap, err := createClusterSnapshot(ctx, shootAccess)
+		// Generate scaling constraint
+		extensionWorker, err := shootAccess.GetShootWorker(ctx)
+		if err != nil {
+			return fmt.Errorf("error getting shoot worker: %v", err)
+		}
+
+		scalingConstraint, err := createScalingConstraint(extensionWorker)
+		if err != nil {
+			return fmt.Errorf("error creating scaling constraint: %v", err)
+		}
+
+		snap, err := createClusterSnapshot(ctx, scalingConstraint, shootAccess)
 		if err != nil {
 			return fmt.Errorf("error creating cluster snapshot: %v", err)
 		}
@@ -172,25 +182,12 @@ var gardenerCmd = &cobra.Command{
 		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
 			return fmt.Errorf("error creating snapshot variants: %v", err)
 		}
-
-		// Generate cluster scaling constraint
-		extensionWorker, err := shootAccess.GetShootWorker(ctx)
+		saveFilename := "scaling-constraints-" + time.Now().UTC().Format("20060102T150405Z") + ".json"
+		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, saveFilename)
 		if err != nil {
-			return fmt.Errorf("error getting shoot worker: %v", err)
+			return fmt.Errorf("cannot save scaling constraint at %q: %v", scalingConstraintSavePath, err)
 		}
-
-		csc, err := createScalingConstraint(extensionWorker)
-		if err != nil {
-			return fmt.Errorf("error creating cluster scaling constraint: %v", err)
-		}
-		clusterScalingConstraintFileName := path.Join(
-			scenarioDir,
-			"cluster-scaling-constraints-"+time.Now().UTC().Format("20060102T150405Z")+".json",
-		)
-		if err := saveDataToFile(csc, clusterScalingConstraintFileName); err != nil {
-			return fmt.Errorf("error saving cluster scaling constraint: %v", err)
-		}
-		fmt.Printf("Created cluster scaling constraints at %s\n", clusterScalingConstraintFileName)
+		fmt.Printf("Saved scaling constraints at %s\n", scalingConstraintSavePath)
 		return nil
 	},
 }
@@ -205,13 +202,11 @@ func (sc *ShootCoordinate) getFullyQualifiedName() string {
 // ---------------------------------------------------------------------------------
 
 func createShootAccess(ctx context.Context) (*access, error) {
-	clientScheme := typeinfo.SupportedScheme
-
+	clientScheme := objutil.ScalingAdvisorScheme
 	landscapeClient, err := createLandscapeDynamicClient(shootCoords)
 	if err != nil {
 		return nil, err
 	}
-
 	seedName, err := getSeedName(ctx, landscapeClient, shootCoords)
 	if err != nil {
 		return nil, err
@@ -229,7 +224,6 @@ func createShootAccess(ctx context.Context) (*access, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	targetShootCoords := ShootCoordinate{
 		Landscape: strings.TrimPrefix(shootCoords.Landscape, "sap-landscape-"),
 		Project:   "garden-" + shootCoords.Project,
@@ -243,7 +237,6 @@ func createShootAccess(ctx context.Context) (*access, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &access{
 		shootCoord:      shootCoords,
 		scheme:          clientScheme,
@@ -438,7 +431,7 @@ func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, 
 	return volMap, nil
 }
 
-func createClusterSnapshot(ctx context.Context, a *access) (planner.ClusterSnapshot, error) {
+func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstraint, a *access) (planner.ClusterSnapshot, error) {
 	var snap planner.ClusterSnapshot
 
 	nodes, err := a.ListNodes(ctx, minkapi.MatchCriteria{})
@@ -459,14 +452,36 @@ func createClusterSnapshot(ctx context.Context, a *access) (planner.ClusterSnaps
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
 	snap.Pods = make([]planner.PodInfo, 0, len(pods))
-	for i, pod := range pods {
-		sanitizePod(&pod, i)
+	for _, pod := range pods {
+		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
 	for _, node := range nodes {
+		poolName := node.Labels["worker.gardener.cloud/pool"]
+		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
+		var matchingNodeTemplateName string
+		for _, p := range sc.Spec.NodePools {
+			if p.Name == poolName {
+				for _, nt := range p.NodeTemplates {
+					if nt.InstanceType == instanceType {
+						matchingNodeTemplateName = nt.Name
+					}
+				}
+			}
+		}
+		if matchingNodeTemplateName == "" {
+			return snap, fmt.Errorf("failed to find matching node template for pool %q and instance-type %q", poolName, instanceType)
+		}
 		sanitizeNode(&node)
-		snap.Nodes = append(snap.Nodes, nodeutil.AsNodeInfo(node, volMap))
+		ni := nodeutil.AsNodeInfo(node, volMap)
+		ni.Labels[commonconstants.LabelNodePoolName] = poolName
+		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
+		ni.Labels[commonconstants.LabelNodeTemplateName] = matchingNodeTemplateName
+		if err = ni.ValidateLabels(); err != nil {
+			return snap, err
+		}
+		snap.Nodes = append(snap.Nodes, ni)
 	}
 
 	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeKubeSystemPods)
@@ -495,7 +510,7 @@ func createClusterSnapshot(ctx context.Context, a *access) (planner.ClusterSnaps
 // the removed nodes with the nodes scaled up by autoscaling component.
 func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
 	formattedTime := time.Now().UTC().Format("20060102T150405Z")
-	baseSnapshotFileName := path.Join(dir, "snapshot-"+formattedTime+"-baseline.json")
+	baseSnapshotFileName := path.Join(dir, "cluster-snapshot-"+formattedTime+"-baseline.json")
 	if err := saveDataToFile(snap, baseSnapshotFileName); err != nil {
 		return err
 	}
@@ -504,7 +519,7 @@ func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
 	for _, numNodesToRemove := range []int{1, 5, 10, 20} {
 		numNodesToRemove = min(numNodesToRemove, len(snap.Nodes))
 		countNodeRemovedSnapFileName := path.Join(
-			dir, "snapshot-"+formattedTime+"-latest-"+strconv.Itoa(numNodesToRemove)+".json",
+			dir, "cluster-snapshot-"+formattedTime+"-latest-"+strconv.Itoa(numNodesToRemove)+".json",
 		)
 		if _, err := os.Stat(countNodeRemovedSnapFileName); !os.IsNotExist(err) {
 			continue // Snapshot already created
@@ -558,21 +573,21 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 	return worker.Object, nil
 }
 
-func createScalingConstraint(extensionWorker map[string]any) (csc *apiv1alpha1.ScalingConstraint, err error) {
+func createScalingConstraint(extensionWorker map[string]any) (csc *sacorev1alpha1.ScalingConstraint, err error) {
 	nodePools, err := createNodePools(extensionWorker)
 	if err != nil {
 		err = fmt.Errorf("error creating node pools: %v", err)
 		return
 	}
 
-	csc = &apiv1alpha1.ScalingConstraint{}
+	csc = &sacorev1alpha1.ScalingConstraint{}
 	csc.Spec.NodePools = nodePools
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }
 
-func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
-	var nodePools []apiv1alpha1.NodePool
+func createNodePools(worker map[string]any) ([]sacorev1alpha1.NodePool, error) {
+	var nodePools []sacorev1alpha1.NodePool
 	region, _, err := unstructured.NestedString(worker, "spec", "region")
 	if err != nil {
 		return nil, fmt.Errorf("worker is missing region: %v", err)
@@ -584,7 +599,7 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 	}
 
 	for _, pool := range pools {
-		var nodePool apiv1alpha1.NodePool
+		var nodePool sacorev1alpha1.NodePool
 		poolObj, ok := pool.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("error getting pool object from the worker: %v", err)
@@ -601,6 +616,7 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 			return nil, fmt.Errorf("error getting node pool labels: %v", err)
 		} else if found {
 			nodePool.Labels = labels
+			maps.DeleteFunc(nodePool.Labels, sanitizeDeleteFunc)
 		}
 		if annotations, found, err := unstructured.NestedStringMap(poolObj, "annotations"); err != nil {
 			return nil, fmt.Errorf("error getting node pool annotations: %v", err)
@@ -610,11 +626,11 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 		if taints, found, err := unstructured.NestedSlice(poolObj, "taints"); err != nil {
 			return nil, fmt.Errorf("error getting node pool taints")
 		} else if found {
-			taintsJSON, err := json.Marshal(taints)
+			taintsJSON, err := stdjson.Marshal(taints)
 			if err != nil {
 				return nil, fmt.Errorf("error getting the JSON encoding of taints slice: %v", err)
 			}
-			if err = json.Unmarshal(taintsJSON, &nodePool.Taints); err != nil {
+			if err = stdjson.Unmarshal(taintsJSON, &nodePool.Taints); err != nil {
 				return nil, fmt.Errorf("error converting taints JSON to Taints object: %v", err)
 			}
 		}
@@ -636,7 +652,7 @@ func createNodePools(worker map[string]any) ([]apiv1alpha1.NodePool, error) {
 	return nodePools, nil
 }
 
-func constructNodeTemplate(pool map[string]any, name string, priority int32) (*apiv1alpha1.NodeTemplate, error) {
+func constructNodeTemplate(pool map[string]any, name string, priority int32) (*sacorev1alpha1.NodeTemplate, error) {
 	var (
 		capacity, kubeReserved map[string]any
 		ok                     bool
@@ -655,7 +671,7 @@ func constructNodeTemplate(pool map[string]any, name string, priority int32) (*a
 			return nil, fmt.Errorf("could not get kubeReserved")
 		}
 	}
-	nodeTemplate := apiv1alpha1.NodeTemplate{
+	nodeTemplate := sacorev1alpha1.NodeTemplate{
 		Name:         name,
 		Architecture: pool["architecture"].(string),
 		InstanceType: pool["machineType"].(string),
@@ -680,13 +696,13 @@ func saveDataToFile(data any, path string) error {
 	}
 	defer ioutil.CloseQuietly(file)
 
-	encoder := json.NewEncoder(file)
+	encoder := stdjson.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }
 
 func obfuscateNodeNames(snap *planner.ClusterSnapshot) error {
-	snapData, err := json.Marshal(snap)
+	snapData, err := stdjson.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("could not marshal snapshot: %w", err)
 	}
@@ -697,7 +713,7 @@ func obfuscateNodeNames(snap *planner.ClusterSnapshot) error {
 		newName := "node-" + strconv.Itoa(i)
 		snapStr = strings.ReplaceAll(snapStr, originalName, newName)
 	}
-	err = json.Unmarshal([]byte(snapStr), snap)
+	err = stdjson.Unmarshal([]byte(snapStr), snap)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal snapshot string to snapshot object: %w", err)
 	}
@@ -705,8 +721,7 @@ func obfuscateNodeNames(snap *planner.ClusterSnapshot) error {
 	return nil
 }
 
-func sanitizePod(pod *corev1.Pod, index int) {
-	pod.Name = "pod-" + strconv.Itoa(index)
+func sanitizePod(pod *corev1.Pod) {
 	maps.DeleteFunc(pod.Labels, sanitizeDeleteFunc)
 	maps.DeleteFunc(pod.Annotations, sanitizeDeleteFunc)
 	pod.ManagedFields = nil
@@ -722,9 +737,7 @@ func sanitizeNode(node *corev1.Node) {
 	maps.DeleteFunc(node.Annotations, sanitizeDeleteFunc)
 	node.ManagedFields = nil
 	requiredConditions := []corev1.NodeConditionType{
-		corev1.NodeReady, corev1.NodeDiskPressure, corev1.NodePIDPressure, corev1.NodeMemoryPressure,
-		// Node Problem Detector conditions
-		"ReadonlyFilesystem", "KernelDeadlock",
+		corev1.NodeReady, // only preserve ready conditions, memory-pressure/disk-pressure/etc are now in taints
 	}
 	node.Status.Conditions = slices.DeleteFunc(node.Status.Conditions,
 		func(cond corev1.NodeCondition) bool {
@@ -755,6 +768,8 @@ var (
 		"resources.gardener.cloud", "shoot.gardener.cloud", "node.gardener.cloud/machine-name",
 		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
 		"controller-revision-hash", "gardener.cloud/role", "networking.gardener.cloud/", "node.gardener.cloud/critical-component",
-		"pod-template-generation", "reference.resources.gardener.cloud/",
+		"pod-template-generation", "reference.resources.gardener.cloud/", "csi.volume.kubernetes.io",
+		"volumes.kubernetes.io/controller-managed-attach-detach", "volumes.kubernetes.io/controller-managed-attach-detach",
+		"topology.ebs", "worker.gardener", "worker.garden", "topology.k8s.aws",
 	}
 )

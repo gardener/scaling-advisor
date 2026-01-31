@@ -20,41 +20,27 @@ import (
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// LoadBasicScalingConstraints loads the basic scaling constraints for the given poolCardinality from the sample data filesystem.
-func LoadBasicScalingConstraints(poolCardinality PoolCardinality) (*sacorev1alpha1.ScalingConstraint, error) {
+// LoadBasicScalingConstraints loads the basic scaling constraints for the given poolCategory from the sample data filesystem.
+func LoadBasicScalingConstraints(poolCategory PoolCategory) (*sacorev1alpha1.ScalingConstraint, error) {
 	var clusterConstraints sacorev1alpha1.ScalingConstraint
-	clusterConstraintsPath := fmt.Sprintf("data/%s-scaling-constraints.json", poolCardinality)
-	switch poolCardinality {
-	case PoolCardinalityOne, PoolCardinalityTwo:
+	clusterConstraintsPath := fmt.Sprintf("data/scaling-constraints/%s.json", poolCategory)
+	switch poolCategory {
+	case PoolCategoryBasicOne, PoolCategoryBasicTwo:
 		if err := objutil.LoadIntoRuntimeObj(dataFS, clusterConstraintsPath, &clusterConstraints); err != nil {
-			return nil, fmt.Errorf("failed to load scaling constraints for poolCardinality %q: %v", poolCardinality, err)
+			return nil, fmt.Errorf("failed to load scaling constraints for poolCategory %q: %v", poolCategory, err)
 		}
 	default:
-		return nil, fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, poolCardinality)
+		return nil, fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, poolCategory)
 	}
 	return &clusterConstraints, nil
 }
 
-// LoadBasicClusterSnapshot loads the basic cluster snapshot variant from the sample data filesystem for the given poolCardinality
-func LoadBasicClusterSnapshot(poolCardinality PoolCardinality) (*planner.ClusterSnapshot, error) {
-	var clusterSnapshot planner.ClusterSnapshot
-	clusterSnapshotPath := fmt.Sprintf("data/%s-cluster-snapshot.json", poolCardinality)
-	switch poolCardinality {
-	case PoolCardinalityOne, PoolCardinalityTwo:
-		if err := objutil.LoadJSONIntoObject(dataFS, clusterSnapshotPath, &clusterSnapshot); err != nil {
-			return nil, fmt.Errorf("failed to load basic cluster snapshot for poolCardinality %q: %w", poolCardinality, err)
-		}
-	default:
-		return nil, fmt.Errorf("%w: unknown %q", commonerrors.ErrUnimplemented, poolCardinality)
-	}
-	return &clusterSnapshot, nil
-}
-
-// IncreaseUnscheduledWorkLoad increases the unscheduled pods by delta for the given cluster snapshot
+// IncreaseUnscheduledWorkLoad replicates each unscheduled pod by delta inside the given cluster snapshot
 func IncreaseUnscheduledWorkLoad(snapshot *planner.ClusterSnapshot, amount int) error {
 	var extra []planner.PodInfo
 	for _, upod := range snapshot.GetUnscheduledPods() {
@@ -90,12 +76,12 @@ var simplePodTemplatePath = "data/simple-pod-template.yaml"
 
 // GenerateSimplePodsWithTemplateData generates a slice of corev1.Pod objects with count length using the given pod template data in podTmplData.
 // Also generates the pod YAMLs for these pods within the temp directory.
-func GenerateSimplePodsWithTemplateData(count int, podTmplData SimplePodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsWithTemplateData(num int, podTmplData SimplePodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, simplePodTemplatePath)
 	if err != nil {
 		return
 	}
-	for i := 1; i <= count; i++ {
+	for i := 1; i <= num; i++ {
 		var pod corev1.Pod
 		tmplData := fillPodTemplateDataDefaults(podTmplData)
 		tmplData.Name = tmplData.Name + "-" + strconv.Itoa(i)
@@ -104,6 +90,7 @@ func GenerateSimplePodsWithTemplateData(count int, podTmplData SimplePodTemplate
 		if err != nil {
 			return
 		}
+		pod.CreationTimestamp = metav1.Now()
 		pods = append(pods, pod)
 		podYAMLPaths = append(podYAMLPaths, outYAMLPath)
 	}
@@ -112,24 +99,24 @@ func GenerateSimplePodsWithTemplateData(count int, podTmplData SimplePodTemplate
 
 // GenerateSimplePodsForResourceCategory generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
 // Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourceCategory(count int, resourceCategory ResourcePairsName, metadata SimplePodMetadata) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, metadata SimplePodMetadata) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	podTmplData := SimplePodTemplateData{
 		SimplePodMetadata: metadata,
-		Resources:         resourceCategory.AsResourcePairs(),
+		Resources:         category.AsResourceList(),
 	}
-	return GenerateSimplePodsWithTemplateData(count, podTmplData)
+	return GenerateSimplePodsWithTemplateData(num, podTmplData)
 }
 
 func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTemplateData {
 	podTmplData.AppLabels = fillAppLabelDefaults(podTmplData.AppLabels)
 	if podTmplData.Namespace == "" {
-		podTmplData.Namespace = "default"
+		podTmplData.Namespace = corev1.NamespaceDefault
 	}
 	if podTmplData.Name == "" {
 		podTmplData.Name = podTmplData.AppLabels.Name
 	}
 	if len(podTmplData.Resources) == 0 {
-		podTmplData.Resources = Pea.AsResourcePairs()
+		podTmplData.Resources = ResourceCategoryPea.AsResourceList()
 	}
 	return podTmplData
 }
@@ -175,6 +162,6 @@ func GenerateAndLoad[T any, U runtime.Object](tmpl *template.Template, params T,
 }
 
 var (
-	//go:embed data/*.*
+	//go:embed data
 	dataFS embed.FS
 )

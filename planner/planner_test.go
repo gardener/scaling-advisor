@@ -7,6 +7,7 @@ package planner
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -19,194 +20,169 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/gardener/scaling-advisor/samples"
 	"github.com/google/go-cmp/cmp"
+	corev1 "k8s.io/api/core/v1"
 )
 
-const defaultVerbosity = 0
+const defaultTestVerbosity = 0
 
-func Test1PoolBasicUnitScaleOut(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
+const defaultPlannerTimeout = 10 * time.Minute
+
+// TestArgs represents the common test args for the scale-out unit-tests of the ScalingPlanner
+type TestArgs struct {
+	NumUnscheduledPerResourceCategory map[samples.ResourceCategory]int
+	PoolCategory                      samples.PoolCategory
+	SimulatorStrategy                 commontypes.SimulatorStrategy
+	NodeScoringStrategy               commontypes.NodeScoringStrategy
+	AdviceGenerationMode              commontypes.ScalingAdviceGenerationMode
+	Timeout                           time.Duration
+}
+
+// TestData holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
+type TestData struct {
+	Planner        plannerapi.ScalingPlanner
+	RunContext     context.Context
+	SnapshotPath   string
+	NodePlacements []sacorev1alpha1.NodePlacement
+	Request        plannerapi.ScalingAdviceRequest
+}
+
+func TestBasicOnePoolUnitScaleOut(t *testing.T) {
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryBerry: 1,
+		},
+	})
 	if !ok {
 		return
 	}
-	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
+	amount := 2
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryBerry: amount,
+		},
+	})
 	if !ok {
 		return
 	}
-	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         int32(amount),
+			},
+		},
+	}
+	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+// TestBasicOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
+func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
+	amount := 4
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryHalfBerry: amount,
+		},
+	})
+	if !ok {
+		return
+	}
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         int32(amount / 2),
+			},
+		},
+	}
+	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+// TestBasicOnePoolHalfAndFullFitPodScaleout tests scale out of one pool using both HalfBerry and Berry pods that half-fit
+// and full-fit into pool P's NodeTemplate.
+func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
+	amount := 4
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryHalfBerry: amount,
+			samples.ResourceCategoryBerry:     amount,
+		},
+	})
+	if !ok {
+		return
+	}
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         int32(math.Round(float64(amount) * 1.5)),
+			},
+		},
+	}
+	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+// TestBasicTwoPoolFullFitPodScaleOut tests the scale-out scenarios for basic variant with 2 pools, where there is only one node template for each pool
+// and where any unscheduled pod nearly fully fits into the node template.
+func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
+	amount := 3
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicTwo,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryBerry: amount,
+			samples.ResourceCategoryGrape: amount,
+		},
+		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
+	})
+	if !ok {
+		return
+	}
+	pPlacement, qPlacement := testData.NodePlacements[0], testData.NodePlacements[1]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		UnsatisfiedPodNames: nil,
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement:   pPoolPlacement,
-				CurrentReplicas: 1,
-				Delta:           1,
+				NodePlacement: pPlacement,
+				Delta:         int32(amount),
+			},
+			{
+				NodePlacement: qPlacement,
+				Delta:         int32(amount),
 			},
 		},
 	}
-	gotPlan := getScaleOutPlan(t, ctx, p, req)
+	gotPlan := obtainScaleOutPlan(t, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-}
-
-func Test1PoolBasicMultiScaleout(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*20)
-	if !ok {
-		return
-	}
-	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
-	if !ok {
-		return
-	}
-	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
-	numExtraBerryPods := 2
-	req, ok = increaseUnscheduledWorkload(req, numExtraBerryPods, t)
-	if !ok {
-		return
-	}
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: nil,
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement:   pPoolPlacement,
-				CurrentReplicas: 1,
-				Delta:           int32(numExtraBerryPods + 1),
-			},
-		},
-	}
-	gotPlan := getScaleOutPlan(t, ctx, p, req)
-	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-}
-
-// Test2PoolBasicUnitScaleOut tests the scale-out scenarios for basic variant with 2 pools, unit scaling each pool..
-func Test2PoolBasicUnitScaleOut(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
-	if !ok {
-		return
-	}
-	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityTwo)
-	if !ok {
-		return
-	}
-	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
-	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
-	pPlacement, qPlacement := placements[0], placements[1]
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: nil,
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement:   pPlacement,
-				CurrentReplicas: 1,
-				Delta:           1,
-			},
-			{
-				NodePlacement:   qPlacement,
-				CurrentReplicas: 0,
-				Delta:           1,
-			},
-		},
-	}
-	gotPlan := getScaleOutPlan(t, ctx, p, req)
-	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-}
-
-// Test2PoolBasicMultiScaleout tests the basic variant of the scale-out scenario for 2 pools, with more than one scaling for each pool.
-func Test2PoolBasicMultiScaleout(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*30)
-	if !ok {
-		return
-	}
-	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityTwo)
-	if !ok {
-		return
-	}
-	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
-	placements := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)
-	unscheduledUnitIncrease := 2
-	req, ok = increaseUnscheduledWorkload(req, unscheduledUnitIncrease, t)
-	if !ok {
-		return
-	}
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: nil,
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement:   placements[0],
-				CurrentReplicas: 1,
-				Delta:           int32(1 + unscheduledUnitIncrease),
-			},
-			{
-				NodePlacement:   placements[1],
-				CurrentReplicas: 0,
-				Delta:           int32(1 + unscheduledUnitIncrease),
-			},
-		},
-	}
-	gotPlan := getScaleOutPlan(t, ctx, p, req)
-	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-}
-
-func TestReusePlannerAcrossRequests(t *testing.T) {
-	ctx, p, ok := createScalingPlanner(t, t.Name(), time.Second*10)
-	if !ok {
-		return
-	}
-	constraints, snapshot, ok := loadBasicConstraintsAndSnapshot(t, samples.PoolCardinalityOne)
-	if !ok {
-		return
-	}
-	pPoolPlacement := placementsForFirstTemplateAndFirstAvailabilityZone(constraints.Spec.NodePools)[0]
-	req := requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
-	req.ID = "TestReusePlannerAcrossRequests-A"
-	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: nil,
-		Items: []sacorev1alpha1.ScaleOutItem{
-			{
-				NodePlacement:   pPoolPlacement,
-				CurrentReplicas: 1,
-				Delta:           1,
-			},
-		},
-	}
-	gotPlan := getScaleOutPlan(t, ctx, p, req)
-	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-
-	req = requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t, constraints, snapshot)
-	req.ID = "TestReusePlannerAcrossRequests-B"
-	gotPlan = getScaleOutPlan(t, ctx, p, req)
-	assertExactScaleOutPlan(t, wantPlan, gotPlan)
-}
-
-func placementsForFirstTemplateAndFirstAvailabilityZone(pools []sacorev1alpha1.NodePool) []sacorev1alpha1.NodePlacement {
-	placements := make([]sacorev1alpha1.NodePlacement, 0, len(pools))
-	for _, pool := range pools {
-		placements = append(placements, sacorev1alpha1.NodePlacement{
-			NodePoolName:     pool.Name,
-			NodeTemplateName: pool.NodeTemplates[0].Name,
-			InstanceType:     pool.NodeTemplates[0].InstanceType,
-			Region:           pool.Region,
-			AvailabilityZone: pool.AvailabilityZones[0],
-		})
-	}
-	return placements
-}
-
-func increaseUnscheduledWorkload(in plannerapi.ScalingAdviceRequest, amount int, t *testing.T) (out plannerapi.ScalingAdviceRequest, ok bool) {
-	out = in
-	out.Snapshot.Pods = slices.Clone(in.Snapshot.Pods)
-	err := samples.IncreaseUnscheduledWorkLoad(out.Snapshot, amount)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	ok = true
-	return
 }
 
 func assertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPlan) {
@@ -220,79 +196,86 @@ func assertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
 		return strings.Compare(a.NodePoolName, b.NodePoolName)
 	})
-	if !logScaleOutPlan(t, got) {
-		return
-	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)
 	}
 }
 
-func requestForLeastCostAndOneNodeMultiSimulationPerGroupStrategy(t *testing.T,
-	constraints *sacorev1alpha1.ScalingConstraint,
-	snapshot *plannerapi.ClusterSnapshot) plannerapi.ScalingAdviceRequest {
-	return plannerapi.ScalingAdviceRequest{
-		CreationTime: time.Now(),
-		ScalingAdviceRequestRef: plannerapi.ScalingAdviceRequestRef{
-			ID:            t.Name(),
-			CorrelationID: t.Name(),
-		},
-		Constraint:           constraints,
-		Snapshot:             snapshot,
-		DiagnosticVerbosity:  defaultVerbosity,
-		SimulationStrategy:   commontypes.SimulationStrategyOneNodeManySimulationsPerGroup,
-		ScoringStrategy:      commontypes.NodeScoringStrategyLeastCost,
-		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
-	}
-}
-
-func createRunContext(t *testing.T, name string, duration time.Duration) context.Context {
-	t.Helper()
-	testCtx, cancelFn := context.WithTimeout(t.Context(), duration)
-	t.Cleanup(cancelFn) // enough — no need to clean up the child cancel func separately
-	runCtx, _ := commoncli.CreateAppContext(testCtx, name)
-	return runCtx
-}
-
-func loadBasicConstraintsAndSnapshot(t *testing.T, poolCardinality samples.PoolCardinality) (constraints *sacorev1alpha1.ScalingConstraint, snapshot *plannerapi.ClusterSnapshot, ok bool) {
-	constraints, err := samples.LoadBasicScalingConstraints(poolCardinality)
-	if err != nil {
-		t.Error(err)
+// createTestData creates the TestData for the given TestArgs.
+func createTestData(t *testing.T, args TestArgs) (testData TestData, ok bool) {
+	if len(args.NumUnscheduledPerResourceCategory) == 0 {
+		t.Fatal("args.NumUnscheduledPerResourceCategory mandatory")
 		return
 	}
-	snapshot, err = samples.LoadBasicClusterSnapshot(poolCardinality)
-	if err != nil {
-		t.Errorf("failed to load basic cluster snapshot for poolCardinality %q: %v", poolCardinality, err)
+	var err error
+	testData.RunContext, testData.Planner, ok = createTestScalingPlanner(t, args.Timeout)
+	if !ok {
 		return
+	}
+	testData.Request.CreationTime = time.Now()
+	testData.Request.DiagnosticVerbosity = defaultTestVerbosity
+	testData.Request.ID = t.Name()
+	if args.NodeScoringStrategy != "" {
+		testData.Request.ScoringStrategy = args.NodeScoringStrategy
+	} else {
+		testData.Request.ScoringStrategy = commontypes.NodeScoringStrategyLeastCost
+	}
+	if args.SimulatorStrategy != "" {
+		testData.Request.SimulatorStrategy = args.SimulatorStrategy
+	} else {
+		testData.Request.SimulatorStrategy = commontypes.SimulatorStrategySingleNodeMultiSim
+	}
+	if args.AdviceGenerationMode != "" {
+		testData.Request.AdviceGenerationMode = args.AdviceGenerationMode
+	} else {
+		testData.Request.AdviceGenerationMode = commontypes.ScalingAdviceGenerationModeAllAtOnce
+	}
+	testData.Request.Constraint, err = samples.LoadBasicScalingConstraints(args.PoolCategory)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	var pods []corev1.Pod
+	for c, n := range args.NumUnscheduledPerResourceCategory {
+		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodMetadata{
+			Name: string(c),
+		})
+		if err != nil {
+			t.Fatalf("failed to generate simple pods for resource category %s: %v", c, err)
+			return
+		}
+		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
+	}
+	for _, pool := range testData.Request.Constraint.Spec.NodePools {
+		for _, nt := range pool.NodeTemplates {
+			for _, az := range pool.AvailabilityZones {
+				testData.NodePlacements = append(testData.NodePlacements, sacorev1alpha1.NodePlacement{
+					NodePoolName:     pool.Name,
+					NodeTemplateName: nt.Name,
+					InstanceType:     nt.InstanceType,
+					Region:           pool.Region,
+					AvailabilityZone: az,
+				})
+			}
+		}
 	}
 	ok = true
 	return
 }
 
-func logScaleOutPlan(t *testing.T, scaleOutPlan *sacorev1alpha1.ScaleOutPlan) bool {
-	t.Helper()
-	if scaleOutPlan == nil {
-		return false
-	}
-	scaleOutPlanBytes, err := json.Marshal(scaleOutPlan)
-	if err != nil {
-		t.Errorf("failed to marshal scale-out plan: %v", err)
-		return false
-	}
-	t.Logf("produced scale-out plan: %+v", string(scaleOutPlanBytes))
-	return true
-}
-
-func createScalingPlanner(t *testing.T, testName string, duration time.Duration) (runCtx context.Context, planner plannerapi.ScalingPlanner, ok bool) {
+func createTestScalingPlanner(t *testing.T, duration time.Duration) (runCtx context.Context, planner plannerapi.ScalingPlanner, ok bool) {
 	var err error
 	defer func() {
 		if err != nil {
 			ok = false
-			t.Errorf("failed to create test planner for test %q: %v", testName, err)
+			t.Errorf("failed to create test planner for test %q: %v", t.Name(), err)
 			return
 		}
 	}()
-	runCtx = createRunContext(t, testName, duration)
+	if duration == 0 {
+		duration = defaultPlannerTimeout
+	}
+	runCtx = testutil.NewTestContext(t, duration, defaultTestVerbosity)
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		return
@@ -334,11 +317,10 @@ func createScalingPlanner(t *testing.T, testName string, duration time.Duration)
 	return
 }
 
-//revive:disable:context-as-argument
-func getScaleOutPlan(t *testing.T, ctx context.Context, p plannerapi.ScalingPlanner, req plannerapi.ScalingAdviceRequest) *sacorev1alpha1.ScaleOutPlan {
+func obtainScaleOutPlan(t *testing.T, testData *TestData) *sacorev1alpha1.ScaleOutPlan {
 	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
 	defer close(resultCh)
-	p.Plan(ctx, req, resultCh)
+	testData.Planner.Plan(testData.RunContext, testData.Request, resultCh)
 	result := <-resultCh
 	if result.Err != nil {
 		t.Fatalf("failed to generate scale-out plan: %v", result.Err)

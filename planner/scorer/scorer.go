@@ -144,7 +144,7 @@ func (l LeastWaste) Compute(args planner.NodeScorerArgs) (nodeScore planner.Node
 			err = fmt.Errorf("%w: least-waste node scoring failed for simulation %q: %v", planner.ErrComputeNodeScore, args.ID, err)
 		}
 	}()
-	var wastage = make(map[corev1.ResourceName]int64)
+	var wastage = make(corev1.ResourceList)
 	//start with allocatable of scaled candidate node
 	maps.Copy(wastage, args.ScaledNodePodAssignment.NodeResources.Allocatable)
 	//subtract resource requests of pods scheduled on scaled node and existing nodes to find delta
@@ -153,7 +153,8 @@ func (l LeastWaste) Compute(args planner.NodeScorerArgs) (nodeScore planner.Node
 		if waste, found := wastage[resourceName]; !found {
 			continue
 		} else {
-			wastage[resourceName] = waste - request
+			waste.Sub(request)
+			wastage[resourceName] = waste
 		}
 	}
 	//calculate single score from wastage using weights
@@ -203,13 +204,13 @@ func (l LeastWaste) Select(nodeScores []planner.NodeScore) (*planner.NodeScore, 
 }
 
 // getNormalizedResourceUnits returns the aggregated sum of the resources in terms of normalized resource units
-func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights map[corev1.ResourceName]float64) float64 {
+func getNormalizedResourceUnits(resources corev1.ResourceList, weights map[corev1.ResourceName]float64) float64 {
 	nru := 0.0
 	for resourceName, quantity := range resources {
 		if weight, found := weights[resourceName]; !found {
 			continue
 		} else {
-			nru += weight * float64(quantity)
+			nru += weight * quantity.AsApproximateFloat64()
 		}
 	}
 	return nru
@@ -217,8 +218,8 @@ func getNormalizedResourceUnits(resources map[corev1.ResourceName]int64, weights
 
 // getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
 // map containing the sums for each resource type
-func getAggregatedScheduledPodsResources(scaledNodeAssignments *planner.NodePodAssignment, otherAssignments []planner.NodePodAssignment) map[corev1.ResourceName]int64 {
-	var scheduledResources = make(map[corev1.ResourceName]int64)
+func getAggregatedScheduledPodsResources(scaledNodeAssignments *planner.NodePodAssignment, otherAssignments []planner.NodePodAssignment) corev1.ResourceList {
+	var scheduledResources = make(corev1.ResourceList)
 	if scaledNodeAssignments != nil {
 		//add resources required by pods scheduled on scaled candidate node
 		for _, pod := range scaledNodeAssignments.ScheduledPods {
@@ -235,12 +236,13 @@ func getAggregatedScheduledPodsResources(scaledNodeAssignments *planner.NodePodA
 }
 
 // addPodRequests adds the pod's requests to aggregateResources resource-wise
-func addPodRequests(podRequest, aggregateResources map[corev1.ResourceName]int64) {
+func addPodRequests(podRequest, aggregateResources corev1.ResourceList) {
 	for resourceName, request := range podRequest {
 		if value, ok := aggregateResources[resourceName]; ok {
-			aggregateResources[resourceName] = value + request
+			value.Add(request)
+			aggregateResources[resourceName] = value
 		} else {
-			aggregateResources[resourceName] = request
+			aggregateResources[resourceName] = request.DeepCopy()
 		}
 	}
 }
