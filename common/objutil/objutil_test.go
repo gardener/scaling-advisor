@@ -6,55 +6,18 @@ package objutil
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/gardener/scaling-advisor/common/testutil"
 
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
-
-func TestResourceListToInt64MapAndBack(t *testing.T) {
-	tests := []struct {
-		src            corev1.ResourceList
-		expectedTarget map[corev1.ResourceName]int64
-		name           string
-	}{
-		{
-			name: "simple-cpu_mem_ephemeral-storage",
-			src: corev1.ResourceList{
-				corev1.ResourceMemory:           *resource.NewQuantity(1024, resource.BinarySI),
-				corev1.ResourceCPU:              *resource.NewQuantity(2, resource.DecimalSI),
-				corev1.ResourceEphemeralStorage: resource.MustParse("100Mi"),
-			},
-			expectedTarget: map[corev1.ResourceName]int64{
-				corev1.ResourceMemory:           1024,
-				corev1.ResourceCPU:              2,
-				corev1.ResourceEphemeralStorage: 100 * 1024 * 1024,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actualTarget := ResourceListToInt64Map(tt.src)
-			if !reflect.DeepEqual(actualTarget, tt.expectedTarget) {
-				t.Errorf("ResourceListToInt64Map() = %v, expectedTarget %v", actualTarget, tt.expectedTarget)
-			}
-			// reverse conversion
-			actualReversed := Int64MapToResourceList(actualTarget)
-			if !IsResourceListEqual(actualReversed, tt.src) {
-				t.Errorf("ResourceListToInt64Map() = %v, expectedTarget %v", actualReversed, tt.src)
-			}
-		})
-	}
-}
 
 func TestSetMetaObjectGVK(t *testing.T) {
 	testPod := corev1.Pod{

@@ -24,6 +24,11 @@ var (
 	ErrExecuteTemplate = errors.New("cannot execute template")
 	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
 	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
+	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
+	ErrMissingRequiredLabel = errors.New("missing required label")
+
+	// ErrSerialization is a sentinel error indicating that serialization of an object failed
+	ErrSerialization = errors.New("failed to serialize obj")
 )
 
 var (

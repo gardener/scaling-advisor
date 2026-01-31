@@ -62,13 +62,11 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerap
 		return
 	}
 
-	if err = util.SynchronizeView(ctx, requestView, m.request.Snapshot); err != nil {
+	if err = util.SynchronizeView(ctx, requestView, &m.request.Snapshot); err != nil {
 		return
 	}
 
-	if logutil.VerbosityFromContext(ctx) > 3 {
-		_ = viewutil.LogNodeAndPodNames(ctx, "REQUEST-VIEW_BEFORE-SIMULATE", requestView)
-	}
+	_ = viewutil.LogNodeAndPodNames(ctx, "requestView", requestView)
 
 	simulationGroups, err := m.createSimulationGroups(m.request)
 	if err != nil {
@@ -202,7 +200,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 				log.Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
-			if logutil.VerbosityFromContext(passCtx) >= 2 {
+			if logutil.VerbosityFromContext(passCtx) > 3 {
 				err = viewutil.LogNodeAndPodNames(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupPassView)
 				if err != nil {
 					return

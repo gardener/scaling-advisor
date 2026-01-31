@@ -18,7 +18,7 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	commoncli "github.com/gardener/scaling-advisor/common/cli"
+	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
@@ -62,7 +62,7 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}
-	app.Ctx, app.Cancel = commoncli.CreateAppContext(ctx, minkapi.ProgramName)
+	app.Ctx, app.Cancel = commoncli.NewAppContext(ctx, minkapi.ProgramName)
 	log := logr.FromContextOrDiscard(app.Ctx)
 	app.Server, err = server.New(ctx, cliOpts.Config)
 	if err != nil {

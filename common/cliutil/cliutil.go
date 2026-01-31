@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cli
+package cliutil
 
 import (
 	"context"
@@ -94,10 +94,10 @@ func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
 	return nil
 }
 
-// CreateAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
+// NewAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
 // a cancellation function for the returned context.
 // NOTE: Should be invoked only AFTER parsing program flags, so that the logger instance is initialized with logger flags.
-func CreateAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
+func NewAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	// Set up logr with klog backend using NewKlogr

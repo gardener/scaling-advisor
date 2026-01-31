@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/planner"
@@ -95,7 +94,7 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 
 func initSuite(ctx context.Context) (suite suiteState, err error) {
 	ctx = logr.NewContext(ctx, log)
-	ctx = context.WithValue(ctx, commonconstants.VerbosityCtxKey, 1)
+	ctx = context.WithValue(ctx, commontypes.VerbosityCtxKey, 1)
 	app, _, err := cli.LaunchApp(ctx)
 	if err != nil {
 		return

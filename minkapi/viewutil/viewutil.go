@@ -9,6 +9,8 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -39,18 +41,27 @@ func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) e
 	if err != nil {
 		return err
 	}
-	log.Info(prefix+"|Count of nodes and pods in the view", "viewName", view.GetName(), "totalPods", len(allPods), "totalNodes", len(allNodes))
-	for idx, pod := range allPods {
-		log.Info(prefix+"|pod in view", "viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace, "assignedNodeName", pod.Spec.NodeName)
-	}
-	for _, node := range allNodes {
-		log.Info(prefix+"|node in view",
-			"viewName", view.GetName(),
-			"nodeName", node.Name,
-			"nodePool", node.Labels[commonconstants.LabelNodePoolName],
-			"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
-			"region", node.Labels[corev1.LabelTopologyRegion],
-			"zone", node.Labels[corev1.LabelTopologyZone])
+	log.V(2).Info(prefix+"|count of nodes and pods",
+		"viewName", view.GetName(),
+		"totalNodes", len(allNodes),
+		"totalPods", len(allPods),
+		"totalUnscheduledPods", podutil.CountUnscheduledPods(allPods))
+	if logutil.VerbosityFromContext(ctx) > 2 {
+		for idx, pod := range allPods {
+			log.V(3).Info(prefix+"|pod in view",
+				"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
+				"assignedNodeName", pod.Spec.NodeName, "podRequests", pod.Spec.Containers[0].Resources.Requests)
+		}
+		for _, node := range allNodes {
+			log.V(3).Info(prefix+"|node in view",
+				"viewName", view.GetName(),
+				"nodeName", node.Name,
+				"nodePool", node.Labels[commonconstants.LabelNodePoolName],
+				"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
+				"region", node.Labels[corev1.LabelTopologyRegion],
+				"zone", node.Labels[corev1.LabelTopologyZone],
+				"allocatable", node.Status.Allocatable)
+		}
 	}
 	return nil
 }

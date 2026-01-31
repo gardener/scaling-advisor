@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	logsapiv1 "k8s.io/component-base/logs/api/v1"
@@ -20,7 +20,7 @@ import (
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
-	v := ctx.Value(commonconstants.VerbosityCtxKey)
+	v := ctx.Value(commontypes.VerbosityCtxKey)
 	if v == nil {
 		return 0
 	}
@@ -53,8 +53,8 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	base := logr.FromContextOrDiscard(ctx) // get the base logger from the context
 	mSink := &multiSink{sinks: []logr.LogSink{base.GetSink(), fileSink}}
 
-	combined := logr.New(mSink).WithCallDepth(1)
-	logCtx = context.WithValue(logr.NewContext(ctx, combined), commonconstants.TraceLogPathCtxKey, logPath)
+	combined := logr.New(mSink).WithCallDepth(3)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), commontypes.TraceLogPathCtxKey, logPath)
 
 	return
 }

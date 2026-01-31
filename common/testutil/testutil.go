@@ -9,14 +9,18 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"os/signal"
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/ktesting"
 	sigyaml "sigs.k8s.io/yaml"
 )
 
@@ -104,4 +108,19 @@ func LoadTestPods() (pods []corev1.Pod, err error) {
 func LoggerContext(ctx context.Context) context.Context {
 	log := klog.NewKlogr()
 	return logr.NewContext(ctx, log)
+}
+
+// NewTestContext wraps the test context with a deadline, a ktesting.Logger and with signal-cancelling support
+// and returns the same along with a cancellation function for the returned context.
+// NOTE: Meant to be used specifically for unit-tests.
+func NewTestContext(t *testing.T, timeout time.Duration, logVerbosity int) context.Context {
+	t.Helper()
+	testCtx, cancelFn := context.WithTimeout(t.Context(), timeout)
+	t.Cleanup(cancelFn) // enough — no need to clean up the child cancel func separately
+	ctx, _ := signal.NotifyContext(testCtx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	// Set up logr with ktesting
+	config := ktesting.NewConfig(ktesting.Verbosity(logVerbosity))
+	log := ktesting.NewLogger(t, config)
+	ctx = logr.NewContext(ctx, log)
+	return ctx
 }

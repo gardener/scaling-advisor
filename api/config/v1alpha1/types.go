@@ -97,8 +97,8 @@ type ScalingAdvisorServerConfig struct {
 type ScalingAdviceGenerationConfig struct {
 	// Mode defines the mode in which scaling advice is generated.
 	Mode commontypes.ScalingAdviceGenerationMode `json:"mode"`
-	// SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
-	SimulationStrategy commontypes.SimulationStrategy `json:"simulationStrategy"`
+	// SimulatorStrategy defines the simulator strategy used by the ScaleOutSimulator implementation.
+	SimulatorStrategy commontypes.SimulatorStrategy `json:"simulatorStrategy"`
 	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
 	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
 }
