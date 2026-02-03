@@ -12,10 +12,9 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/util"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
@@ -28,67 +27,87 @@ type multiSimulator struct {
 	viewAccess        minkapi.ViewAccess
 	schedulerLauncher plannerapi.SchedulerLauncher
 	nodeScorer        plannerapi.NodeScorer
-	// simulationCreator is a factory interface to create Simulations. This allows testing either the ScalingPlanner or MultiSimulator
-	// with mock simulations.
+	state             simulatorState
+	simulatorConfig   plannerapi.SimulatorConfig
+}
+
+type simulatorState struct {
+	requestView          minkapi.View
 	simulationCreator    plannerapi.SimulationCreator
-	request              *plannerapi.ScalingAdviceRequest
-	sandboxViews         []minkapi.View
-	simulatorConfig      plannerapi.SimulatorConfig
+	request              *plannerapi.Request
+	planResultCh         chan plannerapi.ScaleOutPlanResult
+	simulationViews      []minkapi.View
+	simulationGroups     []plannerapi.SimulationGroup
 	simulationRunCounter atomic.Uint32
 }
 
 // NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.
-func NewScaleOutSimulator(viewAccess minkapi.ViewAccess, schedulerLauncher plannerapi.SchedulerLauncher, nodeScorer plannerapi.NodeScorer, simulatorConfig plannerapi.SimulatorConfig, req *plannerapi.ScalingAdviceRequest) (plannerapi.ScaleOutSimulator, error) {
+func NewScaleOutSimulator(simulatorConfig plannerapi.SimulatorConfig, viewAccess minkapi.ViewAccess,
+	schedulerLauncher plannerapi.SchedulerLauncher, nodeScorer plannerapi.NodeScorer) (plannerapi.ScaleOutSimulator, error) {
 	return &multiSimulator{
-		viewAccess:           viewAccess,
-		schedulerLauncher:    schedulerLauncher,
-		nodeScorer:           nodeScorer,
-		simulatorConfig:      simulatorConfig,
-		simulationCreator:    plannerapi.SimulationCreatorFunc(NewSimulation),
-		simulationRunCounter: atomic.Uint32{},
-		request:              req,
+		simulatorConfig:   simulatorConfig,
+		viewAccess:        viewAccess,
+		schedulerLauncher: schedulerLauncher,
+		nodeScorer:        nodeScorer,
 	}, nil
 }
 
-func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- plannerapi.ScalingPlanResult) {
-	var err error
-	defer func() {
-		if err != nil {
-			util.SendPlanError(resultCh, m.request.GetRef(), err)
+func (m *multiSimulator) Simulate(ctx context.Context, request *plannerapi.Request, simulationCreator plannerapi.SimulationCreator) <-chan plannerapi.ScaleOutPlanResult {
+	m.state = simulatorState{
+		request:              request,
+		simulationCreator:    simulationCreator,
+		simulationRunCounter: atomic.Uint32{},
+		planResultCh:         make(chan plannerapi.ScaleOutPlanResult),
+	}
+	go func() {
+		defer close(m.state.planResultCh)
+		if err := m.doSimulate(ctx); err != nil {
+			util.SendScaleOutPlanError(m.state.planResultCh, request.GetRef(), err)
 		}
 	}()
-	requestView, err := m.createSandboxView(ctx, "request-"+m.request.ID, m.viewAccess.GetBaseView())
+	return m.state.planResultCh
+}
+
+func (m *multiSimulator) doSimulate(ctx context.Context) (err error) {
+	m.state.requestView, err = m.viewAccess.GetSandboxViewOverDelegate(ctx, "request-"+m.state.request.ID, m.viewAccess.GetBaseView())
 	if err != nil {
 		return
 	}
 
-	if err = util.SynchronizeView(ctx, requestView, &m.request.Snapshot); err != nil {
-		return
+	if err = util.SynchronizeView(ctx, m.state.requestView, &m.state.request.Snapshot); err != nil {
+		return err
 	}
 
-	_ = viewutil.LogNodeAndPodNames(ctx, "requestView", requestView)
+	_ = viewutil.LogNodeAndPodNames(ctx, "requestView", m.state.requestView)
 
-	simulationGroups, err := m.createSimulationGroups(m.request)
+	m.state.simulationGroups, err = m.createAndGroupSimulation()
 	if err != nil {
 		return
 	}
-	err = m.runStabilizationCyclesForAllGroups(ctx, requestView, simulationGroups, resultCh)
+
+	err = m.runStabilizationCyclesForAllGroups(ctx)
+	return
 }
 
 func (m *multiSimulator) Close() error {
 	var errs []error
-	for _, v := range m.sandboxViews {
+	for _, v := range m.state.simulationViews {
 		if err := v.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
+	clear(m.state.simulationViews)
+	m.state.simulationRunCounter.Store(0)
+	m.state.simulationCreator = nil
+	clear(m.state.simulationGroups)
+	m.state.request = nil
 	return errors.Join(errs...)
 }
 
-func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdviceRequest) ([]plannerapi.SimulationGroup, error) {
+func (m *multiSimulator) createAndGroupSimulation() ([]plannerapi.SimulationGroup, error) {
 	var allSimulations []plannerapi.Simulation
 	simCount := 0
-	for _, nodePool := range request.Constraint.Spec.NodePools {
+	for _, nodePool := range m.state.request.Constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
 			for _, zone := range nodePool.AvailabilityZones {
 				var (
@@ -97,7 +116,15 @@ func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdvic
 				)
 				simCount++
 				simulationName := fmt.Sprintf("sim-%d_%s_%s_%s", simCount, nodePool.Name, nodeTemplate.Name, zone)
-				sim, err = m.createSimulation(simulationName, &nodePool, nodeTemplate.Name, zone)
+				simArgs := &plannerapi.SimulationArgs{
+					RunCounter:        &m.state.simulationRunCounter,
+					AvailabilityZone:  zone,
+					NodePool:          &nodePool,
+					NodeTemplateName:  nodeTemplate.Name,
+					SchedulerLauncher: m.schedulerLauncher,
+					Config:            m.simulatorConfig,
+				}
+				sim, err = m.state.simulationCreator.Create(simulationName, simArgs)
 				if err != nil {
 					return nil, err
 				}
@@ -105,34 +132,26 @@ func (m *multiSimulator) createSimulationGroups(request *plannerapi.ScalingAdvic
 			}
 		}
 	}
-	return createSimulationGroups(m.request.GetRef(), allSimulations)
+	return groupSimulations(m.state.request.GetRef(), allSimulations)
 }
 
-func (m *multiSimulator) createSimulation(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplateName string, zone string) (plannerapi.Simulation, error) {
-	simArgs := &plannerapi.SimulationArgs{
-		RunCounter:        &m.simulationRunCounter,
-		AvailabilityZone:  zone,
-		NodePool:          nodePool,
-		NodeTemplateName:  nodeTemplateName,
-		SchedulerLauncher: m.schedulerLauncher,
-		Config:            m.simulatorConfig,
-	}
-	return m.simulationCreator.Create(simulationName, simArgs)
-}
-
-// runStabilizationCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled pods or the context is done.
-// If the request AdviceGenerationMode is Incremental, after running stabilization cycles for each group it will obtain the winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
-// If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and leftover unscheduled pods to construct a scale-out plan and sends it over the ScalingPlanResult channel.
-func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context, requestView minkapi.View, simGroups []plannerapi.SimulationGroup, resultCh chan<- plannerapi.ScalingPlanResult) (err error) {
+// runStabilizationCyclesForAllGroups runs all simulation groups until there is no winner or there are no leftover unscheduled
+// pods or the context is done.
+// If the request AdviceGenerationMode is Incremental, after running stabilization cycles for each group it will obtain
+// the winning node scores and leftover unscheduled pods to construct a ScaleOutPlanResult and send it over the
+// simulator's result channel.
+// If the request AdviceGenerationMode is AllAtOnce, after running all groups it will obtain all winning node scores and
+// leftover unscheduled pods to construct a ScaleOutPlanResult and send it over the simulator's result channel.
+func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context) (err error) {
 	var (
 		allWinnerNodeScores     []plannerapi.NodeScore
 		simGroupCycleResult     plannerapi.SimulationGroupCycleResult
 		allSimGroupCycleResults []plannerapi.SimulationGroupCycleResult
 		log                     = logr.FromContextOrDiscard(ctx)
 	)
-	simGroupCycleResult.NextGroupPassView = requestView
-	for groupIndex := 0; groupIndex < len(simGroups); {
-		group := simGroups[groupIndex]
+	simGroupCycleResult.NextGroupPassView = m.state.requestView
+	for groupIndex := 0; groupIndex < len(m.state.simulationGroups); {
+		group := m.state.simulationGroups[groupIndex]
 		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
 		grpCtx := logr.NewContext(ctx, log)
 		log.V(3).Info("Invoking runStabilizationCycleForGroup")
@@ -147,26 +166,27 @@ func (m *multiSimulator) runStabilizationCyclesForAllGroups(ctx context.Context,
 			continue
 		}
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
-		if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeIncremental {
-			log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
-			if err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), []plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
+		if m.state.request.AdviceGenerationMode.IsIncremental() {
+			log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.state.request.AdviceGenerationMode)
+			if err = util.SendScaleOutPlanResult(ctx, m.state.planResultCh, m.state.request, m.state.simulationRunCounter.Load(),
+				[]plannerapi.SimulationGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
 		}
 		allSimGroupCycleResults = append(allSimGroupCycleResults, simGroupCycleResult)
 		if len(simGroupCycleResult.LeftoverUnscheduledPods) == 0 {
-			log.Info("Ending further runStabilizationCycleForGroup since there are no LeftoverUnscheduledPods.")
+			log.V(3).Info("Ending further runStabilizationCycleForGroup since there are no LeftoverUnscheduledPods.")
 			break
 		}
 	}
 	if len(allWinnerNodeScores) == 0 {
-		log.Info("No winning node scores produced by any pass of all simulation groups.")
-		err = plannerapi.ErrNoScalingAdvice
+		log.V(3).Info("No winning node scores produced by any pass of all simulation groups.")
+		err = plannerapi.ErrNoScaleOutPlan
 		return
 	}
-	if m.request.AdviceGenerationMode == commontypes.ScalingAdviceGenerationModeAllAtOnce {
-		log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.request.AdviceGenerationMode)
-		err = util.SendPlanResult(ctx, m.request, resultCh, m.simulationRunCounter.Load(), allSimGroupCycleResults)
+	if m.state.request.AdviceGenerationMode.IsAllAtOnce() {
+		log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", m.state.request.AdviceGenerationMode)
+		err = util.SendScaleOutPlanResult(ctx, m.state.planResultCh, m.state.request, m.state.simulationRunCounter.Load(), allSimGroupCycleResults)
 	}
 	return
 }
@@ -212,7 +232,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 			// previous pass will be retained.
 			sgcr.LeftoverUnscheduledPods = winningNodeScore.UnscheduledPods
 			if len(sgcr.LeftoverUnscheduledPods) == 0 {
-				log.Info("All pods have been scheduled in pass")
+				log.V(2).Info("All pods have been scheduled in pass")
 				return
 			}
 		}
@@ -220,23 +240,22 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 }
 
 // runSinglePassForGroup runs all simulations in the given simulation group once over the provided passView, obtains the SimulationGroupRunResult,
-// invokes the NodeScorer for each valid SimulationRunResult to compute the NodeScore and aggregates scores into the SimulationGroupRunScores - which includes the WinnerScore if any.
+// invokes the NodeScorer for each valid SimulationRunResult to compute the NodeScore and aggregates scores into the SimulationGroupPassScores - which includes the WinnerScore if any.
 // If there is a WinnerScore among the SimulationRunResults within the SimulationGroupRunResult, it is returned along with the nextGroupView.
 // If there is no WinnerScore then return nil for both winnerNodeScore and the nextPassView.
 func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.SimulationGroup) (nextGroupPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
-		groupRunResult plannerapi.SimulationGroupRunResult
-		groupScores    plannerapi.SimulationGroupRunScores
-		winnerView     minkapi.View
+		groupScores plannerapi.SimulationGroupPassScores
+		winnerView  minkapi.View
 	)
-	groupRunResult, err = group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
+	simulationRunResults, err := group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
 		return m.createSandboxView(ctx, name, groupPassView)
 	})
 	if err != nil {
 		return
 	}
-	groupScores, winnerView, err = m.processSimulationGroupRunResults(log, m.nodeScorer, &groupRunResult)
+	groupScores, winnerView, err = m.processSimulationGroupRunResults(log, group.Name(), simulationRunResults)
 	if err != nil {
 		return
 	}
@@ -247,8 +266,10 @@ func (m *multiSimulator) runSinglePassForGroup(ctx context.Context, groupPassVie
 	}
 	winnerNodeScore = groupScores.WinnerScore
 	nextGroupPassView = winnerView
-	nextGroupPassView.GetEventSink().Reset()
-	group.Reset()
+	err = ioutil.ResetAll(nextGroupPassView.GetEventSink(), group)
+	if err != nil {
+		err = fmt.Errorf("cannot reset event sink of view %q and/or simulation group %q: %w", nextGroupPassView.GetName(), group.Name(), err)
+	}
 	return
 }
 
@@ -257,43 +278,44 @@ func (m *multiSimulator) createSandboxView(ctx context.Context, name string, gro
 	if err != nil {
 		return nil, err
 	}
-	m.sandboxViews = append(m.sandboxViews, sandboxView)
+	m.state.simulationViews = append(m.state.simulationViews, sandboxView)
 	return sandboxView, nil
 }
 
-func (m *multiSimulator) processSimulationGroupRunResults(log logr.Logger, scorer plannerapi.NodeScorer, groupResult *plannerapi.SimulationGroupRunResult) (simGroupRunScores plannerapi.SimulationGroupRunScores, winningView minkapi.View, err error) {
+func (m *multiSimulator) processSimulationGroupRunResults(log logr.Logger, simulationGroupName string, simulationRunResults []plannerapi.SimulationRunResult) (simGroupRunScores plannerapi.SimulationGroupPassScores, winningView minkapi.View, err error) {
 	var nodeScore plannerapi.NodeScore
 
-	for _, sr := range groupResult.SimulationResults {
+	for _, sr := range simulationRunResults {
 		if len(sr.ScaledNodePodAssignments) == 0 {
 			log.Info("No ScaledNodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name, "simulatedNodePlacement", sr.ScaledNodePlacements[0])
 			continue
 		}
-		nodeScore, err = scorer.Compute(mapSimulationResultToNodeScoreArgs(sr))
+		nodeScore, err = m.nodeScorer.Compute(mapSimulationResultToNodeScoreArgs(sr))
 		if err != nil {
-			err = fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", plannerapi.ErrComputeNodeScore, sr.Name, groupResult.Name, err)
+			err = fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", plannerapi.ErrComputeNodeScore, sr.Name, simulationGroupName, err)
 			return
 		}
 		simGroupRunScores.AllScores = append(simGroupRunScores.AllScores, nodeScore)
 	}
 	if len(simGroupRunScores.AllScores) > 0 {
-		simGroupRunScores.WinnerScore, err = scorer.Select(simGroupRunScores.AllScores)
+		simGroupRunScores.WinnerScore, err = m.nodeScorer.Select(simGroupRunScores.AllScores)
 		if err != nil {
-			err = fmt.Errorf("%w: node score selection failed for group %q: %w", plannerapi.ErrSelectNodeScore, groupResult.Name, err)
+			err = fmt.Errorf("%w: node score selection failed for group %q: %w", plannerapi.ErrSelectNodeScore, simulationGroupName, err)
 			return
 		}
 	}
 	if simGroupRunScores.WinnerScore == nil {
 		return
 	}
-	for _, sr := range groupResult.SimulationResults {
+	for _, sr := range simulationRunResults {
 		if sr.Name == simGroupRunScores.WinnerScore.Name {
 			winningView = sr.View
 			break
 		}
 	}
 	if winningView == nil {
-		err = fmt.Errorf("%w: winning view not found for winning node score %q of group %q", plannerapi.ErrSelectNodeScore, simGroupRunScores.WinnerScore.Name, groupResult.Name)
+		err = fmt.Errorf("%w: winning view not found for winning node score %q of group %q",
+			plannerapi.ErrSelectNodeScore, simGroupRunScores.WinnerScore.Name, simulationGroupName)
 		return
 	}
 	return

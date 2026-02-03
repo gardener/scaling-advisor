@@ -11,13 +11,13 @@ import (
 	"path/filepath"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 )
 
-var _ planner.GetProviderInstancePricingAccessFunc = GetInstancePricingAccess
+var _ pricingapi.GetProviderInstancePricingAccessFunc = GetInstancePricingAccess
 
 // GetInstancePricingAccess loads instance pricing details from the given pricingDataPath and delegates to GetInstancePricingFromData.
-func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPath string) (planner.InstancePricingAccess, error) {
+func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPath string) (pricingapi.InstancePricingAccess, error) {
 	data, err := os.ReadFile(filepath.Clean(pricingDataPath))
 	if err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func GetInstancePricingAccess(provider commontypes.CloudProvider, pricingDataPat
 }
 
 // GetInstancePricingFromData parses instance pricing data and returns an InstancePricingAccess implementation for the given provider.
-func GetInstancePricingFromData(provider commontypes.CloudProvider, data []byte) (planner.InstancePricingAccess, error) {
+func GetInstancePricingFromData(provider commontypes.CloudProvider, data []byte) (pricingapi.InstancePricingAccess, error) {
 	var ip infoAccess
 	var err error
 	ip.CloudProvider = provider
@@ -34,16 +34,16 @@ func GetInstancePricingFromData(provider commontypes.CloudProvider, data []byte)
 	return &ip, err
 }
 
-func parseInstanceTypeInfos(data []byte) (map[planner.PriceKey]planner.InstancePriceInfo, error) {
-	var jsonEntries []planner.InstancePriceInfo
+func parseInstanceTypeInfos(data []byte) (map[pricingapi.PriceKey]pricingapi.InstancePriceInfo, error) {
+	var jsonEntries []pricingapi.InstancePriceInfo
 	//consider using streaming decoder instead
 	err := json.Unmarshal(data, &jsonEntries)
 	if err != nil {
 		return nil, err
 	}
-	infosByPriceKey := make(map[planner.PriceKey]planner.InstancePriceInfo, len(jsonEntries))
+	infosByPriceKey := make(map[pricingapi.PriceKey]pricingapi.InstancePriceInfo, len(jsonEntries))
 	for _, info := range jsonEntries {
-		key := planner.PriceKey{
+		key := pricingapi.PriceKey{
 			Name:   info.InstanceType,
 			Region: info.Region,
 		}
@@ -52,15 +52,15 @@ func parseInstanceTypeInfos(data []byte) (map[planner.PriceKey]planner.InstanceP
 	return infosByPriceKey, nil
 }
 
-var _ planner.InstancePricingAccess = (*infoAccess)(nil)
+var _ pricingapi.InstancePricingAccess = (*infoAccess)(nil)
 
 type infoAccess struct {
-	infosByPriceKey map[planner.PriceKey]planner.InstancePriceInfo
+	infosByPriceKey map[pricingapi.PriceKey]pricingapi.InstancePriceInfo
 	CloudProvider   commontypes.CloudProvider
 }
 
-func (a infoAccess) GetInfo(region, instanceType string) (info planner.InstancePriceInfo, err error) {
-	info, ok := a.infosByPriceKey[planner.PriceKey{
+func (a *infoAccess) GetInfo(region, instanceType string) (info pricingapi.InstancePriceInfo, err error) {
+	info, ok := a.infosByPriceKey[pricingapi.PriceKey{
 		Name:   instanceType,
 		Region: region,
 	}]

@@ -11,12 +11,14 @@ import (
 
 const (
 	// DefaultTrackPollInterval is the default polling interval for tracking pod scheduling in the view of the simulator.
-	DefaultTrackPollInterval = 30 * time.Millisecond
+	DefaultTrackPollInterval = 20 * time.Millisecond
 	// DefaultMaxParallelSimulations is the default maximum number of parallel simulations that can be run by the scaling advisor simulator.
 	DefaultMaxParallelSimulations = 1
 	//DefaultMaxUnchangedTrackAttempts is the default value for the maximum number of unchanged simulation track attempts before
 	// a simulation run is considered as stabilized.
-	DefaultMaxUnchangedTrackAttempts = 2
+	DefaultMaxUnchangedTrackAttempts = 3
+	// ServiceName is the program binary name for the independent scaling planner microservice.
+	ServiceName = "scalp"
 )
 
 var (

@@ -6,8 +6,8 @@ REPO_HACK_DIR           := $(REPO_ROOT)/hack
 include $(REPO_HACK_DIR)/tools.mk
 
 # Change these variables as necessary.
-main_pkg_path = ./cmd/scadsvc
-binary_name = scadsvc
+main_pkg_path = ./cmd/scalp
+binary_name = scalp
 
 ## help: print this help message
 .PHONY: help

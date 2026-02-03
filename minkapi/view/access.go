@@ -39,7 +39,7 @@ func NewAccess(ctx context.Context, baseViewArgs *minkapi.ViewArgs) (va minkapi.
 	if err != nil {
 		return nil, err
 	}
-	log.Info("created base view", "name", bv.GetName())
+	log.V(2).Info("created base view", "name", bv.GetName())
 	va = &viewAccess{
 		baseView:     bv,
 		baseViewArgs: baseViewArgs,

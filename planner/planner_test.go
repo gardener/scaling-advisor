@@ -32,7 +32,7 @@ import (
 
 const defaultTestVerbosity = 0
 
-const defaultPlannerTimeout = 10 * time.Minute
+const defaultPlannerTimeout = 30 * time.Second
 
 // TestArgs represents the common test args for the scale-out unit-tests of the ScalingPlanner
 type TestArgs struct {
@@ -50,7 +50,7 @@ type TestData struct {
 	RunContext     context.Context
 	SnapshotPath   string
 	NodePlacements []sacorev1alpha1.NodePlacement
-	Request        plannerapi.ScalingAdviceRequest
+	Request        plannerapi.Request
 }
 
 func TestBasicOnePoolUnitScaleOut(t *testing.T) {
@@ -73,6 +73,33 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 		},
 	}
 	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+func TestReusePlannerAcrossRequests(t *testing.T) {
+	testData, ok := createTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryBerry: 1,
+		},
+	})
+	if !ok {
+		return
+	}
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testData.Request.ID = t.Name() + "-A"
+	gotPlan := obtainScaleOutPlan(t, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+	testData.Request.ID = t.Name() + "-B"
+	gotPlan = obtainScaleOutPlan(t, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
@@ -169,7 +196,6 @@ func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
 	}
 	pPlacement, qPlacement := testData.NodePlacements[0], testData.NodePlacements[1]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-		UnsatisfiedPodNames: nil,
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
 				NodePlacement: pPlacement,
@@ -318,12 +344,10 @@ func createTestScalingPlanner(t *testing.T, duration time.Duration) (runCtx cont
 }
 
 func obtainScaleOutPlan(t *testing.T, testData *TestData) *sacorev1alpha1.ScaleOutPlan {
-	resultCh := make(chan plannerapi.ScalingPlanResult, 1)
-	defer close(resultCh)
-	testData.Planner.Plan(testData.RunContext, testData.Request, resultCh)
+	resultCh := testData.Planner.Plan(testData.RunContext, testData.Request)
 	result := <-resultCh
-	if result.Err != nil {
-		t.Fatalf("failed to generate scale-out plan: %v", result.Err)
+	if result.Error != nil {
+		t.Fatalf("failed to generate scale-out plan: %v", result.Error)
 		return nil
 	} else {
 		planResultJson, err := json.MarshalIndent(result, "", "  ")

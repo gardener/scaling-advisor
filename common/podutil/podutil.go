@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 )
 
@@ -95,14 +94,15 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 	}
 }
 
-// PodResourceInfosFromPodInfo extracts the AggregatedRequests for each pod
-// from podInfos alongwith its identification into a PodResourceInfo slice.
+// PodResourceInfosFromPodInfo converts the given slice of PodInfo to a slice of leaner PodResourceInfo
+// where each PodResourceInfo only holds the Name, Namespace and the AggregatedRequests from the PodInfo.
 func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResourceInfo {
 	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
 		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
 			UID:                podInfo.UID,
-			NamespacedName:     podInfo.NamespacedName,
+			Name:               podInfo.Name,
+			Namespace:          podInfo.Namespace,
 			AggregatedRequests: podInfo.AggregatedRequests,
 		})
 	}
@@ -133,7 +133,8 @@ func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 	return planner.PodResourceInfo{
 		UID:                p.UID,
-		NamespacedName:     types.NamespacedName{Namespace: p.Namespace, Name: p.Name},
+		Name:               p.Name,
+		Namespace:          p.Namespace,
 		AggregatedRequests: AggregatePodRequests(p),
 	}
 }
@@ -157,7 +158,7 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]resource.Quanti
 func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		objectNames = append(objectNames, pod.String())
+		objectNames = append(objectNames, pod.GetNamespacedName().String())
 	}
 	return objectNames
 }
@@ -167,7 +168,8 @@ func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
 		BasicMeta: planner.BasicMeta{
 			UID:               pod.UID,
-			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
+			Name:              pod.Name,
+			Namespace:         pod.Namespace,
 			Labels:            pod.Labels,
 			Annotations:       pod.Annotations,
 			DeletionTimestamp: ptr.Deref(pod.DeletionTimestamp, metav1.Time{}).Time,

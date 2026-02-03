@@ -17,7 +17,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 )
 
@@ -96,7 +95,8 @@ func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plan
 	return plannerapi.NodeInfo{
 		BasicMeta: plannerapi.BasicMeta{
 			UID:               node.UID,
-			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
+			Name:              node.Name,
+			Namespace:         node.Namespace,
 			Labels:            node.Labels,
 			Annotations:       node.Annotations,
 			DeletionTimestamp: ptr.Deref(node.DeletionTimestamp, metav1.Time{}).Time,

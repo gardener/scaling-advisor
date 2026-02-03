@@ -18,6 +18,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/watchutil"
 	"github.com/go-logr/logr"
@@ -67,12 +68,13 @@ func NewSandbox(delegateView minkapi.View, args *minkapi.ViewArgs) (minkapi.View
 	}, nil
 }
 
-func (v *sandboxView) Reset() {
+func (v *sandboxView) Reset() error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	resetStores(v.stores)
+	resettable := asResettable(v.stores)
+	resettable = append(resettable, v.eventSink)
 	v.changeCount.Store(0)
-	v.eventSink.Reset()
+	return ioutil.ResetAll(resettable...)
 }
 
 func (v *sandboxView) Close() error {

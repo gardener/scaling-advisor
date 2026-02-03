@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package multi
+package simulation
 
 import (
 	"context"
@@ -31,19 +31,23 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ plannerapi.Simulation = (*singleNodeScalingSimulation)(nil)
+var _ plannerapi.Simulation = (*defaultScaler)(nil)
 
-type singleNodeScalingSimulation struct {
+// defaultScaler is the default implementation of a Simulation.
+// When run, scales nodes virtually for its known nodeTemplates, launches the embedded kube-scheduler,
+// updates its internal runState, which tracks virtual pod to virtual node assignments performed by the kube-scheduler
+// and computes a SimulationResult when there are no more scheduler events.
+type defaultScaler struct {
 	args         *plannerapi.SimulationArgs
-	nodeTemplate *sacorev1alpha1.NodeTemplate
+	nodeTemplate *sacorev1alpha1.NodeTemplate //TODO: change this to []nodeTemplate
 	state        *runState
 	name         string
 }
 
-var _ plannerapi.SimulationCreatorFunc = NewSimulation
+var _ plannerapi.SimulationCreatorFunc = NewDefault
 
-// NewSimulation creates a new Simulation instance with the specified name and using the given arguments after validation.
-func NewSimulation(name string, args *plannerapi.SimulationArgs) (plannerapi.Simulation, error) {
+// NewDefault creates a new Simulation instance with the specified name and using the given arguments after validation.
+func NewDefault(name string, args *plannerapi.SimulationArgs) (plannerapi.Simulation, error) {
 	var nodeTemplate *sacorev1alpha1.NodeTemplate
 	for _, nt := range args.NodePool.NodeTemplates {
 		if nt.Name == args.NodeTemplateName {
@@ -54,7 +58,7 @@ func NewSimulation(name string, args *plannerapi.SimulationArgs) (plannerapi.Sim
 	if err := validateSimulationArgs(args, nodeTemplate); err != nil {
 		return nil, err
 	}
-	sim := &singleNodeScalingSimulation{
+	sim := &defaultScaler{
 		name:         name,
 		args:         args,
 		nodeTemplate: nodeTemplate,
@@ -66,34 +70,35 @@ func NewSimulation(name string, args *plannerapi.SimulationArgs) (plannerapi.Sim
 	return sim, nil
 }
 
-func (s *singleNodeScalingSimulation) Reset() {
+func (s *defaultScaler) Reset() error {
 	s.state = &runState{
 		status:              plannerapi.ActivityStatusPending,
 		scheduledPodsByNode: make(map[string][]plannerapi.PodResourceInfo),
 	}
+	return nil
 }
 
-func (s *singleNodeScalingSimulation) NodePool() *sacorev1alpha1.NodePool {
+func (s *defaultScaler) NodePool() *sacorev1alpha1.NodePool {
 	return s.args.NodePool
 }
 
-func (s *singleNodeScalingSimulation) NodeTemplate() *sacorev1alpha1.NodeTemplate {
+func (s *defaultScaler) NodeTemplate() *sacorev1alpha1.NodeTemplate {
 	return s.nodeTemplate
 }
 
-func (s *singleNodeScalingSimulation) Name() string {
+func (s *defaultScaler) Name() string {
 	return s.name
 }
 
-func (s *singleNodeScalingSimulation) ActivityStatus() plannerapi.ActivityStatus {
+func (s *defaultScaler) ActivityStatus() plannerapi.ActivityStatus {
 	return s.state.status
 }
 
-func (s *singleNodeScalingSimulation) Result() (plannerapi.SimulationRunResult, error) {
+func (s *defaultScaler) Result() (plannerapi.SimulationRunResult, error) {
 	return s.state.result, s.state.err
 }
 
-func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View) (err error) {
+func (s *defaultScaler) Run(ctx context.Context, view minkapi.View) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: run of simulation %q failed: %w", plannerapi.ErrRunSimulation, s.name, err)
@@ -159,7 +164,6 @@ func (s *singleNodeScalingSimulation) Run(ctx context.Context, view minkapi.View
 	s.state.result = plannerapi.SimulationRunResult{
 		Name:                     s.name,
 		View:                     view,
-		ScaledNodes:              []*corev1.Node{s.state.simNode},
 		ScaledNodePlacements:     []sacorev1alpha1.NodePlacement{s.getScaledNodePlacementInfo()},
 		ScaledNodePodAssignments: s.getScaledNodeAssignments(),
 		OtherNodePodAssignments:  otherAssignments,
@@ -205,7 +209,7 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map
 	return
 }
 
-func (s *singleNodeScalingSimulation) getScaledNodePlacementInfo() sacorev1alpha1.NodePlacement {
+func (s *defaultScaler) getScaledNodePlacementInfo() sacorev1alpha1.NodePlacement {
 	return sacorev1alpha1.NodePlacement{
 		NodePoolName:     s.args.NodePool.Name,
 		NodeTemplateName: s.nodeTemplate.Name,
@@ -215,7 +219,7 @@ func (s *singleNodeScalingSimulation) getScaledNodePlacementInfo() sacorev1alpha
 	}
 }
 
-func (s *singleNodeScalingSimulation) getScaledNodeAssignments() []plannerapi.NodePodAssignment {
+func (s *defaultScaler) getScaledNodeAssignments() []plannerapi.NodePodAssignment {
 	simNodeScheduledPods := s.state.scheduledPodsByNode[s.state.simNode.Name]
 	if len(simNodeScheduledPods) == 0 {
 		return nil
@@ -228,7 +232,7 @@ func (s *singleNodeScalingSimulation) getScaledNodeAssignments() []plannerapi.No
 	}
 }
 
-func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (plannerapi.SchedulerHandle, error) {
+func (s *defaultScaler) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (plannerapi.SchedulerHandle, error) {
 	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
 	if err != nil {
 		return nil, err
@@ -240,7 +244,7 @@ func (s *singleNodeScalingSimulation) launchSchedulerForSimulation(ctx context.C
 	return s.args.SchedulerLauncher.Launch(ctx, schedLaunchParams)
 }
 
-func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
+func (s *defaultScaler) buildSimulationNode() *corev1.Node {
 	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.args.RunCounter.Load(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)
 	return &corev1.Node{
@@ -262,10 +266,10 @@ func (s *singleNodeScalingSimulation) buildSimulationNode() *corev1.Node {
 
 // trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled.
-//  2. Events have stabilized. ie no more scheduling events within maxUnchangedTrackAttempts
+//  2. Events have stabilized. i.e., no more scheduling events within maxUnchangedTrackAttempts
 //  3. Context timeout.
 //  4. Any error
-func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
+func (s *defaultScaler) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var stabilized bool
 	for {
@@ -290,7 +294,7 @@ func (s *singleNodeScalingSimulation) trackUntilStabilized(ctx context.Context, 
 	}
 }
 
-func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, view minkapi.View) ([]plannerapi.NodePodAssignment, error) {
+func (s *defaultScaler) getOtherAssignments(ctx context.Context, view minkapi.View) ([]plannerapi.NodePodAssignment, error) {
 	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPodsByNode))
 	nodes, err := view.ListNodes(ctx, nodeNames...)
 	if err != nil {
@@ -313,7 +317,7 @@ func (s *singleNodeScalingSimulation) getOtherAssignments(ctx context.Context, v
 	return assignments, nil
 }
 
-func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
+func (s *defaultScaler) track(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
 	var (
 		eventTime                  metav1.MicroTime
 		lastRecordedTrackEventTime metav1.MicroTime
@@ -363,7 +367,7 @@ func (s *singleNodeScalingSimulation) track(ctx context.Context, view minkapi.Vi
 	return
 }
 
-func (s *singleNodeScalingSimulation) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
+func (s *defaultScaler) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
 	log := logr.FromContextOrDiscard(ctx)
 	podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 	log.V(3).Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
@@ -381,7 +385,7 @@ func (s *singleNodeScalingSimulation) handleScheduledPodEvent(ctx context.Contex
 	}
 	podsOnNode := s.state.scheduledPodsByNode[pod.Spec.NodeName]
 	found := slices.ContainsFunc(podsOnNode, func(podOnNode plannerapi.PodResourceInfo) bool {
-		return podOnNode.NamespacedName == podNsName
+		return podOnNode.GetNamespacedName() == podNsName
 	})
 	if found {
 		return nil
@@ -404,13 +408,13 @@ func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 	}
 }
 
-// runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when singleNodeScalingSimulation.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
+// runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when defaultScaler.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
 type runState struct {
 	latestTrackEventTime      metav1.MicroTime
 	err                       error
 	simNode                   *corev1.Node
 	unscheduledPods           map[types.NamespacedName]plannerapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode       map[string][]plannerapi.PodResourceInfo             // map of node names to PodReosurceInfo
+	scheduledPodsByNode       map[string][]plannerapi.PodResourceInfo             // map of node names to PodResourceInfo
 	status                    plannerapi.ActivityStatus
 	result                    plannerapi.SimulationRunResult
 	numUnchangedTrackAttempts int

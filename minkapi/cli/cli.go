@@ -58,7 +58,7 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 		if errors.Is(err, pflag.ErrHelp) {
 			return
 		}
-		_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
@@ -254,11 +253,9 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 func TestPodInfo_GetResourceInfo(t *testing.T) {
 	podInfo := PodInfo{
 		BasicMeta: BasicMeta{
-			UID: "pod-uid-123",
-			NamespacedName: types.NamespacedName{
-				Namespace: "default",
-				Name:      "test-pod",
-			},
+			UID:       "pod-uid-123",
+			Namespace: "default",
+			Name:      "test-pod",
 		},
 		AggregatedRequests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1"),
@@ -267,11 +264,9 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 	}
 
 	expected := PodResourceInfo{
-		UID: "pod-uid-123",
-		NamespacedName: types.NamespacedName{
-			Namespace: "default",
-			Name:      "test-pod",
-		},
+		UID:       "pod-uid-123",
+		Namespace: "default",
+		Name:      "test-pod",
 		AggregatedRequests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1"),
 			corev1.ResourceMemory: resource.MustParse("2048Mi"),
@@ -288,9 +283,7 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 func TestNodeInfo_GetResourceInfo(t *testing.T) {
 	nodeInfo := NodeInfo{
 		BasicMeta: BasicMeta{
-			NamespacedName: types.NamespacedName{
-				Name: "node-1",
-			},
+			Name: "node-1",
 		},
 		InstanceType: "m5.large",
 		Capacity: map[corev1.ResourceName]resource.Quantity{

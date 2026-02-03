@@ -11,14 +11,14 @@ import (
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestLeastWasteScoringStrategy(t *testing.T) {
@@ -27,28 +27,28 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	assignment := planner.NodePodAssignment{
+	assignment := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4"),
-		ScheduledPods: []planner.PodResourceInfo{
+		ScheduledPods: []plannerapi.PodResourceInfo{
 			createPodResourceInfo("simPodA", "1", "2"),
 		},
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "2", "4")
 	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
-	assignmentWithStorage := planner.NodePodAssignment{
+	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
-		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
+		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
-		input         planner.NodeScorerArgs
-		access        planner.InstancePricingAccess
-		weightsFn     planner.GetResourceWeightsFunc
+		input         plannerapi.NodeScorerArgs
+		access        pricingapi.InstancePricingAccess
+		weightsFn     plannerapi.GetResourceWeightsFunc
 		expectedErr   error
-		expectedScore planner.NodeScore
+		expectedScore plannerapi.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
@@ -57,7 +57,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
@@ -66,19 +66,19 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
-				OtherNodePodAssignments: []planner.NodePodAssignment{{
+				OtherNodePodAssignments: []plannerapi.NodePodAssignment{{
 					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", "2", "4"),
-					ScheduledPods: []planner.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
+					ScheduledPods: []plannerapi.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
@@ -87,7 +87,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			},
 		},
 		"weights undefined for resource type": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignmentWithStorage,
@@ -96,7 +96,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{},
 				UnscheduledPods:    nil,
@@ -105,7 +105,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			},
 		},
 		"weights function returns an error": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
@@ -115,11 +115,11 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
-			expectedErr:   planner.ErrComputeNodeScore,
-			expectedScore: planner.NodeScore{},
+			expectedErr:   plannerapi.ErrComputeNodeScore,
+			expectedScore: plannerapi.NodeScore{},
 		},
 		"pricingAccess.GetInfo() function returns an error": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
@@ -129,8 +129,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
-			expectedErr:   planner.ErrComputeNodeScore,
-			expectedScore: planner.NodeScore{},
+			expectedErr:   plannerapi.ErrComputeNodeScore,
+			expectedScore: plannerapi.NodeScore{},
 		},
 	}
 	for name, tc := range tests {
@@ -159,28 +159,28 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	assignment := planner.NodePodAssignment{
+	assignment := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
-		ScheduledPods: []planner.PodResourceInfo{
+		ScheduledPods: []plannerapi.PodResourceInfo{
 			createPodResourceInfo("simPodA", "1", "2"),
 		},
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "1", "2")
 	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
-	assignmentWithStorage := planner.NodePodAssignment{
+	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
-		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
+		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
-		input         planner.NodeScorerArgs
-		access        planner.InstancePricingAccess
-		weightsFn     planner.GetResourceWeightsFunc
+		input         plannerapi.NodeScorerArgs
+		access        pricingapi.InstancePricingAccess
+		weightsFn     plannerapi.GetResourceWeightsFunc
 		expectedErr   error
-		expectedScore planner.NodeScore
+		expectedScore plannerapi.NodeScore
 	}{
 		"pod scheduled on scaled node only": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignment,
@@ -189,7 +189,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
@@ -198,19 +198,19 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			},
 		},
 		"pods scheduled on scaled node and existing node": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignment,
-				OtherNodePodAssignments: []planner.NodePodAssignment{{
+				OtherNodePodAssignments: []plannerapi.NodePodAssignment{{
 					NodeResources: createNodeResourceInfo("exNode1", "instance-b-1", "2", "4"),
-					ScheduledPods: []planner.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
+					ScheduledPods: []plannerapi.PodResourceInfo{createPodResourceInfo("simPodB", "1", "2")},
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
@@ -219,7 +219,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			},
 		},
 		"weights undefined for resource type": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				ScaledNodePodAssignment: &assignmentWithStorage,
@@ -228,7 +228,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			access:      access,
 			weightsFn:   testWeightsFunc,
 			expectedErr: nil,
-			expectedScore: planner.NodeScore{
+			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
@@ -236,7 +236,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledNodeResource: assignmentWithStorage.NodeResources,
 			},
 		}, "weights function returns an error": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
@@ -246,11 +246,11 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
-			expectedErr:   planner.ErrComputeNodeScore,
-			expectedScore: planner.NodeScore{},
+			expectedErr:   plannerapi.ErrComputeNodeScore,
+			expectedScore: plannerapi.NodeScore{},
 		},
 		"pricingAccess.GetInfo() function returns an error": {
-			input: planner.NodeScorerArgs{
+			input: plannerapi.NodeScorerArgs{
 				ID:                      "testing",
 				ScaledNodePlacement:     sacorev1alpha1.NodePlacement{},
 				ScaledNodePodAssignment: &assignment,
@@ -260,8 +260,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
 				return nil, errors.New("testing error")
 			},
-			expectedErr:   planner.ErrComputeNodeScore,
-			expectedScore: planner.NodeScore{},
+			expectedErr:   plannerapi.ErrComputeNodeScore,
+			expectedScore: plannerapi.NodeScore{},
 		},
 	}
 	for name, tc := range tests {
@@ -289,7 +289,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,22 +299,22 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := map[string]struct {
-		input       []planner.NodeScore
+		input       []plannerapi.NodeScore
 		expectedErr error
-		expectedIn  []planner.NodeScore
+		expectedIn  []plannerapi.NodeScore
 	}{
 		"single node score": {
-			input:       []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
+			input:       []plannerapi.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
 			expectedErr: nil,
-			expectedIn:  []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
+			expectedIn:  []plannerapi.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
 		},
 		"no node score": {
-			input:       []planner.NodeScore{},
-			expectedErr: planner.ErrNoWinningNodeScore,
-			expectedIn:  []planner.NodeScore{},
+			input:       []plannerapi.NodeScore{},
+			expectedErr: plannerapi.ErrNoWinningNodeScore,
+			expectedIn:  []plannerapi.NodeScore{},
 		},
 		"different allocatables": {
-			input: []planner.NodeScore{
+			input: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -329,7 +329,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					ScaledNodeResource: createNodeResourceInfo("simNode2", "instance-a-2", "4", "8"),
 				}},
 			expectedErr: nil,
-			expectedIn: []planner.NodeScore{{
+			expectedIn: []plannerapi.NodeScore{{
 				Name:               "testing2",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-2"},
 				UnscheduledPods:    nil,
@@ -338,7 +338,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			}},
 		},
 		"identical allocatables": {
-			input: []planner.NodeScore{
+			input: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -354,7 +354,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 				},
 			},
 			expectedErr: nil,
-			expectedIn: []planner.NodeScore{
+			expectedIn: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -371,7 +371,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			},
 		},
 		"undefined weights for resource type": {
-			input: []planner.NodeScore{
+			input: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -386,7 +386,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 					ScaledNodeResource: simNodeWithStorage,
 				}},
 			expectedErr: nil,
-			expectedIn: []planner.NodeScore{{
+			expectedIn: []plannerapi.NodeScore{{
 				Name:               "testing1",
 				Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
 				UnscheduledPods:    nil,
@@ -426,27 +426,27 @@ func TestSelectMinPrice(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, planner.GetResourceWeightsFunc(testWeightsFunc))
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tests := map[string]struct {
-		input       []planner.NodeScore
+		input       []plannerapi.NodeScore
 		expectedErr error
-		expectedIn  []planner.NodeScore
+		expectedIn  []plannerapi.NodeScore
 	}{
 		"single node score": {
-			input:       []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
+			input:       []plannerapi.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
 			expectedErr: nil,
-			expectedIn:  []planner.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
+			expectedIn:  []plannerapi.NodeScore{{Name: "testing", Placement: sacorev1alpha1.NodePlacement{}, UnscheduledPods: nil, Value: 1, ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
 		},
 		"no node score": {
-			input:       []planner.NodeScore{},
-			expectedErr: planner.ErrNoWinningNodeScore,
-			expectedIn:  []planner.NodeScore{},
+			input:       []plannerapi.NodeScore{},
+			expectedErr: plannerapi.ErrNoWinningNodeScore,
+			expectedIn:  []plannerapi.NodeScore{},
 		},
 		"different prices": {
-			input: []planner.NodeScore{
+			input: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -462,7 +462,7 @@ func TestSelectMinPrice(t *testing.T) {
 				},
 			},
 			expectedErr: nil,
-			expectedIn: []planner.NodeScore{
+			expectedIn: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -471,7 +471,7 @@ func TestSelectMinPrice(t *testing.T) {
 					ScaledNodeResource: createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")}},
 		},
 		"identical prices": {
-			input: []planner.NodeScore{
+			input: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -487,7 +487,7 @@ func TestSelectMinPrice(t *testing.T) {
 				},
 			},
 			expectedErr: nil,
-			expectedIn: []planner.NodeScore{
+			expectedIn: []plannerapi.NodeScore{
 				{
 					Name:               "testing1",
 					Placement:          sacorev1alpha1.NodePlacement{Region: "s", InstanceType: "instance-a-1"},
@@ -548,7 +548,7 @@ func TestGetNodeScorer(t *testing.T) {
 		"invalid strategy": {
 			input:         "invalid",
 			expectedType:  "",
-			expectedError: planner.ErrCreateNodeScorer,
+			expectedError: plannerapi.ErrCreateNodeScorer,
 		},
 	}
 	for name, tc := range tests {
@@ -557,7 +557,7 @@ func TestGetNodeScorer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, planner.GetResourceWeightsFunc(testWeightsFunc))
+			got, err := GetNodeScorer(tc.input, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
@@ -584,8 +584,8 @@ func TestGetNodeScorer(t *testing.T) {
 }
 
 // Helper function to create mock nodes
-func createNodeResourceInfo(name, instanceType string, cpu, memory string) planner.NodeResourceInfo {
-	return planner.NodeResourceInfo{
+func createNodeResourceInfo(name, instanceType string, cpu, memory string) plannerapi.NodeResourceInfo {
+	return plannerapi.NodeResourceInfo{
 		Name:         name,
 		InstanceType: instanceType,
 		Allocatable: corev1.ResourceList{
@@ -596,13 +596,11 @@ func createNodeResourceInfo(name, instanceType string, cpu, memory string) plann
 }
 
 // Helper function to create mock pods with cpu and memory requests
-func createPodResourceInfo(name string, cpu, memory string) planner.PodResourceInfo {
-	return planner.PodResourceInfo{
-		UID: "pod-12345",
-		NamespacedName: types.NamespacedName{
-			Name:      name,
-			Namespace: metav1.NamespaceDefault,
-		},
+func createPodResourceInfo(name string, cpu, memory string) plannerapi.PodResourceInfo {
+	return plannerapi.PodResourceInfo{
+		UID:       "pod-12345",
+		Name:      name,
+		Namespace: metav1.NamespaceDefault,
 		AggregatedRequests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse(cpu),
 			corev1.ResourceMemory: resource.MustParse(memory),
@@ -620,6 +618,6 @@ type testInfoAccess struct {
 }
 
 // Helper function to create stub instance pricing access that returns an error
-func (m *testInfoAccess) GetInfo(_, _ string) (info planner.InstancePriceInfo, err error) {
-	return planner.InstancePriceInfo{}, m.err
+func (m *testInfoAccess) GetInfo(_, _ string) (info pricingapi.InstancePriceInfo, err error) {
+	return pricingapi.InstancePriceInfo{}, m.err
 }

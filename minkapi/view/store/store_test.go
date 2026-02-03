@@ -74,7 +74,7 @@ func TestAdd(t *testing.T) {
 			key := cache.NewObjectName(p.Namespace, p.Name).String()
 			gotObj, err := s.GetByKey(t.Context(), key)
 			if err != nil {
-				t.Errorf("Err fetching gotObject from store")
+				t.Errorf("Error fetching gotObject from store")
 			}
 
 			if diff := cmp.Diff(p, gotObj.(*corev1.Pod), tc.ignoredFieldsForOutputComparison); diff != "" {
@@ -122,7 +122,7 @@ func TestUpdate(t *testing.T) {
 			createdPod := testPod.DeepCopy()
 			createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 			if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
-				t.Errorf("Err adding object to store")
+				t.Errorf("Error adding object to store")
 				return
 			}
 
@@ -142,7 +142,7 @@ func TestUpdate(t *testing.T) {
 			key := cache.NewObjectName(p.Namespace, p.Name).String()
 			gotObj, err := s.GetByKey(t.Context(), key)
 			if err != nil {
-				t.Errorf("Err fetching gotObject from store")
+				t.Errorf("Error fetching gotObject from store")
 			}
 
 			if diff := cmp.Diff(createdPod, gotObj.(*corev1.Pod), tc.ignoredFieldsForOutputComparison); diff != "" {
@@ -151,12 +151,12 @@ func TestUpdate(t *testing.T) {
 			}
 			originalRV, err := strconv.ParseInt(createdPod.ResourceVersion, 10, 64)
 			if err != nil {
-				t.Errorf("Err converting resourceVersion to integer")
+				t.Errorf("Error converting resourceVersion to integer")
 				return
 			}
 			gotRV, err := strconv.ParseInt(gotObj.(*corev1.Pod).ResourceVersion, 10, 64)
 			if err != nil {
-				t.Errorf("Err converting resourceVersion to integer")
+				t.Errorf("Error converting resourceVersion to integer")
 				return
 			}
 			if gotRV != originalRV+1 {
@@ -203,7 +203,7 @@ func TestDelete(t *testing.T) {
 			if tc.createObjectBeforeTesting {
 				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 				if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
-					t.Errorf("Err adding object to store")
+					t.Errorf("Error adding object to store")
 					return
 				}
 			}
@@ -261,7 +261,7 @@ func TestGetByKey(t *testing.T) {
 			if tc.createObjectBeforeTesting {
 				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 				if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
-					t.Errorf("Err adding object to store")
+					t.Errorf("Error adding object to store")
 					return
 				}
 			}
@@ -530,7 +530,7 @@ func TestWatch(t *testing.T) {
 				modifiedPod := createdPods[0].DeepCopy()
 				modifiedPod.Labels["modified"] = "true"
 				if err := s.Update(t.Context(), metav1.Object(modifiedPod)); err != nil {
-					t.Errorf("Err updating object in store: %v", err)
+					t.Errorf("Error updating object in store: %v", err)
 					cancel()
 					wg.Wait()
 					return
@@ -587,7 +587,7 @@ func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, er
 		}
 
 		if err := s.Add(t.Context(), metav1.Object(&createdPods[i])); err != nil {
-			t.Errorf("Err adding object to store")
+			t.Errorf("Error adding object to store")
 			return nil, err
 		}
 	}

@@ -45,7 +45,7 @@ var (
 // MapServerConfigFlags adds the constants flags to the passed FlagSet.
 func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig) {
 	flagSet.StringVar(&opts.BindAddress, "bind-address", commonconstants.DefaultMinKAPIBindAddress, "bind address of the form <host>:<port>")
-	flagSet.BoolVarP(&opts.ProfilingEnabled, "pprof", "p", false, "enable pprof profiling")
+	flagSet.BoolVar(&opts.ProfilingEnabled, "profile", false, "enable pprof profiling")
 	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", commonconstants.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
 
 	klogFlagSet := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -82,7 +82,7 @@ func HandleErrorAndExit(err error) {
 	if errors.Is(err, pflag.ErrHelp) {
 		os.Exit(ExitSuccess)
 	}
-	_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+	_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	os.Exit(ExitErrParseOpts)
 }
 

@@ -22,17 +22,30 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// SendPlanError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.
-func SendPlanError(resultsCh chan<- plannerapi.ScalingPlanResult, requestRef plannerapi.ScalingAdviceRequestRef, err error) {
-	err = plannerapi.AsPlanError(requestRef.ID, requestRef.CorrelationID, err)
-	resultsCh <- plannerapi.ScalingPlanResult{
-		Name: objutil.GenerateName("plan-error"),
-		Err:  err,
+// SendErrorResponse wraps the given error with the sentinel error plannerapi.ErrGenScalingPlan, embeds the wrapped error
+// within a plannerapi.Response and sends the response to the given results channel.
+func SendErrorResponse(resultsCh chan<- plannerapi.Response, requestRef plannerapi.RequestRef, err error) {
+	err = plannerapi.AsGenError(requestRef.ID, requestRef.CorrelationID, err)
+	resultsCh <- plannerapi.Response{
+		ID:    objutil.GenerateName("plan-error"),
+		Error: err,
 	}
 }
 
-// SendPlanResult creates a ScalingPlanResult from the given SimulationGroupCycleResults and sends it to the provided result channel.
-func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, resultCh chan<- plannerapi.ScalingPlanResult, simulationRunCount uint32, groupCycleResults []plannerapi.SimulationGroupCycleResult) error {
+// SendScaleOutPlanError wraps the given error within a sentinel error plannerapi.ErrGenScalingPlan, creates a ScaleOutPlanResult and
+// sends the result on the planResultCh.
+func SendScaleOutPlanError(planResultCh chan<- plannerapi.ScaleOutPlanResult, requestRef plannerapi.RequestRef, err error) {
+	err = plannerapi.AsGenError(requestRef.ID, requestRef.CorrelationID, err)
+	planResultCh <- plannerapi.ScaleOutPlanResult{
+		Error: err,
+	}
+}
+
+// SendScaleOutPlanResult creates a plannerapi.ScaleOutPlanResult from the given plannerapi.Request and plannerapi.SimulationGroupCycleResults
+// and sends this result to the resultCh.
+func SendScaleOutPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlanResult,
+	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
+	groupCycleResults []plannerapi.SimulationGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
 	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
@@ -55,12 +68,11 @@ func SendPlanResult(ctx context.Context, req *plannerapi.ScalingAdviceRequest, r
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
 	}
 	scaleOutPlan := createScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
-	planResult := plannerapi.ScalingPlanResult{
-		Name:         objutil.GenerateName("scaling-plan-"),
+	planResult := plannerapi.ScaleOutPlanResult{
 		Labels:       labels,
 		ScaleOutPlan: &scaleOutPlan,
 	}
-	log.Info("Sent ScalingPlanResult", "scalingPlanResult", planResult)
+	log.V(2).Info("Sent Planner Success Response", "response", planResult)
 	resultCh <- planResult
 	return nil
 }
@@ -95,9 +107,9 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 
 // SynchronizeView synchronizes the given view with the given cluster snapshot.
 func SynchronizeView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
-	// TODO implement delta cluster snapshot to update the base view before every simulation run which will synchronize
-	// the base view with the current state of the target cluster.
-	view.Reset()
+	if err := view.Reset(); err != nil {
+		return err
+	}
 	for _, nodeInfo := range cs.Nodes {
 		if _, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
 			return err

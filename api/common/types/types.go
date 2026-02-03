@@ -21,7 +21,7 @@ import (
 // Resettable defines types that can reset their state to a default or initial configuration.
 type Resettable interface {
 	// Reset resets the state of the implementing type.
-	Reset()
+	Reset() error
 }
 
 // Service is a component that can be started and stopped.
@@ -94,6 +94,16 @@ var SupportedAdviceGenerationModes = sets.New(
 	ScalingAdviceGenerationModeIncremental,
 	ScalingAdviceGenerationModeAllAtOnce,
 )
+
+// IsIncremental returns true if the advice generation mode is incremental.
+func (a ScalingAdviceGenerationMode) IsIncremental() bool {
+	return a == ScalingAdviceGenerationModeIncremental
+}
+
+// IsAllAtOnce returns true if the advice generation mode is all-at-once.
+func (a ScalingAdviceGenerationMode) IsAllAtOnce() bool {
+	return a == ScalingAdviceGenerationModeAllAtOnce
+}
 
 // NodeScoringStrategy represents a node scoring strategy variant.
 type NodeScoringStrategy string

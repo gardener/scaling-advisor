@@ -12,82 +12,111 @@ import (
 	"path/filepath"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/simulation"
 	"github.com/gardener/scaling-advisor/planner/simulator/multi"
 	"github.com/gardener/scaling-advisor/planner/util"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 )
 
-var _ planner.ScalingPlanner = (*defaultPlanner)(nil)
+var _ plannerapi.ScalingPlanner = (*defaultPlanner)(nil)
 
 // defaultPlanner is responsible for creating and managing simulations to generate scaling advice plans.
 type defaultPlanner struct {
-	args planner.ScalingPlannerArgs
+	args plannerapi.ScalingPlannerArgs
 }
 
 // New creates a new instance of defaultPlanner using the provided Args. It initializes the defaultPlanner struct.
-func New(args planner.ScalingPlannerArgs) planner.ScalingPlanner {
+func New(args plannerapi.ScalingPlannerArgs) plannerapi.ScalingPlanner {
 	return &defaultPlanner{
 		args: args,
 	}
 }
 
-func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequest, resultCh chan<- planner.ScalingPlanResult) {
+func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-chan plannerapi.Response {
 	var err error
-	defer func() {
+	responseCh := make(chan plannerapi.Response)
+	go func() {
+		defer close(responseCh)
+		err = p.doPlan(ctx, &req, responseCh)
 		if err != nil {
-			util.SendPlanError(resultCh, req.ScalingAdviceRequestRef, err)
+			util.SendErrorResponse(responseCh, req.GetRef(), err)
 		}
 	}()
+	return responseCh
+}
+
+func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, responseCh chan plannerapi.Response) error {
 	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceLogsBaseDir, req)
 	if err != nil {
-		return
+		return err
 	}
 	defer ioutil.CloseQuietly(logCloser)
 	if err = validateRequest(req); err != nil {
-		return
+		return err
 	}
-	scaleOutSimulator, err := p.getScaleOutSimulator(&req)
+	scaleOutSimulator, err := p.getScaleOutSimulator(req)
 	if err != nil {
-		return
+		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	scaleOutSimulator.Simulate(planCtx, resultCh)
+	simulationCreator := plannerapi.SimulationCreatorFunc(simulation.NewDefault)
+	planResultCh := scaleOutSimulator.Simulate(planCtx, req, simulationCreator)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case planResult, ok := <-planResultCh:
+			if !ok {
+				return nil // planResultCh closed by ScaleOutSimulator.Simulate
+			}
+			response := plannerapi.Response{
+				RequestRef:   req.RequestRef,
+				Error:        planResult.Error,
+				Labels:       planResult.Labels,
+				ScaleOutPlan: planResult.ScaleOutPlan,
+				ScaleInPlan:  nil,
+				ID:           objutil.GenerateName("scaling-plan-"),
+			}
+			responseCh <- response
+		}
+	}
 }
 
-func validateRequest(req planner.ScalingAdviceRequest) error {
+func validateRequest(req *plannerapi.Request) error {
 	if req.CreationTime.IsZero() {
-		return fmt.Errorf("%w: createdTime not set", planner.ErrInvalidScalingAdviceRequest)
+		return fmt.Errorf("%w: createdTime not set", plannerapi.ErrInvalidRequest)
 	}
 	if !commontypes.SupportedAdviceGenerationModes.Has(req.AdviceGenerationMode) {
-		return fmt.Errorf("%w: unsupported advice generation mode %q", planner.ErrInvalidScalingAdviceRequest, req.AdviceGenerationMode)
+		return fmt.Errorf("%w: unsupported advice generation mode %q", plannerapi.ErrInvalidRequest, req.AdviceGenerationMode)
 	}
 	return nil
 }
 
-func (p *defaultPlanner) getScaleOutSimulator(req *planner.ScalingAdviceRequest) (planner.ScaleOutSimulator, error) {
+func (p *defaultPlanner) getScaleOutSimulator(req *plannerapi.Request) (plannerapi.ScaleOutSimulator, error) {
 	switch req.SimulatorStrategy {
 	case "":
-		return nil, fmt.Errorf("%w: simulation strategy must be specified", planner.ErrCreateSimulator)
+		return nil, fmt.Errorf("%w: simulation strategy must be specified", plannerapi.ErrCreateSimulator)
 	case commontypes.SimulatorStrategySingleNodeMultiSim:
 		nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", planner.ErrCreateSimulator, err)
+			return nil, fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 		}
-		return multi.NewScaleOutSimulator(p.args.ViewAccess, p.args.SchedulerLauncher, nodeScorer, p.args.SimulatorConfig, req)
+		return multi.NewScaleOutSimulator(p.args.SimulatorConfig, p.args.ViewAccess, p.args.SchedulerLauncher, nodeScorer)
 	case commontypes.SimulatorStrategyMultiNodeSingleSim:
 		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulatorStrategy)
 	default:
-		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", planner.ErrUnsupportedSimulatorStrategy, req.SimulatorStrategy)
+		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", plannerapi.ErrUnsupportedSimulatorStrategy, req.SimulatorStrategy)
 	}
 }
 
-func wrapPlanContext(ctx context.Context, traceLogsDir string, req planner.ScalingAdviceRequest) (genCtx context.Context, logCloser io.Closer, err error) {
+func wrapPlanContext(ctx context.Context, traceLogsDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
 	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 0 {

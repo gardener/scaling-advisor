@@ -30,29 +30,29 @@ const (
 type ResourceCategory string
 
 const (
-	// ResourceCategoryPea is a category for resource pairs that specify 1cpu and 1Gi.
+	// ResourceCategoryPea is a category for a resource list that specifies  1cpu and 1Gi.
 	ResourceCategoryPea ResourceCategory = "pea"
 
-	// ResourceCategoryBerry is a category for resource pairs that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourceCategoryBerry is a category for a resource list that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
 	ResourceCategoryBerry ResourceCategory = "berry"
 
-	// ResourceCategoryHalfBerry is a category for resource pairs that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourceCategoryHalfBerry is a category for a resource list that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
 	ResourceCategoryHalfBerry ResourceCategory = "half-berry"
 
-	// ResourceCategoryGrape is a category for resource pairs that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourceCategoryGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
 	ResourceCategoryGrape ResourceCategory = "grape"
 
-	// ResourceCategoryHalfGrape is a category for resource pairs that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourceCategoryHalfGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
 	ResourceCategoryHalfGrape ResourceCategory = "half-grape"
 )
 
 // AsResourceList creates a corev1.ResourceList for the resources associated with this name
 func (c ResourceCategory) AsResourceList() corev1.ResourceList {
-	return resourceCategoriesToResourcePairsMap[c]
+	return resourceCategoriesToResourceListMap[c]
 }
 
 // AppLabels represents standard k8s app labels
@@ -83,7 +83,7 @@ var (
 	allResourceCategories = []ResourceCategory{
 		ResourceCategoryPea, ResourceCategoryBerry, ResourceCategoryHalfBerry, ResourceCategoryGrape, ResourceCategoryHalfGrape,
 	}
-	resourceCategoriesToResourcePairsMap = map[ResourceCategory]corev1.ResourceList{
+	resourceCategoriesToResourceListMap = map[ResourceCategory]corev1.ResourceList{
 		ResourceCategoryPea: {
 			corev1.ResourceCPU:    resource.MustParse("1"),
 			corev1.ResourceMemory: resource.MustParse("1Gi"),
