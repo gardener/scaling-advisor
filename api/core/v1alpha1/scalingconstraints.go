@@ -81,7 +81,7 @@ type NodePool struct {
 	// NodeTemplates is a slice of NodeTemplate.
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 	// Priority is the priority of the node pool.
-	Priority int32 `json:"priority,omitzero"`
+	Priority int32 `json:"priority"`
 }
 
 // NodeTemplate defines a node template configuration for an instance type.
@@ -105,7 +105,7 @@ type NodeTemplate struct {
 	// InstanceType is the instance type of the node template.
 	InstanceType string `json:"instanceType"`
 	// Priority is the priority of the node template. The lower the number, the higher the priority.
-	Priority int32 `json:"priority,omitzero"`
+	Priority int32 `json:"priority"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes,omitzero"`
 }

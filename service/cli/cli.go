@@ -17,7 +17,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
+	"github.com/gardener/scaling-advisor/common/cliutil"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/planner/weights"
 	"github.com/gardener/scaling-advisor/pricing"
@@ -79,18 +79,18 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 
 	cliOpts, err := ParseProgramFlags(os.Args[1:])
 	if err != nil {
-		exitCode = commoncli.ExitErrParseOpts
+		exitCode = cliutil.ExitErrParseOpts
 		return
 	}
 
-	app.Ctx, app.Cancel = commoncli.NewAppContext(ctx, plannerapi.ServiceName)
+	app.Ctx, app.Cancel = cliutil.NewAppContext(ctx, plannerapi.ServiceName)
 	log := logr.FromContextOrDiscard(app.Ctx)
-	commoncli.PrintVersion(plannerapi.ServiceName)
+	cliutil.PrintVersion(plannerapi.ServiceName)
 	embeddedMinKAPIKubeConfigPath := path.Join(os.TempDir(), "embedded-minkapi.yaml")
 	log.Info("embedded minkapi-kube cfg path", "kubeConfigPath", embeddedMinKAPIKubeConfigPath)
 	cloudProvider, err := commontypes.AsCloudProvider(cliOpts.CloudProvider)
 	if err != nil {
-		exitCode = commoncli.ExitErrParseOpts
+		exitCode = cliutil.ExitErrParseOpts
 		return
 	}
 	cfg := plannerapi.ScalingPlannerServiceConfig{
@@ -112,13 +112,13 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 	}
 	pricingAccess, err := pricing.GetInstancePricingAccess(cloudProvider, cliOpts.InstancePricingPath)
 	if err != nil {
-		exitCode = commoncli.ExitErrStart
+		exitCode = cliutil.ExitErrStart
 		return
 	}
 	weightsFn := weights.GetDefaultWeightsFn()
 	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, weightsFn)
 	if err != nil {
-		exitCode = commoncli.ExitErrStart
+		exitCode = cliutil.ExitErrStart
 		return
 	}
 	go func() {
@@ -127,7 +127,7 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 		}
 	}()
 	if err != nil {
-		exitCode = commoncli.ExitErrStart
+		exitCode = cliutil.ExitErrStart
 		return
 	}
 	return
@@ -140,17 +140,17 @@ func ShutdownApp(app *App) (exitCode int) {
 	defer cancel()
 	if err := app.Service.Stop(ctx); err != nil {
 		log.Error(err, fmt.Sprintf(" %s shutdown failed", minkapi.ProgramName))
-		exitCode = commoncli.ExitErrShutdown
+		exitCode = cliutil.ExitErrShutdown
 		return
 	}
 	log.Info(fmt.Sprintf("%s shutdown gracefully.", minkapi.ProgramName))
-	exitCode = commoncli.ExitSuccess
+	exitCode = cliutil.ExitSuccess
 	return
 }
 
 func (o Opts) validate() error {
 	var errs []error
-	errs = append(errs, commoncli.ValidateServerConfigFlags(o.ServerConfig))
+	errs = append(errs, cliutil.ValidateServerConfigFlags(o.ServerConfig))
 	if len(o.InstancePricingPath) == 0 {
 		errs = append(errs, fmt.Errorf("%w: --pricing", commonerrors.ErrMissingOpt))
 	}
@@ -179,8 +179,8 @@ func (o Opts) validate() error {
 func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
 	flagSet := pflag.NewFlagSet(plannerapi.ServiceName, pflag.ContinueOnError)
-	commoncli.MapServerConfigFlags(flagSet, &opts.ServerConfig)
-	commoncli.MapQPSBurstFlags(flagSet, &opts.ClientConfig)
+	cliutil.MapServerConfigFlags(flagSet, &opts.ServerConfig)
+	cliutil.MapQPSBurstFlags(flagSet, &opts.ClientConfig)
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)
 	flagSet.StringVar(&opts.InstancePricingPath, "instance-info", "", "path to instance info file (contains prices)")
 	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(commontypes.CloudProviderAWS), "cloud provider")

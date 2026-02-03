@@ -185,5 +185,5 @@ const (
 	VerbosityCtxKey ContextKey = "verbosity"
 
 	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-	TraceLogPathCtxKey ContextKey = "traceLogPath"
+	TraceLogPathCtxKey ContextKey = "trace-log-path"
 )

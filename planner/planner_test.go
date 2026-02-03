@@ -46,7 +46,6 @@ type TestArgs struct {
 
 // TestData holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
 type TestData struct {
-	Planner        plannerapi.ScalingPlanner
 	RunContext     context.Context
 	SnapshotPath   string
 	NodePlacements []sacorev1alpha1.NodePlacement
@@ -54,7 +53,7 @@ type TestData struct {
 }
 
 func TestBasicOnePoolUnitScaleOut(t *testing.T) {
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryBerry: 1,
@@ -72,12 +71,12 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 func TestReusePlannerAcrossRequests(t *testing.T) {
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryBerry: 1,
@@ -96,16 +95,16 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 		},
 	}
 	testData.Request.ID = t.Name() + "-A"
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 	testData.Request.ID = t.Name() + "-B"
-	gotPlan = obtainScaleOutPlan(t, &testData)
+	gotPlan = obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
 	amount := 2
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryBerry: amount,
@@ -123,14 +122,14 @@ func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
 // TestBasicOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
 func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 	amount := 4
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryHalfBerry: amount,
@@ -148,7 +147,7 @@ func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
@@ -156,7 +155,7 @@ func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 // and full-fit into pool P's NodeTemplate.
 func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	amount := 4
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryHalfBerry: amount,
@@ -175,7 +174,7 @@ func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
@@ -183,7 +182,7 @@ func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 // and where any unscheduled pod nearly fully fits into the node template.
 func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
 	amount := 3
-	testData, ok := createTestData(t, TestArgs{
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
 		PoolCategory: samples.PoolCategoryBasicTwo,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryBerry: amount,
@@ -207,7 +206,7 @@ func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
 			},
 		},
 	}
-	gotPlan := obtainScaleOutPlan(t, &testData)
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
 	assertExactScaleOutPlan(t, wantPlan, gotPlan)
 }
 
@@ -227,14 +226,14 @@ func assertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 	}
 }
 
-// createTestData creates the TestData for the given TestArgs.
-func createTestData(t *testing.T, args TestArgs) (testData TestData, ok bool) {
+// createPlannerAndTest creates the test ScalingPlanner and TestData for the given TestArgs.
+func createTestPlannerAndTestData(t *testing.T, args TestArgs) (planner plannerapi.ScalingPlanner, testData TestData, ok bool) {
 	if len(args.NumUnscheduledPerResourceCategory) == 0 {
 		t.Fatal("args.NumUnscheduledPerResourceCategory mandatory")
 		return
 	}
 	var err error
-	testData.RunContext, testData.Planner, ok = createTestScalingPlanner(t, args.Timeout)
+	testData.RunContext, planner, ok = createTestScalingPlanner(t, args.Timeout)
 	if !ok {
 		return
 	}
@@ -343,8 +342,8 @@ func createTestScalingPlanner(t *testing.T, duration time.Duration) (runCtx cont
 	return
 }
 
-func obtainScaleOutPlan(t *testing.T, testData *TestData) *sacorev1alpha1.ScaleOutPlan {
-	resultCh := testData.Planner.Plan(testData.RunContext, testData.Request)
+func obtainScaleOutPlan(t *testing.T, planner plannerapi.ScalingPlanner, testData *TestData) *sacorev1alpha1.ScaleOutPlan {
+	resultCh := planner.Plan(testData.RunContext, testData.Request)
 	result := <-resultCh
 	if result.Error != nil {
 		t.Fatalf("failed to generate scale-out plan: %v", result.Error)

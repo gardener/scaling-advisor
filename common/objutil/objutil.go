@@ -29,9 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	kjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
-	utiljson "k8s.io/apimachinery/pkg/util/json"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	jsonutil "k8s.io/apimachinery/pkg/util/json"
+	randutil "k8s.io/apimachinery/pkg/util/rand"
+	runtimeutil "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
@@ -46,7 +46,7 @@ func init() {
 		sacorev1alpha1.AddToScheme,
 		saconfigv1alpha1.AddToScheme,
 	)
-	utilruntime.Must(localSchemeBuilder.AddToScheme(ScalingAdvisorScheme))
+	runtimeutil.Must(localSchemeBuilder.AddToScheme(ScalingAdvisorScheme))
 }
 
 // LoadUsingSchemeIntoRuntimeObject deserializes the object at objPath into the given k8s runtime.Object.
@@ -163,7 +163,7 @@ func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.P
 		return fmt.Errorf("object %q must be a non-nil pointer", name)
 	}
 	objInterface := objValuePtr.Interface()
-	originalJSON, err := utiljson.Marshal(objInterface)
+	originalJSON, err := jsonutil.Marshal(objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal object %q: %w", name, err)
 	}
@@ -183,7 +183,7 @@ func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.P
 	default:
 		return fmt.Errorf("unsupported patch type %q for object %q", patchType, name)
 	}
-	err = utiljson.Unmarshal(patchedBytes, objInterface)
+	err = jsonutil.Unmarshal(patchedBytes, objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal patched JSON back into obj %q: %w", name, err)
 	}
@@ -212,7 +212,7 @@ func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []
 	}
 
 	statusInterface := statusField.Interface()
-	originalStatusJSON, err := utiljson.Marshal(statusInterface)
+	originalStatusJSON, err := jsonutil.Marshal(statusInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal original status for object %q: %w", objName, err)
 	}
@@ -333,7 +333,7 @@ func GetFullNames(nsNames []types.NamespacedName) []string {
 // GenerateName generates a name by appending a random suffix to the given base name.
 func GenerateName(base string) string {
 	const suffixLen = 5
-	suffix := utilrand.String(suffixLen)
+	suffix := randutil.String(suffixLen)
 	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
 	if len(base)+len(suffix) > m {
 		base = base[:m-len(suffix)]

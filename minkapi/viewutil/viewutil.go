@@ -46,14 +46,14 @@ func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) e
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),
 		"totalUnscheduledPods", podutil.CountUnscheduledPods(allPods))
-	if logutil.VerbosityFromContext(ctx) > 2 {
+	if logutil.VerbosityFromContext(ctx) >= 4 {
 		for idx, pod := range allPods {
-			log.V(3).Info(prefix+"|pod in view",
+			log.V(4).Info(prefix+"|pod in view",
 				"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
 				"assignedNodeName", pod.Spec.NodeName, "podRequests", pod.Spec.Containers[0].Resources.Requests)
 		}
 		for _, node := range allNodes {
-			log.V(3).Info(prefix+"|node in view",
+			log.V(4).Info(prefix+"|node in view",
 				"viewName", view.GetName(),
 				"nodeName", node.Name,
 				"nodePool", node.Labels[commonconstants.LabelNodePoolName],
