@@ -29,7 +29,6 @@ var (
 		corev1.LabelTopologyZone,
 		corev1.LabelTopologyRegion,
 		corev1.LabelHostname,
-		corev1.LabelInstanceTypeStable,
 		commonconstants.LabelNodePoolName,
 		commonconstants.LabelNodeTemplateName,
 	)
