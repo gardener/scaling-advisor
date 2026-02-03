@@ -19,7 +19,7 @@ tidy:
 .PHONY: build
 build:
 	mkdir -p bin
-	go build -buildvcs -o=bin/${service_binary_name} ${service_main_pkg_path}
+	go build -buildvcs -o=bin/${binary_name} ${main_pkg_path}
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
