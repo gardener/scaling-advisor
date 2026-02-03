@@ -11,6 +11,10 @@
 # Test binary, built with `go test -c`
 *.test
 
+# ignore test coverage files
+**/coverage.out
+**/coverage.html
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 

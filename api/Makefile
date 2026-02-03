@@ -38,6 +38,8 @@ format: $(GOIMPORTS_REVISER)
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
 
+## test-unit: run all unit tests with coverage
 .PHONY: test-unit
 test-unit:
-	go test -v -race -buildvcs ./...
+	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
+	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html
