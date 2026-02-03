@@ -57,7 +57,9 @@ func TestCreateListReset(t *testing.T) {
 		}
 	})
 	t.Run("reset", func(t *testing.T) {
-		sink.Reset()
+		if err := sink.Reset(); err != nil {
+			t.Errorf("cannot reset eventSink: %v", err)
+		}
 		if sink.List() != nil {
 			t.Errorf("eventList should be empty")
 		}

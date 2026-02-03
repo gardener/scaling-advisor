@@ -36,7 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	kjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -677,9 +677,9 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 
 func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
 	sch := typeinfo.SupportedScheme
-	s := runtimejson.NewSerializerWithOptions(
-		runtimejson.DefaultMetaFactory, sch, sch,
-		runtimejson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
+	s := kjson.NewSerializerWithOptions(
+		kjson.DefaultMetaFactory, sch, sch,
+		kjson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
 
 	mev := &metav1.WatchEvent{
 		Type: string(ev.Type),

@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: "{{.Name}}"
+  namespace: "{{.Namespace}}"
   labels:
     app.kubernetes.io/name: "{{.AppLabels.Name}}"
     app.kubernetes.io/instance: "{{.AppLabels.Instance}}"
@@ -9,8 +10,8 @@ metadata:
     app.kubernetes.io/component: "{{.AppLabels.Component}}"
     app.kubernetes.io/part-of: "{{.AppLabels.PartOf}}"
     app.kubernetes.io/managed-by: "{{.AppLabels.ManagedBy}}"
-  namespace: {{.Namespace}}
 spec:
+  schedulerName: "bin-packing-scheduler"
   containers:
     - image: registry.k8s.io/pause:3.5
       name: pause

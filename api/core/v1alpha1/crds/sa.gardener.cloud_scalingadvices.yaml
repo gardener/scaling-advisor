@@ -153,7 +153,6 @@ spec:
                     type: array
                 required:
                 - Items
-                - unsatisfiedPodNames
                 type: object
             required:
             - constraintRef

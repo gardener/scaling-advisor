@@ -14,16 +14,16 @@ import (
 
 	"github.com/gardener/scaling-advisor/tools/types/awsprice"
 
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 )
 
 // ParseRegionPrices parses the raw pricing JSON for a given AWS region and OS,
 // and returns a slice of InstancePriceInfo values.
 //
 // Parameters:
-//   - region:  AWS region name (e.g., "us-east-1").
-//   - osName:  Desired operating system (e.g., "Linux").
-//   - data:    Raw JSON bytes from the AWS price list endpoint.
+//   - region: AWS region name (e.g., "us-east-1").
+//   - osName: Desired operating system (e.g., "Linux").
+//   - data: Raw JSON bytes from the AWS price list endpoint.
 //
 // Behavior:
 //   - Filters products by the given operating system.
@@ -33,9 +33,9 @@ import (
 //     per (InstanceType, Region, OS).
 //
 // Returns:
-//   - A slice of plannerapi.InstancePriceInfo with normalized pricing data.
+//   - A slice of pricingapi.InstancePriceInfo with normalized pricing data.
 //   - An error if the input JSON cannot be parsed.
-func ParseRegionPrices(region, osName string, data []byte) ([]plannerapi.InstancePriceInfo, error) {
+func ParseRegionPrices(region, osName string, data []byte) ([]pricingapi.InstancePriceInfo, error) {
 	var raw awsprice.PriceList
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]plannerapi.Instanc
 		OS           string
 	}
 
-	best := make(map[priceKey]plannerapi.InstancePriceInfo, 1000)
+	best := make(map[priceKey]pricingapi.InstancePriceInfo, 1000)
 
 	for sku, prod := range raw.Products {
 		attrs := prod.Attributes
@@ -96,7 +96,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]plannerapi.Instanc
 
 		key := priceKey{InstanceType: attrs.InstanceType, OS: attrs.OperatingSys}
 		if existing, ok := best[key]; !ok || price < existing.HourlyPrice {
-			best[key] = plannerapi.InstancePriceInfo{
+			best[key] = pricingapi.InstancePriceInfo{
 				InstanceType: attrs.InstanceType,
 				Region:       region,
 				VCPU:         vcpu,
@@ -109,7 +109,7 @@ func ParseRegionPrices(region, osName string, data []byte) ([]plannerapi.Instanc
 		}
 	}
 
-	infos := make([]plannerapi.InstancePriceInfo, 0, len(best))
+	infos := make([]pricingapi.InstancePriceInfo, 0, len(best))
 	for _, v := range best {
 		infos = append(infos, v)
 	}

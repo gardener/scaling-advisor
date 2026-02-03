@@ -17,11 +17,11 @@ import (
 // ScalingConstraint is a schema to define constraints that will be used to create cluster scaling advises for a cluster.
 type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
 	// Spec defines the specification of the ScalingConstraint.
 	Spec ScalingConstraintSpec `json:"spec"`
 	// Status defines the status of the ScalingConstraint.
-	Status ScalingConstraintStatus `json:"status,omitempty"`
+	Status ScalingConstraintStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -39,21 +39,22 @@ type ScalingConstraintList struct {
 type ScalingConstraintSpec struct {
 	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
 	// +optional
-	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy"`
+	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
 	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
 	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy"`
-	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.
-	// It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created.
-	ConsumerID string `json:"consumerID"`
+	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
+	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advice.
+	// It allows a consumer to accept or reject the advice by checking the ConsumerID for which the scaling advice has been created.
+	// +optional
+	ConsumerID string `json:"consumerID,omitempty"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
-	NodePools []NodePool `json:"nodePools"`
+	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
 // ScalingConstraintStatus defines the observed state of ScalingConstraint.
 type ScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ScalingConstraint.
-	Conditions []metav1.Condition `json:"conditions"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // NodePool defines a node pool configuration for a cluster.
@@ -106,7 +107,7 @@ type NodeTemplate struct {
 	// Priority is the priority of the node template. The lower the number, the higher the priority.
 	Priority int32 `json:"priority"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
-	MaxVolumes int32 `json:"maxVolumes"`
+	MaxVolumes int32 `json:"maxVolumes,omitzero"`
 }
 
 // InstancePricing contains the pricing information for an instance type.

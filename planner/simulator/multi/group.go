@@ -10,21 +10,23 @@ import (
 	"fmt"
 	"slices"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"golang.org/x/sync/errgroup"
 )
 
 var _ planner.SimulationGroup = (*simGroup)(nil)
 
 type simGroup struct {
-	requestRef  planner.ScalingAdviceRequestRef
+	requestRef  planner.RequestRef
 	name        string
 	simulations []planner.Simulation
 	key         planner.SimGroupKey
 }
 
 // NewGroup creates a new SimulationGroup with the given name and simulation group key.
-func NewGroup(name string, key planner.SimGroupKey, requestRef planner.ScalingAdviceRequestRef) planner.SimulationGroup {
+func NewGroup(name string, key planner.SimGroupKey, requestRef planner.RequestRef) planner.SimulationGroup {
 	return &simGroup{
 		name:       name,
 		key:        key,
@@ -48,7 +50,7 @@ func (g *simGroup) AddSimulation(sim planner.Simulation) {
 	g.simulations = append(g.simulations, sim)
 }
 
-func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewFunc) (result planner.SimulationGroupRunResult, err error) {
+func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewFunc) (runResults []planner.SimulationRunResult, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: simulation group %q failed: %w", planner.ErrRunSimulationGroup, g.Name(), err)
@@ -70,31 +72,32 @@ func (g *simGroup) Run(ctx context.Context, getViewFn planner.GetSimulationViewF
 		return
 	}
 
-	var simResults []planner.SimulationRunResult
 	var simResult planner.SimulationRunResult
 	for _, sim := range g.simulations {
 		simResult, err = sim.Result()
 		if err != nil {
 			return
 		}
-		simResults = append(simResults, simResult)
-	}
-	result = planner.SimulationGroupRunResult{
-		Name:              g.name,
-		Key:               g.key,
-		SimulationResults: simResults,
+		runResults = append(runResults, simResult)
 	}
 	return
 }
 
-func (g *simGroup) Reset() {
-	for _, sim := range g.simulations {
-		sim.Reset()
-	}
+func (g *simGroup) Reset() error {
+	resettable := asResettable(g.simulations)
+	return ioutil.ResetAll(resettable...)
 }
 
-// createSimulationGroups groups the given Simulation instances into one or more SimulationGroups
-func createSimulationGroups(requestRef planner.ScalingAdviceRequestRef, simulations []planner.Simulation) ([]planner.SimulationGroup, error) {
+func asResettable(simulations []planner.Simulation) []commontypes.Resettable {
+	resettable := make([]commontypes.Resettable, 0, len(simulations))
+	for _, s := range simulations {
+		resettable = append(resettable, s)
+	}
+	return resettable
+}
+
+// groupSimulations groups the given Simulation instances into one or more SimulationGroups
+func groupSimulations(requestRef planner.RequestRef, simulations []planner.Simulation) ([]planner.SimulationGroup, error) {
 	groupsByKey := make(map[planner.SimGroupKey]planner.SimulationGroup)
 	groupCount := 0
 	for _, sim := range simulations {

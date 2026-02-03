@@ -13,34 +13,34 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
-// GetInstanceType returns the Instance Type of a node from the label present on it.
+// GetInstanceType returns the instance-type of the given node from the label present on it.
 func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
 
-// AsNode converts a planner.NodeInfo to a corev1.Node object.
-func AsNode(info planner.NodeInfo) *corev1.Node {
+// AsNode converts a plannerapi.NodeInfo to a corev1.Node object.
+func AsNode(info plannerapi.NodeInfo) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              info.Name,
 			Labels:            info.Labels,
 			Annotations:       info.Annotations,
-			DeletionTimestamp: info.DeletionTimestamp,
+			DeletionTimestamp: objutil.AsPtrMetaV1Time(info.DeletionTimestamp),
 		},
 		Spec: corev1.NodeSpec{
 			Taints:        info.Taints,
 			Unschedulable: info.Unschedulable,
 		},
 		Status: corev1.NodeStatus{
-			Capacity:    objutil.Int64MapToResourceList(info.Capacity),
-			Allocatable: objutil.Int64MapToResourceList(info.Allocatable),
+			Capacity:    info.Capacity,
+			Allocatable: info.Allocatable,
 			Conditions:  info.Conditions,
 		},
 	}
@@ -71,7 +71,9 @@ func BuildReadyConditions(transitionTime time.Time) []corev1.NodeCondition {
 // CreateNodeLabels creates the labels for a simulated node.
 func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplate *sacorev1alpha1.NodeTemplate, az string, groupRunPassNum uint32, nodeName string) map[string]string {
 	nodeLabels := maps.Clone(nodePool.Labels)
-
+	if nodeLabels == nil {
+		nodeLabels = make(map[string]string)
+	}
 	nodeLabels[commonconstants.LabelSimulationName] = simulationName
 	nodeLabels[commonconstants.LabelSimulationGroupNumPasses] = fmt.Sprintf("%d", groupRunPassNum)
 	nodeLabels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
@@ -85,25 +87,26 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	return nodeLabels
 }
 
-// AsNodeInfo converts a corev1.Node into a planner.NodeInfo object.
-// It additionally takes in csiDriverVolumeMaximums which is a map
+// AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
+// It additionally takes in csiDriverVolumeMaximums, which is a map
 // of CSI driver names to the maximum number of volumes managed by
 // the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) planner.NodeInfo {
-	return planner.NodeInfo{
-		ResourceMeta: planner.ResourceMeta{
+func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
+	return plannerapi.NodeInfo{
+		BasicMeta: plannerapi.BasicMeta{
 			UID:               node.UID,
-			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
+			Name:              node.Name,
+			Namespace:         node.Namespace,
 			Labels:            node.Labels,
 			Annotations:       node.Annotations,
-			DeletionTimestamp: node.DeletionTimestamp,
+			DeletionTimestamp: ptr.Deref(node.DeletionTimestamp, metav1.Time{}).Time,
 			OwnerReferences:   node.OwnerReferences,
 		},
 		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
 		Unschedulable:           node.Spec.Unschedulable,
 		Taints:                  node.Spec.Taints,
-		Capacity:                objutil.ResourceListToInt64Map(node.Status.Capacity),
-		Allocatable:             objutil.ResourceListToInt64Map(node.Status.Allocatable),
+		Capacity:                node.Status.Capacity,
+		Allocatable:             node.Status.Allocatable,
 		Conditions:              node.Status.Conditions,
 		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
 	}

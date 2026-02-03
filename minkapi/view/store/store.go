@@ -67,10 +67,11 @@ func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore 
 }
 
 // Reset resets the backing cache for this story and re-initializes the watch broadcasters.
-func (s *InMemResourceStore) Reset() {
+func (s *InMemResourceStore) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	return nil
 }
 
 // Add adds the given metav1 Object to this store, setting the right resource version, updating the resource version counter and broadcasting the Add event to any watchers.

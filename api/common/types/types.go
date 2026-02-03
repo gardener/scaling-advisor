@@ -21,7 +21,7 @@ import (
 // Resettable defines types that can reset their state to a default or initial configuration.
 type Resettable interface {
 	// Reset resets the state of the implementing type.
-	Reset()
+	Reset() error
 }
 
 // Service is a component that can be started and stopped.
@@ -62,17 +62,17 @@ type ConstraintReference struct {
 	Namespace string `json:"namespace"`
 }
 
-// SimulationStrategy represents a simulation strategy variant.
+// SimulatorStrategy represents a simulation strategy variant.
 // +enum
-type SimulationStrategy string
+type SimulatorStrategy string
 
 const (
-	// SimulationStrategyOneNodeManySimulationsPerGroup represents a simulation strategy which runs independent multiple simulations differentiated by scaling a single node for a combination
+	// SimulatorStrategySingleNodeMultiSim represents a simulator strategy which runs independent multiple simulations differentiated by scaling a single node for a combination
 	// of NodePool, NodeTemplate and AvailabilityZone.
-	SimulationStrategyOneNodeManySimulationsPerGroup SimulationStrategy = "one-node-many-simulations-per-group"
-	// SimulationStrategyManyNodesOneSimulationPerGroup represents a simulation strategy which runs a single simulation per group by scaling multiple nodes for
-	//all combinations of NodePool, NodeTemplate and AvailabilityZone.
-	SimulationStrategyManyNodesOneSimulationPerGroup SimulationStrategy = "many-nodes-one-simulation-per-group"
+	SimulatorStrategySingleNodeMultiSim SimulatorStrategy = "single-node-multi-sim"
+	// SimulatorStrategyMultiNodeSingleSim represents a simulator strategy which runs a single simulation by scaling multiple nodes for
+	// all combinations of NodePool, NodeTemplate and AvailabilityZone.
+	SimulatorStrategyMultiNodeSingleSim SimulatorStrategy = "multi-node-single-sim"
 )
 
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
@@ -94,6 +94,16 @@ var SupportedAdviceGenerationModes = sets.New(
 	ScalingAdviceGenerationModeIncremental,
 	ScalingAdviceGenerationModeAllAtOnce,
 )
+
+// IsIncremental returns true if the advice generation mode is incremental.
+func (a ScalingAdviceGenerationMode) IsIncremental() bool {
+	return a == ScalingAdviceGenerationModeIncremental
+}
+
+// IsAllAtOnce returns true if the advice generation mode is all-at-once.
+func (a ScalingAdviceGenerationMode) IsAllAtOnce() bool {
+	return a == ScalingAdviceGenerationModeAllAtOnce
+}
 
 // NodeScoringStrategy represents a node scoring strategy variant.
 type NodeScoringStrategy string
@@ -166,3 +176,14 @@ type ClientFacades struct {
 	// Mode indicates the access mode of the Kubernetes client.
 	Mode ClientAccessMode
 }
+
+// ContextKey is the type alias for scaling advisor related context keys
+type ContextKey string
+
+const (
+	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
+	VerbosityCtxKey ContextKey = "verbosity"
+
+	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
+	TraceLogPathCtxKey ContextKey = "trace-log-path"
+)

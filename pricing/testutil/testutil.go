@@ -11,19 +11,19 @@ import (
 	"github.com/gardener/scaling-advisor/pricing"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 )
 
 //go:embed data/*.json
 var dataFS embed.FS
 
 // GetInstancePricingAccessWithFakeData loads and parses fake instance pricing data from sample data for testing purposes.
-// Returns an implementation of planner.InstancePricingAccess or an error if loading or parsing the data fails.
-// Errors are wrapped with planner.ErrLoadInstanceTypeInfo sentinel error.
-func GetInstancePricingAccessWithFakeData() (access planner.InstancePricingAccess, err error) {
+// Returns an implementation of plannerapi.InstancePricingAccess or an error if loading or parsing the data fails.
+// Errors are wrapped with plannerapi.ErrLoadProviderInstanceTypeInfo sentinel error.
+func GetInstancePricingAccessWithFakeData() (access pricingapi.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", planner.ErrLoadInstanceTypeInfo, err)
+			err = fmt.Errorf("%w: %w", pricingapi.ErrLoadProviderInstanceTypeInfo, err)
 		}
 	}()
 	testData, err := dataFS.ReadFile("data/fake-instance_price_infos.json")
@@ -34,12 +34,12 @@ func GetInstancePricingAccessWithFakeData() (access planner.InstancePricingAcces
 }
 
 // GetInstancePricingAccessForTop20AWSInstanceTypes loads pricing data for the top 20 AWS instance types in eu-west-1 region and
-// Returns an implementation of planner.InstancePricingAccess or an error if loading or parsing the data fails.
-// Errors are wrapped with planner.ErrLoadInstanceTypeInfo sentinel error.
-func GetInstancePricingAccessForTop20AWSInstanceTypes() (access planner.InstancePricingAccess, err error) {
+// Returns an implementation of plannerapi.InstancePricingAccess or an error if loading or parsing the data fails.
+// Errors are wrapped with plannerapi.ErrLoadProviderInstanceTypeInfo sentinel error.
+func GetInstancePricingAccessForTop20AWSInstanceTypes() (access pricingapi.InstancePricingAccess, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", planner.ErrLoadInstanceTypeInfo, err)
+			err = fmt.Errorf("%w: %w", pricingapi.ErrLoadProviderInstanceTypeInfo, err)
 		}
 	}()
 	testData, err := dataFS.ReadFile("data/aws_eu-west-1_top20_instance_pricing.json")

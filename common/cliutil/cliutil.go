@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cli
+package cliutil
 
 import (
 	"context"
@@ -45,7 +45,7 @@ var (
 // MapServerConfigFlags adds the constants flags to the passed FlagSet.
 func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig) {
 	flagSet.StringVar(&opts.BindAddress, "bind-address", commonconstants.DefaultMinKAPIBindAddress, "bind address of the form <host>:<port>")
-	flagSet.BoolVarP(&opts.ProfilingEnabled, "pprof", "p", false, "enable pprof profiling")
+	flagSet.BoolVar(&opts.ProfilingEnabled, "profile", false, "enable pprof profiling")
 	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", commonconstants.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
 
 	klogFlagSet := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -82,7 +82,7 @@ func HandleErrorAndExit(err error) {
 	if errors.Is(err, pflag.ErrHelp) {
 		os.Exit(ExitSuccess)
 	}
-	_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+	_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	os.Exit(ExitErrParseOpts)
 }
 
@@ -94,10 +94,10 @@ func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
 	return nil
 }
 
-// CreateAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
+// NewAppContext wraps the given context with a logger and signal-cancelling support and returns the same along with
 // a cancellation function for the returned context.
 // NOTE: Should be invoked only AFTER parsing program flags, so that the logger instance is initialized with logger flags.
-func CreateAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
+func NewAppContext(ctx context.Context, programName string) (context.Context, context.CancelFunc) {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	// Set up logr with klog backend using NewKlogr

@@ -87,8 +87,9 @@ func (s *InMemEventSink) List() []eventsv1.Event {
 }
 
 // Reset clears the backing in-memory slice.
-func (s *InMemEventSink) Reset() {
+func (s *InMemEventSink) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.events = nil
+	return nil
 }

@@ -6,12 +6,14 @@ package ioutil
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"text/template"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -28,6 +30,17 @@ func CloseQuietly(closer io.Closer) {
 	if closer != nil {
 		_ = closer.Close()
 	}
+}
+
+// ResetAll resets the given varying number of resettable and returns the aggregated error (if any)
+func ResetAll(resettable ...commontypes.Resettable) error {
+	var errs []error
+	for _, r := range resettable {
+		if err := r.Reset(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // LoadEmbeddedTextTemplate loads the text template at the given templatePath within the given embedFS.

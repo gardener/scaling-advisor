@@ -21,6 +21,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/clientutil"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
@@ -72,11 +73,13 @@ func NewBase(args *minkapi.ViewArgs) (minkapi.View, error) {
 	}, nil
 }
 
-func (v *baseView) Reset() {
+func (v *baseView) Reset() error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	resetStores(v.stores)
-	v.eventSink.Reset()
+	resettable := asResettable(v.stores)
+	resettable = append(resettable, v.eventSink)
+	v.changeCount.Store(0)
+	return ioutil.ResetAll(resettable...)
 }
 
 func (v *baseView) Close() error {
@@ -553,8 +556,10 @@ func closeStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) e
 	return errors.Join(errs...)
 }
 
-func resetStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) {
+func asResettable(stores map[schema.GroupVersionKind]*store.InMemResourceStore) []commontypes.Resettable {
+	resettable := make([]commontypes.Resettable, 0, len(stores))
 	for _, s := range stores {
-		s.Reset()
+		resettable = append(resettable, s)
 	}
+	return resettable
 }

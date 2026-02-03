@@ -5,74 +5,55 @@
 package samples
 
 import (
-	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// PoolCardinality is the enum type for representing pool cardinalities of a scaling scenario.
-type PoolCardinality string
+// PoolCategory is the enum type for representing pool categories of a sample scaling constraint.
+type PoolCategory string
 
 const (
-	// PoolCardinalityOne is the pool cardinality variant associated with a basic scenario.
-	PoolCardinalityOne PoolCardinality = "one-pool"
+	// PoolCategoryBasicOne is the pool category variant associated with a basic one-pool scaling constraint.
+	PoolCategoryBasicOne PoolCategory = "basic-one-pool"
 
-	// PoolCardinalityTwo is the pool cardinality variant associated with a two-pool scenario.
-	PoolCardinalityTwo PoolCardinality = "two-pool"
+	// PoolCategoryBasicTwo is the pool category variant associated with a basic two-pool scaling constraint.
+	PoolCategoryBasicTwo PoolCategory = "basic-two-pool"
 
-	// PoolCardinalityThree is the pool cardinality variant associated with a three-pool scenario.
-	PoolCardinalityThree PoolCardinality = "three-pool"
+	// PoolCategoryBasicThree is the pool category variant associated with a basic three-pool scaling constraint.
+	PoolCategoryBasicThree PoolCategory = "basic-three-pool"
 
-	// PoolCardinalityMany is the pool cardinality variant associated with many pools (used for greater than three)
-	PoolCardinalityMany PoolCardinality = "multi-pool"
+	// PoolCategoryBasicMany is the pool category variant associated with a basic many pool scaling constraint
+	PoolCategoryBasicMany PoolCategory = "basic-multi-pool"
 )
 
-// ScenarioVariant is the enum type representing variants of a scaling scenario.
-type ScenarioVariant string
+// ResourceCategory is the enum type for categorizing common variations of resource pairs.
+type ResourceCategory string
 
 const (
-	// ScenarioBasic represents scaling constraints where no pool has specified any taints, application pod's of the cluster snapshot have specified no tolerations and any application pod that fits any of the pool's nodeTemplates
-	// can be scheduled on the pool's nodes.
-	ScenarioBasic ScenarioVariant = "basic"
-)
+	// ResourceCategoryPea is a category for a resource list that specifies  1cpu and 1Gi.
+	ResourceCategoryPea ResourceCategory = "pea"
 
-//
-
-// ResourcePairsName is the enum type for naming some common variations of resource pairs.
-type ResourcePairsName string
-
-const (
-	// Pea is a name for resource pairs that specify 1cpu and 1Gi.
-	Pea ResourcePairsName = "pea"
-
-	// Berry is a name for resource pairs that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourceCategoryBerry is a category for a resource list that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
-	Berry ResourcePairsName = "berry"
+	ResourceCategoryBerry ResourceCategory = "berry"
 
-	// HalfBerry is a name for resource pairs that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourceCategoryHalfBerry is a category for a resource list that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
-	HalfBerry ResourcePairsName = "half-berry"
+	ResourceCategoryHalfBerry ResourceCategory = "half-berry"
 
-	// Grape is a name for resource pairs that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourceCategoryGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
-	Grape ResourcePairsName = "grape"
+	ResourceCategoryGrape ResourceCategory = "grape"
 
-	// HalfGrape is a name for resource pairs that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourceCategoryHalfGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
-	HalfGrape ResourcePairsName = "half-grape"
+	ResourceCategoryHalfGrape ResourceCategory = "half-grape"
 )
 
 // AsResourceList creates a corev1.ResourceList for the resources associated with this name
-func (c ResourcePairsName) AsResourceList() corev1.ResourceList {
-	return objutil.ResourceNameStringValueMapToResourceList(resourcePairsLabelToResourcePairsMap[c])
+func (c ResourceCategory) AsResourceList() corev1.ResourceList {
+	return resourceCategoriesToResourceListMap[c]
 }
-
-// AsResourcePairs creates ResourcePairs for the resources associated with this name
-func (c ResourcePairsName) AsResourcePairs() ResourcePairs {
-	return resourcePairsLabelToResourcePairsMap[c]
-}
-
-// ResourcePairs represents a map of resource names to  succinct, human-readable resource quantity. (corev1 resource.Quantity's string rep is NOT human-readable nor succinct)
-type ResourcePairs map[corev1.ResourceName]string
 
 // AppLabels represents standard k8s app labels
 type AppLabels struct {
@@ -93,34 +74,35 @@ type SimplePodMetadata struct {
 
 // SimplePodTemplateData holds all the pod template data for the simple pod template.
 type SimplePodTemplateData struct {
-	Resources map[corev1.ResourceName]string
+	//Resources map[corev1.ResourceName]string
+	Resources corev1.ResourceList
 	SimplePodMetadata
 }
 
 var (
-	allResourcePairsLabels = []ResourcePairsName{
-		Pea, Berry, HalfBerry, Grape, HalfGrape,
+	allResourceCategories = []ResourceCategory{
+		ResourceCategoryPea, ResourceCategoryBerry, ResourceCategoryHalfBerry, ResourceCategoryGrape, ResourceCategoryHalfGrape,
 	}
-	resourcePairsLabelToResourcePairsMap = map[ResourcePairsName]ResourcePairs{
-		Pea: {
-			corev1.ResourceCPU:    "1",
-			corev1.ResourceMemory: "1Gi",
+	resourceCategoriesToResourceListMap = map[ResourceCategory]corev1.ResourceList{
+		ResourceCategoryPea: {
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
 		},
-		Berry: {
-			corev1.ResourceCPU:    "1000m",
-			corev1.ResourceMemory: "5100Mi",
+		ResourceCategoryBerry: {
+			corev1.ResourceCPU:    resource.MustParse("1000m"),
+			corev1.ResourceMemory: resource.MustParse("5100Mi"),
 		},
-		HalfBerry: {
-			corev1.ResourceCPU:    "500m",
-			corev1.ResourceMemory: "2500Mi",
+		ResourceCategoryHalfBerry: {
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("2500Mi"),
 		},
-		Grape: {
-			corev1.ResourceCPU:    "3",
-			corev1.ResourceMemory: "13Gi",
+		ResourceCategoryGrape: {
+			corev1.ResourceCPU:    resource.MustParse("3"),
+			corev1.ResourceMemory: resource.MustParse("13Gi"),
 		},
-		HalfGrape: {
-			corev1.ResourceCPU:    "1500m",
-			corev1.ResourceMemory: "6400Mi",
+		ResourceCategoryHalfGrape: {
+			corev1.ResourceCPU:    resource.MustParse("1500m"),
+			corev1.ResourceMemory: resource.MustParse("6400Mi"),
 		},
 	}
 )

@@ -19,7 +19,6 @@ require (
 
 replace (
 	github.com/gardener/scaling-advisor/api => ../api
-	github.com/gardener/scaling-advisor/common => ../common
 )
 
 require (

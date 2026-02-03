@@ -16,7 +16,7 @@ import (
 	"github.com/gardener/scaling-advisor/tools/pricing/awsprice"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +81,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 		return fmt.Errorf("failed to create pricing dir: %w", err)
 	}
 
-	var allInfos []plannerapi.InstancePriceInfo
+	var allInfos []pricingapi.InstancePriceInfo
 	tmpDir := os.TempDir()
 	for _, region := range regions {
 		regionJSONPath := path.Join(tmpDir, "aws_"+region+".json")
@@ -104,7 +104,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 		fmt.Printf("Fetched %d instance type prices for region %s\n", len(infos), region)
 		allInfos = append(allInfos, infos...)
 	}
-	slices.SortFunc(allInfos, func(a, b plannerapi.InstancePriceInfo) int {
+	slices.SortFunc(allInfos, func(a, b pricingapi.InstancePriceInfo) int {
 		return cmp.Compare(a.InstanceType, b.InstanceType)
 	})
 	fmt.Printf("Fetched %d instance type prices across %d region(s)\n", len(allInfos), len(regions))
@@ -112,7 +112,7 @@ func generateAWSPrices(pricingDir string, regions []string) error {
 	return writeInstanceTypeInfos(outputFile, allInfos)
 }
 
-func writeInstanceTypeInfos(path string, infos []plannerapi.InstancePriceInfo) error {
+func writeInstanceTypeInfos(path string, infos []pricingapi.InstancePriceInfo) error {
 	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
