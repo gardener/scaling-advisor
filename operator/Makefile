@@ -19,7 +19,7 @@ tidy:
 .PHONY: build
 build:
 	mkdir -p bin
-	go build -buildvcs -o=bin/${binary_name} ${main_pkg_path}
+	go build -buildvcs -o=bin/${service_binary_name} ${service_main_pkg_path}
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
@@ -29,6 +29,8 @@ format: $(GOIMPORTS_REVISER)
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
 
+## test-unit: run all unit tests with coverage
 .PHONY: test-unit
 test-unit:
-	go test -v -race -buildvcs ./...
+	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
+	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html

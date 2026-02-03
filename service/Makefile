@@ -6,8 +6,10 @@ REPO_HACK_DIR           := $(REPO_ROOT)/hack
 include $(REPO_HACK_DIR)/tools.mk
 
 # Change these variables as necessary.
-main_pkg_path = ./cmd/scalp
-binary_name = scalp
+service_main_pkg_path = ./cmd/splanner
+service_binary_name = splanner
+ctl_main_pkg_path = ./cmd/splanctl
+ctl_binary_name = splanctl
 
 ## help: print this help message
 .PHONY: help
@@ -27,18 +29,13 @@ test-unit:
 ## test-unit/cover: run all unit tests and display coverage
 .PHONY: test-unit/cover
 test-unit/cover:
-	go test -v -race -buildvcs -coverprofile=/tmp/coverage.out ./...
-	go tool cover -html=/tmp/coverage.out
+	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
+	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html
 
 ## test-integration: run all integration tests
 .PHONY: test-integration
 test-integration:
 	go test -v -buildvcs -tags=integration ./test/integration/...
-
-## upgradeable: list direct dependencies that have upgrades available
-.PHONY: upgradeable
-upgradeable:
-	@go list -u -f '{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}: {{.Version}} -> {{.Update.Version}}{{end}}' -m all
 
 ## tidy: tidies up go mod
 .PHONY: tidy
@@ -49,8 +46,8 @@ tidy:
 .PHONY: build
 build:
 	mkdir -p bin
-    # Include additional build steps, like TypeScript, SCSS or Tailwind compilation here...
-	go build -buildvcs -o=bin/${binary_name} ${main_pkg_path}
+	go build -buildvcs -o=bin/${service_binary_name} ${service_main_pkg_path}
+	go build -buildvcs -o=bin/${ctl_binary_name} ${ctl_main_pkg_path}
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)
@@ -59,17 +56,3 @@ format: $(GOIMPORTS_REVISER)
 .PHONY: check
 check: $(GOLANGCI_LINT) format
 	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
-
-## run: run the service
-.PHONY: run
-run: build
-	bin/${binary_name}
-
-## run/live: run the service with reloading on file changes
-.PHONY: run/live
-run/live:
-	go run github.com/cosmtrek/air@v1.43.0 \
-	    --build.cmd "make build" --build.bin "bin/${binary_name}" --build.delay "100" \
-	    --build.exclude_dir "" \
-	    --build.include_ext "go, tpl, tmpl, html, css, scss, js, ts, sql, jpeg, jpg, gif, png, bmp, svg, webp, ico" \
-	    --misc.clean_on_exit "true"

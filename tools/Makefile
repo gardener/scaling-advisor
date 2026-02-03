@@ -20,16 +20,11 @@ help:
 no-dirty:
 	@test -z "$(shell git status --porcelain)"
 
-## test-unit: run all unit tests
+## test-unit: run all unit tests with coverage
 .PHONY: test-unit
 test-unit:
-	go test -v -race -buildvcs ./...
-
-## test-unit/cover: run all unit tests and display coverage
-.PHONY: test-unit/cover
-test-unit/cover:
-	go test -v -race -buildvcs -coverprofile=/tmp/coverage.out ./...
-	go tool cover -html=/tmp/coverage.out
+	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
+	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html
 
 ## test-integration: run all integration tests
 .PHONY: test-integration
@@ -63,4 +58,4 @@ check: $(GOLANGCI_LINT) format
 ## run: run the client
 .PHONY: run
 run: build
-	bin/${binary_name}
+	bin/${service_binary_name}

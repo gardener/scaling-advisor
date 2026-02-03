@@ -9,35 +9,22 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"sync"
 	"text/template"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 )
 
-//go:embed templates/*.yaml
-var content embed.FS
-
 var (
-	kubeConfigTemplate          *template.Template
-	kubeSchedulerConfigTemplate *template.Template
+	//go:embed templates/*.yaml
+	content         embed.FS
+	configTemplates = struct {
+		kubeConfigTemplate          *template.Template
+		kubeSchedulerConfigTemplate *template.Template
+		mu                          sync.Mutex
+	}{}
 )
-
-func loadKubeConfigTemplate() (err error) {
-	if kubeConfigTemplate != nil {
-		return
-	}
-	kubeConfigTemplate, err = ioutil.LoadEmbeddedTextTemplate(content, "templates/kubeconfig.yaml")
-	return
-}
-
-func loadKubeSchedulerConfigTemplate() (err error) {
-	if kubeSchedulerConfigTemplate != nil {
-		return
-	}
-	kubeSchedulerConfigTemplate, err = ioutil.LoadEmbeddedTextTemplate(content, "templates/kube-scheduler-config.yaml")
-	return
-}
 
 // KubeSchedulerTmplParams encapsulates Go template parameters for generating a very simple kube-scheduler configuration that utilizes a minkapi server.
 type KubeSchedulerTmplParams struct {
@@ -61,9 +48,9 @@ func GenKubeConfig(params KubeConfigParams) error {
 		return err
 	}
 	var buf bytes.Buffer
-	err = kubeConfigTemplate.Execute(&buf, params)
+	err = configTemplates.kubeConfigTemplate.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: cannot render %q template with params %q: %w", commonerrors.ErrExecuteTemplate, kubeConfigTemplate.Name(), params, err)
+		return fmt.Errorf("%w: cannot render %q template with params %q: %w", commonerrors.ErrExecuteTemplate, configTemplates.kubeConfigTemplate.Name(), params, err)
 	}
 	err = os.WriteFile(params.KubeConfigPath, buf.Bytes(), 0600)
 	if err != nil {
@@ -79,13 +66,33 @@ func GenKubeSchedulerConfig(params KubeSchedulerTmplParams) error {
 		return err
 	}
 	var buf bytes.Buffer
-	err = kubeSchedulerConfigTemplate.Execute(&buf, params)
+	err = configTemplates.kubeSchedulerConfigTemplate.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, kubeSchedulerConfigTemplate.Name(), params, err)
+		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, configTemplates.kubeSchedulerConfigTemplate.Name(), params, err)
 	}
 	err = os.WriteFile(params.KubeSchedulerConfigPath, buf.Bytes(), 0600)
 	if err != nil {
 		return fmt.Errorf("%w: cannot write scheduler config to %q: %w", commonerrors.ErrExecuteTemplate, params.KubeSchedulerConfigPath, err)
 	}
 	return nil
+}
+
+func loadKubeConfigTemplate() (err error) {
+	configTemplates.mu.Lock()
+	defer configTemplates.mu.Unlock()
+	if configTemplates.kubeConfigTemplate != nil {
+		return
+	}
+	configTemplates.kubeConfigTemplate, err = ioutil.LoadEmbeddedTextTemplate(content, "templates/kubeconfig.yaml")
+	return
+}
+
+func loadKubeSchedulerConfigTemplate() (err error) {
+	configTemplates.mu.Lock()
+	defer configTemplates.mu.Unlock()
+	if configTemplates.kubeSchedulerConfigTemplate != nil {
+		return
+	}
+	configTemplates.kubeSchedulerConfigTemplate, err = ioutil.LoadEmbeddedTextTemplate(content, "templates/kube-scheduler-config.yaml")
+	return
 }
