@@ -93,7 +93,7 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 // the driver on the node.
 func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
 	return plannerapi.NodeInfo{
-		BasicMeta: plannerapi.BasicMeta{
+		BasicObjectMeta: plannerapi.BasicObjectMeta{
 			UID:               node.UID,
 			Name:              node.Name,
 			Namespace:         node.Namespace,

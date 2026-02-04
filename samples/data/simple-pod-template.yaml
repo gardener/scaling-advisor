@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/part-of: "{{.AppLabels.PartOf}}"
     app.kubernetes.io/managed-by: "{{.AppLabels.ManagedBy}}"
 spec:
-  schedulerName: "bin-packing-scheduler"
+  schedulerName: "{{.SchedulerName}}"
   containers:
     - image: registry.k8s.io/pause:3.5
       name: pause
@@ -20,4 +20,12 @@ spec:
           {{- range $k, $v := .Resources }}
           {{ $k }}: {{ toString $v }}
           {{- end }}
+  {{- if .PVCNames }}
+  volumes:
+    {{- range $k, $v := .PVCNames }}
+    - name: "vol-{{ $k }}"
+      persistentVolumeClaim:
+        claimName: "{{ $v }}"
+    {{- end }}
+  {{- end }}
   terminationGracePeriodSeconds: 0

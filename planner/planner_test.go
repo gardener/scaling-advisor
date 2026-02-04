@@ -262,8 +262,9 @@ func createTestPlannerAndTestData(t *testing.T, args TestArgs) (planner plannera
 	}
 	var pods []corev1.Pod
 	for c, n := range args.NumUnscheduledPerResourceCategory {
-		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodMetadata{
-			Name: string(c),
+		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodGenInput{
+			Name:          string(c),
+			SchedulerName: "bin-packing-scheduler",
 		})
 		if err != nil {
 			t.Fatalf("failed to generate simple pods for resource category %s: %v", c, err)

@@ -65,18 +65,21 @@ type AppLabels struct {
 	ManagedBy string
 }
 
-// SimplePodMetadata holds the simple pod metadata.
-type SimplePodMetadata struct {
-	Name      string
-	Namespace string
-	AppLabels AppLabels
+// SimplePodGenInput holds the input data for generating simple pods.
+type SimplePodGenInput struct {
+	Name          string
+	Namespace     string
+	AppLabels     AppLabels
+	SchedulerName string
+	// PVCNames is the names of the PersistentVolumeClaims to be mounted to the pod.
+	PVCNames []string
 }
 
 // SimplePodTemplateData holds all the pod template data for the simple pod template.
 type SimplePodTemplateData struct {
 	//Resources map[corev1.ResourceName]string
 	Resources corev1.ResourceList
-	SimplePodMetadata
+	SimplePodGenInput
 }
 
 var (

@@ -18,7 +18,7 @@ const (
 	// a simulation run is considered as stabilized.
 	DefaultMaxUnchangedTrackAttempts = 3
 	// ServiceName is the program binary name for the independent scaling planner microservice.
-	ServiceName = "scalp"
+	ServiceName = "splanner"
 )
 
 var (

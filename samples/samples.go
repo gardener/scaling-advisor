@@ -99,12 +99,46 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData SimplePodTemplateDa
 
 // GenerateSimplePodsForResourceCategory generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
 // Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, metadata SimplePodMetadata) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, metadata SimplePodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	podTmplData := SimplePodTemplateData{
-		SimplePodMetadata: metadata,
+		SimplePodGenInput: metadata,
 		Resources:         category.AsResourceList(),
 	}
 	return GenerateSimplePodsWithTemplateData(num, podTmplData)
+}
+
+// GenerateSimplePVCs generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames in the given namespace.
+func GenerateSimplePVCs(namespace string, pvcNames []string) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
+	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pvc-template.yaml")
+	if err != nil {
+		return
+	}
+	if namespace == "" {
+		namespace = corev1.NamespaceDefault
+	}
+	for _, pvcName := range pvcNames {
+		var pvc corev1.PersistentVolumeClaim
+		outYAMLPath := path.Join(ioutil.GetTempDir(), "pvc-"+pvcName+".yaml")
+		pvcTmplData := struct {
+			Name      string
+			Namespace string
+		}{
+			Name:      pvcName,
+			Namespace: namespace,
+		}
+		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
+		if err != nil {
+			return
+		}
+		pvc.CreationTimestamp = metav1.Now()
+		pvcs = append(pvcs, pvc)
+		pvcYAMLPaths = append(pvcYAMLPaths, outYAMLPath)
+	}
+	return
+}
+
+func GeneratePersistentVolumes() {
+
 }
 
 func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTemplateData {

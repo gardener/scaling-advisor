@@ -25,8 +25,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// App represents an application process `scalp` that wraps a ScalingPlannerService, an application context and application cancel func.
-// `main` entry-point functions that embed scalp are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+// App represents an application process `splanner` that wraps a ScalingPlannerService, an application context and application cancel func.
+// `main` entry-point functions that embed splanner are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
 type App struct {
 	// Service is the scaling planner service.
 	Service plannerapi.ScalingPlannerService

@@ -166,7 +166,7 @@ func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string
 // AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
 func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
-		BasicMeta: planner.BasicMeta{
+		BasicObjectMeta: planner.BasicObjectMeta{
 			UID:               pod.UID,
 			Name:              pod.Name,
 			Namespace:         pod.Namespace,

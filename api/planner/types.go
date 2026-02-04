@@ -157,8 +157,9 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 	return nodeCountByPlacement, nil
 }
 
-// BasicMeta contains the basic metadata associated with Kubernetes resource objects that is relevant for the scaling planner	.
-type BasicMeta struct {
+// BasicObjectMeta contains the basic object metadata associated with Kubernetes resource objects which is a
+// lean information subset of metav1.ObjectMeta that is relevant for the scaling planner	.
+type BasicObjectMeta struct {
 	// UID is the unique identifier for the resource.
 	UID       types.UID `json:"uid"`
 	Namespace string    `json:"namespace,omitempty"`
@@ -193,7 +194,7 @@ type PodInfo struct {
 	PriorityClassName string                  `json:"priorityClassName,omitempty"`
 	PreemptionPolicy  corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
 	RuntimeClassName  string                  `json:"runtimeClassName,omitempty"`
-	BasicMeta
+	BasicObjectMeta
 	// Volumes are the volumes that are attached to the Pod.
 	Volumes []corev1.Volume `json:",omitempty"`
 	// Tolerations are the tolerations for the Pod.
@@ -224,7 +225,7 @@ type NodeInfo struct {
 	CSIDriverVolumeMaximums map[string]int32 `json:",omitempty"`
 	// InstanceType is the instance type for the Node
 	InstanceType string
-	BasicMeta
+	BasicObjectMeta
 	// Taints are the node's taints.
 	Taints []corev1.Taint `json:",omitempty"`
 	// Conditions are the node's conditions.
@@ -272,7 +273,7 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 }
 
 // GetNamespacedName returns the NamespacedName for this basic meta.
-func (m *BasicMeta) GetNamespacedName() types.NamespacedName {
+func (m *BasicObjectMeta) GetNamespacedName() types.NamespacedName {
 	return types.NamespacedName{
 		Namespace: m.Namespace,
 		Name:      m.Name,
