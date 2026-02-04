@@ -23,6 +23,17 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// App represents an application process `splanner` that wraps a ScalingPlannerService, an application context and application cancel func.
+// `main` entry-point functions that embed splanner are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+type App struct {
+	// Service is the scaling planner service.
+	Service plannerapi.ScalingPlannerService
+	// Ctx is the application context.
+	Ctx context.Context
+	// Cancel is the context cancellation function.
+	Cancel context.CancelFunc
+}
+
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
 	InstancePricingPath string

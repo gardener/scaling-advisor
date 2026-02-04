@@ -102,9 +102,9 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 // It additionally takes in csiDriverVolumeMaximums which is a map
 // of CSI driver names to the maximum number of volumes managed by
 // the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) planner.NodeInfo {
-	return planner.NodeInfo{
-		ResourceMeta: planner.ResourceMeta{
+func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
+	return plannerapi.NodeInfo{
+		BasicObjectMeta: plannerapi.BasicObjectMeta{
 			UID:               node.UID,
 			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
 			Labels:            node.Labels,

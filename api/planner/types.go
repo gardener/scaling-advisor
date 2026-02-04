@@ -188,36 +188,21 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 	return nodeCountByPlacement, nil
 }
 
-// getNodePlacement extracts the node placement information from a NodeInfo using labels.
-func getNodePlacement(nodeInfo NodeInfo) (placement sacorev1alpha1.NodePlacement, err error) {
-	nodeTemplateName, ok := nodeInfo.Labels[commonconstants.LabelNodeTemplateName]
-	if !ok {
-		err = fmt.Errorf("%w: %s", ErrMissingRequiredLabel, commonconstants.LabelNodeTemplateName)
-		return
-	}
-	nodePoolName, ok := nodeInfo.Labels[commonconstants.LabelNodePoolName]
-	if !ok {
-		err = fmt.Errorf("%w: %s", ErrMissingRequiredLabel, commonconstants.LabelNodePoolName)
-		return
-	}
-	region, ok := nodeInfo.Labels[corev1.LabelTopologyRegion]
-	if !ok {
-		err = fmt.Errorf("%w: %s", ErrMissingRequiredLabel, corev1.LabelTopologyRegion)
-		return
-	}
-	az, ok := nodeInfo.Labels[corev1.LabelTopologyZone]
-	if !ok {
-		err = fmt.Errorf("%w: %s", ErrMissingRequiredLabel, corev1.LabelTopologyZone)
-		return
-	}
-	placement = sacorev1alpha1.NodePlacement{
-		NodePoolName:     nodePoolName,
-		NodeTemplateName: nodeTemplateName,
-		InstanceType:     nodeInfo.InstanceType,
-		Region:           region,
-		AvailabilityZone: az,
-	}
-	return
+// BasicObjectMeta contains the basic object metadata associated with Kubernetes resource objects which is a
+// lean information subset of metav1.ObjectMeta that is relevant for the scaling planner	.
+type BasicObjectMeta struct {
+	// UID is the unique identifier for the resource.
+	UID       types.UID `json:"uid"`
+	Namespace string    `json:"namespace,omitempty"`
+	Name      string    `json:"name"`
+	// Labels are the labels associated with the resource.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Annotations are the annotations associated with the resource.
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
+	DeletionTimestamp time.Time `json:"deletionTimestamp,omitzero"`
+	// OwnerReferences are the owner references associated with the resource.
+	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
 }
 
 // PodInfo contains the minimum set of information about corev1.Pod that will be required by the kube-scheduler.
@@ -238,6 +223,13 @@ type PodInfo struct {
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// SchedulerName is the name of the scheduler that should be used to schedule the Pod.
 	SchedulerName string `json:"schedulerName,omitempty"`
+	// PriorityClassName is the name of the priority class that should be used to schedule the Pod.
+	PriorityClassName string                  `json:"priorityClassName,omitempty"`
+	PreemptionPolicy  corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
+	RuntimeClassName  string                  `json:"runtimeClassName,omitempty"`
+	BasicObjectMeta
+	// Volumes are the volumes that are attached to the Pod.
+	Volumes []corev1.Volume `json:",omitempty"`
 	// Tolerations are the tolerations for the Pod.
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// PriorityClassName is the name of the priority class that should be used to schedule the Pod.
@@ -269,8 +261,8 @@ type NodeInfo struct {
 	// CSI driver that can be used on a node.
 	CSIDriverVolumeMaximums map[string]int32 `json:"csiDriverVolumeMaximums,omitempty"`
 	// InstanceType is the instance type for the Node
-	InstanceType string `json:"instanceType"`
-	ResourceMeta
+	InstanceType string
+	BasicObjectMeta
 	// Taints are the node's taints.
 	Taints []corev1.Taint `json:"taints,omitempty"`
 	// Conditions are the node's conditions.
@@ -324,12 +316,12 @@ type InstancePriceInfo struct {
 	VCPU int32 `json:"VCPU"`
 }
 
-// PriceKey represents the key for a instance type price within a cloud provider.
-type PriceKey struct {
-	// Name is the instance type name.
-	Name string
-	// Region is the cloud region.
-	Region string
+// GetNamespacedName returns the NamespacedName for this basic meta.
+func (m *BasicObjectMeta) GetNamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Namespace: m.Namespace,
+		Name:      m.Name,
+	}
 }
 
 // InstancePricingAccess defines an interface for accessing instance pricing information.

@@ -128,13 +128,9 @@ func TestGenerateStorageClass(t *testing.T) {
 func TestGenerateSimplePodsWithResources(t *testing.T) {
 	podCount := 4
 	pvcNames := []string{"stem", "branch"}
-	testGenDir, ok := commontestutil.CreateTestGenDir(t)
-	if !ok {
-		return
-	}
-	for _, resourceCategory := range allResourcePresets {
+	for _, resourceCategory := range allResourceCategories {
 		t.Run(string(resourceCategory), func(t *testing.T) {
-			out, err := GenerateSimplePodsForResourcePreset(resourceCategory, podCount, PodGenInput{
+			pods, podYAMLPaths, err := GenerateSimplePodsForResourceCategory(resourceCategory, podCount, SimplePodGenInput{
 				Name: string(resourceCategory),
 				AppLabels: AppLabels{
 					Name:      string(resourceCategory),
@@ -142,7 +138,6 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 					PartOf:    "food",
 					ManagedBy: "logistics",
 				},
-				GenDir:   testGenDir,
 				PVCNames: pvcNames,
 			})
 			if err != nil {
@@ -153,6 +148,18 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 			}
 			if len(out.YAMLPaths) != podCount {
 				t.Errorf("expecting %d paths for %q, got %d", podCount, resourceCategory, len(out.YAMLPaths))
+			}
+
+			pvcs, pvcYAMLPaths, err := GenerateSimplePVCs("", pvcNames)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("Generated %d PVCs, pvcYAMLPaths: %q", len(pvcs), pvcYAMLPaths)
+			if len(pvcs) != len(pvcNames) {
+				t.Errorf("expecting %d PVCs for %q, got %d", len(pvcNames), resourceCategory, len(pvcs))
+			}
+			if len(pvcs) != len(pvcYAMLPaths) {
+				t.Errorf("expecting %d PVC paths for %q, got %d", len(pvcNames), resourceCategory, len(pvcYAMLPaths))
 			}
 
 			want := resourceCategory.AsResourceList()

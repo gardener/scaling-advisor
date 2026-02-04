@@ -33,11 +33,17 @@ func TestGenerateBasicScalingAdvice(t *testing.T) {
 		t.Errorf("failed to create test planner: %v", err)
 		return
 	}
-
-	constraints, err := samples.LoadClusterConstraints(samples.CategoryBasic)
-	if err != nil {
-		t.Errorf("failed to load basic cluster constraints: %v", err)
-		return
+	var pods []corev1.Pod
+	for c, n := range args.NumUnscheduledPerResourceCategory {
+		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodGenInput{
+			Name:          string(c),
+			SchedulerName: "bin-packing-scheduler",
+		})
+		if err != nil {
+			t.Fatalf("failed to generate simple pods for resource category %s: %v", c, err)
+			return
+		}
+		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
 	}
 	snapshot, err := samples.LoadClusterSnapshot(samples.CategoryBasic)
 	if err != nil {

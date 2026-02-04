@@ -65,67 +65,14 @@ type AppLabels struct {
 	ManagedBy string
 }
 
-// ConstraintGenInput holds the input data for generating ScalingConstraint's. Currently, it only supports customization of
-// NodePool details, but will be extended in the future.
-type ConstraintGenInput struct {
-	GenDir string
-	// PoolPreset is the PoolPreset variant
-	PoolPreset PoolPreset
-	// PoolZones specifies the availability zones for each pool given in order. If nil, defaults to the preset zone.
-	PoolZones [][]string
-}
-
-// ConstraintGenOutput holds the generated output data after generating NodePools.
-type ConstraintGenOutput struct {
-	// GenYAMLPath provides the generated YAML path of ScalingConstraint
-	GenYAMLPath string
-	Constraint  sacorev1alpha1.ScalingConstraint
-}
-
-// PodGenInput holds the input data for generating simple pods.
-type PodGenInput struct {
-	GenDir        string
+// SimplePodGenInput holds the input data for generating simple pods.
+type SimplePodGenInput struct {
 	Name          string
 	Namespace     string
 	AppLabels     AppLabels
 	SchedulerName string
 	// PVCNames is the names of the PersistentVolumeClaims to be mounted to the pod.
 	PVCNames []string
-}
-
-// PodGenOutput is the output container for generated pod data.
-type PodGenOutput struct {
-	YAMLPaths map[commontypes.NamespacedName]string
-	Pods      []corev1.Pod
-}
-
-// VolGenInput represents bag of input parameters to generate PVC's and PV's.
-type VolGenInput struct {
-	Provider commontypes.CloudProvider
-	// Namespace represents the PVC nameespace.
-	Namespace string
-	// Storage is used to set the corev1.ResourceStorage quantity in generated PVC.Spec.Resoures.Requests
-	Storage resource.Quantity
-	// AccessMode is used to set the generated PVC.Spec.AccessModes and PV.Spec.AccessModes
-	AccessMode corev1.PersistentVolumeAccessMode
-	// StorageClassName is used to set the generated PVC.spec.storageClassName and PV.spec.storageClassName
-	StorageClassName string
-	// PVCCLaimPhase represents whether PVC is bound or unbound to a PV. If PVC Phase is "Pending" (default),
-	// then the generated PVC is not bound to the generated PV.
-	ClaimPhase corev1.PersistentVolumeClaimPhase
-	// VolumeBindingMode represents whether the PVC should be bound Immediately or WaitForFirstConsumer (WFFC)
-	// Always defaults to Immediate, unless explicitly set.
-	// If not explicitly set and if the ClaimPhase is Pending, then VolumeBindingMode is defaulted to Immediate.
-	VolumeBindingMode storagev1.VolumeBindingMode
-	// PVCNames if specified determine the number of PVCs and names of the generated PVCs.
-	PVCNames []string
-	// PVZones if specified determine the total number of PV's - there is a PV generated per PVCName and PVZone combo.
-	// The zone is used as the match expression in the PersistentVolume.Spec.NodeAffinity for the generated PV.
-	PVZones []string
-	// MaxAllocatableVolumes specifies the max number of PV's that can be allocated to the Node. It is a CSI specific value.
-	MaxAllocatableVolumes int32
-	// GeneratePV should be set to true if PV objects should be generated or skipped.
-	GeneratePV bool
 }
 
 // ValidateAndFillDefaults validates required fields in VolGenInput and fills other fields with defaults.
@@ -170,7 +117,7 @@ type VolGenOutput struct {
 // PodTemplateData holds all pod template data values for executing the simple pod template.
 type PodTemplateData struct {
 	Resources corev1.ResourceList
-	PodGenInput
+	SimplePodGenInput
 }
 
 // CSIDefaults encapsulate a collection of default CSI config values

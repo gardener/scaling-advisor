@@ -84,7 +84,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -95,7 +95,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 						InstanceType: "m5.large",
 					},
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -106,7 +106,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 						InstanceType: "m5.large",
 					},
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-b",
 								commonconstants.LabelNodePoolName:     "pool-b",
@@ -141,7 +141,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodePoolName: "pool-a",
 								corev1.LabelTopologyRegion:        "us-east-1",
@@ -159,7 +159,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
@@ -177,7 +177,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -195,7 +195,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						ResourceMeta: ResourceMeta{
+						BasicObjectMeta: BasicObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -243,12 +243,10 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 
 func TestPodInfo_GetResourceInfo(t *testing.T) {
 	podInfo := PodInfo{
-		ResourceMeta: ResourceMeta{
-			UID: "pod-uid-123",
-			NamespacedName: types.NamespacedName{
-				Namespace: "default",
-				Name:      "test-pod",
-			},
+		BasicObjectMeta: BasicObjectMeta{
+			UID:       "pod-uid-123",
+			Namespace: "default",
+			Name:      "test-pod",
 		},
 		AggregatedRequests: map[corev1.ResourceName]int64{
 			corev1.ResourceCPU:    1000,
@@ -277,10 +275,8 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 
 func TestNodeInfo_GetResourceInfo(t *testing.T) {
 	nodeInfo := NodeInfo{
-		ResourceMeta: ResourceMeta{
-			NamespacedName: types.NamespacedName{
-				Name: "node-1",
-			},
+		BasicObjectMeta: BasicObjectMeta{
+			Name: "node-1",
 		},
 		InstanceType: "m5.large",
 		Capacity: map[corev1.ResourceName]int64{
