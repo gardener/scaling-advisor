@@ -7,6 +7,7 @@ package util
 import (
 	"context"
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"strconv"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 // SendErrorResponse wraps the given error with the sentinel error plannerapi.ErrGenScalingPlan, embeds the wrapped error
@@ -62,7 +62,7 @@ func SendScaleOutPlanResult(ctx context.Context, resultCh chan<- plannerapi.Scal
 		commonconstants.LabelConstraintNumPools:         strconv.Itoa(len(req.Constraint.Spec.NodePools)),
 	}
 	var allWinnerNodeScores []plannerapi.NodeScore
-	var leftOverUnscheduledPods []types.NamespacedName
+	var leftOverUnscheduledPods []commontypes.NamespacedName
 	for _, gcr := range groupCycleResults {
 		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
@@ -78,7 +78,7 @@ func SendScaleOutPlanResult(ctx context.Context, resultCh chan<- plannerapi.Scal
 }
 
 // createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []types.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []commontypes.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := groupNodeScoresByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {

@@ -5,6 +5,7 @@
 package podutil
 
 import (
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"slices"
 
 	"github.com/gardener/scaling-advisor/api/planner"
@@ -100,9 +101,7 @@ func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResour
 	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
 		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
-			UID:                podInfo.UID,
-			Name:               podInfo.Name,
-			Namespace:          podInfo.Namespace,
+			NamespacedName:     podInfo.NamespacedName,
 			AggregatedRequests: podInfo.AggregatedRequests,
 		})
 	}
@@ -132,9 +131,7 @@ func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
 // corev1 pod resource along with its identification into a PodResourceInfo object.
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 	return planner.PodResourceInfo{
-		UID:                p.UID,
-		Name:               p.Name,
-		Namespace:          p.Namespace,
+		NamespacedName:     commontypes.NamespacedName{Namespace: p.Namespace, Name: p.Name},
 		AggregatedRequests: AggregatePodRequests(p),
 	}
 }
@@ -158,7 +155,7 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]resource.Quanti
 func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		objectNames = append(objectNames, pod.GetNamespacedName().String())
+		objectNames = append(objectNames, pod.NamespacedName.String())
 	}
 	return objectNames
 }
@@ -168,8 +165,7 @@ func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
 		BasicObjectMeta: planner.BasicObjectMeta{
 			UID:               pod.UID,
-			Name:              pod.Name,
-			Namespace:         pod.Namespace,
+			NamespacedName:    commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name},
 			Labels:            pod.Labels,
 			Annotations:       pod.Annotations,
 			DeletionTimestamp: ptr.Deref(pod.DeletionTimestamp, metav1.Time{}).Time,

@@ -10,6 +10,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"math"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -301,24 +302,43 @@ func createTestPlannerAndTestData(t *testing.T, args TestArgs) (planner plannera
 		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
 	}
 	if len(args.PVCNames) > 0 {
-		_, _, err = samples.GenerateStorageClass(commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
+		var (
+			sc   storagev1.StorageClass
+			pvcs []corev1.PersistentVolumeClaim
+			pvs  []corev1.PersistentVolume
+			pv   corev1.PersistentVolume
+			pvc  corev1.PersistentVolumeClaim
+		)
+		sc, _, err = samples.GenerateStorageClass(commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
 		if err != nil {
 			t.Fatalf("failed to generate storage class %q: %v", "default", err)
 			return
 		}
+		testData.Request.Snapshot.StorageClasses = append(testData.Request.Snapshot.StorageClasses, sc)
 		volNs := corev1.NamespaceDefault
 		volStorage := resource.MustParse("1Gi")
-		_, _, err = samples.GeneratePersistentVolumeClaims(volNs, volStorage, corev1.ReadWriteMany, args.PVCNames)
+		pvcs, _, err = samples.GeneratePersistentVolumeClaims(volNs, volStorage, corev1.ReadWriteMany, args.PVCNames)
 		if err != nil {
 			t.Fatalf("failed to generate pvcs: %v", err)
 			return
 		}
-		_, _, err = samples.GeneratePersistentVolumes(samples.SimplePVGenInput{
+		for _, pvc = range pvcs {
+			testData.Request.Snapshot.PVCs = append(testData.Request.Snapshot.PVCs, plannerapi.AsPVCInfo(pvc))
+		}
+		pvs, _, err = samples.GeneratePersistentVolumes(samples.SimplePVGenInput{
 			Storage:    volStorage,
 			AccessMode: corev1.ReadWriteMany,
 			Zone:       testData.Request.Constraint.Spec.NodePools[0].AvailabilityZones[0],
 			PVCNames:   args.PVCNames,
 		})
+		for _, pv = range pvs {
+			pvInfo, err := plannerapi.AsPVInfo(pv)
+			if err != nil {
+				t.Fatalf("failed to generate pv info for pv %v: %v", pv, err)
+				return
+			}
+			testData.Request.Snapshot.PVs = append(testData.Request.Snapshot.PVs, pvInfo)
+		}
 	}
 	for _, pool := range testData.Request.Constraint.Spec.NodePools {
 		for _, nt := range pool.NodeTemplates {
@@ -332,6 +352,17 @@ func createTestPlannerAndTestData(t *testing.T, args TestArgs) (planner plannera
 				})
 			}
 		}
+	}
+	data, err := json.Marshal(testData.Request)
+	if err != nil {
+		t.Fatal("failed to marshal request:", err)
+		return
+	}
+	reqJsonPath := "/tmp/req-" + t.Name() + ".json"
+	err = os.WriteFile(reqJsonPath, data, 0644)
+	if err != nil {
+		t.Fatal("failed to write reqJsonPath", reqJsonPath, err)
+		return
 	}
 	ok = true
 	return

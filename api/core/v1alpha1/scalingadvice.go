@@ -44,7 +44,7 @@ type ScalingAdviceSpec struct {
 	// ScaleInPlan is the plan for scaling in across node pools.
 	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
 	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
+	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
 
 // ScalingAdviceStatus defines the observed state of ScalingAdvice.

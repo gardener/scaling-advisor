@@ -26,9 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/client-go/tools/cache"
 )
 
 var _ plannerapi.Simulation = (*defaultScaler)(nil)
@@ -193,13 +191,13 @@ func validateSimulationArgs(args *plannerapi.SimulationArgs, nodeTemplate *sacor
 	return nil
 }
 
-func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[types.NamespacedName]plannerapi.PodResourceInfo, err error) {
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return
 	}
-	unscheduled = make(map[types.NamespacedName]plannerapi.PodResourceInfo, len(pods))
+	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodResourceInfo, len(pods))
 	for _, p := range pods {
 		if podutil.IsUnscheduledPod(&p) {
 			log.V(5).Info("found unscheduled pod", "pod", p)
@@ -369,10 +367,9 @@ func (s *defaultScaler) track(ctx context.Context, view minkapi.View) (stabilize
 
 func (s *defaultScaler) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
 	log := logr.FromContextOrDiscard(ctx)
-	podNsName := types.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
+	podNsName := commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 	log.V(3).Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
-	podObjName := cache.NamespacedNameAsObjectName(podNsName)
-	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podObjName)
+	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
 	if err != nil {
 		return err
 	}
@@ -385,7 +382,7 @@ func (s *defaultScaler) handleScheduledPodEvent(ctx context.Context, view minkap
 	}
 	podsOnNode := s.state.scheduledPodsByNode[pod.Spec.NodeName]
 	found := slices.ContainsFunc(podsOnNode, func(podOnNode plannerapi.PodResourceInfo) bool {
-		return podOnNode.GetNamespacedName() == podNsName
+		return podOnNode.NamespacedName == podNsName
 	})
 	if found {
 		return nil
@@ -413,8 +410,8 @@ type runState struct {
 	latestTrackEventTime      metav1.MicroTime
 	err                       error
 	simNode                   *corev1.Node
-	unscheduledPods           map[types.NamespacedName]plannerapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode       map[string][]plannerapi.PodResourceInfo             // map of node names to PodResourceInfo
+	unscheduledPods           map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
+	scheduledPodsByNode       map[string][]plannerapi.PodResourceInfo                   // map of node names to PodResourceInfo
 	status                    plannerapi.ActivityStatus
 	result                    plannerapi.SimulationRunResult
 	numUnchangedTrackAttempts int

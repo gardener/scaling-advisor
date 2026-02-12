@@ -46,7 +46,6 @@ var (
 	ErrUnsupportedSimulatorStrategy = errors.New("unsupported simulator strategy")
 	// ErrInvalidRequest is a sentinel error indicating that the scaling planner request is invalid.
 	ErrInvalidRequest = errors.New("invalid planner request")
-
 	// ErrServiceInitFailed is a sentinel error indicating that the ScalingPlannerService failed to initialize.
 	ErrServiceInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ServiceName)
 	// ErrStartFailed is a sentinel error indicating that the  ScalingPlannerService failed to start.

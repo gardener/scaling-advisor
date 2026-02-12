@@ -7,8 +7,8 @@ package types
 import (
 	"context"
 	"fmt"
-
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	"k8s.io/client-go/tools/cache"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -54,12 +54,21 @@ type QPSBurst struct {
 	Burst int `json:"burst"`
 }
 
-// ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.
-type ConstraintReference struct {
+// NamespacedName is a fully qualified object name.
+type NamespacedName struct {
 	// Name is the name of the ClusterScalingConstraint.
 	Name string `json:"name"`
 	// Namespace is the namespace of the ClusterScalingConstraint.
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+func (nn *NamespacedName) AsObjectName() cache.ObjectName {
+	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
+}
+
+// String returns the general purpose string representation
+func (nn NamespacedName) String() string {
+	return nn.Namespace + "/" + nn.Name
 }
 
 // SimulatorStrategy represents a simulation strategy variant.
