@@ -6,6 +6,7 @@ package nodeutil
 
 import (
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"maps"
 	"time"
 
@@ -106,7 +107,7 @@ func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plan
 	return plannerapi.NodeInfo{
 		BasicObjectMeta: plannerapi.BasicObjectMeta{
 			UID:               node.UID,
-			NamespacedName:    types.NamespacedName{Name: node.Name, Namespace: node.Namespace},
+			NamespacedName:    commontypes.NamespacedName{Name: node.Name},
 			Labels:            node.Labels,
 			Annotations:       node.Annotations,
 			DeletionTimestamp: node.DeletionTimestamp,

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"io"
 	"io/fs"
 	"os"
@@ -271,12 +272,16 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
 
-func NamespacedName(mo metav1.Object) types.NamespacedName {
-	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+// NamespacedName returns the types.NamespacedName for a metav1.Object.
+func NamespacedName(mo metav1.Object) commontypes.NamespacedName {
+	return commontypes.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }
 
 // GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
-func GetFullNames(nsNames []types.NamespacedName) []string {
+func GetFullNames(nsNames []commontypes.NamespacedName) []string {
+	if len(nsNames) == 0 {
+		return nil
+	}
 	names := make([]string, 0, len(nsNames))
 	for _, nsName := range nsNames {
 		names = append(names, nsName.String())

@@ -5,6 +5,7 @@
 package podutil
 
 import (
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"slices"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -102,7 +103,6 @@ func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResour
 	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
 		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
-			UID:                podInfo.UID,
 			NamespacedName:     podInfo.NamespacedName,
 			AggregatedRequests: podInfo.AggregatedRequests,
 		})
@@ -124,8 +124,7 @@ func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodResourceInfo
 // corev1 pod resource alongwith its identification into a PodResourceInfo object.
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 	return planner.PodResourceInfo{
-		UID:                p.UID,
-		NamespacedName:     types.NamespacedName{Namespace: p.Namespace, Name: p.Name},
+		NamespacedName:     commontypes.NamespacedName{Namespace: p.Namespace, Name: p.Name},
 		AggregatedRequests: AggregatePodRequests(p),
 	}
 }
@@ -156,7 +155,7 @@ func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
 		BasicObjectMeta: planner.BasicObjectMeta{
 			UID:               pod.UID,
-			NamespacedName:    types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace},
+			NamespacedName:    commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name},
 			Labels:            pod.Labels,
 			Annotations:       pod.Annotations,
 			DeletionTimestamp: pod.DeletionTimestamp,

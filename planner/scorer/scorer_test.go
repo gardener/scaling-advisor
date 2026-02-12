@@ -613,16 +613,12 @@ func createNodeResourceInfo(name, instanceType string, cpu, memory int64) planne
 }
 
 // Helper function to create mock pods with cpu and memory requests
-func createPodResourceInfo(name string, cpu, memory int64) planner.PodResourceInfo {
-	return planner.PodResourceInfo{
-		UID: "pod-12345",
-		NamespacedName: types.NamespacedName{
-			Name:      name,
-			Namespace: metav1.NamespaceDefault,
-		},
-		AggregatedRequests: map[corev1.ResourceName]int64{
-			corev1.ResourceCPU:    cpu,
-			corev1.ResourceMemory: memory,
+func createPodResourceInfo(name string, cpu, memory string) plannerapi.PodResourceInfo {
+	return plannerapi.PodResourceInfo{
+		NamespacedName: commontypes.NamespacedName{Namespace: metav1.NamespaceDefault, Name: name},
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse(cpu),
+			corev1.ResourceMemory: resource.MustParse(memory),
 		},
 	}
 }

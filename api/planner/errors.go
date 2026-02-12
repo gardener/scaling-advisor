@@ -50,12 +50,14 @@ var (
 	ErrMissingRequiredLabel = errors.New("missing required label")
 	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
 	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
-	// ErrUnsupportedSimulationStrategy is a sentinel error indicating that an unsupported simulation strategy was specified.
-	ErrUnsupportedSimulationStrategy = errors.New("unsupported simulation strategy")
-	// ErrSimulationStabilizationTimeout is a sentinel error indicating that the simulation stabilization timed out.
-	ErrSimulationStabilizationTimeout = errors.New("simulation stabilization timed out")
-	// ErrInvalidScalingAdviceRequest is a sentinel error indicating that the scaling advice request is invalid.
-	ErrInvalidScalingAdviceRequest = errors.New("invalid scaling advice request")
+	// ErrUnsupportedSimulatorStrategy is a sentinel error indicating that an unsupported simulator strategy was specified.
+	ErrUnsupportedSimulatorStrategy = errors.New("unsupported simulator strategy")
+	// ErrInvalidRequest is a sentinel error indicating that the scaling planner request is invalid.
+	ErrInvalidRequest = errors.New("invalid planner request")
+	// ErrServiceInitFailed is a sentinel error indicating that the ScalingPlannerService failed to initialize.
+	ErrServiceInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ServiceName)
+	// ErrStartFailed is a sentinel error indicating that the  ScalingPlannerService failed to start.
+	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ServiceName)
 )
 
 // AsPlanError wraps an error with scaling advice request context information.

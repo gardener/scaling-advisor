@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/utils/ptr"
 	"sync/atomic"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-
+	"github.com/gardener/scaling-advisor/api/pricing"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -24,8 +26,42 @@ import (
 	"k8s.io/client-go/tools/events"
 )
 
-// ScalingAdviceRequest encapsulates the request parameters for generating scaling advice.
-type ScalingAdviceRequest struct {
+// ActivityStatus represents the operational status of an activity.
+type ActivityStatus string
+
+const (
+	// ActivityStatusPending indicates the activity is pending execution.
+	ActivityStatusPending ActivityStatus = "Pending"
+	// ActivityStatusRunning indicates the activity is currently running.
+	ActivityStatusRunning ActivityStatus = "Running"
+	// ActivityStatusSuccess indicates the activity completed successfully.
+	ActivityStatusSuccess ActivityStatus = metav1.StatusSuccess
+	// ActivityStatusFailure indicates the activity failed.
+	ActivityStatusFailure ActivityStatus = metav1.StatusFailure
+)
+
+// RequestRef is the reference to a planner request.
+type RequestRef struct {
+	// ID is the Request unique identifier for which this response is generated.
+	ID string `json:"id"`
+	// CorrelationID is the correlation identifier for the request.
+	// This can be used to correlate chains of requests and responses into a higher level activity.
+	CorrelationID string `json:"correlationID,omitempty"`
+}
+
+// Request represents a request to the scaling planner to generate a scaling plan.
+type Request struct {
+	// CreationTime is the time at which request was created
+	CreationTime time.Time `json:"creationTime,omitzero"`
+	// Constraint represents the constraints using which the scaling advice is generated.
+	Constraint *sacorev1alpha1.ScalingConstraint `json:"constraint,omitempty"`
+	RequestRef
+	// SimulatorStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice.
+	SimulatorStrategy commontypes.SimulatorStrategy `json:"simulatorStrategy,omitempty"`
+	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
+	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy,omitempty"`
+	// AdviceGenerationMode defines the mode in which scaling advice is generated.
+	AdviceGenerationMode commontypes.ScalingAdviceGenerationMode `json:"adviceGenerationMode,omitempty"`
 	// Snapshot is the snapshot of the resources in the cluster at the time of the request.
 	Snapshot *ClusterSnapshot
 	// Feedback captures feedback from the consumer of the scaling advice, which can be used to improve future scaling advice generation.
@@ -157,7 +193,14 @@ type ClusterSnapshot struct {
 	// Pods are the pods that are present in the cluster.
 	Pods []PodInfo
 	// Nodes are the nodes that are present in the cluster.
-	Nodes []NodeInfo
+	Nodes []NodeInfo `json:"nodes,omitempty"`
+	// PVs are the information about PersistentVolumes in the cluster. Should not contain deleted PVs.
+	// Should only contain *bound* PVs ie those with populated claimRef.
+	PVs []PVInfo `json:"pvs,omitempty"`
+	// PVCs are the information about PersistentVolumeClaims in the cluster. Should not contain deleted PVCs.
+	PVCs []PVCInfo `json:"pvcs,omitempty"`
+	//StorageClasses are the storage classes that are present in the cluster
+	StorageClasses []storagev1.StorageClass `json:"storageClasses,omitempty"`
 	// PriorityClasses are the priority classes that are present in the cluster.
 	PriorityClasses []schedulingv1.PriorityClass
 	// RuntimeClasses are the runtime classes that are present in the cluster.
@@ -192,9 +235,8 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 // lean information subset of metav1.ObjectMeta that is relevant for the scaling planner	.
 type BasicObjectMeta struct {
 	// UID is the unique identifier for the resource.
-	UID       types.UID `json:"uid"`
-	Namespace string    `json:"namespace,omitempty"`
-	Name      string    `json:"name"`
+	UID                        types.UID `json:"uid,omitempty"`
+	commontypes.NamespacedName `json:",inline"`
 	// Labels are the labels associated with the resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations are the annotations associated with the resource.
@@ -227,7 +269,7 @@ type PodInfo struct {
 	PriorityClassName string                  `json:"priorityClassName,omitempty"`
 	PreemptionPolicy  corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
 	RuntimeClassName  string                  `json:"runtimeClassName,omitempty"`
-	BasicObjectMeta
+	BasicObjectMeta   `json:",inline"`
 	// Volumes are the volumes that are attached to the Pod.
 	Volumes []corev1.Volume `json:",omitempty"`
 	// Tolerations are the tolerations for the Pod.
@@ -245,8 +287,10 @@ type PodInfo struct {
 // GetResourceInfo returns the resource information for the pod.
 func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 	return PodResourceInfo{
-		UID:                p.UID,
-		NamespacedName:     p.NamespacedName,
+		NamespacedName: commontypes.NamespacedName{
+			Namespace: p.Namespace,
+			Name:      p.Name,
+		},
 		AggregatedRequests: p.AggregatedRequests,
 	}
 }
@@ -261,8 +305,8 @@ type NodeInfo struct {
 	// CSI driver that can be used on a node.
 	CSIDriverVolumeMaximums map[string]int32 `json:"csiDriverVolumeMaximums,omitempty"`
 	// InstanceType is the instance type for the Node
-	InstanceType string
-	BasicObjectMeta
+	InstanceType    string
+	BasicObjectMeta `json:",inline"`
 	// Taints are the node's taints.
 	Taints []corev1.Taint `json:"taints,omitempty"`
 	// Conditions are the node's conditions.
@@ -316,23 +360,68 @@ type InstancePriceInfo struct {
 	VCPU int32 `json:"VCPU"`
 }
 
-// GetNamespacedName returns the NamespacedName for this basic meta.
-func (m *BasicObjectMeta) GetNamespacedName() types.NamespacedName {
-	return types.NamespacedName{
-		Namespace: m.Namespace,
-		Name:      m.Name,
+// VolCommonInfo encapsulates the common information about k8s PV and PVC, which is scheduling relevant.
+type VolCommonInfo struct {
+	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	StorageClassName string                              `json:"storageClassName,omitempty"`
+}
+
+// PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
+type PVCInfo struct {
+	BasicObjectMeta `json:",inline"`
+	VolCommonInfo   `json:",inline"`
+}
+
+func AsPVCInfo(pvc corev1.PersistentVolumeClaim) PVCInfo {
+	return PVCInfo{
+		BasicObjectMeta: BasicObjectMeta{
+			UID: pvc.GetUID(),
+			NamespacedName: commontypes.NamespacedName{
+				Namespace: pvc.GetNamespace(),
+				Name:      pvc.GetName(),
+			},
+			Labels:          pvc.GetLabels(),
+			Annotations:     pvc.GetAnnotations(),
+			OwnerReferences: pvc.GetOwnerReferences(),
+		},
+		VolCommonInfo: VolCommonInfo{
+			AccessModes:      pvc.Spec.AccessModes,
+			StorageClassName: ptr.Deref(pvc.Spec.StorageClassName, ""),
+		},
 	}
 }
 
-// InstancePricingAccess defines an interface for accessing instance pricing information.
-type InstancePricingAccess interface {
-	// GetInfo gets the InstancePriceInfo (whicn includes price) for the given region and instance type.
-	// TODO: should we also pass OS name here ? if so, we need to need to change ScalingConstraint.
-	GetInfo(region, instanceTypeName string) (InstancePriceInfo, error)
+// PVInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolume.
+type PVInfo struct {
+	BasicObjectMeta `json:",inline"`
+	VolCommonInfo   `json:",inline"`
+	ClaimRef        commontypes.NamespacedName `json:"claimRef,omitzero"`
+	NodeAffinity    corev1.NodeSelector        `json:"nodeAffinity,omitzero"`
 }
 
-// GetProviderInstancePricingAccessFunc is a factory function for creating InstancePricingAccess implementations.
-type GetProviderInstancePricingAccessFunc func(provider commontypes.CloudProvider, instanceTypeInfoPath string) (InstancePricingAccess, error)
+func AsPVInfo(pv corev1.PersistentVolume) (PVInfo, error) {
+	if pv.Spec.ClaimRef == nil {
+		return PVInfo{}, fmt.Errorf("pv.Spec.ClaimRef is nil for PV %s/%s", pv.Namespace, pv.Name)
+	}
+	return PVInfo{
+		BasicObjectMeta: BasicObjectMeta{
+			UID: pv.GetUID(),
+			NamespacedName: commontypes.NamespacedName{
+				Namespace: pv.GetNamespace(),
+				Name:      pv.GetName(),
+			},
+			Labels:          pv.GetLabels(),
+			Annotations:     pv.GetAnnotations(),
+			OwnerReferences: pv.GetOwnerReferences(),
+		},
+		VolCommonInfo: VolCommonInfo{
+			AccessModes:      pv.Spec.AccessModes,
+			StorageClassName: pv.Spec.StorageClassName,
+		},
+		ClaimRef:     commontypes.NamespacedName{Namespace: pv.GetNamespace(), Name: pv.GetName()},
+		NodeAffinity: ptr.Deref(pv.Spec.NodeAffinity.Required, corev1.NodeSelector{}),
+	}, nil
+}
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
 type GetNodeScorer func(scoringStrategy commontypes.NodeScoringStrategy, pricingAccess InstancePricingAccess, resourceWeigher ResourceWeigher) (NodeScorer, error)
@@ -358,7 +447,7 @@ type NodeScorerArgs struct {
 	// or it is a winning simulated Node from a previous run.
 	OtherNodePodAssignments []NodePodAssignment
 	// LeftOverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
-	LeftOverUnscheduledPods []types.NamespacedName
+	LeftOverUnscheduledPods []commontypes.NamespacedName
 }
 
 // NodeScore represents the scoring result for a node in scaling simulations.
@@ -368,7 +457,7 @@ type NodeScore struct {
 	Placement sacorev1alpha1.NodePlacement
 	// Name uniquely identifies this NodeScore
 	Name            string
-	UnscheduledPods []types.NamespacedName
+	UnscheduledPods []commontypes.NamespacedName
 	// Value is the score value for this Node.
 	Value int
 }
@@ -390,11 +479,8 @@ type ResourceWeigher interface {
 // PodResourceInfo contains resource information for a pod used in scoring calculations.
 type PodResourceInfo struct {
 	// AggregatedRequests is an aggregated resource requests for all containers of the Pod.
-	AggregatedRequests map[corev1.ResourceName]int64
-	// NamespacedName contains the namespace and name of the pod.
-	types.NamespacedName
-	// UID is the unique identifier for the pod.
-	UID types.UID
+	AggregatedRequests         corev1.ResourceList `json:"aggregatedRequests,omitempty"`
+	commontypes.NamespacedName `json:",inline"`
 }
 
 // NodeResourceInfo represents the subset of NodeInfo such that NodeScorer can compute an effective NodeScore.
@@ -453,8 +539,30 @@ type ScalingPlanResult struct {
 
 // ScalingPlanner defines the interface for computing scaling plans.
 type ScalingPlanner interface {
-	// Plan computes a scaling plan for a scaling request and offers the ScalingPlanResult on the result channel.
-	Plan(ctx context.Context, req ScalingAdviceRequest, resultCh chan<- ScalingPlanResult)
+	// Plan begins generation of scaling plans accepting a Request and returning a response channel
+	// on which one or more planner Response is delivered.
+	//
+	// The channel will be closed when plan generation has completed, an error has occurred, context is canceled or
+	// timed-out.
+	//
+	// The caller must consume all Response's from the channel until it is closed to
+	// avoid leaking goroutines inside the planner.
+	//
+	// The provided context can be used to cancel generation prematurely. In this
+	// case, the channel will be closed without further events.
+	//
+	// Usage:
+	//
+	//	responseCh := planner.Plan(ctx, req)
+	//	for r := range responseCh {
+	//	    if r.Error != nil {
+	//	        log.Printf("plan generation failed: %v", r.Error)
+	//	        break
+	//	    }
+	//	    process(r.ScaleOutPlan)
+	//	    process(r.ScaleInPlan)
+	//	}
+	Plan(ctx context.Context, req Request) <-chan Response
 }
 
 // ScaleOutSimulator executes simulations to generate scale-out plans based on a commontypes.SimulationStrategy.
@@ -552,7 +660,7 @@ type SimulationResult struct {
 	// or it is a winning simulated Node from a previous run.
 	OtherNodePodAssignments []NodePodAssignment
 	// LeftoverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
-	LeftoverUnscheduledPods []types.NamespacedName
+	LeftoverUnscheduledPods []commontypes.NamespacedName
 }
 
 // SimulationArgs represents the argument necessary for creating a simulation instance.
@@ -655,14 +763,15 @@ func (k SimGroupKey) String() string {
 	return fmt.Sprintf("%d-%d", k.NodePoolPriority, k.NodeTemplatePriority)
 }
 
-// SimulationGroupResult contains the results of running a simulation group.
-type SimulationGroupResult struct {
-	// Name of the group that produced this result.
-	Name string
-	// SimulationResults contains the results from all simulations in the group.
-	SimulationResults []SimulationResult
-	// Key is the simulation group key (partition key)
-	Key SimGroupKey
+// SimulationGroupPassScores represents the scoring results, including the winner score, for a single pass of a SimulationGroup
+// after running the NodeScorer against the SimulationRunResult's of the pass.
+type SimulationGroupPassScores struct {
+	// WinnerScore is the highest scoring node in the group.
+	WinnerScore *NodeScore
+	// WinnerNode is the actual node corresponding to the winner score.
+	WinnerNode *corev1.Node
+	// AllScores contains all computed node scores for the group.
+	AllScores []NodeScore
 }
 
 // SimulationGroupScores represents the scoring results for the simulation group after running the NodeScorer against the SimulationGroupResult.
@@ -691,8 +800,8 @@ type SimulationGroupRunResult struct {
 	// WinnerNodeScores contains the node scores of the winning nodes.
 	WinnerNodeScores []NodeScore
 	// LeftoverUnscheduledPods contains the namespaced names of pods that could not be scheduled.
-	LeftoverUnscheduledPods []types.NamespacedName
-	// NumPasses is the number of passes executed in this group before moving to the next group.
+	LeftoverUnscheduledPods []commontypes.NamespacedName
+	// PassNum is the number of passes executed in this group before moving to the next group.
 	// A pass is defined as the execution of all simulations in a group.
 	NumPasses int
 	// TotalSimulations is the total number of simulations executed across all groups until now.
