@@ -7,6 +7,8 @@ package planner
 import (
 	"context"
 	"encoding/json"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"math"
 	"slices"
 	"strings"
@@ -30,7 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const defaultTestVerbosity = 0
+const defaultTestVerbosity = 2
 
 const defaultPlannerTimeout = 30 * time.Second
 
@@ -42,6 +44,7 @@ type TestArgs struct {
 	NodeScoringStrategy               commontypes.NodeScoringStrategy
 	AdviceGenerationMode              commontypes.ScalingAdviceGenerationMode
 	Timeout                           time.Duration
+	PVCNames                          []string
 }
 
 // TestData holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
@@ -58,6 +61,30 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
 			samples.ResourceCategoryBerry: 1,
 		},
+	})
+	if !ok {
+		return
+	}
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	gotPlan := obtainScaleOutPlan(t, planner, &testData)
+	assertExactScaleOutPlan(t, wantPlan, gotPlan)
+}
+
+func TestBasicOnePoolScaleOutWithVolumeClaim(t *testing.T) {
+	planner, testData, ok := createTestPlannerAndTestData(t, TestArgs{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
+			samples.ResourceCategoryBerry: 1,
+		},
+		PVCNames: []string{"stem"},
 	})
 	if !ok {
 		return
@@ -265,12 +292,33 @@ func createTestPlannerAndTestData(t *testing.T, args TestArgs) (planner plannera
 		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodGenInput{
 			Name:          string(c),
 			SchedulerName: "bin-packing-scheduler",
+			PVCNames:      args.PVCNames,
 		})
 		if err != nil {
 			t.Fatalf("failed to generate simple pods for resource category %s: %v", c, err)
 			return
 		}
 		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
+	}
+	if len(args.PVCNames) > 0 {
+		_, _, err = samples.GenerateStorageClass(commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
+		if err != nil {
+			t.Fatalf("failed to generate storage class %q: %v", "default", err)
+			return
+		}
+		volNs := corev1.NamespaceDefault
+		volStorage := resource.MustParse("1Gi")
+		_, _, err = samples.GeneratePersistentVolumeClaims(volNs, volStorage, corev1.ReadWriteMany, args.PVCNames)
+		if err != nil {
+			t.Fatalf("failed to generate pvcs: %v", err)
+			return
+		}
+		_, _, err = samples.GeneratePersistentVolumes(samples.SimplePVGenInput{
+			Storage:    volStorage,
+			AccessMode: corev1.ReadWriteMany,
+			Zone:       testData.Request.Constraint.Spec.NodePools[0].AvailabilityZones[0],
+			PVCNames:   args.PVCNames,
+		})
 	}
 	for _, pool := range testData.Request.Constraint.Spec.NodePools {
 		for _, nt := range pool.NodeTemplates {

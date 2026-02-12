@@ -5,6 +5,7 @@
 package samples
 
 import (
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -55,6 +56,8 @@ func (c ResourceCategory) AsResourceList() corev1.ResourceList {
 	return resourceCategoriesToResourceListMap[c]
 }
 
+var ()
+
 // AppLabels represents standard k8s app labels
 type AppLabels struct {
 	Name      string
@@ -73,6 +76,15 @@ type SimplePodGenInput struct {
 	SchedulerName string
 	// PVCNames is the names of the PersistentVolumeClaims to be mounted to the pod.
 	PVCNames []string
+}
+
+type SimplePVGenInput struct {
+	Provider   commontypes.CloudProvider
+	Namespace  string
+	Storage    resource.Quantity
+	AccessMode corev1.PersistentVolumeAccessMode
+	Zone       string
+	PVCNames   []string
 }
 
 // SimplePodTemplateData holds all the pod template data for the simple pod template.

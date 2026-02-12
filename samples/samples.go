@@ -7,7 +7,11 @@ package samples
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"path"
 	"strconv"
@@ -107,8 +111,8 @@ func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, m
 	return GenerateSimplePodsWithTemplateData(num, podTmplData)
 }
 
-// GenerateSimplePVCs generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames in the given namespace.
-func GenerateSimplePVCs(namespace string, pvcNames []string) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
+// GeneratePersistentVolumeClaims generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames,  storage and accessMode in the given namespace.
+func GeneratePersistentVolumeClaims(namespace string, storage resource.Quantity, accessMode corev1.PersistentVolumeAccessMode, names []string) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pvc-template.yaml")
 	if err != nil {
 		return
@@ -116,15 +120,19 @@ func GenerateSimplePVCs(namespace string, pvcNames []string) (pvcs []corev1.Pers
 	if namespace == "" {
 		namespace = corev1.NamespaceDefault
 	}
-	for _, pvcName := range pvcNames {
+	for _, pvcName := range names {
 		var pvc corev1.PersistentVolumeClaim
 		outYAMLPath := path.Join(ioutil.GetTempDir(), "pvc-"+pvcName+".yaml")
 		pvcTmplData := struct {
-			Name      string
-			Namespace string
+			Name       string
+			Namespace  string
+			AccessMode string
+			Storage    string
 		}{
-			Name:      pvcName,
-			Namespace: namespace,
+			Name:       pvcName,
+			Namespace:  namespace,
+			Storage:    storage.String(),
+			AccessMode: string(accessMode),
 		}
 		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
 		if err != nil {
@@ -137,8 +145,108 @@ func GenerateSimplePVCs(namespace string, pvcNames []string) (pvcs []corev1.Pers
 	return
 }
 
-func GeneratePersistentVolumes() {
+var providerToCSIDrivers = map[commontypes.CloudProvider]string{
+	commontypes.CloudProviderAWS: "ebs.csi.aws.com",
+}
 
+// GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given pvcNames suitable for the given provider in the given
+// namespace for the given storage and access mode and returns the PV objects and their generated YAML paths.
+func GeneratePersistentVolumes(genInput SimplePVGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
+	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
+	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
+	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pv-template.yaml")
+	if err != nil {
+		return
+	}
+	if genInput.Namespace == "" {
+		genInput.Namespace = corev1.NamespaceDefault
+	}
+	if genInput.Provider == "" {
+		genInput.Provider = commontypes.CloudProviderAWS
+	}
+	if genInput.Storage.IsZero() {
+		genInput.Storage = resource.MustParse("1Gi")
+	}
+	if genInput.Zone == "" {
+		err = errors.New("zone must be specified in genInput")
+		return
+	}
+	if len(genInput.PVCNames) == 0 {
+		err = errors.New("must specify at least one name")
+		return
+	}
+	if genInput.AccessMode == "" {
+		genInput.AccessMode = corev1.ReadWriteMany
+	}
+	csiDriver := providerToCSIDrivers[genInput.Provider]
+	if csiDriver == "" {
+		err = fmt.Errorf("no CSIDriver found for provider %s", genInput.Provider)
+		return
+	}
+	for _, pvcName := range genInput.PVCNames {
+		var pv corev1.PersistentVolume
+		pvName := objutil.GenerateName("pv-")
+		outYAMLPath := path.Join(ioutil.GetTempDir(), pvName+".yaml")
+		pvTmplData := struct {
+			CSIDriver    string
+			Name         string
+			Namespace    string
+			Storage      string
+			AccessMode   string
+			VolumeHandle string
+			PVCName      string
+			Zone         string
+		}{
+			CSIDriver:    csiDriver,
+			Name:         pvName,
+			Namespace:    genInput.Namespace,
+			Storage:      genInput.Storage.String(),
+			AccessMode:   string(genInput.AccessMode),
+			VolumeHandle: pvName,
+			PVCName:      pvcName,
+			Zone:         genInput.Zone,
+		}
+		err = GenerateAndLoad(tmpl, pvTmplData, outYAMLPath, &pv)
+		if err != nil {
+			return
+		}
+		pv.CreationTimestamp = metav1.Now()
+		pvs = append(pvs, pv)
+		pvYAMLPaths = append(pvYAMLPaths, outYAMLPath)
+	}
+	return
+}
+
+func GenerateStorageClass(provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
+	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/sc-template.yaml")
+	if err != nil {
+		return
+	}
+	outYAMLPath = path.Join(ioutil.GetTempDir(), "sc-"+name+".yaml")
+	csiDriver := providerToCSIDrivers[provider]
+	if csiDriver == "" {
+		err = fmt.Errorf("no CSIDriver found for provider %s", provider)
+		return
+	}
+	if name == "" {
+		err = fmt.Errorf("must specify non-empty name for StorageClass %s", provider)
+		return
+	}
+	scTmplData := struct {
+		CSIDriver         string
+		Name              string
+		VolumeBindingMode string
+	}{
+		CSIDriver:         csiDriver,
+		Name:              name,
+		VolumeBindingMode: string(volumeBindingMode),
+	}
+	err = GenerateAndLoad(tmpl, scTmplData, outYAMLPath, &storageClass)
+	if err != nil {
+		return
+	}
+	storageClass.CreationTimestamp = metav1.Now()
+	return
 }
 
 func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTemplateData {
@@ -178,7 +286,7 @@ func fillAppLabelDefaults(appLabels AppLabels) AppLabels {
 }
 
 // GenerateAndLoad executes the given template with the given params, writes the generated output to outPath and loads the same as a runtime object
-func GenerateAndLoad[T any, U runtime.Object](tmpl *template.Template, params T, outPath string, obj U) error {
+func GenerateAndLoad[P any, O runtime.Object](tmpl *template.Template, params P, outPath string, obj O) error {
 	var buf bytes.Buffer
 	err := tmpl.Execute(&buf, params)
 	if err != nil {

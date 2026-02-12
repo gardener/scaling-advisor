@@ -5,7 +5,7 @@ metadata:
   namespace: "{{.Namespace}}"
 spec:
   accessModes:
-   - ReadWriteOnce
+   - "{{.AccessMode}}"
   resources:
     requests:
-      storage: "1Gi"
+      storage: "{{.Storage}}"
