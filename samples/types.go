@@ -5,10 +5,7 @@
 package samples
 
 import (
-	"fmt"
-
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -55,6 +52,8 @@ func (c ResourcePreset) AsResourceList() corev1.ResourceList {
 	return resourcePresetsToResourceListMap[c]
 }
 
+var ()
+
 // AppLabels represents standard k8s app labels
 type AppLabels struct {
 	Name      string
@@ -75,47 +74,18 @@ type SimplePodGenInput struct {
 	PVCNames []string
 }
 
-// ValidateAndFillDefaults validates required fields in VolGenInput and fills other fields with defaults.
-func (v *VolGenInput) ValidateAndFillDefaults() error {
-	if len(v.PVCNames) == 0 {
-		return fmt.Errorf("empty PVCNames")
-	}
-	if v.Provider == "" {
-		return fmt.Errorf("provider must be set")
-	}
-	if v.Namespace == "" {
-		v.Namespace = metav1.NamespaceDefault
-	}
-	if v.ClaimPhase == "" {
-		return fmt.Errorf("ClaimPhase must be set")
-	}
-	if v.VolumeBindingMode == "" {
-		v.VolumeBindingMode = storagev1.VolumeBindingImmediate
-	}
-	if v.StorageClassName == "" {
-		v.StorageClassName = "default"
-	}
-	if v.AccessMode == "" {
-		v.AccessMode = corev1.ReadWriteOnce
-	}
-	if v.StorageClassName == "" {
-		v.StorageClassName = "default"
-	}
-	if v.Storage.IsZero() {
-		v.Storage = resource.MustParse("1Gi")
-	}
-	return nil
+type SimplePVGenInput struct {
+	Provider   commontypes.CloudProvider
+	Namespace  string
+	Storage    resource.Quantity
+	AccessMode corev1.PersistentVolumeAccessMode
+	Zone       string
+	PVCNames   []string
 }
 
-// VolGenOutput is the output container for generated volume data.
-type VolGenOutput struct {
-	YAMLPaths map[commontypes.NamespacedName]string
-	PVs       []corev1.PersistentVolume
-	PVCs      []corev1.PersistentVolumeClaim
-}
-
-// PodTemplateData holds all pod template data values for executing the simple pod template.
-type PodTemplateData struct {
+// SimplePodTemplateData holds all the pod template data for the simple pod template.
+type SimplePodTemplateData struct {
+	//Resources map[corev1.ResourceName]string
 	Resources corev1.ResourceList
 	SimplePodGenInput
 }
