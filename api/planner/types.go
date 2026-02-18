@@ -325,6 +325,7 @@ type PVInfo struct {
 	Capacity          corev1.ResourceList                 `json:"capacity,omitempty"`
 	ClaimRef          commontypes.NamespacedName          `json:"claimRef,omitzero"`
 	NodeAffinity      *corev1.NodeSelector                `json:"nodeAffinity,omitzero"`
+	Phase             corev1.PersistentVolumePhase        `json:"phase,omitempty"`
 }
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
@@ -425,8 +426,8 @@ type ScalingPlannerArgs struct {
 	PricingAccess pricing.InstancePricingAccess
 	// SchedulerLauncher provides functionality to launch kube-scheduler instances.
 	SchedulerLauncher SchedulerLauncher
-	// TraceLogsBaseDir is the base directory for storing trace logs when diagnostics are enabled for a scaling advice request.
-	TraceLogsBaseDir string
+	// TraceDir is the directory for storing traces when diagnostics are enabled.
+	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
 	SimulatorConfig SimulatorConfig
 }
@@ -517,6 +518,19 @@ type ScaleOutSimulator interface {
 	Simulate(ctx context.Context, request *Request, simulationCreator SimulationCreator) (planResult <-chan ScaleOutPlanResult)
 }
 
+// SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
+// Not all the arguments may be necessary for constructing a specific simulator implementation.
+type SimulatorArgs struct {
+	Config            SimulatorConfig
+	ViewAccess        minkapi.ViewAccess
+	SchedulerLauncher SchedulerLauncher
+	NodeScorer        NodeScorer
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
+	TraceDir string
+}
+
+type ScaleOutSimulatorFactory func(args SimulatorArgs) (ScaleOutSimulator, error)
+
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
 type ScaleOutPlanResult struct {
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
@@ -567,7 +581,7 @@ type SimulationRunResult struct {
 	LeftoverUnscheduledPods []commontypes.NamespacedName
 }
 
-// SimulationArgs represents the argument necessary for creating a simulation instance.
+// SimulationArgs represents the arguments necessary for creating a scale-out simulation instance.
 type SimulationArgs struct {
 	// SchedulerLauncher is used to launch scheduler instances for the simulation.
 	SchedulerLauncher SchedulerLauncher
@@ -581,6 +595,8 @@ type SimulationArgs struct {
 	NodeTemplateName string
 	// Config is the simulation configuration.
 	Config SimulatorConfig
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
+	TraceDir string
 }
 
 // SimulationFactory is a factory for constructing a simulation instance.
@@ -670,8 +686,8 @@ type ScalingPlannerService interface {
 type ScalingPlannerServiceConfig struct {
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider commontypes.CloudProvider
-	// TraceLogBaseDir is the base directory for storing trace log files used by the scaling advisor planner.
-	TraceLogBaseDir string
+	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
+	TraceDir string
 	// ServerConfig holds the server configuration for the scaling advisor planner.
 	ServerConfig commontypes.ServerConfig
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.

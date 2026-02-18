@@ -66,7 +66,7 @@ func NewService(ctx context.Context,
 		ResourceWeigher:   weightsFn,
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
-		TraceLogsBaseDir:  config.TraceLogBaseDir,
+		TraceDir:          config.TraceDir,
 	})
 	svc = &defaultPlannerService{
 		cfg:               config,
@@ -120,7 +120,7 @@ func setServiceConfigDefaults(cfg *plannerapi.ScalingPlannerServiceConfig) {
 	if strings.TrimSpace(cfg.ServerConfig.BindAddress) == "" {
 		cfg.ServerConfig.BindAddress = commonconstants.DefaultAdvisorServiceBindAddress
 	}
-	if cfg.TraceLogBaseDir == "" {
-		cfg.TraceLogBaseDir = ioutil.GetTempDir()
+	if cfg.TraceDir == "" {
+		cfg.TraceDir = ioutil.GetTempDir()
 	}
 }

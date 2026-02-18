@@ -143,7 +143,7 @@ func (s *defaultScaler) Run(ctx context.Context, view minkapi.View) (err error) 
 	if logutil.VerbosityFromContext(simCtx) >= viewutil.DefaultDumpVerbosity {
 		var simNodeDumpPath string
 		// FIXME: object dumping should occur to  tempDir/sandboxviewName/
-		simNodeDumpPath, err = objutil.SaveRuntimeObjAsJSONToPath(s.state.simNode, ioutil.GetTempDir(), s.state.simNode.Name+".yaml")
+		simNodeDumpPath, err = objutil.SaveRuntimeObjAsJSONToPath(s.state.simNode, s.args.TraceDir, s.state.simNode.Name+".yaml")
 		if err != nil {
 			return
 		}

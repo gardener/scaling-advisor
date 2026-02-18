@@ -9,6 +9,7 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
@@ -21,6 +22,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -56,8 +58,12 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatal("args.NumUnscheduledPerResourceCategory mandatory")
 		return
 	}
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
 	var err error
-	testData.RunContext, planner, ok = createTestScalingPlanner(t, args.PlannerFactory, args.Timeout)
+	testData.RunContext, planner, ok = createTestScalingPlanner(t, testGenDir, args.PlannerFactory, args.Timeout)
 	if !ok {
 		return
 	}
@@ -87,6 +93,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 	var pods []corev1.Pod
 	for c, n := range args.NumUnscheduledPerResourceCategory {
 		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.SimplePodGenInput{
+			GenDir:        testGenDir,
 			Name:          string(c),
 			SchedulerName: "bin-packing-scheduler",
 			PVCNames:      args.PVCNames,
@@ -105,15 +112,20 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			pv   corev1.PersistentVolume
 			pvc  corev1.PersistentVolumeClaim
 		)
-		sc, _, err = samples.GenerateStorageClass(commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
+		sc, _, err = samples.GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
 		if err != nil {
 			t.Fatalf("failed to generate storage class %q: %v", "default", err)
 			return
 		}
 		testData.Request.Snapshot.StorageClasses = append(testData.Request.Snapshot.StorageClasses, sc)
-		volNs := corev1.NamespaceDefault
-		volStorage := resource.MustParse("1Gi")
-		pvcs, _, err = samples.GeneratePersistentVolumeClaims(volNs, volStorage, corev1.ReadWriteMany, args.PVCNames)
+		volCommon := samples.VolCommon{
+			GenDir:  testGenDir,
+			Storage: resource.MustParse("1Gi"),
+		}
+		pvcs, _, err = samples.GeneratePersistentVolumeClaims(samples.SimplePVCGenInput{
+			VolCommon: volCommon,
+			Names:     args.PVCNames,
+		})
 		if err != nil {
 			t.Fatalf("failed to generate pvcs: %v", err)
 			return
@@ -122,10 +134,9 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			testData.Request.Snapshot.PVCs = append(testData.Request.Snapshot.PVCs, volutil.AsPVCInfo(pvc))
 		}
 		pvs, _, err = samples.GeneratePersistentVolumes(samples.SimplePVGenInput{
-			Storage:    volStorage,
-			AccessMode: corev1.ReadWriteMany,
-			Zone:       testData.Request.Constraint.Spec.NodePools[0].AvailabilityZones[0],
-			PVCNames:   args.PVCNames,
+			VolCommon: volCommon,
+			Zone:      testData.Request.Constraint.Spec.NodePools[0].AvailabilityZones[0],
+			PVCNames:  args.PVCNames,
 		})
 		for _, pv = range pvs {
 			testData.Request.Snapshot.PVs = append(testData.Request.Snapshot.PVs, volutil.AsPVInfo(pv))
@@ -149,7 +160,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatal("failed to marshal request:", err)
 		return
 	}
-	reqJsonPath := "/tmp/req-" + t.Name() + ".json"
+	reqJsonPath := path.Join(testGenDir, "request.json")
 	err = os.WriteFile(reqJsonPath, data, 0644)
 	if err != nil {
 		t.Fatal("failed to write reqJsonPath", reqJsonPath, err)
@@ -198,7 +209,7 @@ func ObtainAndAssertScaleOutPlan(t *testing.T, planner plannerapi.ScalingPlanner
 	}
 }
 
-func createTestScalingPlanner(t *testing.T, factory plannerapi.ScalingPlannerFactory, duration time.Duration) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
+func createTestScalingPlanner(t *testing.T, traceDir string, factory plannerapi.ScalingPlannerFactory, duration time.Duration) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -247,6 +258,7 @@ func createTestScalingPlanner(t *testing.T, factory plannerapi.ScalingPlannerFac
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
 		SimulatorConfig:   simulatorConfig,
+		TraceDir:          traceDir,
 	}
 	planr, ok = factory(scalePlannerArgs), true
 	return

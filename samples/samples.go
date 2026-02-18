@@ -85,11 +85,15 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData SimplePodTemplateDa
 	if err != nil {
 		return
 	}
+	if podTmplData.GenDir == "" {
+		err = fmt.Errorf("SimplePodTemplateData.GenDir is empty")
+		return
+	}
 	for i := 1; i <= num; i++ {
 		var pod corev1.Pod
 		tmplData := fillPodTemplateDataDefaults(podTmplData)
 		tmplData.Name = tmplData.Name + "-" + strconv.Itoa(i)
-		outYAMLPath := path.Join(ioutil.GetTempDir(), "pod-"+tmplData.Name+".yaml")
+		outYAMLPath := path.Join(podTmplData.GenDir, "pod-"+tmplData.Name+".yaml")
 		err = GenerateAndLoad(tmpl, tmplData, outYAMLPath, &pod)
 		if err != nil {
 			return
@@ -112,27 +116,47 @@ func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, m
 }
 
 // GeneratePersistentVolumeClaims generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames,  storage and accessMode in the given namespace.
-func GeneratePersistentVolumeClaims(namespace string, storage resource.Quantity, accessMode corev1.PersistentVolumeAccessMode, names []string) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
+func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pvc-template.yaml")
 	if err != nil {
 		return
 	}
-	if namespace == "" {
-		namespace = corev1.NamespaceDefault
+	if gi.Namespace == "" {
+		gi.Namespace = corev1.NamespaceDefault
 	}
-	for _, pvcName := range names {
-		var pvc corev1.PersistentVolumeClaim
-		outYAMLPath := path.Join(ioutil.GetTempDir(), "pvc-"+pvcName+".yaml")
+	if gi.GenDir == "" {
+		err = fmt.Errorf("SimplePVCTemplateData.GenDir is empty")
+		return
+	}
+	if gi.StorageClassName == "" {
+		gi.StorageClassName = "default"
+	}
+	if gi.AccessMode == "" {
+		gi.AccessMode = corev1.ReadWriteOnce
+	}
+	for _, pvcName := range gi.Names {
+		var (
+			pvc        corev1.PersistentVolumeClaim
+			claimPhase = corev1.ClaimBound
+		)
+		outYAMLPath := path.Join(gi.GenDir, "pvc-"+pvcName+".yaml")
+		if gi.Unbound {
+			claimPhase = corev1.ClaimPending
+		}
 		pvcTmplData := struct {
-			Name       string
-			Namespace  string
-			AccessMode string
-			Storage    string
+			Name             string
+			Namespace        string
+			AccessMode       string
+			Storage          string
+			Phase            string
+			StorageClassName string
 		}{
-			Name:       pvcName,
-			Namespace:  namespace,
-			Storage:    storage.String(),
-			AccessMode: string(accessMode),
+			Name:             pvcName,
+			Namespace:        gi.Namespace,
+			Storage:          gi.Storage.String(),
+			AccessMode:       string(gi.AccessMode),
+			Phase:            string(claimPhase),
+			StorageClassName: gi.StorageClassName,
 		}
 		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
 		if err != nil {
@@ -151,60 +175,77 @@ var providerToCSIDrivers = map[commontypes.CloudProvider]string{
 
 // GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given pvcNames suitable for the given provider in the given
 // namespace for the given storage and access mode and returns the PV objects and their generated YAML paths.
-func GeneratePersistentVolumes(genInput SimplePVGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
+func GeneratePersistentVolumes(gi SimplePVGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
 	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
 	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pv-template.yaml")
 	if err != nil {
 		return
 	}
-	if genInput.Namespace == "" {
-		genInput.Namespace = corev1.NamespaceDefault
-	}
-	if genInput.Provider == "" {
-		genInput.Provider = commontypes.CloudProviderAWS
-	}
-	if genInput.Storage.IsZero() {
-		genInput.Storage = resource.MustParse("1Gi")
-	}
-	if genInput.Zone == "" {
-		err = errors.New("zone must be specified in genInput")
+	if gi.GenDir == "" {
+		err = fmt.Errorf("SimplePVGen.GenDir is empty")
 		return
 	}
-	if len(genInput.PVCNames) == 0 {
+	if gi.StorageClassName == "" {
+		gi.StorageClassName = "default"
+	}
+	if gi.Namespace == "" {
+		gi.Namespace = corev1.NamespaceDefault
+	}
+	if gi.Provider == "" {
+		gi.Provider = commontypes.CloudProviderAWS
+	}
+	if gi.Storage.IsZero() {
+		gi.Storage = resource.MustParse("1Gi")
+	}
+	if gi.Zone == "" {
+		err = errors.New("zone must be specified in gi")
+		return
+	}
+	if len(gi.PVCNames) == 0 {
 		err = errors.New("must specify at least one name")
 		return
 	}
-	if genInput.AccessMode == "" {
-		genInput.AccessMode = corev1.ReadWriteOnce
+	if gi.AccessMode == "" {
+		gi.AccessMode = corev1.ReadWriteOnce
 	}
-	csiDriver := providerToCSIDrivers[genInput.Provider]
+	csiDriver := providerToCSIDrivers[gi.Provider]
 	if csiDriver == "" {
-		err = fmt.Errorf("no CSIDriver found for provider %s", genInput.Provider)
+		err = fmt.Errorf("no CSIDriver found for provider %s", gi.Provider)
 		return
 	}
-	for _, pvcName := range genInput.PVCNames {
-		var pv corev1.PersistentVolume
+	for _, pvcName := range gi.PVCNames {
+		var (
+			pv          corev1.PersistentVolume
+			volumePhase = corev1.VolumeBound
+		)
 		pvName := "pv-" + pvcName
-		outYAMLPath := path.Join(ioutil.GetTempDir(), pvName+".yaml")
+		outYAMLPath := path.Join(gi.GenDir, pvName+".yaml")
+		if gi.Unbound {
+			volumePhase = corev1.VolumeAvailable
+		}
 		pvTmplData := struct {
-			CSIDriver    string
-			Name         string
-			Namespace    string
-			Storage      string
-			AccessMode   string
-			VolumeHandle string
-			PVCName      string
-			Zone         string
+			CSIDriver        string
+			Name             string
+			Namespace        string
+			Storage          string
+			AccessMode       string
+			VolumeHandle     string
+			PVCName          string
+			Zone             string
+			Phase            string
+			StorageClassName string
 		}{
-			CSIDriver:    csiDriver,
-			Name:         pvName,
-			Namespace:    genInput.Namespace,
-			Storage:      genInput.Storage.String(),
-			AccessMode:   string(genInput.AccessMode),
-			VolumeHandle: pvName,
-			PVCName:      pvcName,
-			Zone:         genInput.Zone,
+			CSIDriver:        csiDriver,
+			Name:             pvName,
+			Namespace:        gi.Namespace,
+			Storage:          gi.Storage.String(),
+			AccessMode:       string(gi.AccessMode),
+			VolumeHandle:     pvName,
+			PVCName:          pvcName,
+			Zone:             gi.Zone,
+			Phase:            string(volumePhase),
+			StorageClassName: gi.StorageClassName,
 		}
 		err = GenerateAndLoad(tmpl, pvTmplData, outYAMLPath, &pv)
 		if err != nil {
@@ -217,12 +258,12 @@ func GeneratePersistentVolumes(genInput SimplePVGenInput) (pvs []corev1.Persiste
 	return
 }
 
-func GenerateStorageClass(provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
+func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/sc-template.yaml")
 	if err != nil {
 		return
 	}
-	outYAMLPath = path.Join(ioutil.GetTempDir(), "sc-"+name+".yaml")
+	outYAMLPath = path.Join(genDir, "sc-"+name+".yaml")
 	csiDriver := providerToCSIDrivers[provider]
 	if csiDriver == "" {
 		err = fmt.Errorf("no CSIDriver found for provider %s", provider)

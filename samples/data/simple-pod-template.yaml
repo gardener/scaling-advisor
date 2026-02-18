@@ -11,7 +11,9 @@ metadata:
     app.kubernetes.io/part-of: "{{.AppLabels.PartOf}}"
     app.kubernetes.io/managed-by: "{{.AppLabels.ManagedBy}}"
 spec:
+{{- if .SchedulerName }}
   schedulerName: "{{.SchedulerName}}"
+{{- end }}
   containers:
     - image: registry.k8s.io/pause:3.5
       name: pause

@@ -20,7 +20,10 @@ import (
 	"github.com/go-logr/logr"
 )
 
-var _ plannerapi.ScaleOutSimulator = (*multiSimulator)(nil)
+var (
+	_ plannerapi.ScaleOutSimulator        = (*multiSimulator)(nil)
+	_ plannerapi.ScaleOutSimulatorFactory = NewScaleOutSimulator
+)
 
 // TODO find a better word for multiSimulator.
 type multiSimulator struct {
@@ -29,6 +32,7 @@ type multiSimulator struct {
 	nodeScorer        plannerapi.NodeScorer
 	state             simulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
+	traceDir          string
 }
 
 type simulatorState struct {
@@ -42,13 +46,14 @@ type simulatorState struct {
 }
 
 // NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.
-func NewScaleOutSimulator(simulatorConfig plannerapi.SimulatorConfig, viewAccess minkapi.ViewAccess,
-	schedulerLauncher plannerapi.SchedulerLauncher, nodeScorer plannerapi.NodeScorer) (plannerapi.ScaleOutSimulator, error) {
+// This is a factory function that supports type plannerapi.ScaleOutSimulatorFactory.
+func NewScaleOutSimulator(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 	return &multiSimulator{
-		simulatorConfig:   simulatorConfig,
-		viewAccess:        viewAccess,
-		schedulerLauncher: schedulerLauncher,
-		nodeScorer:        nodeScorer,
+		simulatorConfig:   args.Config,
+		viewAccess:        args.ViewAccess,
+		schedulerLauncher: args.SchedulerLauncher,
+		nodeScorer:        args.NodeScorer,
+		traceDir:          args.TraceDir,
 	}, nil
 }
 
@@ -123,6 +128,7 @@ func (m *multiSimulator) createAndGroupSimulation() ([]plannerapi.SimulationGrou
 					NodeTemplateName:  nodeTemplate.Name,
 					SchedulerLauncher: m.schedulerLauncher,
 					Config:            m.simulatorConfig,
+					TraceDir:          m.traceDir,
 				}
 				sim, err = m.state.simulationCreator.Create(simulationName, simArgs)
 				if err != nil {

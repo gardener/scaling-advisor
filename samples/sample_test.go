@@ -6,6 +6,7 @@ package samples
 
 import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"testing"
@@ -20,12 +21,19 @@ func TestGeneratePVs(t *testing.T) {
 	wantAccessMode := corev1.ReadWriteOnce
 	wantZone := "eu-west-1a"
 	wantNames := []string{"stem", "branch"}
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
 	pvs, pvYAMLPaths, err := GeneratePersistentVolumes(SimplePVGenInput{
-		Namespace:  wantNS,
-		Storage:    wantStorage,
-		AccessMode: wantAccessMode,
-		Zone:       wantZone,
-		PVCNames:   wantNames,
+		VolCommon: VolCommon{
+			GenDir:     testGenDir,
+			Namespace:  wantNS,
+			Storage:    wantStorage,
+			AccessMode: wantAccessMode,
+		},
+		Zone:     wantZone,
+		PVCNames: wantNames,
 	})
 	if err != nil {
 		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
@@ -54,7 +62,11 @@ func TestGeneratePVs(t *testing.T) {
 func TestGenerateStorageClass(t *testing.T) {
 	wantName := "default"
 	wantVolumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-	sc, scYAMLPath, err := GenerateStorageClass(commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
+	sc, scYAMLPath, err := GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
 	if err != nil {
 		t.Fatalf("GenerateStorageClass() failed: %v", err)
 	}
@@ -76,7 +88,20 @@ func TestGeneratePVCs(t *testing.T) {
 	wantStorage := resource.MustParse("1Gi")
 	wantAccessMode := corev1.ReadWriteOnce
 	wantNames := []string{"stem", "branch"}
-	pvcs, pvcYAMLPaths, err := GeneratePersistentVolumeClaims(wantNS, wantStorage, wantAccessMode, wantNames)
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
+	volCommon := VolCommon{
+		GenDir:     testGenDir,
+		Namespace:  wantNS,
+		Storage:    wantStorage,
+		AccessMode: wantAccessMode,
+	}
+	pvcs, pvcYAMLPaths, err := GeneratePersistentVolumeClaims(SimplePVCGenInput{
+		VolCommon: volCommon,
+		Names:     wantNames,
+	})
 	if err != nil {
 		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
 	}
@@ -107,6 +132,10 @@ func TestGeneratePVCs(t *testing.T) {
 func TestGenerateSimplePodsWithResources(t *testing.T) {
 	podCount := 4
 	pvcNames := []string{"stem", "branch"}
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
 	for _, resourceCategory := range allResourceCategories {
 		t.Run(string(resourceCategory), func(t *testing.T) {
 			pods, podYAMLPaths, err := GenerateSimplePodsForResourceCategory(resourceCategory, podCount, SimplePodGenInput{
@@ -117,6 +146,7 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 					PartOf:    "food",
 					ManagedBy: "logistics",
 				},
+				GenDir:   testGenDir,
 				PVCNames: pvcNames,
 			})
 			if err != nil {

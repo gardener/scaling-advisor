@@ -41,7 +41,7 @@ func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]corev1.Per
 	if err != nil {
 		return nil, err
 	}
-	allPVs := make([]corev1.PersistentVolume, len(objs))
+	allPVs := make([]corev1.PersistentVolume, 0, len(objs))
 	for _, o := range objs {
 		pv, ok := o.(*corev1.PersistentVolume)
 		if !ok {
@@ -58,7 +58,7 @@ func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]corev
 	if err != nil {
 		return nil, err
 	}
-	allPVCs := make([]corev1.PersistentVolumeClaim, len(objs))
+	allPVCs := make([]corev1.PersistentVolumeClaim, 0, len(objs))
 	for _, o := range objs {
 		pvc, ok := o.(*corev1.PersistentVolumeClaim)
 		if !ok {
@@ -113,11 +113,20 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 	for _, pvc := range pvcs {
 		log.V(4).Info(prefix+"|pvc in view", "viewName", view.GetName(),
 			"pvcName", pvc.Name,
-			"request", pvc.Spec.Resources.Requests,
+			"pvcNamespace", pvc.Namespace,
+			"phase", pvc.Status.Phase,
+			"storageClassName", pvc.Spec.StorageClassName,
+			"storageRequest", pvc.Spec.Resources.Requests.Storage(),
 			"selector", pvc.Spec.Selector)
 	}
 	for _, pv := range pvs {
-		log.V(4).Info(prefix+"|pv in view", "viewName", view.GetName(), "pvName", pv.GetName(), "storageCapacity", pv.Spec.Capacity["storage"], "labels", pv.Labels)
+		log.V(4).Info(prefix+"|pv in view",
+			"viewName", view.GetName(),
+			"pvName", pv.GetName(),
+			"phase", pv.Status.Phase,
+			"storageClassName", pv.Spec.StorageClassName,
+			"storageCapacity", pv.Spec.Capacity.Storage(),
+			"labels", pv.Labels)
 	}
 	if verbosity < DefaultDumpVerbosity {
 		return nil

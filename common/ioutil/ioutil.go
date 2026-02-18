@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"text/template"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -65,6 +66,15 @@ func GetTempDir() string {
 	} else {
 		return os.TempDir()
 	}
+}
+
+// MakeTempSubDir creates a sub dir under the temp directory and returns the path
+func MakeTempSubDir(name string) (subDir string, err error) {
+	subDir = path.Join(GetTempDir(), name)
+	if err = os.MkdirAll(subDir, 0700); err != nil {
+		err = fmt.Errorf("failed to create subdir %q: %w", subDir, err)
+	}
+	return
 }
 
 func init() {

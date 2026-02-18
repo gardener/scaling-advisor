@@ -70,6 +70,7 @@ type AppLabels struct {
 
 // SimplePodGenInput holds the input data for generating simple pods.
 type SimplePodGenInput struct {
+	GenDir        string
 	Name          string
 	Namespace     string
 	AppLabels     AppLabels
@@ -78,13 +79,24 @@ type SimplePodGenInput struct {
 	PVCNames []string
 }
 
+type VolCommon struct {
+	GenDir           string
+	Namespace        string
+	Storage          resource.Quantity
+	AccessMode       corev1.PersistentVolumeAccessMode
+	StorageClassName string
+	Unbound          bool
+}
 type SimplePVGenInput struct {
-	Provider   commontypes.CloudProvider
-	Namespace  string
-	Storage    resource.Quantity
-	AccessMode corev1.PersistentVolumeAccessMode
-	Zone       string
-	PVCNames   []string
+	VolCommon
+	Provider commontypes.CloudProvider
+	Zone     string
+	PVCNames []string
+}
+
+type SimplePVCGenInput struct {
+	VolCommon
+	Names []string
 }
 
 // SimplePodTemplateData holds all the pod template data for the simple pod template.

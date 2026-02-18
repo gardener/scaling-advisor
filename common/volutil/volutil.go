@@ -16,6 +16,7 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 		ObjectMeta:       pv.ObjectMeta,
 		NodeAffinity:     pv.Spec.NodeAffinity.Required,
 		StorageClassName: pv.Spec.StorageClassName,
+		Phase:            pv.Status.Phase,
 	}
 }
 
@@ -34,6 +35,9 @@ func AsPV(p planner.PVInfo) *corev1.PersistentVolume {
 			NodeAffinity:                  volNodeAffinity,
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
 			StorageClassName:              p.StorageClassName,
+		},
+		Status: corev1.PersistentVolumeStatus{
+			Phase: p.Phase,
 		},
 	}
 }
