@@ -55,7 +55,29 @@ func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequ
 	}
 	scaleOutSimulator, err := p.getScaleOutSimulator(&req)
 	if err != nil {
-		return
+		return err
+	}
+	defer ioutil.CloseQuietly(scaleOutSimulator)
+	simulationCreator := plannerapi.SimulationFactory(simulation.NewDefault)
+	planResultCh := scaleOutSimulator.Simulate(planCtx, req, simulationCreator)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case planResult, ok := <-planResultCh:
+			if !ok {
+				return nil // planResultCh closed by ScaleOutSimulator.Simulate
+			}
+			response := plannerapi.Response{
+				RequestRef:   req.RequestRef,
+				Error:        planResult.Error,
+				Labels:       planResult.Labels,
+				ScaleOutPlan: planResult.ScaleOutPlan,
+				ScaleInPlan:  nil,
+				ID:           objutil.GenerateName("scaling-plan-"),
+			}
+			responseCh <- response
+		}
 	}
 	scaleOutSimulator.Simulate(planCtx, resultCh)
 }

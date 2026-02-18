@@ -61,10 +61,13 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	return
 }
 
-var (
-	_ logr.LogSink          = (*multiSink)(nil)
-	_ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
-)
+// multiSink forwards to multiple sinks (e.g., original + file).
+type multiSink struct {
+	sinks []logr.LogSink
+}
+
+var _ logr.LogSink = (*multiSink)(nil)
+var _ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
 
 func (m *multiSink) Init(info logr.RuntimeInfo) {
 	for _, s := range m.sinks {
@@ -135,5 +138,3 @@ func (m *multiSink) WithCallDepth(depth int) logr.LogSink {
 	}
 	return &multiSink{sinks: newSinks}
 }
-
-var fileNameCleanRe = regexp.MustCompile(`[^\w.-]`)

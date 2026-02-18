@@ -59,8 +59,13 @@ func (m *multiSimulator) Simulate(ctx context.Context, resultCh chan<- planner.S
 		return
 	}
 
-	m.simulationRunCounter.Store(0) // initialize it to 0.
-	simulationGroups, err := m.createSimulationGroups(m.request)
+	if err = util.PopulateView(ctx, m.state.requestView, &m.state.request.Snapshot); err != nil {
+		return err
+	}
+
+	_ = viewutil.LogDumpObjects(ctx, "requestView", m.state.requestView)
+
+	m.state.simulationGroups, err = m.createAndGroupSimulation()
 	if err != nil {
 		return
 	}
@@ -173,7 +178,13 @@ func (m *multiSimulator) runAllPassesForGroup(ctx context.Context, groupView min
 				log.Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
-			sgrr.WinnerNodeScores = append(sgrr.WinnerNodeScores, *winningNodeScore)
+			if logutil.VerbosityFromContext(passCtx) > 3 {
+				err = viewutil.LogDumpObjects(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupPassView)
+				if err != nil {
+					return
+				}
+			}
+			sgcr.WinnerNodeScores = append(sgcr.WinnerNodeScores, *winningNodeScore)
 			// It captures the leftover unscheduled pods from the last winning node score.
 			// If there is no winning node score in the current pass, the leftover unscheduled pods from the
 			// previous pass will be retained.

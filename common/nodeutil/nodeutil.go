@@ -6,7 +6,6 @@ package nodeutil
 
 import (
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"maps"
 	"time"
 
@@ -18,21 +17,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"maps"
-	"time"
-)
-
-	"github.com/gardener/scaling-advisor/common/objutil"
-
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 // GetInstanceType returns the instance-type of the given node from the label present on it.
@@ -40,15 +24,27 @@ func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
 
-// AsNode converts a planner.NodeInfo to a corev1.Node object.
-func AsNode(info planner.NodeInfo) *corev1.Node {
+// AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
+// It additionally takes in csiDriverVolumeMaximums, which is a map
+// of CSI driver names to the maximum number of volumes managed by
+// the driver on the node.
+func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
+	return plannerapi.NodeInfo{
+		ObjectMeta:              node.ObjectMeta,
+		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
+		Unschedulable:           node.Spec.Unschedulable,
+		Taints:                  node.Spec.Taints,
+		Capacity:                node.Status.Capacity,
+		Allocatable:             node.Status.Allocatable,
+		Conditions:              node.Status.Conditions,
+		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
+	}
+}
+
+// AsNode converts a plannerapi.NodeInfo to a corev1.Node object.
+func AsNode(info plannerapi.NodeInfo) *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              info.Name,
-			Labels:            info.Labels,
-			Annotations:       info.Annotations,
-			DeletionTimestamp: &metav1.Time{Time: info.DeletionTimestamp},
-		},
+		ObjectMeta: info.ObjectMeta,
 		Spec: corev1.NodeSpec{
 			Taints:        info.Taints,
 			Unschedulable: info.Unschedulable,
@@ -95,30 +91,6 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels[corev1.LabelTopologyRegion] = nodePool.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
 	nodeLabels[corev1.LabelHostname] = nodeName
-
+	nodeLabels[commonconstants.LabelNodePoolName] = nodePool.Name
 	return nodeLabels
-}
-
-// AsNodeInfo converts a corev1.Node into a planner.NodeInfo object.
-// It additionally takes in csiDriverVolumeMaximums which is a map
-// of CSI driver names to the maximum number of volumes managed by
-// the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
-	return plannerapi.NodeInfo{
-		BasicObjectMeta: plannerapi.BasicObjectMeta{
-			UID:               node.UID,
-			NamespacedName:    commontypes.NamespacedName{Name: node.Name},
-			Labels:            node.Labels,
-			Annotations:       node.Annotations,
-			DeletionTimestamp: node.DeletionTimestamp,
-			OwnerReferences:   node.OwnerReferences,
-		},
-		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
-		Unschedulable:           node.Spec.Unschedulable,
-		Taints:                  node.Spec.Taints,
-		Capacity:                objutil.ResourceListToInt64Map(node.Status.Capacity),
-		Allocatable:             objutil.ResourceListToInt64Map(node.Status.Allocatable),
-		Conditions:              node.Status.Conditions,
-		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
-	}
 }
