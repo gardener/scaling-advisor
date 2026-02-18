@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/utils/ptr"
 	"sync/atomic"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 )
 
@@ -67,7 +65,7 @@ type Request struct {
 	Snapshot ClusterSnapshot `json:"snapshot,omitzero"`
 	// AdviceGenerationTimeout is the maximum duration allowed for generating scaling advice.
 	AdviceGenerationTimeout time.Duration `json:",omitzero"`
-	// DiagnosticVerbosity indicates the level of  diagnostics produced during scaling advice generation.
+	// DiagnosticVerbosity indicates the level of diagnostics produced during scaling advice generation.
 	// By default, its value is 0 which disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
 	DiagnosticVerbosity uint32 `json:"diagnosticVerbosity,omitzero"`
@@ -165,21 +163,53 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 	return nodeCountByPlacement, nil
 }
 
-// BasicObjectMeta contains the basic object metadata associated with Kubernetes resource objects which is a
-// lean information subset of metav1.ObjectMeta that is relevant for the scaling planner	.
-type BasicObjectMeta struct {
-	// UID is the unique identifier for the resource.
-	UID                        types.UID `json:"uid,omitempty"`
-	commontypes.NamespacedName `json:",inline"`
-	// Labels are the labels associated with the resource.
-	Labels map[string]string `json:"labels,omitempty"`
-	// Annotations are the annotations associated with the resource.
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
-	DeletionTimestamp time.Time `json:"deletionTimestamp,omitzero"`
-	// OwnerReferences are the owner references associated with the resource.
-	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
-}
+//// LeanMeta is the lean object metadata associated with a Kubernetes resource object which is a
+//// lean information subset of metav1.ObjectMeta that is relevant for the scaling planner.
+//type LeanMeta struct {
+//	// UID is the unique identifier for the resource.
+//	UID                        types.UID `json:"uid,omitempty"`
+//	commontypes.NamespacedName `json:",inline"`
+//	// Labels are the labels associated with the resource.
+//	Labels map[string]string `json:"labels,omitempty"`
+//	// Annotations are the annotations associated with the resource.
+//	Annotations map[string]string `json:"annotations,omitempty"`
+//	// CreationTimestamp is the timestamp when the resource was created.
+//	CreationTimestamp time.Time `json:"creationTimestamp,omitempty"`
+//	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
+//	DeletionTimestamp time.Time `json:"deletionTimestamp,omitzero"`
+//	// OwnerReferences are the owner references associated with the resource.
+//	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
+//}
+//
+//// GetObjectMeta gets the metav1.ObjectMeta
+//func (o *LeanMeta) GetObjectMeta() metav1.ObjectMeta {
+//	return metav1.ObjectMeta{
+//		Name:              o.Name,
+//		Namespace:         o.Namespace,
+//		UID:               o.UID,
+//		CreationTimestamp: metav1.NewTime(o.CreationTimestamp),
+//		DeletionTimestamp: objutil.AsPtrMetaV1Time(o.DeletionTimestamp),
+//		Labels:            o.Labels,
+//		Annotations:       o.Annotations,
+//		OwnerReferences:   o.OwnerReferences,
+//	}
+//}
+//
+//// AsLeanMeta converts the given metav1 ObjectMeta to a plannerapi LeanMeta.
+//func AsLeanMeta(m metav1.ObjectMeta) LeanMeta {
+//	return LeanMeta{
+//		UID: m.GetUID(),
+//		NamespacedName: commontypes.NamespacedName{
+//			Namespace: m.GetNamespace(),
+//			Name:      m.GetName(),
+//		},
+//		Labels:            m.GetLabels(),
+//		Annotations:       m.GetAnnotations(),
+//		CreationTimestamp: m.CreationTimestamp.Time,
+//		DeletionTimestamp: objutil.AsStdTimeOrZero(m.DeletionTimestamp),
+//		OwnerReferences:   m.GetOwnerReferences(),
+//	}
+//}
 
 // PodInfo contains the minimum set of information about corev1.Pod that will be required by the kube-scheduler.
 // NOTES:
@@ -201,7 +231,7 @@ type PodInfo struct {
 	PriorityClassName string                  `json:"priorityClassName,omitempty"`
 	PreemptionPolicy  corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
 	RuntimeClassName  string                  `json:"runtimeClassName,omitempty"`
-	BasicObjectMeta   `json:",inline"`
+	metav1.ObjectMeta `json:",inline"`
 	// Volumes are the volumes that are attached to the Pod.
 	Volumes []corev1.Volume `json:",omitempty"`
 	// Tolerations are the tolerations for the Pod.
@@ -232,8 +262,8 @@ type NodeInfo struct {
 	// CSI driver that can be used on a node.
 	CSIDriverVolumeMaximums map[string]int32 `json:",omitempty"`
 	// InstanceType is the instance type for the Node
-	InstanceType    string
-	BasicObjectMeta `json:",inline"`
+	InstanceType      string
+	metav1.ObjectMeta `json:",inline"`
 	// Taints are the node's taints.
 	Taints []corev1.Taint `json:",omitempty"`
 	// Conditions are the node's conditions.
@@ -280,67 +310,21 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 	return
 }
 
-// VolCommonInfo encapsulates the common information about k8s PV and PVC, which is scheduling relevant.
-type VolCommonInfo struct {
-	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	StorageClassName string                              `json:"storageClassName,omitempty"`
-}
-
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
 type PVCInfo struct {
-	BasicObjectMeta `json:",inline"`
-	VolCommonInfo   `json:",inline"`
-}
-
-func AsPVCInfo(pvc corev1.PersistentVolumeClaim) PVCInfo {
-	return PVCInfo{
-		BasicObjectMeta: BasicObjectMeta{
-			UID: pvc.GetUID(),
-			NamespacedName: commontypes.NamespacedName{
-				Namespace: pvc.GetNamespace(),
-				Name:      pvc.GetName(),
-			},
-			Labels:          pvc.GetLabels(),
-			Annotations:     pvc.GetAnnotations(),
-			OwnerReferences: pvc.GetOwnerReferences(),
-		},
-		VolCommonInfo: VolCommonInfo{
-			AccessModes:      pvc.Spec.AccessModes,
-			StorageClassName: ptr.Deref(pvc.Spec.StorageClassName, ""),
-		},
-	}
+	metav1.ObjectMeta                `json:",inline"`
+	corev1.PersistentVolumeClaimSpec `json:",inline"`
+	Phase                            corev1.PersistentVolumeClaimPhase `json:"phase,omitempty"`
 }
 
 // PVInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolume.
 type PVInfo struct {
-	BasicObjectMeta `json:",inline"`
-	VolCommonInfo   `json:",inline"`
-	ClaimRef        commontypes.NamespacedName `json:"claimRef,omitzero"`
-	NodeAffinity    corev1.NodeSelector        `json:"nodeAffinity,omitzero"`
-}
-
-func AsPVInfo(pv corev1.PersistentVolume) (PVInfo, error) {
-	if pv.Spec.ClaimRef == nil {
-		return PVInfo{}, fmt.Errorf("pv.Spec.ClaimRef is nil for PV %s/%s", pv.Namespace, pv.Name)
-	}
-	return PVInfo{
-		BasicObjectMeta: BasicObjectMeta{
-			UID: pv.GetUID(),
-			NamespacedName: commontypes.NamespacedName{
-				Namespace: pv.GetNamespace(),
-				Name:      pv.GetName(),
-			},
-			Labels:          pv.GetLabels(),
-			Annotations:     pv.GetAnnotations(),
-			OwnerReferences: pv.GetOwnerReferences(),
-		},
-		VolCommonInfo: VolCommonInfo{
-			AccessModes:      pv.Spec.AccessModes,
-			StorageClassName: pv.Spec.StorageClassName,
-		},
-		ClaimRef:     commontypes.NamespacedName{Namespace: pv.GetNamespace(), Name: pv.GetName()},
-		NodeAffinity: ptr.Deref(pv.Spec.NodeAffinity.Required, corev1.NodeSelector{}),
-	}, nil
+	metav1.ObjectMeta `json:",inline"`
+	AccessModes       []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	StorageClassName  string                              `json:"storageClassName,omitempty"`
+	Capacity          corev1.ResourceList                 `json:"capacity,omitempty"`
+	ClaimRef          commontypes.NamespacedName          `json:"claimRef,omitzero"`
+	NodeAffinity      *corev1.NodeSelector                `json:"nodeAffinity,omitzero"`
 }
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
@@ -475,6 +459,9 @@ type ScalingPlanner interface {
 	Plan(ctx context.Context, req Request) <-chan Response
 }
 
+// ScalingPlannerFactory is a function that accepts a ScalingPlanner and returns an instance of ScalingPLanner.
+type ScalingPlannerFactory = func(args ScalingPlannerArgs) ScalingPlanner
+
 // ScaleOutSimulator is a facade that executes simulations to generate one or more scale-out plans.
 // Implementations vary depending on the commontypes.SimulatorStrategy used.
 //
@@ -596,18 +583,18 @@ type SimulationArgs struct {
 	Config SimulatorConfig
 }
 
-// SimulationCreatorFunc is a factory function for constructing a simulation instance.
+// SimulationFactory is a factory for constructing a simulation instance.
 // It implements the SimulationCreator interface.
-type SimulationCreatorFunc func(name string, args *SimulationArgs) (Simulation, error)
+type SimulationFactory func(name string, args *SimulationArgs) (Simulation, error)
 
-// SimulationCreator is an interface that wraps a method that satisfied SimulationCreatorFunc
+// SimulationCreator is an interface that wraps a method that satisfied SimulationFactory
 type SimulationCreator interface {
 	// Create creates a simulation instance with the given name and arguments.
 	Create(name string, args *SimulationArgs) (Simulation, error)
 }
 
-// Create constructs a new simulation instance with the given name and arguments. Satisfies SimulationCreatorFunc
-func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simulation, error) {
+// Create constructs a new simulation instance with the given name and arguments. Satisfies SimulationFactory
+func (f SimulationFactory) Create(name string, args *SimulationArgs) (Simulation, error) {
 	return f(name, args)
 }
 
@@ -628,19 +615,6 @@ type SimulationGroup interface {
 	AddSimulation(simulation Simulation)
 	// Run executes all simulations in the group and returns all the simulation run results or any error.
 	Run(ctx context.Context, getViewFn GetSimulationViewFunc) ([]SimulationRunResult, error)
-}
-
-// SimulationGrouperFunc represents a factory function for grouping Simulation instances into one or more SimulationGroups
-type SimulationGrouperFunc func(simulations []Simulation) ([]SimulationGroup, error)
-
-// SimulationGrouper is an interface that wraps a method that satisfies SimulationGrouperFunc
-type SimulationGrouper interface {
-	Group(simulations []Simulation) ([]SimulationGroup, error)
-}
-
-// Group groups Simulation instances into one or more SimulationGroups. Satisfies SimulationGrouperFunc
-func (f SimulationGrouperFunc) Group(simulations []Simulation) ([]SimulationGroup, error) {
-	return f(simulations)
 }
 
 // SimGroupKey represents the key for a SimulationGroup.

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,6 +65,15 @@ type NamespacedName struct {
 
 func (nn *NamespacedName) AsObjectName() cache.ObjectName {
 	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
+}
+
+// AsObjectReference constructs an ObjectReference referring this name or nil if namespace/name are empty
+func (nn *NamespacedName) AsObjectReference() *corev1.ObjectReference {
+	if nn.Namespace == "" && nn.Name == "" {
+		return nil
+	} else {
+		return &corev1.ObjectReference{Namespace: nn.Namespace, Name: nn.Name}
+	}
 }
 
 // String returns the general purpose string representation

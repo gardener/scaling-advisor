@@ -185,8 +185,8 @@ const (
 	ViewTypeSandbox ViewType = "sandbox"
 )
 
-// CreateSandboxViewFunc represents a creator function for constructing sandbox views from the delegate view and given args
-type CreateSandboxViewFunc = func(log logr.Logger, delegateView View, args *ViewArgs) (View, error)
+// SandboxFactory represents a factory function for constructing sandbox views from the delegate view and given args
+type SandboxFactory = func(log logr.Logger, delegateView View, args *ViewArgs) (View, error)
 
 // ViewArgs contains arguments for creating a View.
 type ViewArgs struct {

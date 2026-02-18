@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"strconv"
 	"time"
 
@@ -105,20 +106,10 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 	return groupByPlacement
 }
 
-// SynchronizeView synchronizes the given view with the given cluster snapshot.
-func SynchronizeView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
+// PopulateView populates the given view with the objects in the given cluster snapshot.
+func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
 	if err := view.Reset(); err != nil {
 		return err
-	}
-	for _, nodeInfo := range cs.Nodes {
-		if _, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
-			return err
-		}
-	}
-	for _, pod := range cs.Pods {
-		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
-			return err
-		}
 	}
 	for _, pc := range cs.PriorityClasses {
 		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
@@ -130,6 +121,30 @@ func SynchronizeView(ctx context.Context, view minkapi.View, cs *plannerapi.Clus
 			return err
 		}
 	}
-	// TODO support PVC, PV, StorageClass, etc.
+	for _, sc := range cs.StorageClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.StorageClassDescriptor.GVK, &sc); err != nil {
+			return err
+		}
+	}
+	for _, nodeInfo := range cs.Nodes {
+		if _, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
+			return err
+		}
+	}
+	for _, pvc := range cs.PVCs {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc)); err != nil {
+			return err
+		}
+	}
+	for _, pv := range cs.PVs {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv)); err != nil {
+			return err
+		}
+	}
+	for _, pod := range cs.Pods {
+		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+			return err
+		}
+	}
 	return nil
 }

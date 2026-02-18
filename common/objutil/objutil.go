@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"io"
 	"io/fs"
 	"os"
@@ -85,22 +86,23 @@ func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
 	return json.Unmarshal(objBytes, obj)
 }
 
-// SaveRuntimeObjAsJSONToPath saves the given runtime object ToYAML serializes the given k8s runtime.Object as json using
+// SaveRuntimeObjAsJSONToPath serializes the given runtime object as yaml using
 // the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
 // NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
 func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
 	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: false, Pretty: true})
 	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
-	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
-	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		err = fmt.Errorf("failed to open file %q: %w", savePath, err)
-		return
-	}
-	err = ser.Encode(obj, f)
-	if err != nil {
-		err = fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
-	}
+	err = saveObjToPath(ser, obj, savePath)
+	return
+}
+
+// SaveRuntimeObjAsYAMLToPath serializes the given k8s runtime.Object as json using
+// the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
+// NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
+func SaveRuntimeObjAsYAMLToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
+	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: true, Pretty: true})
+	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
+	err = saveObjToPath(ser, obj, savePath)
 	return
 }
 
@@ -360,6 +362,11 @@ func AsPtrMetaV1Time(t time.Time) *metav1.Time {
 	return mt
 }
 
+// AsStdTimeOrZero dereferences the given metav1.Time and returns the stdlib time.Time if not-nil or returns the zero value.
+func AsStdTimeOrZero(t *metav1.Time) time.Time {
+	return ptr.Deref(t, metav1.Time{}).Time
+}
+
 // Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
 func Cast[T any](obj any) (t T, err error) {
 	t, ok := obj.(T)
@@ -377,4 +384,18 @@ func TypeName[T any]() string {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()
+}
+
+func saveObjToPath(ser *kjson.Serializer, obj runtime.Object, savePath string) error {
+	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
+	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open file %q: %w", savePath, err)
+	}
+	defer ioutil.CloseQuietly(f)
+	err = ser.Encode(obj, f)
+	if err != nil {
+		return fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
+	}
+	return nil
 }

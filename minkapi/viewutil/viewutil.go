@@ -6,6 +6,8 @@ package viewutil
 
 import (
 	"context"
+	"fmt"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -14,6 +16,9 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
+
+// DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
+const DefaultDumpVerbosity = 5
 
 // ListUnscheduledPods returns all Pods from the given View that are not scheduled to any Node.
 func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, error) {
@@ -30,8 +35,43 @@ func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, 
 	return unscheduledPods, nil
 }
 
-// LogNodeAndPodNames logs the node and pod names in the given minkapi view using logger from the given context if any.
-func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) error {
+// ListPersistentVolumes lists all the persistent volumes in the given minkapi view.
+func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]corev1.PersistentVolume, error) {
+	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumesDescriptor.GVK, minkapi.MatchAllCriteria)
+	if err != nil {
+		return nil, err
+	}
+	allPVs := make([]corev1.PersistentVolume, len(objs))
+	for _, o := range objs {
+		pv, ok := o.(*corev1.PersistentVolume)
+		if !ok {
+			return nil, fmt.Errorf("expected PersistentVolume, unexpected object %v", o)
+		}
+		allPVs = append(allPVs, *pv)
+	}
+	return allPVs, nil
+}
+
+// ListPersistentVolumeClaims lists all the persistent volume claims in the given minkapi view.
+func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]corev1.PersistentVolumeClaim, error) {
+	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, minkapi.MatchAllCriteria)
+	if err != nil {
+		return nil, err
+	}
+	allPVCs := make([]corev1.PersistentVolumeClaim, len(objs))
+	for _, o := range objs {
+		pvc, ok := o.(*corev1.PersistentVolumeClaim)
+		if !ok {
+			return nil, fmt.Errorf("expected PersistentVolumeClaim, unexpected object %v", o)
+		}
+		allPVCs = append(allPVCs, *pvc)
+	}
+	return allPVCs, nil
+}
+
+// LogDumpObjects logs the node and pod names in the given minkapi view using logger from the given context if any.
+// At higher log verbosity, it also dumps all scheduling relevant objects into <tempDir>/<viewName>/ directory.
+func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
@@ -46,22 +86,41 @@ func LogNodeAndPodNames(ctx context.Context, prefix string, view minkapi.View) e
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),
 		"totalUnscheduledPods", podutil.CountUnscheduledPods(allPods))
-	if logutil.VerbosityFromContext(ctx) >= 4 {
-		for idx, pod := range allPods {
-			log.V(4).Info(prefix+"|pod in view",
-				"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
-				"assignedNodeName", pod.Spec.NodeName, "podRequests", pod.Spec.Containers[0].Resources.Requests)
-		}
-		for _, node := range allNodes {
-			log.V(4).Info(prefix+"|node in view",
-				"viewName", view.GetName(),
-				"nodeName", node.Name,
-				"nodePool", node.Labels[commonconstants.LabelNodePoolName],
-				"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
-				"region", node.Labels[corev1.LabelTopologyRegion],
-				"zone", node.Labels[corev1.LabelTopologyZone],
-				"allocatable", node.Status.Allocatable)
-		}
+	verbosity := logutil.VerbosityFromContext(ctx)
+	for idx, pod := range allPods {
+		log.V(4).Info(prefix+"|pod in view",
+			"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
+			"assignedNodeName", pod.Spec.NodeName, "pvcNames", podutil.GetPVCNames(pod), "podRequests", pod.Spec.Containers[0].Resources.Requests)
+	}
+	for _, node := range allNodes {
+		log.V(4).Info(prefix+"|node in view",
+			"viewName", view.GetName(),
+			"nodeName", node.Name,
+			"nodePool", node.Labels[commonconstants.LabelNodePoolName],
+			"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
+			"region", node.Labels[corev1.LabelTopologyRegion],
+			"zone", node.Labels[corev1.LabelTopologyZone],
+			"allocatable", node.Status.Allocatable)
+	}
+	pvs, err := ListPersistentVolumes(ctx, view)
+	if err != nil {
+		return err
+	}
+	pvcs, err := ListPersistentVolumeClaims(ctx, view)
+	if err != nil {
+		return err
+	}
+	for _, pvc := range pvcs {
+		log.V(4).Info(prefix+"|pvc in view", "viewName", view.GetName(),
+			"pvcName", pvc.Name,
+			"request", pvc.Spec.Resources.Requests,
+			"selector", pvc.Spec.Selector)
+	}
+	for _, pv := range pvs {
+		log.V(4).Info(prefix+"|pv in view", "viewName", view.GetName(), "pvName", pv.GetName(), "storageCapacity", pv.Spec.Capacity["storage"], "labels", pv.Labels)
+	}
+	if verbosity < DefaultDumpVerbosity {
+		return nil
 	}
 	return nil
 }

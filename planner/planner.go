@@ -66,7 +66,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	simulationCreator := plannerapi.SimulationCreatorFunc(simulation.NewDefault)
+	simulationCreator := plannerapi.SimulationFactory(simulation.NewDefault)
 	planResultCh := scaleOutSimulator.Simulate(planCtx, req, simulationCreator)
 	for {
 		select {

@@ -176,7 +176,7 @@ func GeneratePersistentVolumes(genInput SimplePVGenInput) (pvs []corev1.Persiste
 		return
 	}
 	if genInput.AccessMode == "" {
-		genInput.AccessMode = corev1.ReadWriteMany
+		genInput.AccessMode = corev1.ReadWriteOnce
 	}
 	csiDriver := providerToCSIDrivers[genInput.Provider]
 	if csiDriver == "" {
@@ -185,7 +185,7 @@ func GeneratePersistentVolumes(genInput SimplePVGenInput) (pvs []corev1.Persiste
 	}
 	for _, pvcName := range genInput.PVCNames {
 		var pv corev1.PersistentVolume
-		pvName := objutil.GenerateName("pv-")
+		pvName := "pv-" + pvcName
 		outYAMLPath := path.Join(ioutil.GetTempDir(), pvName+".yaml")
 		pvTmplData := struct {
 			CSIDriver    string

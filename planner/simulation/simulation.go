@@ -42,7 +42,7 @@ type defaultScaler struct {
 	name         string
 }
 
-var _ plannerapi.SimulationCreatorFunc = NewDefault
+var _ plannerapi.SimulationFactory = NewDefault
 
 // NewDefault creates a new Simulation instance with the specified name and using the given arguments after validation.
 func NewDefault(name string, args *plannerapi.SimulationArgs) (plannerapi.Simulation, error) {
@@ -110,7 +110,7 @@ func (s *defaultScaler) Run(ctx context.Context, view minkapi.View) (err error) 
 	simCtx := logr.NewContext(ctx, log)
 
 	if logutil.VerbosityFromContext(simCtx) > 3 {
-		_ = viewutil.LogNodeAndPodNames(simCtx, "SIMULATION-VIEW_BEFORE-RUN", view)
+		_ = viewutil.LogDumpObjects(simCtx, "SIMULATION-VIEW_BEFORE-RUN", view)
 	}
 
 	// Get unscheduled pods from the view
@@ -140,6 +140,16 @@ func (s *defaultScaler) Run(ctx context.Context, view minkapi.View) (err error) 
 		"allocatable", s.state.simNode.Status.Allocatable,
 		"numUnscheduledPods", len(s.state.unscheduledPods))
 	simCtx = logr.NewContext(ctx, log.WithValues("simNodeName", s.state.simNode.Name))
+	if logutil.VerbosityFromContext(simCtx) >= viewutil.DefaultDumpVerbosity {
+		var simNodeDumpPath string
+		// FIXME: object dumping should occur to  tempDir/sandboxviewName/
+		simNodeDumpPath, err = objutil.SaveRuntimeObjAsJSONToPath(s.state.simNode, ioutil.GetTempDir(), s.state.simNode.Name+".yaml")
+		if err != nil {
+			return
+		}
+		log.V(viewutil.DefaultDumpVerbosity).Info("dumped simulation node YAML", "simNodeDumpPath", simNodeDumpPath)
+	}
+
 	// Launch scheduler to operate on the simulation view and wait until stabilization
 	schedulerHandle, err := s.launchSchedulerForSimulation(simCtx, view)
 	if err != nil {
@@ -339,11 +349,11 @@ func (s *defaultScaler) track(ctx context.Context, view minkapi.View) (stabilize
 		s.state.latestTrackEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
-				log.V(4).Info("failed scheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+				log.V(4).Info("FailedScheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 			}
 			continue
 		}
-		log.V(4).Info("scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+		log.V(4).Info("Scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 		if err = s.handleScheduledPodEvent(ctx, view, ev); err != nil {
 			return
 		}

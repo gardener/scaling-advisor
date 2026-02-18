@@ -47,13 +47,20 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 		return
 	}
 	closer = logFile
-	fileLogger := stdr.New(log.New(logFile, prefix, log.LstdFlags))
+	fileLogger := stdr.New(log.New(logFile, prefix, log.LstdFlags|log.Lshortfile))
 	fileSink := fileLogger.GetSink()
+	if cd, ok := fileSink.(logr.CallDepthLogSink); ok {
+		fileSink = cd.WithCallDepth(1)
+	}
 
 	base := logr.FromContextOrDiscard(ctx) // get the base logger from the context
-	mSink := &multiSink{sinks: []logr.LogSink{base.GetSink(), fileSink}}
+	baseSink := base.GetSink()
+	if cd, ok := baseSink.(logr.CallDepthLogSink); ok {
+		baseSink = cd.WithCallDepth(1)
+	}
+	mSink := &multiSink{sinks: []logr.LogSink{baseSink, fileSink}}
 
-	combined := logr.New(mSink).WithCallDepth(3)
+	combined := base.WithSink(mSink)
 	logCtx = context.WithValue(logr.NewContext(ctx, combined), commontypes.TraceLogPathCtxKey, logPath)
 
 	return
@@ -65,6 +72,7 @@ type multiSink struct {
 }
 
 var _ logr.LogSink = (*multiSink)(nil)
+var _ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
 
 func (m *multiSink) Init(info logr.RuntimeInfo) {
 	for _, s := range m.sinks {
@@ -105,6 +113,28 @@ func (m *multiSink) WithValues(keyValues ...any) logr.LogSink {
 	newSinks := make([]logr.LogSink, len(m.sinks))
 	for i, s := range m.sinks {
 		newSinks[i] = s.WithValues(keyValues...)
+	}
+	return &multiSink{sinks: newSinks}
+}
+
+// WithCallDepth returns a new multiSink that increases the call depth of all
+// underlying sinks by the provided depth, plus one additional frame to account
+// for the multiSink wrapper itself.
+//
+// Ensures that caller information (file and line number) reported by
+// downstream sinks correctly reflects the original logging call site rather
+// than the multiSink forwarding layer.
+//
+// If an underlying sink does not implement logr.CallDepthLogSink, it is
+// returned unchanged.
+func (m *multiSink) WithCallDepth(depth int) logr.LogSink {
+	newSinks := make([]logr.LogSink, len(m.sinks))
+	for i, s := range m.sinks {
+		if cd, ok := s.(logr.CallDepthLogSink); ok {
+			newSinks[i] = cd.WithCallDepth(depth + 1)
+		} else {
+			newSinks[i] = s
+		}
 	}
 	return &multiSink{sinks: newSinks}
 }

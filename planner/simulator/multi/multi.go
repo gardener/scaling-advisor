@@ -74,11 +74,11 @@ func (m *multiSimulator) doSimulate(ctx context.Context) (err error) {
 		return
 	}
 
-	if err = util.SynchronizeView(ctx, m.state.requestView, &m.state.request.Snapshot); err != nil {
+	if err = util.PopulateView(ctx, m.state.requestView, &m.state.request.Snapshot); err != nil {
 		return err
 	}
 
-	_ = viewutil.LogNodeAndPodNames(ctx, "requestView", m.state.requestView)
+	_ = viewutil.LogDumpObjects(ctx, "requestView", m.state.requestView)
 
 	m.state.simulationGroups, err = m.createAndGroupSimulation()
 	if err != nil {
@@ -221,7 +221,7 @@ func (m *multiSimulator) runStabilizationCycleForGroup(ctx context.Context, grou
 				return
 			}
 			if logutil.VerbosityFromContext(passCtx) > 3 {
-				err = viewutil.LogNodeAndPodNames(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupPassView)
+				err = viewutil.LogDumpObjects(passCtx, "post_runSinglePassForGroup", sgcr.NextGroupPassView)
 				if err != nil {
 					return
 				}
