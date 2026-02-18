@@ -68,7 +68,7 @@ func NewService(ctx context.Context,
 		ResourceWeigher:   weightsFn,
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
-		TraceLogsBaseDir:  config.TraceLogBaseDir,
+		TraceDir:          config.TraceDir,
 	})
 	svc = &defaultScalingAdvisor{
 		cfg:               config,
@@ -158,17 +158,7 @@ func setServiceConfigDefaults(cfg *service.ScalingAdvisorServiceConfig) {
 	if strings.TrimSpace(cfg.ServerConfig.BindAddress) == "" {
 		cfg.ServerConfig.BindAddress = commonconstants.DefaultAdvisorServiceBindAddress
 	}
-	if cfg.TraceLogBaseDir == "" {
-		cfg.TraceLogBaseDir = os.TempDir()
-	}
-}
-
-// sendAdviceError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.
-func sendAdviceError(resultsCh chan<- plannerapi.ScalingAdviceResult, requestRef plannerapi.ScalingAdviceRequestRef, err error) {
-	if !errors.Is(err, plannerapi.ErrGenScalingPlan) {
-		err = plannerapi.AsScalingAdviceError(requestRef.ID, requestRef.CorrelationID, err)
-	}
-	resultsCh <- plannerapi.ScalingAdviceResult{
-		Err: err,
+	if cfg.TraceDir == "" {
+		cfg.TraceDir = ioutil.GetTempDir()
 	}
 }

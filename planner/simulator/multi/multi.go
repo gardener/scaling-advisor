@@ -20,30 +20,40 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ planner.ScaleOutSimulator = (*multiSimulator)(nil)
+var (
+	_ plannerapi.ScaleOutSimulator        = (*multiSimulator)(nil)
+	_ plannerapi.ScaleOutSimulatorFactory = NewScaleOutSimulator
+)
 
 // TODO find a better word for multiSimulator.
 type multiSimulator struct {
 	viewAccess        minkapi.ViewAccess
-	schedulerLauncher planner.SchedulerLauncher
-	nodeScorer        planner.NodeScorer
-	// simulationCreator is a factory interface to create Simulations. This allows testing either the ScalingPlanner or MultiSimulator
-	// with mock simulations.
-	simulationCreator    planner.SimulationCreator
-	request              *planner.ScalingAdviceRequest
-	simulatorConfig      planner.SimulatorConfig
+	schedulerLauncher plannerapi.SchedulerLauncher
+	nodeScorer        plannerapi.NodeScorer
+	state             simulatorState
+	simulatorConfig   plannerapi.SimulatorConfig
+	traceDir          string
+}
+
+type simulatorState struct {
+	requestView          minkapi.View
+	simulationCreator    plannerapi.SimulationCreator
+	request              *plannerapi.Request
+	planResultCh         chan plannerapi.ScaleOutPlanResult
+	simulationViews      []minkapi.View
+	simulationGroups     []plannerapi.SimulationGroup
 	simulationRunCounter atomic.Uint32
 }
 
-// NewScaleOutSimulator creates a new planner.ScaleOutSimulator that runs multiple simulations concurrently.
-func NewScaleOutSimulator(viewAccess minkapi.ViewAccess, schedulerLauncher planner.SchedulerLauncher, nodeScorer planner.NodeScorer, simulatorConfig planner.SimulatorConfig, req *planner.ScalingAdviceRequest) (planner.ScaleOutSimulator, error) {
+// NewScaleOutSimulator creates a new plannerapi.ScaleOutSimulator that runs multiple simulations concurrently.
+// This is a factory function that supports type plannerapi.ScaleOutSimulatorFactory.
+func NewScaleOutSimulator(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 	return &multiSimulator{
-		viewAccess:        viewAccess,
-		schedulerLauncher: schedulerLauncher,
-		nodeScorer:        nodeScorer,
-		simulatorConfig:   simulatorConfig,
-		simulationCreator: planner.SimulationCreatorFunc(NewSimulation),
-		request:           req,
+		simulatorConfig:   args.Config,
+		viewAccess:        args.ViewAccess,
+		schedulerLauncher: args.SchedulerLauncher,
+		nodeScorer:        args.NodeScorer,
+		traceDir:          args.TraceDir,
 	}, nil
 }
 
@@ -81,8 +91,18 @@ func (m *multiSimulator) createSimulationGroups(request *planner.ScalingAdviceRe
 					sim planner.Simulation
 					err error
 				)
-				simulationName := fmt.Sprintf("%s_%s_%s", nodePool.Name, nodeTemplate.Name, zone)
-				sim, err = m.createSimulation(simulationName, &nodePool, nodeTemplate.Name, zone)
+				simCount++
+				simulationName := fmt.Sprintf("sim-%d_%s_%s_%s", simCount, nodePool.Name, nodeTemplate.Name, zone)
+				simArgs := &plannerapi.SimulationArgs{
+					RunCounter:        &m.state.simulationRunCounter,
+					AvailabilityZone:  zone,
+					NodePool:          &nodePool,
+					NodeTemplateName:  nodeTemplate.Name,
+					SchedulerLauncher: m.schedulerLauncher,
+					Config:            m.simulatorConfig,
+					TraceDir:          m.traceDir,
+				}
+				sim, err = m.state.simulationCreator.Create(simulationName, simArgs)
 				if err != nil {
 					return nil, err
 				}

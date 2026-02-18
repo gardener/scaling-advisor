@@ -9,6 +9,8 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/ioutil"
+	"os/signal"
 	"reflect"
 	"runtime"
 	"strings"
@@ -95,4 +97,16 @@ func LoadTestPods() (pods []corev1.Pod, err error) {
 func LoggerContext(ctx context.Context) context.Context {
 	log := klog.NewKlogr()
 	return logr.NewContext(ctx, log)
+}
+
+// CreateTestGenDir creates a subdirectory for generated test data and returns path to the same.
+// Fails the test if there was an error and returns empty string otherwise.
+func CreateTestGenDir(t *testing.T) (testGenDir string, ok bool) {
+	testGenDir, err := ioutil.MakeTempSubDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	ok = true
+	return
 }

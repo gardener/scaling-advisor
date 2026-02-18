@@ -39,7 +39,7 @@ type Opts struct {
 	InstancePricingPath string
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider    string
-	TraceLogBaseDir  string
+	TraceDir         string
 	ServerConfig     commontypes.ServerConfig
 	ClientConfig     commontypes.QPSBurst
 	WatchConfig      minkapi.WatchConfig
@@ -106,7 +106,7 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int, err error) {
 		ClientConfig:    cliOpts.ClientConfig,
 		CloudProvider:   cloudProvider,
 		SimulatorConfig: cliOpts.SimulationConfig,
-		TraceLogBaseDir: cliOpts.TraceLogBaseDir,
+		TraceDir:        cliOpts.TraceDir,
 	}
 	pricingAccess, err := pricing.GetInstancePricingAccess(cloudProvider, cliOpts.InstancePricingPath)
 	if err != nil {
@@ -189,8 +189,9 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)
 	flagSet.StringVar(&opts.InstancePricingPath, "instance-info", "", "path to instance info file (contains prices)")
 	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(commontypes.CloudProviderAWS), "cloud provider")
-	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", planner.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
-	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", planner.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
-	flagSet.StringVar(&opts.TraceLogBaseDir, "trace-log-base-dir", os.TempDir(), "base directory for trace logs")
+	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", plannerapi.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
+	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", plannerapi.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
+	flagSet.StringVar(&opts.TraceDir, "trace-dir", os.TempDir(), "directory for traces ")
+	flagSet.StringVarP(&opts.InstancePricingPath, "pricing", "p", "", "path to instance pricing file")
 	return flagSet, &opts
 }

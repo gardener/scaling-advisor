@@ -396,6 +396,7 @@ type PVInfo struct {
 	Capacity          corev1.ResourceList                 `json:"capacity,omitempty"`
 	ClaimRef          commontypes.NamespacedName          `json:"claimRef,omitzero"`
 	NodeAffinity      *corev1.NodeSelector                `json:"nodeAffinity,omitzero"`
+	Phase             corev1.PersistentVolumePhase        `json:"phase,omitempty"`
 }
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
@@ -489,8 +490,8 @@ type ScalingPlannerArgs struct {
 	PricingAccess InstancePricingAccess
 	// SchedulerLauncher provides functionality to launch kube-scheduler instances.
 	SchedulerLauncher SchedulerLauncher
-	// TraceLogsBaseDir is the base directory for storing trace logs when diagnostics are enabled for a scaling advice request.
-	TraceLogsBaseDir string
+	// TraceDir is the directory for storing traces when diagnostics are enabled.
+	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
 	SimulatorConfig SimulatorConfig
 }
@@ -626,19 +627,29 @@ type ScaleOutSimulator interface {
 	Simulate(ctx context.Context, resultCh chan<- ScalingPlanResult)
 }
 
-// ActivityStatus represents the operational status of an activity.
-type ActivityStatus string
+// SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
+// Not all the arguments may be necessary for constructing a specific simulator implementation.
+type SimulatorArgs struct {
+	Config            SimulatorConfig
+	ViewAccess        minkapi.ViewAccess
+	SchedulerLauncher SchedulerLauncher
+	NodeScorer        NodeScorer
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
+	TraceDir string
+}
 
-const (
-	// ActivityStatusPending indicates the activity is pending execution.
-	ActivityStatusPending ActivityStatus = "Pending"
-	// ActivityStatusRunning indicates the activity is currently running.
-	ActivityStatusRunning ActivityStatus = "Running"
-	// ActivityStatusSuccess indicates the activity completed successfully.
-	ActivityStatusSuccess ActivityStatus = metav1.StatusSuccess
-	// ActivityStatusFailure indicates the activity failed.
-	ActivityStatusFailure ActivityStatus = metav1.StatusFailure
-)
+type ScaleOutSimulatorFactory func(args SimulatorArgs) (ScaleOutSimulator, error)
+
+// ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
+type ScaleOutPlanResult struct {
+	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
+	// No further responses will be sent for the associated request.
+	Error error `json:"error,omitempty"`
+	// Labels is the associated metadata.
+	Labels map[string]string `json:"labels,omitempty"`
+	// ScaleOutPlan is the generated scale-out plan.
+	ScaleOutPlan *sacorev1alpha1.ScaleOutPlan `json:"scaleOutPlan,omitempty"`
+}
 
 // Simulation represents an activity that performs valid unscheduled pod to ready node assignments on a minkapi View.
 // A simulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model
@@ -681,7 +692,7 @@ type SimulationResult struct {
 	LeftoverUnscheduledPods []commontypes.NamespacedName
 }
 
-// SimulationArgs represents the argument necessary for creating a simulation instance.
+// SimulationArgs represents the arguments necessary for creating a scale-out simulation instance.
 type SimulationArgs struct {
 	// SchedulerLauncher is used to launch scheduler instances for the simulation.
 	SchedulerLauncher SchedulerLauncher
@@ -695,6 +706,8 @@ type SimulationArgs struct {
 	NodeTemplateName string
 	// Config is the simulation configuration.
 	Config SimulatorConfig
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
+	TraceDir string
 }
 
 // SimulationFactory is a factory for constructing a simulation instance.
@@ -808,7 +821,28 @@ type SimulationGroupRunResult struct {
 	LeftoverUnscheduledPods []commontypes.NamespacedName
 	// PassNum is the number of passes executed in this group before moving to the next group.
 	// A pass is defined as the execution of all simulations in a group.
-	NumPasses int
-	// TotalSimulations is the total number of simulations executed across all groups until now.
-	TotalSimulations int
+	PassNum int
+}
+
+// ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
+// Offers a REST API for the embedded ScalingPlanner
+type ScalingPlannerService interface {
+	commontypes.Service
+	ScalingPlanner
+}
+
+// ScalingPlannerServiceConfig holds the service configuration for the scaling planner microservice.
+type ScalingPlannerServiceConfig struct {
+	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
+	CloudProvider commontypes.CloudProvider
+	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
+	TraceDir string
+	// ServerConfig holds the server configuration for the scaling advisor planner.
+	ServerConfig commontypes.ServerConfig
+	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.
+	MinKAPIConfig minkapi.Config
+	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
+	ClientConfig commontypes.QPSBurst
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig
 }

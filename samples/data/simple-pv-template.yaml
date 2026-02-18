@@ -9,11 +9,13 @@ spec:
     - "{{.AccessMode}}"
   capacity:
     storage: "{{.Storage}}"
+{{- if eq .Phase "Bound"  }}
   claimRef:
     apiVersion: v1
     kind: PersistentVolumeClaim
     name: "{{.PVCName}}"
     namespace: "{{.Namespace}}"
+{{- end }}
   csi:
     driver: "{{.CSIDriver}}"
     volumeHandle: "{{.VolumeHandle}}"
@@ -26,5 +28,7 @@ spec:
               values:
                 - "{{.Zone}}"
   persistentVolumeReclaimPolicy: Delete
-  storageClassName: default
+  storageClassName: "{{.StorageClassName}}"
   volumeMode: Filesystem
+status:
+  phase: "{{.Phase}}"

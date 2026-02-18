@@ -45,7 +45,11 @@ func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequ
 			util.SendPlanError(resultCh, req.ScalingAdviceRequestRef, err)
 		}
 	}()
-	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceLogsBaseDir, req)
+	return responseCh
+}
+
+func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, responseCh chan plannerapi.Response) error {
+	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceDir, req)
 	if err != nil {
 		return
 	}
@@ -98,9 +102,15 @@ func (p *defaultPlanner) getScaleOutSimulator(req *planner.ScalingAdviceRequest)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", planner.ErrCreateSimulator, err)
 		}
-		return multi.NewScaleOutSimulator(p.args.ViewAccess, p.args.SchedulerLauncher, nodeScorer, p.args.SimulatorConfig, req)
-	case commontypes.SimulationStrategySingleSimulationPerGroup:
-		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulationStrategy)
+		return multi.NewScaleOutSimulator(plannerapi.SimulatorArgs{
+			Config:            p.args.SimulatorConfig,
+			ViewAccess:        p.args.ViewAccess,
+			SchedulerLauncher: p.args.SchedulerLauncher,
+			NodeScorer:        nodeScorer,
+			TraceDir:          p.args.TraceDir,
+		})
+	case commontypes.SimulatorStrategyMultiNodeSingleSim:
+		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulatorStrategy)
 	default:
 		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", planner.ErrUnsupportedSimulationStrategy, req.SimulationStrategy)
 	}
