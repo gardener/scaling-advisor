@@ -3,8 +3,15 @@ kind: PersistentVolumeClaim
 metadata:
   name: "{{.Name}}"
   namespace: "{{.Namespace}}"
+{{- if .VolumeName }}
+  annotations:
+    pv.kubernetes.io/bind-completed: "yes"
+{{- end }}
 spec:
   storageClassName: "{{.StorageClassName}}"
+  {{- if .VolumeName }}
+  volumeName: "{{.VolumeName}}"
+  {{- end }}
   accessModes:
    - "{{.AccessMode}}"
   resources:

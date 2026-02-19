@@ -42,6 +42,7 @@ type Args struct {
 	Timeout                           time.Duration
 	PVCNames                          []string
 	PlannerFactory                    plannerapi.ScalingPlannerFactory
+	VolumeBindingMode                 storagev1.VolumeBindingMode
 }
 
 // Data holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
@@ -85,6 +86,9 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 	} else {
 		testData.Request.AdviceGenerationMode = commontypes.ScalingAdviceGenerationModeAllAtOnce
 	}
+	if args.VolumeBindingMode == "" {
+		args.VolumeBindingMode = storagev1.VolumeBindingImmediate
+	}
 	testData.Request.Constraint, err = samples.LoadBasicScalingConstraints(args.PoolCategory)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +116,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			pv   corev1.PersistentVolume
 			pvc  corev1.PersistentVolumeClaim
 		)
-		sc, _, err = samples.GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, "default", storagev1.VolumeBindingWaitForFirstConsumer)
+		sc, _, err = samples.GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, "default", args.VolumeBindingMode)
 		if err != nil {
 			t.Fatalf("failed to generate storage class %q: %v", "default", err)
 			return

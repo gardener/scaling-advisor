@@ -36,7 +36,7 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestBasicOnePoolScaleOutWithVolumeClaim(t *testing.T) {
+func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
 		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
