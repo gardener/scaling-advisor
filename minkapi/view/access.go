@@ -101,7 +101,7 @@ func createBaseView(ctx context.Context, viewArgs *minkapi.ViewArgs) (minkapi.Vi
 	}
 	_, err = bv.CreateObject(ctx, typeinfo.NamespacesDescriptor.GVK, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: corev1.NamespaceDefault,
+			Name: metav1.NamespaceDefault,
 		},
 	})
 	if err != nil {

@@ -117,7 +117,8 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 			"phase", pvc.Status.Phase,
 			"storageClassName", pvc.Spec.StorageClassName,
 			"storageRequest", pvc.Spec.Resources.Requests.Storage(),
-			"selector", pvc.Spec.Selector)
+			"selector", pvc.Spec.Selector,
+			"uid", string(pvc.UID))
 	}
 	for _, pv := range pvs {
 		log.V(4).Info(prefix+"|pv in view",
@@ -126,6 +127,7 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 			"phase", pv.Status.Phase,
 			"storageClassName", pv.Spec.StorageClassName,
 			"storageCapacity", pv.Spec.Capacity.Storage(),
+			"claimRef", pv.Spec.ClaimRef,
 			"labels", pv.Labels)
 	}
 	if verbosity < DefaultDumpVerbosity {

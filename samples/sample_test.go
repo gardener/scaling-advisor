@@ -61,7 +61,7 @@ func TestGeneratePVs(t *testing.T) {
 }
 func TestGenerateStorageClass(t *testing.T) {
 	wantName := "default"
-	wantVolumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+	wantVolumeBindingMode := storagev1.VolumeBindingImmediate
 	testGenDir, ok := commontestutil.CreateTestGenDir(t)
 	if !ok {
 		return

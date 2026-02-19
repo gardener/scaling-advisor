@@ -122,7 +122,7 @@ func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.Persist
 		return
 	}
 	if gi.Namespace == "" {
-		gi.Namespace = corev1.NamespaceDefault
+		gi.Namespace = metav1.NamespaceDefault
 	}
 	if gi.GenDir == "" {
 		err = fmt.Errorf("SimplePVCTemplateData.GenDir is empty")
@@ -150,6 +150,8 @@ func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.Persist
 			Storage          string
 			Phase            string
 			StorageClassName string
+			VolumeName       string
+			UID              string
 		}{
 			Name:             pvcName,
 			Namespace:        gi.Namespace,
@@ -157,6 +159,8 @@ func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.Persist
 			AccessMode:       string(gi.AccessMode),
 			Phase:            string(claimPhase),
 			StorageClassName: gi.StorageClassName,
+			VolumeName:       "pv-" + pvcName,
+			UID:              pvcName,
 		}
 		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
 		if err != nil {
@@ -190,7 +194,7 @@ func GeneratePersistentVolumes(gi SimplePVGenInput) (pvs []corev1.PersistentVolu
 		gi.StorageClassName = "default"
 	}
 	if gi.Namespace == "" {
-		gi.Namespace = corev1.NamespaceDefault
+		gi.Namespace = metav1.NamespaceDefault
 	}
 	if gi.Provider == "" {
 		gi.Provider = commontypes.CloudProviderAWS
@@ -235,6 +239,7 @@ func GeneratePersistentVolumes(gi SimplePVGenInput) (pvs []corev1.PersistentVolu
 			Zone             string
 			Phase            string
 			StorageClassName string
+			PVCUID           string
 		}{
 			CSIDriver:        csiDriver,
 			Name:             pvName,
@@ -246,6 +251,7 @@ func GeneratePersistentVolumes(gi SimplePVGenInput) (pvs []corev1.PersistentVolu
 			Zone:             gi.Zone,
 			Phase:            string(volumePhase),
 			StorageClassName: gi.StorageClassName,
+			PVCUID:           pvcName,
 		}
 		err = GenerateAndLoad(tmpl, pvTmplData, outYAMLPath, &pv)
 		if err != nil {
@@ -293,7 +299,7 @@ func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, nam
 func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTemplateData {
 	podTmplData.AppLabels = fillAppLabelDefaults(podTmplData.AppLabels)
 	if podTmplData.Namespace == "" {
-		podTmplData.Namespace = corev1.NamespaceDefault
+		podTmplData.Namespace = metav1.NamespaceDefault
 	}
 	if podTmplData.Name == "" {
 		podTmplData.Name = podTmplData.AppLabels.Name
