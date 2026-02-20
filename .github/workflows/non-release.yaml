@@ -13,19 +13,15 @@ jobs:
     uses: ./.github/workflows/build.yaml
     with:
       mode: snapshot
-    secrets: inherit
     permissions:
-      contents: write
-      packages: write
+      contents: read
       id-token: write
-      pull-requests: write
 
   component-descriptor:
     if: ${{ github.event.action != 'labeled' || (github.event.label.name == vars.DEFAULT_LABEL_OK_TO_TEST && vars.DEFAULT_LABEL_OK_TO_TEST != '') }}
     uses: gardener/cc-utils/.github/workflows/post-build.yaml@master
     needs:
       - build
-    secrets: inherit
     permissions:
       id-token: write
       contents: write

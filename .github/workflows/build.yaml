@@ -16,16 +16,13 @@ jobs:
     uses: gardener/cc-utils/.github/workflows/prepare.yaml@master
     with:
       mode: ${{ inputs.mode }}
-      version-commit-callback-action-path:
     permissions:
-      contents: read
-      pull-requests: write
+      id-token: write
 
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: gardener/cc-utils/.github/actions/trusted-checkout@master
       - uses: actions/setup-go@v5
@@ -38,7 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     strategy:
       matrix:
         args:
@@ -59,7 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: gardener/cc-utils/.github/actions/trusted-checkout@master
       - uses: actions/setup-go@v5
