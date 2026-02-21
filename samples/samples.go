@@ -9,9 +9,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"path"
 	"strconv"
@@ -19,11 +16,14 @@ import (
 	"text/template"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -252,6 +252,7 @@ func GetCSINodeDrivers(provider commontypes.CloudProvider, maxAllocatableVolumes
 	}, nil
 }
 
+// GenerateStorageClass generates a StorageClass suitable for the given provider for the specified VolumeBindingMode.
 func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/sc-template.yaml")
 	if err != nil {

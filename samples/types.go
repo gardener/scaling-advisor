@@ -6,6 +6,7 @@ package samples
 
 import (
 	"fmt"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
