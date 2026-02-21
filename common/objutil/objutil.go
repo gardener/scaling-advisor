@@ -87,7 +87,7 @@ func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
 	return json.Unmarshal(objBytes, obj)
 }
 
-// SaveRuntimeObjAsJSONToPath serializes the given runtime object as yaml using
+// SaveRuntimeObjAsJSONToPath serializes the given runtime object as JSON using
 // the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
 // NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
 func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
