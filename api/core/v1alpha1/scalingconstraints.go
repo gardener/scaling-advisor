@@ -9,6 +9,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"slices"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -52,6 +54,26 @@ type ScalingConstraintSpec struct {
 	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
+// GetAllNodePlacements computes all the possible NodePlacements for the ScalingConstraintSpec.
+func (c *ScalingConstraintSpec) GetAllNodePlacements() []NodePlacement {
+	placements := make([]NodePlacement, 0, len(c.NodePools))
+	for _, p := range c.NodePools {
+		placements = append(placements, p.GetNodePlacements()...)
+	}
+	return placements
+}
+
+// GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
+func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
+	zoneSet := sets.NewString()
+	for _, p := range c.NodePools {
+		zoneSet.Insert(p.AvailabilityZones...)
+	}
+	zones := zoneSet.List()
+	slices.Sort(zones)
+	return zones
+}
+
 // ScalingConstraintStatus defines the observed state of ScalingConstraint.
 type ScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ScalingConstraint.
@@ -85,14 +107,13 @@ type NodePool struct {
 	Priority int32 `json:"priority"`
 }
 
-// GetNodePlacements computes and returns all the possible `NodePlacement`s for this NodePool.
 func (p *NodePool) GetNodePlacements() []NodePlacement {
 	placements := make([]NodePlacement, 0, len(p.NodeTemplates)*len(p.AvailabilityZones))
 	for _, nt := range p.NodeTemplates {
 		for _, az := range p.AvailabilityZones {
 			placements = append(placements, NodePlacement{
-				PoolName:         p.Name,
-				TemplateName:     nt.Name,
+				NodePoolName:     p.Name,
+				NodeTemplateName: nt.Name,
 				InstanceType:     nt.InstanceType,
 				Region:           p.Region,
 				AvailabilityZone: az,

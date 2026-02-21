@@ -60,11 +60,11 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := createPodResourceInfo("simStorage", 2, 4)
-	podWithStorage.AggregatedRequests["Storage"] = 10
-	assignmentWithStorage := planner.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
-		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
+	podWithStorage := createPodResourceInfo("simStorage", "2", "4")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
+	assignmentWithStorage := plannerapi.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
+		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
 		input         planner.NodeScorerArgs
@@ -187,11 +187,11 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 		},
 	}
 	//test case where weights are not defined for all resources
-	podWithStorage := createPodResourceInfo("simStorage", 1, 2)
-	podWithStorage.AggregatedRequests["Storage"] = 10
-	assignmentWithStorage := planner.NodePodAssignment{
-		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", 2, 4),
-		ScheduledPods: []planner.PodResourceInfo{podWithStorage},
+	podWithStorage := createPodResourceInfo("simStorage", "1", "2")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
+	assignmentWithStorage := plannerapi.NodePodAssignment{
+		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
+		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
 	}
 	tests := map[string]struct {
 		input         planner.NodeScorerArgs
@@ -310,8 +310,8 @@ func TestSelectMaxAllocatable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", 2, 4)
-	simNodeWithStorage.Allocatable["Storage"] = 10
+	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")
+	simNodeWithStorage.Allocatable[corev1.ResourceStorage] = resource.MustParse("10")
 	if err != nil {
 		t.Fatal(err)
 	}

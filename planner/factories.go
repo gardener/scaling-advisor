@@ -1,23 +1,21 @@
 package planner
 
 import (
-	simulationfactory "github.com/gardener/scaling-advisor/planner/simulation/factory"
-	simulatorfactory "github.com/gardener/scaling-advisor/planner/simulator/factory"
-	"github.com/gardener/scaling-advisor/planner/weigher"
-
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/planner/simulation"
+	"github.com/gardener/scaling-advisor/planner/simulator"
+	"github.com/gardener/scaling-advisor/planner/weigher"
 )
 
 var (
 	_ plannerapi.ScalingPlannerFactory = (*defaultFactory)(nil)
 )
 
-// NewFactories returns an instance of plannerapi.Factories populated with implementation of factory facades.
 func NewFactories() plannerapi.Factories {
 	return plannerapi.Factories{
 		Planner:         &defaultFactory{},
-		Simulator:       simulatorfactory.New(),
-		Simulation:      simulationfactory.New(),
+		Simulator:       simulator.NewFactory(),
+		Simulation:      simulation.NewFactory(),
 		ResourceWeigher: weigher.New(),
 	}
 }

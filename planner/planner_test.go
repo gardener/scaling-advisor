@@ -9,6 +9,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/planner/testutil"
 	"github.com/gardener/scaling-advisor/samples"
+	storagev1 "k8s.io/api/storage/v1"
 	"math"
 	"testing"
 )
@@ -16,10 +17,10 @@ import (
 func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryBerry: 1,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
 		},
-		PlannerFactory: New,
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return
@@ -39,11 +40,36 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryBerry: 1,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
 		},
-		PlannerFactory: New,
-		PVCNames:       []string{"stem"},
+		Factories: NewFactories(),
+		PVCNames:  []string{"stem"},
+	})
+	if !ok {
+		return
+	}
+	pPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: pPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+func TestBasicOnePoolScaleOutWithUnboundPVC(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolCategory: samples.PoolCategoryBasicOne,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories:         NewFactories(),
+		PVCNames:          []string{"stem"},
+		VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
 	})
 	if !ok {
 		return
@@ -63,10 +89,10 @@ func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
 func TestReusePlannerAcrossRequests(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryBerry: 1,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
 		},
-		PlannerFactory: New,
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return
@@ -95,10 +121,10 @@ func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
 	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryBerry: amount,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: amount,
 		},
-		PlannerFactory: New,
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return
@@ -120,10 +146,10 @@ func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 	amount := 4
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryHalfBerry: amount,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetHalfBerry: amount,
 		},
-		PlannerFactory: New,
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return
@@ -146,11 +172,11 @@ func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	amount := 4
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryHalfBerry: amount,
-			samples.ResourceCategoryBerry:     amount,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetHalfBerry: amount,
+			samples.ResourcePresetBerry:     amount,
 		},
-		PlannerFactory: New,
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return
@@ -173,12 +199,12 @@ func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
 	amount := 3
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolCategory: samples.PoolCategoryBasicTwo,
-		NumUnscheduledPerResourceCategory: map[samples.ResourceCategory]int{
-			samples.ResourceCategoryBerry: amount,
-			samples.ResourceCategoryGrape: amount,
+		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: amount,
+			samples.ResourcePresetGrape: amount,
 		},
 		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
-		PlannerFactory:       New,
+		Factories:            NewFactories(),
 	})
 	if !ok {
 		return

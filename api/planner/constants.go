@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	// DefaultTrackPollInterval is the default polling interval for tracking pod scheduling in the view of the simulator.
+	DefaultTrackPollInterval = 30 * time.Millisecond
 	// DefaultMaxParallelSimulations is the default maximum number of parallel simulations that can be run by the scaling advisor simulator.
 	DefaultMaxParallelSimulations = 1
 	// DefaultTrackPollInterval is the default polling interval for tracking pod scheduling in the view of the simulator.

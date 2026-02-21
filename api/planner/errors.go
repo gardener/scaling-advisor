@@ -10,20 +10,24 @@ import (
 )
 
 var (
-	// ErrGenScalingPlan is a sentinel error indicating that the planner failed to generate a scaling plan.
-	ErrGenScalingPlan = errors.New("failed to generate scaling plan")
-	// ErrGenScalingAdvice is a sentinel error indicating that the planner failed to generate scaling advice.
-	ErrGenScalingAdvice = errors.New("failed to generate scaling advice")
+	// ErrGenScalingPlan is a high-level sentinel error indicating that the ScalingPlanner could not produce a scaling plan
+	ErrGenScalingPlan = errors.New("cannot generate scaling plan")
+	// ErrCreatePlanner is a sentinel error indicating that the planner coould not be created
+	ErrCreatePlanner = errors.New("failed to create planner")
+	// ErrPopulateRequestView is a sentinel error indicating that the planner could not populate the request view
+	ErrPopulateRequestView = errors.New("failed to populate request view")
 	// ErrCreateSimulator is a sentinel error indicating that the planner failed to create a simulator.
 	ErrCreateSimulator = errors.New("failed to create simulator")
 	// ErrCreateSimulation is a sentinel error indicating that the planner failed to create a scaling simulation
 	ErrCreateSimulation = errors.New("failed to create simulation")
 	// ErrRunSimulation is a sentinel error indicating that a specific scaling simulation failed
 	ErrRunSimulation = errors.New("failed to run simulation")
+
 	// ErrRunSimulationGroup is a sentinel error indicating that a scaling simulation group failed
 	ErrRunSimulationGroup = errors.New("failed to run simulation group")
-	// ErrSimulationTimeout is a sentinel error indicating that the simulation timed out
-	ErrSimulationTimeout = errors.New("simulation timed out")
+
+	// ErrBindClaimVolume is a sentinel erorr indicating that a scaling simulation failed to bind PVC<->PV
+	ErrBindClaimVolume = errors.New("failed to bind claim to volume")
 	// ErrComputeNodeScore is a sentinel error indicating that the NodeScorer failed to compute a score
 	ErrComputeNodeScore = errors.New("failed to compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore
