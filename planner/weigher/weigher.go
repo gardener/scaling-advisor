@@ -2,20 +2,26 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package weights
+package weigher
 
 import (
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 )
 
-var defaultResourceWeights = createDefaultWeights()
+var _ plannerapi.ResourceWeigher = (*defaultResourceWeigher)(nil)
 
-// GetDefaultWeightsFn returns a GetResourceWeightsFunc which provides default resource weights	.
-func GetDefaultWeightsFn() planner.GetResourceWeightsFunc {
-	return func(_ string) (map[corev1.ResourceName]float64, error) {
-		return defaultResourceWeights, nil
+// New returns the default instance of ResourceWeigher.
+func New() plannerapi.ResourceWeigher {
+	return &defaultResourceWeigher{
+		weights: createDefaultWeights(),
 	}
+}
+
+// GetWeights the resource weights for the given instanceType. Currently, this ignores instanceType parameter but this
+// needs to be enhanced.
+func (w *defaultResourceWeigher) GetWeights(_ string) (map[corev1.ResourceName]float64, error) {
+	return w.weights, nil
 }
 
 // createDefaultWeights returns default weights.
@@ -28,4 +34,8 @@ func createDefaultWeights() map[corev1.ResourceName]float64 {
 		corev1.ResourceCPU:    9,
 		"nvidia.com/gpu":      20,
 	}
+}
+
+type defaultResourceWeigher struct {
+	weights map[corev1.ResourceName]float64
 }

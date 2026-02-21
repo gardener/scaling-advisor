@@ -7,16 +7,12 @@ package planner
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/util"
 	"io"
 	"path"
 	"path/filepath"
 
-	"github.com/gardener/scaling-advisor/planner/scorer"
-	"github.com/gardener/scaling-advisor/planner/simulation"
-	"github.com/gardener/scaling-advisor/planner/simulator/multi"
-	"github.com/gardener/scaling-advisor/planner/util"
-
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
@@ -25,18 +21,23 @@ import (
 	"github.com/go-logr/logr"
 )
 
-var _ plannerapi.ScalingPlanner = (*defaultPlanner)(nil)
+var (
+	_ plannerapi.ScalingPlanner = (*defaultPlanner)(nil)
+)
 
 // defaultPlanner is responsible for creating and managing simulations to generate scaling advice plans.
 type defaultPlanner struct {
 	args plannerapi.ScalingPlannerArgs
 }
 
-// New creates a new instance of defaultPlanner using the provided Args. It initializes the defaultPlanner struct.
-func New(args plannerapi.ScalingPlannerArgs) plannerapi.ScalingPlanner {
+// NewPlanner creates a new instance of the default ScalingPlanner using the provided Args.
+func NewPlanner(args plannerapi.ScalingPlannerArgs) (plannerapi.ScalingPlanner, error) {
+	if err := validateArgs(&args); err != nil {
+		return nil, err
+	}
 	return &defaultPlanner{
 		args: args,
-	}
+	}, nil
 }
 
 func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-chan plannerapi.Response {
@@ -61,13 +62,24 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
-	scaleOutSimulator, err := p.getScaleOutSimulator(req)
+	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
+	if err != nil {
+		err = fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+	}
+	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
+		Config:            p.args.SimulatorConfig,
+		Strategy:          req.SimulatorStrategy,
+		ViewAccess:        p.args.ViewAccess,
+		SchedulerLauncher: p.args.SchedulerLauncher,
+		StorageMetaAccess: p.args.StorageMetaAccess,
+		NodeScorer:        nodeScorer,
+		TraceDir:          p.args.TraceDir,
+	})
 	if err != nil {
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	simulationCreator := plannerapi.SimulationFactory(simulation.NewDefault)
-	planResultCh := scaleOutSimulator.Simulate(planCtx, req, simulationCreator)
+	planResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,29 +111,6 @@ func validateRequest(req *plannerapi.Request) error {
 	return nil
 }
 
-func (p *defaultPlanner) getScaleOutSimulator(req *plannerapi.Request) (plannerapi.ScaleOutSimulator, error) {
-	switch req.SimulatorStrategy {
-	case "":
-		return nil, fmt.Errorf("%w: simulation strategy must be specified", plannerapi.ErrCreateSimulator)
-	case commontypes.SimulatorStrategySingleNodeMultiSim:
-		nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
-		}
-		return multi.NewScaleOutSimulator(plannerapi.SimulatorArgs{
-			Config:            p.args.SimulatorConfig,
-			ViewAccess:        p.args.ViewAccess,
-			SchedulerLauncher: p.args.SchedulerLauncher,
-			NodeScorer:        nodeScorer,
-			TraceDir:          p.args.TraceDir,
-		})
-	case commontypes.SimulatorStrategyMultiNodeSingleSim:
-		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, req.SimulatorStrategy)
-	default:
-		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", plannerapi.ErrUnsupportedSimulatorStrategy, req.SimulatorStrategy)
-	}
-}
-
 func wrapPlanContext(ctx context.Context, traceLogsDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
 	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
@@ -136,4 +125,29 @@ func wrapPlanContext(ctx context.Context, traceLogsDir string, req *plannerapi.R
 		log.Info("Diagnostics enabled for this request", "logPath", logPath, "diagnosticVerbosity", req.DiagnosticVerbosity)
 	}
 	return
+}
+
+func validateArgs(args *plannerapi.ScalingPlannerArgs) error {
+	if args.ResourceWeigher == nil {
+		return fmt.Errorf("%w: resourceWeigher must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.ViewAccess == nil {
+		return fmt.Errorf("%w: viewAccess must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.PricingAccess == nil {
+		return fmt.Errorf("%w: pricingAccess must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.SchedulerLauncher == nil {
+		return fmt.Errorf("%w: schedulerLauncher must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.StorageMetaAccess == nil {
+		return fmt.Errorf("%w: storageMetaAccess must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.SimulatorFactory == nil {
+		return fmt.Errorf("%w: simulatorFactory must be set", plannerapi.ErrCreatePlanner)
+	}
+	if args.SimulationFactory == nil {
+		return fmt.Errorf("%w: simulationFactory must be set", plannerapi.ErrCreatePlanner)
+	}
+	return nil
 }

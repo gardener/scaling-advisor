@@ -5,9 +5,12 @@
 package samples
 
 import (
+	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // PoolCategory is the enum type for representing pool categories of a sample scaling constraint.
@@ -27,36 +30,34 @@ const (
 	PoolCategoryBasicMany PoolCategory = "basic-multi-pool"
 )
 
-// ResourceCategory is the enum type for categorizing common variations of resource pairs.
-type ResourceCategory string
+// ResourcePreset is the enum type for different presets of resources.
+type ResourcePreset string
 
 const (
-	// ResourceCategoryPea is a category for a resource list that specifies  1cpu and 1Gi.
-	ResourceCategoryPea ResourceCategory = "pea"
+	// ResourcePresetPea is a preset for a resource list that specifies  1cpu and 1Gi.
+	ResourcePresetPea ResourcePreset = "pea"
 
-	// ResourceCategoryBerry is a category for a resource list that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourcePresetBerry is a preset for a resource list that nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
-	ResourceCategoryBerry ResourceCategory = "berry"
+	ResourcePresetBerry ResourcePreset = "berry"
 
-	// ResourceCategoryHalfBerry is a category for a resource list that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
+	// ResourcePresetHalfBerry is a preset for a resource list that when doubled nearly fit an AWS m5.large instance type / GCP n2-standard-2 / Azure Standard_D2
 	// leaving buffer to account for provider variance and kube and system reserved.
-	ResourceCategoryHalfBerry ResourceCategory = "half-berry"
+	ResourcePresetHalfBerry ResourcePreset = "half-berry"
 
-	// ResourceCategoryGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourcePresetGrape is a preset for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
-	ResourceCategoryGrape ResourceCategory = "grape"
+	ResourcePresetGrape ResourcePreset = "grape"
 
-	// ResourceCategoryHalfGrape is a category for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
+	// ResourcePresetHalfGrape is a preset for a resource list that when doubled nearly fits an AWS m5.xlarge / GCP n2-standard-4 / Azure Standard_D3
 	// leaving buffer to account for provider variance and kube and system reserved.
-	ResourceCategoryHalfGrape ResourceCategory = "half-grape"
+	ResourcePresetHalfGrape ResourcePreset = "half-grape"
 )
 
 // AsResourceList creates a corev1.ResourceList for the resources associated with this name
-func (c ResourceCategory) AsResourceList() corev1.ResourceList {
-	return resourceCategoriesToResourceListMap[c]
+func (c ResourcePreset) AsResourceList() corev1.ResourceList {
+	return resourcePresetsToResourceListMap[c]
 }
-
-var ()
 
 // AppLabels represents standard k8s app labels
 type AppLabels struct {
@@ -68,8 +69,8 @@ type AppLabels struct {
 	ManagedBy string
 }
 
-// SimplePodGenInput holds the input data for generating simple pods.
-type SimplePodGenInput struct {
+// PodGenInput holds the input data for generating simple pods.
+type PodGenInput struct {
 	GenDir        string
 	Name          string
 	Namespace     string
@@ -79,57 +80,79 @@ type SimplePodGenInput struct {
 	PVCNames []string
 }
 
-type VolCommon struct {
-	GenDir           string
-	Namespace        string
-	Storage          resource.Quantity
-	AccessMode       corev1.PersistentVolumeAccessMode
-	StorageClassName string
-	Unbound          bool
-}
-type SimplePVGenInput struct {
-	VolCommon
+// StorageVolGenInput represents bag of input parameters to generate PVC's and PV's.
+type StorageVolGenInput struct {
 	Provider commontypes.CloudProvider
-	Zone     string
+	// GenDir is the directory into which to generate the object YAML's.
+	GenDir string
+	// Namespace represents the PVC nameespace.
+	Namespace string
+	// Storage is used to set the corev1.ResourceStorage quantity in generated PVC.Spec.Resoures.Requests
+	Storage resource.Quantity
+	// AccessMode is used to set the generated PVC.Spec.AccessModes and PV.Spec.AccessModes
+	AccessMode corev1.PersistentVolumeAccessMode
+	// StorageClassName is used to set the generated PVC.spec.storageClassName and PV.spec.storageClassName
+	StorageClassName string
+	// VolumeBindingMode is used to determine whether the PVC is bound to the PV.
+	//
+	//  If VolumeBindingMode is set to "Immediate" (default), then the PV.spec.claimRef is set to refer to its associated
+	// PVC, the "pv.kubernetes.io/provisioned-by" is set on the PV, the PV.status.phase is set to "Bound", the
+	// "pv.kubernetes.io/bind-completed" annotation is set to "yes"` on PVC, the PVC.spec.volumeName refers to the PV.Spec.CSI.VolumeHandle
+	// and the PVC.status.phase is set to "Bound".
+	//
+	//  If VolumeBindingMode is set to "WaitForFirstConsumer, the above claimRef and annotations are not set, the PV.status.phase is set to "Available"
+	// and the PVC.status.phase is set to "Pending".
+	VolumeBindingMode storagev1.VolumeBindingMode
+	// PVCNames if specified determine the number of PVCs and names of the generated PVCs.
 	PVCNames []string
+	// PVZones if specified determine the number of PV's - there is a PV generated per PVCName and PVZone combo.
+	// The zone is used as the match expression in the PersistentVolume.Spec.NodeAffinity for the generated PV.
+	PVZones []string
+	// MaxAllocatableVolumes specifies the max number of PV's that can be allocated to the Node. It is a CSI specific value.
+	MaxAllocatableVolumes int32
 }
 
-type SimplePVCGenInput struct {
-	VolCommon
-	Names []string
+// ValidateAndFillDefaults validates required fields in StorageVolGenInput and fills other fields with defaults.
+func (v *StorageVolGenInput) ValidateAndFillDefaults() error {
+	if v.GenDir == "" {
+		return fmt.Errorf("empty GenDir")
+	}
+	if len(v.PVCNames) == 0 {
+		return fmt.Errorf("empty PVCNames")
+	}
+	if v.Provider == "" {
+		return fmt.Errorf("provider must be set")
+	}
+	if v.Namespace == "" {
+		v.Namespace = metav1.NamespaceDefault
+	}
+	if v.VolumeBindingMode == "" {
+		return fmt.Errorf("empty VolumeBindingMode")
+	}
+	if v.StorageClassName == "" {
+		v.StorageClassName = "default"
+	}
+	if v.AccessMode == "" {
+		v.AccessMode = corev1.ReadWriteOnce
+	}
+	if v.StorageClassName == "" {
+		v.StorageClassName = "default"
+	}
+	if v.Storage.IsZero() {
+		v.Storage = resource.MustParse("1Gi")
+	}
+	return nil
 }
 
-// SimplePodTemplateData holds all the pod template data for the simple pod template.
-type SimplePodTemplateData struct {
+// PodTemplateData holds all pod template data values for executing the simple pod template.
+type PodTemplateData struct {
 	//Resources map[corev1.ResourceName]string
 	Resources corev1.ResourceList
-	SimplePodGenInput
+	PodGenInput
 }
 
-var (
-	allResourceCategories = []ResourceCategory{
-		ResourceCategoryPea, ResourceCategoryBerry, ResourceCategoryHalfBerry, ResourceCategoryGrape, ResourceCategoryHalfGrape,
-	}
-	resourceCategoriesToResourceListMap = map[ResourceCategory]corev1.ResourceList{
-		ResourceCategoryPea: {
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("1Gi"),
-		},
-		ResourceCategoryBerry: {
-			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("5100Mi"),
-		},
-		ResourceCategoryHalfBerry: {
-			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("2500Mi"),
-		},
-		ResourceCategoryGrape: {
-			corev1.ResourceCPU:    resource.MustParse("3"),
-			corev1.ResourceMemory: resource.MustParse("13Gi"),
-		},
-		ResourceCategoryHalfGrape: {
-			corev1.ResourceCPU:    resource.MustParse("1500m"),
-			corev1.ResourceMemory: resource.MustParse("6400Mi"),
-		},
-	}
-)
+// CSIDefaults encapsulate a collection of default CSI config values
+type CSIDefaults struct {
+	DriverName   string
+	TopologyKeys []string
+}

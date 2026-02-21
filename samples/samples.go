@@ -76,17 +76,15 @@ func LoadBinPackingSchedulerConfig() ([]byte, error) {
 	return dataFS.ReadFile("data/bin-packing-scheduler-config.yaml")
 }
 
-var simplePodTemplatePath = "data/simple-pod-template.yaml"
-
 // GenerateSimplePodsWithTemplateData generates a slice of corev1.Pod objects with count length using the given pod template data in podTmplData.
 // Also generates the pod YAMLs for these pods within the temp directory.
-func GenerateSimplePodsWithTemplateData(num int, podTmplData SimplePodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, simplePodTemplatePath)
 	if err != nil {
 		return
 	}
 	if podTmplData.GenDir == "" {
-		err = fmt.Errorf("SimplePodTemplateData.GenDir is empty")
+		err = fmt.Errorf("PodTemplateData.GenDir is empty")
 		return
 	}
 	for i := 1; i <= num; i++ {
@@ -107,41 +105,35 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData SimplePodTemplateDa
 
 // GenerateSimplePodsForResourceCategory generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
 // Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourceCategory(category ResourceCategory, num int, metadata SimplePodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
-	podTmplData := SimplePodTemplateData{
-		SimplePodGenInput: metadata,
-		Resources:         category.AsResourceList(),
+func GenerateSimplePodsForResourceCategory(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+	podTmplData := PodTemplateData{
+		PodGenInput: metadata,
+		Resources:   category.AsResourceList(),
 	}
 	return GenerateSimplePodsWithTemplateData(num, podTmplData)
 }
 
 // GeneratePersistentVolumeClaims generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames,  storage and accessMode in the given namespace.
-func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
+func GeneratePersistentVolumeClaims(vi StorageVolGenInput) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pvc-template.yaml")
 	if err != nil {
 		return
 	}
-	if gi.Namespace == "" {
-		gi.Namespace = metav1.NamespaceDefault
-	}
-	if gi.GenDir == "" {
-		err = fmt.Errorf("SimplePVCTemplateData.GenDir is empty")
+	if err = vi.ValidateAndFillDefaults(); err != nil {
 		return
 	}
-	if gi.StorageClassName == "" {
-		gi.StorageClassName = "default"
-	}
-	if gi.AccessMode == "" {
-		gi.AccessMode = corev1.ReadWriteOnce
-	}
-	for _, pvcName := range gi.Names {
+	for _, pvcName := range vi.PVCNames {
 		var (
-			pvc        corev1.PersistentVolumeClaim
-			claimPhase = corev1.ClaimBound
+			pvc         corev1.PersistentVolumeClaim
+			claimPhase  = corev1.ClaimBound
+			volumeName  = "pv-" + pvcName
+			outYAMLPath = path.Join(vi.GenDir, "pvc-"+pvcName+".yaml")
 		)
-		outYAMLPath := path.Join(gi.GenDir, "pvc-"+pvcName+".yaml")
-		if gi.Unbound {
+		if vi.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+			volumeName = ""
 			claimPhase = corev1.ClaimPending
+		} else if len(vi.PVZones) >= 0 {
+			volumeName = "pv-" + pvcName + "-0" // always bind to first PV if there is more than one PV
 		}
 		pvcTmplData := struct {
 			Name             string
@@ -154,12 +146,12 @@ func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.Persist
 			UID              string
 		}{
 			Name:             pvcName,
-			Namespace:        gi.Namespace,
-			Storage:          gi.Storage.String(),
-			AccessMode:       string(gi.AccessMode),
+			Namespace:        vi.Namespace,
+			Storage:          vi.Storage.String(),
+			AccessMode:       string(vi.AccessMode),
 			Phase:            string(claimPhase),
-			StorageClassName: gi.StorageClassName,
-			VolumeName:       "pv-" + pvcName,
+			StorageClassName: vi.StorageClassName,
+			VolumeName:       volumeName,
 			UID:              pvcName,
 		}
 		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
@@ -173,95 +165,91 @@ func GeneratePersistentVolumeClaims(gi SimplePVCGenInput) (pvcs []corev1.Persist
 	return
 }
 
-var providerToCSIDrivers = map[commontypes.CloudProvider]string{
-	commontypes.CloudProviderAWS: "ebs.csi.aws.com",
-}
-
 // GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given pvcNames suitable for the given provider in the given
 // namespace for the given storage and access mode and returns the PV objects and their generated YAML paths.
-func GeneratePersistentVolumes(gi SimplePVGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
+func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
 	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
 	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pv-template.yaml")
 	if err != nil {
 		return
 	}
-	if gi.GenDir == "" {
-		err = fmt.Errorf("SimplePVGen.GenDir is empty")
+	if err = vi.ValidateAndFillDefaults(); err != nil {
 		return
 	}
-	if gi.StorageClassName == "" {
-		gi.StorageClassName = "default"
-	}
-	if gi.Namespace == "" {
-		gi.Namespace = metav1.NamespaceDefault
-	}
-	if gi.Provider == "" {
-		gi.Provider = commontypes.CloudProviderAWS
-	}
-	if gi.Storage.IsZero() {
-		gi.Storage = resource.MustParse("1Gi")
-	}
-	if gi.Zone == "" {
-		err = errors.New("zone must be specified in gi")
+	if len(vi.PVZones) == 0 {
+		err = errors.New("empty PVZones")
 		return
 	}
-	if len(gi.PVCNames) == 0 {
-		err = errors.New("must specify at least one name")
+	csiDefaults, err := GetCSIDefaults(vi.Provider)
+	if err != nil {
 		return
 	}
-	if gi.AccessMode == "" {
-		gi.AccessMode = corev1.ReadWriteOnce
-	}
-	csiDriver := providerToCSIDrivers[gi.Provider]
-	if csiDriver == "" {
-		err = fmt.Errorf("no CSIDriver found for provider %s", gi.Provider)
-		return
-	}
-	for _, pvcName := range gi.PVCNames {
+	for _, pvcName := range vi.PVCNames {
 		var (
 			pv          corev1.PersistentVolume
 			volumePhase = corev1.VolumeBound
+			pvName      string
+			yamlPath    string
 		)
-		pvName := "pv-" + pvcName
-		outYAMLPath := path.Join(gi.GenDir, pvName+".yaml")
-		if gi.Unbound {
+		if vi.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 			volumePhase = corev1.VolumeAvailable
 		}
-		pvTmplData := struct {
-			CSIDriver        string
-			Name             string
-			Namespace        string
-			Storage          string
-			AccessMode       string
-			VolumeHandle     string
-			PVCName          string
-			Zone             string
-			Phase            string
-			StorageClassName string
-			PVCUID           string
-		}{
-			CSIDriver:        csiDriver,
-			Name:             pvName,
-			Namespace:        gi.Namespace,
-			Storage:          gi.Storage.String(),
-			AccessMode:       string(gi.AccessMode),
-			VolumeHandle:     pvName,
-			PVCName:          pvcName,
-			Zone:             gi.Zone,
-			Phase:            string(volumePhase),
-			StorageClassName: gi.StorageClassName,
-			PVCUID:           pvcName,
+		for i, zone := range vi.PVZones {
+			pvName = fmt.Sprintf("pv-%s-%d", pvcName, i)
+			yamlPath = path.Join(vi.GenDir, pvName+".yaml")
+			pvTmplData := struct {
+				CSIDriver        string
+				Name             string
+				Namespace        string
+				Storage          string
+				AccessMode       string
+				VolumeHandle     string
+				PVCName          string
+				Zone             string
+				Phase            string
+				StorageClassName string
+				PVCUID           string
+			}{
+				CSIDriver:        csiDefaults.DriverName,
+				Name:             pvName,
+				Namespace:        vi.Namespace,
+				Storage:          vi.Storage.String(),
+				AccessMode:       string(vi.AccessMode),
+				VolumeHandle:     pvName,
+				PVCName:          pvcName,
+				Zone:             zone,
+				Phase:            string(volumePhase),
+				StorageClassName: vi.StorageClassName,
+				PVCUID:           pvcName,
+			}
+			err = GenerateAndLoad(tmpl, pvTmplData, yamlPath, &pv)
+			if err != nil {
+				return
+			}
+			pv.CreationTimestamp = metav1.Now()
+			pvs = append(pvs, pv)
+			pvYAMLPaths = append(pvYAMLPaths, yamlPath)
 		}
-		err = GenerateAndLoad(tmpl, pvTmplData, outYAMLPath, &pv)
-		if err != nil {
-			return
-		}
-		pv.CreationTimestamp = metav1.Now()
-		pvs = append(pvs, pv)
-		pvYAMLPaths = append(pvYAMLPaths, outYAMLPath)
 	}
 	return
+}
+
+// GetCSINodeDrivers gets a slice of sample CSINodeDrivers for the given provider using hard-coded defaults.
+func GetCSINodeDrivers(provider commontypes.CloudProvider, maxAllocatableVolumes int32) ([]storagev1.CSINodeDriver, error) {
+	csiDefaults, err := GetCSIDefaults(provider)
+	if err != nil {
+		return nil, err
+	}
+	return []storagev1.CSINodeDriver{
+		{
+			Name:         csiDefaults.DriverName,
+			TopologyKeys: csiDefaults.TopologyKeys,
+			Allocatable: &storagev1.VolumeNodeResources{
+				Count: &maxAllocatableVolumes,
+			},
+		},
+	}, nil
 }
 
 func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
@@ -270,9 +258,8 @@ func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, nam
 		return
 	}
 	outYAMLPath = path.Join(genDir, "sc-"+name+".yaml")
-	csiDriver := providerToCSIDrivers[provider]
-	if csiDriver == "" {
-		err = fmt.Errorf("no CSIDriver found for provider %s", provider)
+	csiDefaults, err := GetCSIDefaults(provider)
+	if err != nil {
 		return
 	}
 	if name == "" {
@@ -284,19 +271,60 @@ func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, nam
 		Name              string
 		VolumeBindingMode string
 	}{
-		CSIDriver:         csiDriver,
+		CSIDriver:         csiDefaults.DriverName,
 		Name:              name,
 		VolumeBindingMode: string(volumeBindingMode),
 	}
-	err = GenerateAndLoad(tmpl, scTmplData, outYAMLPath, &storageClass)
-	if err != nil {
+	if err = GenerateAndLoad(tmpl, scTmplData, outYAMLPath, &storageClass); err != nil {
 		return
 	}
 	storageClass.CreationTimestamp = metav1.Now()
 	return
 }
 
-func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTemplateData {
+// GenerateAndLoad executes the given template with the given params, writes the generated output to outPath and loads the same as a runtime object
+func GenerateAndLoad[P any, O runtime.Object](tmpl *template.Template, params P, outPath string, obj O) error {
+	var buf bytes.Buffer
+	err := tmpl.Execute(&buf, params)
+	if err != nil {
+		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, err)
+	}
+	err = os.WriteFile(outPath, buf.Bytes(), 0600)
+	if err != nil {
+		return fmt.Errorf("%w: failed to write output of %q template with params %v to path %q: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, outPath, err)
+	}
+	root, err := os.OpenRoot("/")
+	if err != nil {
+		return fmt.Errorf("%w: failed to open root FS: %w", commonerrors.ErrExecuteTemplate, err)
+	}
+	return objutil.LoadIntoRuntimeObj(root.FS(), strings.TrimPrefix(outPath, "/"), obj)
+}
+
+// GetMaxAllocatableVolumes returns a reasonable default value for the max number of allocatable volumes for a node of the given instanceType.
+func GetMaxAllocatableVolumes(provider commontypes.CloudProvider, instanceType string) int32 {
+	maxAllocatable, ok := maxAllocatableVolumesByInstanceType[instanceType]
+	if ok {
+		return maxAllocatable
+	}
+	switch provider {
+	case commontypes.CloudProviderAWS:
+		maxAllocatable = maxAllocatableVolumesByInstanceType["m5.large"]
+	default:
+		maxAllocatable = 16 // safe, conservative fallback
+	}
+	return maxAllocatable
+}
+
+// GetCSIDefaults returns an instance of CSIDefaults populated with reasonable values for the given provider.
+func GetCSIDefaults(provider commontypes.CloudProvider) (defaults CSIDefaults, err error) {
+	defaults, ok := providerToCSIDefaults[provider]
+	if !ok {
+		err = fmt.Errorf("no CSIDefaults found for provider %s", provider)
+	}
+	return
+}
+
+func fillPodTemplateDataDefaults(podTmplData PodTemplateData) PodTemplateData {
 	podTmplData.AppLabels = fillAppLabelDefaults(podTmplData.AppLabels)
 	if podTmplData.Namespace == "" {
 		podTmplData.Namespace = metav1.NamespaceDefault
@@ -305,7 +333,7 @@ func fillPodTemplateDataDefaults(podTmplData SimplePodTemplateData) SimplePodTem
 		podTmplData.Name = podTmplData.AppLabels.Name
 	}
 	if len(podTmplData.Resources) == 0 {
-		podTmplData.Resources = ResourceCategoryPea.AsResourceList()
+		podTmplData.Resources = ResourcePresetPea.AsResourceList()
 	}
 	return podTmplData
 }
@@ -332,25 +360,50 @@ func fillAppLabelDefaults(appLabels AppLabels) AppLabels {
 	return appLabels
 }
 
-// GenerateAndLoad executes the given template with the given params, writes the generated output to outPath and loads the same as a runtime object
-func GenerateAndLoad[P any, O runtime.Object](tmpl *template.Template, params P, outPath string, obj O) error {
-	var buf bytes.Buffer
-	err := tmpl.Execute(&buf, params)
-	if err != nil {
-		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, err)
-	}
-	err = os.WriteFile(outPath, buf.Bytes(), 0600)
-	if err != nil {
-		return fmt.Errorf("%w: failed to write output of %q template with params %v to path %q: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, outPath, err)
-	}
-	root, err := os.OpenRoot("/")
-	if err != nil {
-		return fmt.Errorf("%w: failed to open root FS: %w", commonerrors.ErrExecuteTemplate, err)
-	}
-	return objutil.LoadIntoRuntimeObj(root.FS(), strings.TrimPrefix(outPath, "/"), obj)
-}
-
 var (
 	//go:embed data
 	dataFS embed.FS
+
+	simplePodTemplatePath = "data/simple-pod-template.yaml"
+
+	providerToCSIDefaults = map[commontypes.CloudProvider]CSIDefaults{
+		commontypes.CloudProviderAWS: {
+			DriverName: "ebs.csi.aws.com",
+			TopologyKeys: []string{
+				"topology.ebs.csi.aws.com/zone",
+				corev1.LabelTopologyZone,
+				corev1.LabelOSStable,
+			},
+		},
+	}
+
+	maxAllocatableVolumesByInstanceType = map[string]int32{
+		"m5.large":   26,
+		"c3.8xlarge": 38,
+	}
+	allResourcePresets = []ResourcePreset{
+		ResourcePresetPea, ResourcePresetBerry, ResourcePresetHalfBerry, ResourcePresetGrape, ResourcePresetHalfGrape,
+	}
+	resourcePresetsToResourceListMap = map[ResourcePreset]corev1.ResourceList{
+		ResourcePresetPea: {
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
+		},
+		ResourcePresetBerry: {
+			corev1.ResourceCPU:    resource.MustParse("1000m"),
+			corev1.ResourceMemory: resource.MustParse("5100Mi"),
+		},
+		ResourcePresetHalfBerry: {
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("2500Mi"),
+		},
+		ResourcePresetGrape: {
+			corev1.ResourceCPU:    resource.MustParse("3"),
+			corev1.ResourceMemory: resource.MustParse("13Gi"),
+		},
+		ResourcePresetHalfGrape: {
+			corev1.ResourceCPU:    resource.MustParse("1500m"),
+			corev1.ResourceMemory: resource.MustParse("6400Mi"),
+		},
+	}
 )

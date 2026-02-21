@@ -8,18 +8,27 @@ import (
 	"context"
 	"fmt"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/cache"
+	storagevolume "k8s.io/component-helpers/storage/volume"
+	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
+	"k8s.io/utils/ptr"
 	"strconv"
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/go-logr/logr"
 )
 
@@ -46,7 +55,7 @@ func SendScaleOutPlanError(planResultCh chan<- plannerapi.ScaleOutPlanResult, re
 // and sends this result to the resultCh.
 func SendScaleOutPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlanResult,
 	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
-	groupCycleResults []plannerapi.SimulationGroupCycleResult) error {
+	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
 	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
 	if err != nil {
@@ -78,6 +87,57 @@ func SendScaleOutPlanResult(ctx context.Context, resultCh chan<- plannerapi.Scal
 	return nil
 }
 
+// PopulateView populates the given view with the objects in the given cluster snapshot.
+func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
+	if err := view.Reset(); err != nil {
+		return err
+	}
+	for _, pc := range cs.PriorityClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+			return err
+		}
+	}
+	for _, rc := range cs.RuntimeClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.RuntimeClassDescriptor.GVK, &rc); err != nil {
+			return err
+		}
+	}
+	for _, sc := range cs.StorageClasses {
+		if _, err := view.CreateObject(ctx, typeinfo.StorageClassDescriptor.GVK, &sc); err != nil {
+			return err
+		}
+	}
+	for _, nodeInfo := range cs.Nodes {
+		createdObj, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo))
+		if err != nil {
+			return err
+		}
+		if nodeInfo.CSINodeSpec == nil {
+			continue
+		}
+		csiNode := nodeutil.NewCSINode(nodeInfo.Name, createdObj.GetUID(), *nodeInfo.CSINodeSpec)
+		if _, err = view.CreateObject(ctx, typeinfo.CSINodeDescriptor.GVK, csiNode); err != nil {
+			return err
+		}
+	}
+	for _, pvc := range cs.PVCs {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc)); err != nil {
+			return err
+		}
+	}
+	for _, pv := range cs.PVs {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv)); err != nil {
+			return err
+		}
+	}
+	for _, pod := range cs.Pods {
+		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
 func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []commontypes.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
@@ -106,45 +166,140 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 	return groupByPlacement
 }
 
-// PopulateView populates the given view with the objects in the given cluster snapshot.
-func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.ClusterSnapshot) error {
-	if err := view.Reset(); err != nil {
+// BindClaimsAndVolumes binds the unbound PV and PVC in the given minkapi.View so that kube-scheduler's
+// VolumeBinding plugin considers the claim satisfied, and the kube-scheduler can proceed with pod binding.
+// For VolumeBinding to succeed, after binding:
+// PVC must have:
+//   - spec.volumeName set
+//   - status.phase = Bound
+//   - annotations["pv.kubernetes.io/bind-completed"] = "yes"
+//
+// PV must have:
+//   - spec.claimRef populated
+//   - status.phase = Bound
+func BindClaimsAndVolumes(ctx context.Context, view minkapi.View) error {
+	log := logr.FromContextOrDiscard(ctx)
+	scs, pvcs, pvs, err := viewutil.ListStorageClassesClaimsAndVolumes(ctx, view)
+	if err != nil {
 		return err
 	}
-	for _, pc := range cs.PriorityClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+	if len(scs) == 0 || len(pvcs) == 0 || len(pvs) == 0 {
+		return nil
+	}
+	var defaultSc *storagev1.StorageClass
+	for _, sc := range scs {
+		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
+			defaultSc = &sc
+		}
+	}
+
+	var boundPVs = make(map[string]plannerapi.VolumeClaimAssignment) // key is pvName
+	for _, pvc := range pvcs {
+		if pvc.Status.Phase != corev1.ClaimPending {
+			continue
+		}
+
+		var sc *storagev1.StorageClass
+		if pvc.Spec.StorageClassName == nil {
+			if defaultSc == nil {
+				log.V(2).Info("pvc does not have storage class, skipping", "pvc", pvc.Name)
+				continue
+			}
+			pvc.Spec.StorageClassName = ptr.To(defaultSc.Name)
+			sc = defaultSc
+		} else {
+			scObj, err := view.GetObject(ctx, typeinfo.StorageClassDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, *pvc.Spec.StorageClassName))
+			if err != nil {
+				return err
+			}
+			sc = scObj.(*storagev1.StorageClass)
+		}
+
+		var selectedPV corev1.PersistentVolume
+		for _, pv := range pvs {
+			if _, alreadyBound := boundPVs[pv.Name]; alreadyBound {
+				continue
+			}
+			if !IsPVBindCandidate(ctx, &pvc, &pv, sc.Name) {
+				continue
+			}
+			selectedPV = pv
+			break
+		}
+		if selectedPV.Name == "" {
+			continue
+		}
+
+		if err = BindClaimAndVolume(ctx, view, &pvc, &selectedPV); err != nil {
 			return err
 		}
 	}
-	for _, rc := range cs.RuntimeClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.RuntimeClassDescriptor.GVK, &rc); err != nil {
-			return err
-		}
-	}
-	for _, sc := range cs.StorageClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.StorageClassDescriptor.GVK, &sc); err != nil {
-			return err
-		}
-	}
-	for _, nodeInfo := range cs.Nodes {
-		if _, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo)); err != nil {
-			return err
-		}
-	}
-	for _, pvc := range cs.PVCs {
-		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc)); err != nil {
-			return err
-		}
-	}
-	for _, pv := range cs.PVs {
-		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv)); err != nil {
-			return err
-		}
-	}
-	for _, pod := range cs.Pods {
-		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
-			return err
-		}
-	}
+
 	return nil
+}
+
+// BindClaimAndVolume binds the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
+func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume) error {
+	log := logr.FromContextOrDiscard(ctx)
+
+	// Bind PV → PVC
+	pv.Spec.ClaimRef = &corev1.ObjectReference{
+		Kind:            typeinfo.KindPersistentVolumeClaim,
+		Namespace:       pvc.Namespace,
+		Name:            pvc.Name,
+		UID:             pvc.UID,
+		APIVersion:      "v1",
+		ResourceVersion: pvc.ResourceVersion,
+	}
+	pv.Status.Phase = corev1.VolumeBound
+	pv.Status.LastPhaseTransitionTime = ptr.To(metav1.Now())
+	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+		log.Error(err, "failed to bind pv->pvc", "pv", pv, "pvc", pvc)
+		return fmt.Errorf("%w: failed to bind pv %q ->pvc %q: %w", plannerapi.ErrBindClaimVolume, pv.Name, pvc.Name, err)
+	}
+
+	//  Bind PVC → PV
+	pvc.Spec.VolumeName = pv.Name
+	pvc.Status.Phase = corev1.ClaimBound
+	if pvc.Annotations == nil {
+		pvc.Annotations = map[string]string{}
+	}
+	pvc.Annotations[storagevolume.AnnBindCompleted] = "yes"
+	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+		log.Error(err, "failed to bind pvc->pv", "pvc", pvc, "pv", pv)
+		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
+	}
+
+	log.V(3).Info("bound pvc<->pv", "pvcName", pvc.Name, "pvName", pv.Name)
+	return nil
+}
+
+// IsPVBindCandidate checks whether the given PV can be selected as a bindable candidate for the given PVC.
+func IsPVBindCandidate(ctx context.Context, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume, storageClassName string) bool {
+	log := logr.FromContextOrDiscard(ctx)
+	if pv.Status.Phase != corev1.VolumeAvailable {
+		return false
+	}
+	if pv.Spec.StorageClassName != storageClassName {
+		return false
+	}
+	requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	capacity := pv.Spec.Capacity[corev1.ResourceStorage]
+	if capacity.Cmp(requested) < 0 {
+		log.V(4).Info("PV capacity less than PVC request",
+			"pvcName", pvc.Name,
+			"requested", requested,
+			"pvName", pv.Name,
+			"capacity", capacity)
+		return false
+	}
+	if !areAccessModesCompatible(pvc.Spec.AccessModes, pv.Spec.AccessModes) {
+		return false
+	}
+	return true
+}
+
+func areAccessModesCompatible(requested, available []corev1.PersistentVolumeAccessMode) bool {
+	availableSet := sets.New[corev1.PersistentVolumeAccessMode](available...)
+	return availableSet.HasAll(requested...)
 }

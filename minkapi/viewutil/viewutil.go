@@ -7,7 +7,9 @@ package viewutil
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	storagev1 "k8s.io/api/storage/v1"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -134,4 +136,29 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 		return nil
 	}
 	return nil
+}
+
+// ListStorageClassesClaimsAndVolumes gets the slice of StoreClass, PersistentVolume's and PersistentVolumes from the given minkapi view or an error
+func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []storagev1.StorageClass, pvcs []corev1.PersistentVolumeClaim, pvs []corev1.PersistentVolume, err error) {
+	scObjs, _, err := view.ListMetaObjects(ctx, typeinfo.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
+	if err != nil {
+		return
+	}
+	scs = make([]storagev1.StorageClass, 0, len(scObjs))
+	var sc *storagev1.StorageClass
+	for _, o := range scObjs {
+		if sc, err = objutil.Cast[*storagev1.StorageClass](o); err != nil {
+			return
+		}
+		scs = append(scs, *sc)
+	}
+
+	if pvcs, err = ListPersistentVolumeClaims(ctx, view); err != nil {
+		return
+	}
+
+	if pvs, err = ListPersistentVolumes(ctx, view); err != nil {
+		return
+	}
+	return
 }

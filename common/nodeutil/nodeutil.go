@@ -6,6 +6,9 @@ package nodeutil
 
 import (
 	"fmt"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"maps"
 	"time"
 
@@ -28,16 +31,15 @@ func GetInstanceType(node *corev1.Node) string {
 // It additionally takes in csiDriverVolumeMaximums, which is a map
 // of CSI driver names to the maximum number of volumes managed by
 // the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
+func AsNodeInfo(node corev1.Node) plannerapi.NodeInfo {
 	return plannerapi.NodeInfo{
-		ObjectMeta:              node.ObjectMeta,
-		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
-		Unschedulable:           node.Spec.Unschedulable,
-		Taints:                  node.Spec.Taints,
-		Capacity:                node.Status.Capacity,
-		Allocatable:             node.Status.Allocatable,
-		Conditions:              node.Status.Conditions,
-		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
+		ObjectMeta:    node.ObjectMeta,
+		InstanceType:  node.Labels[corev1.LabelInstanceTypeStable],
+		Unschedulable: node.Spec.Unschedulable,
+		Taints:        node.Spec.Taints,
+		Capacity:      node.Status.Capacity,
+		Allocatable:   node.Status.Allocatable,
+		Conditions:    node.Status.Conditions,
 	}
 }
 
@@ -95,4 +97,22 @@ func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, 
 	nodeLabels[corev1.LabelHostname] = nodeName
 	nodeLabels[commonconstants.LabelNodePoolName] = nodePool.Name
 	return nodeLabels
+}
+
+// NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec
+func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINodeSpec) *storagev1.CSINode {
+	return &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       typeinfo.NodesDescriptor.GetKind(),
+					Name:       nodeName,
+					UID:        nodeUID,
+				},
+			},
+		},
+		Spec: csiNodeSpec,
+	}
 }

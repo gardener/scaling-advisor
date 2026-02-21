@@ -35,7 +35,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "2", "4")
-	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
 	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
 		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
@@ -167,7 +167,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "1", "2")
-	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
 	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
 		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
@@ -294,7 +294,7 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 	}
 	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")
-	simNodeWithStorage.Allocatable["Storage"] = resource.MustParse("10")
+	simNodeWithStorage.Allocatable[corev1.ResourceStorage] = resource.MustParse("10")
 	if err != nil {
 		t.Fatal(err)
 	}

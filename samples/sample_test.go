@@ -15,6 +15,57 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+func TestGeneratePVCs(t *testing.T) {
+	wantNS := "test"
+	wantStorage := resource.MustParse("1Gi")
+	wantAccessMode := corev1.ReadWriteOnce
+	wantNames := []string{"stem", "branch"}
+	wantPhase := corev1.ClaimBound
+	testGenDir, ok := commontestutil.CreateTestGenDir(t)
+	if !ok {
+		return
+	}
+	vg := StorageVolGenInput{
+		GenDir:            testGenDir,
+		Namespace:         wantNS,
+		Storage:           wantStorage,
+		AccessMode:        wantAccessMode,
+		PVCNames:          wantNames,
+		Provider:          commontypes.CloudProviderAWS,
+		VolumeBindingMode: storagev1.VolumeBindingImmediate,
+	}
+	pvcs, pvcYAMLPaths, err := GeneratePersistentVolumeClaims(vg)
+	if err != nil {
+		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
+	}
+	if len(pvcs) != len(pvcYAMLPaths) {
+		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvcs), len(pvcYAMLPaths))
+	}
+	for i := range pvcs {
+		pvcYAMLPath := pvcYAMLPaths[i]
+		pvc := pvcs[i]
+		t.Logf("Generated PVC yaml %q containing %+v", pvcYAMLPath, pvc)
+		gotName := pvc.Name
+		wantName := wantNames[i]
+		if gotName != wantName {
+			t.Errorf("GeneratePersistentVolumes gotName %q, wantName %q", gotName, wantName)
+		}
+		gotStorage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if gotStorage.Cmp(wantStorage) != 0 {
+			t.Errorf("GeneratePersistentVolumes gotStorage %q, wantStorage %q", gotStorage.String(), wantStorage.String())
+		}
+		gotAccessMode := pvc.Spec.AccessModes[0]
+		if gotAccessMode != wantAccessMode {
+			t.Errorf("GeneratePersistentVolumes gotAccessMode %q, wantAccessMode %q", gotAccessMode, wantAccessMode)
+		}
+		gotPhase := pvc.Status.Phase
+		if gotPhase != wantPhase {
+			t.Errorf("GeneratePersistentVolumes gotPhase %q, wantPhase %q", gotPhase, wantPhase)
+		}
+	}
+
+}
+
 func TestGeneratePVs(t *testing.T) {
 	wantNS := "test"
 	wantStorage := resource.MustParse("1Gi")
@@ -25,15 +76,15 @@ func TestGeneratePVs(t *testing.T) {
 	if !ok {
 		return
 	}
-	pvs, pvYAMLPaths, err := GeneratePersistentVolumes(SimplePVGenInput{
-		VolCommon: VolCommon{
-			GenDir:     testGenDir,
-			Namespace:  wantNS,
-			Storage:    wantStorage,
-			AccessMode: wantAccessMode,
-		},
-		Zone:     wantZone,
-		PVCNames: wantNames,
+	pvs, pvYAMLPaths, err := GeneratePersistentVolumes(StorageVolGenInput{
+		GenDir:            testGenDir,
+		Namespace:         wantNS,
+		Storage:           wantStorage,
+		AccessMode:        wantAccessMode,
+		PVCNames:          wantNames,
+		Provider:          commontypes.CloudProviderAWS,
+		PVZones:           []string{wantZone},
+		VolumeBindingMode: storagev1.VolumeBindingImmediate,
 	})
 	if err != nil {
 		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
@@ -83,52 +134,6 @@ func TestGenerateStorageClass(t *testing.T) {
 	}
 }
 
-func TestGeneratePVCs(t *testing.T) {
-	wantNS := "test"
-	wantStorage := resource.MustParse("1Gi")
-	wantAccessMode := corev1.ReadWriteOnce
-	wantNames := []string{"stem", "branch"}
-	testGenDir, ok := commontestutil.CreateTestGenDir(t)
-	if !ok {
-		return
-	}
-	volCommon := VolCommon{
-		GenDir:     testGenDir,
-		Namespace:  wantNS,
-		Storage:    wantStorage,
-		AccessMode: wantAccessMode,
-	}
-	pvcs, pvcYAMLPaths, err := GeneratePersistentVolumeClaims(SimplePVCGenInput{
-		VolCommon: volCommon,
-		Names:     wantNames,
-	})
-	if err != nil {
-		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
-	}
-	if len(pvcs) != len(pvcYAMLPaths) {
-		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvcs), len(pvcYAMLPaths))
-	}
-	for i := range pvcs {
-		pvcYAMLPath := pvcYAMLPaths[i]
-		pvc := pvcs[i]
-		t.Logf("Generated PVC yaml %q containing %+v", pvcYAMLPath, pvc)
-		gotName := pvc.Name
-		wantName := wantNames[i]
-		if gotName != wantName {
-			t.Errorf("GeneratePersistentVolumes gotName %q, wantName %q", gotName, wantName)
-		}
-		gotStorage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		if gotStorage.Cmp(wantStorage) != 0 {
-			t.Errorf("GeneratePersistentVolumes gotStorage %q, wantStorage %q", gotStorage.String(), wantStorage.String())
-		}
-		gotAccessMode := pvc.Spec.AccessModes[0]
-		if gotAccessMode != wantAccessMode {
-			t.Errorf("GeneratePersistentVolumes gotAccessMode %q, wantAccessMode %q", gotAccessMode, wantAccessMode)
-		}
-	}
-
-}
-
 func TestGenerateSimplePodsWithResources(t *testing.T) {
 	podCount := 4
 	pvcNames := []string{"stem", "branch"}
@@ -136,9 +141,9 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 	if !ok {
 		return
 	}
-	for _, resourceCategory := range allResourceCategories {
+	for _, resourceCategory := range allResourcePresets {
 		t.Run(string(resourceCategory), func(t *testing.T) {
-			pods, podYAMLPaths, err := GenerateSimplePodsForResourceCategory(resourceCategory, podCount, SimplePodGenInput{
+			pods, podYAMLPaths, err := GenerateSimplePodsForResourceCategory(resourceCategory, podCount, PodGenInput{
 				Name: string(resourceCategory),
 				AppLabels: AppLabels{
 					Name:      string(resourceCategory),

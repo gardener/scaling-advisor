@@ -175,6 +175,10 @@ type View interface {
 	GetKubeConfigPath() string
 }
 
+// ViewFactory is a type alias for view provider functions that take a context and view name and return the associated minkapi View.
+// Used to decouple components.
+type ViewFactory func(ctx context.Context, name string) (View, error)
+
 // ViewType represents the type of View.
 type ViewType string
 

@@ -19,7 +19,7 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/cliutil"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/planner/weights"
+	"github.com/gardener/scaling-advisor/planner/weigher"
 	"github.com/gardener/scaling-advisor/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -115,7 +115,7 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 		exitCode = cliutil.ExitErrStart
 		return
 	}
-	weightsFn := weights.GetDefaultWeightsFn()
+	weightsFn := weigher.GetDefaultWeightsFn()
 	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, weightsFn)
 	if err != nil {
 		exitCode = cliutil.ExitErrStart

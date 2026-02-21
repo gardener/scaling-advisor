@@ -320,11 +320,11 @@ func TestSimGroupKey_String(t *testing.T) {
 	tests := []struct {
 		name     string
 		expected string
-		key      SimGroupKey
+		key      PriorityKey
 	}{
 		{
 			name: "both priorities positive",
-			key: SimGroupKey{
+			key: PriorityKey{
 				NodePoolPriority:     1,
 				NodeTemplatePriority: 2,
 			},
@@ -332,7 +332,7 @@ func TestSimGroupKey_String(t *testing.T) {
 		},
 		{
 			name: "zero priorities",
-			key: SimGroupKey{
+			key: PriorityKey{
 				NodePoolPriority:     0,
 				NodeTemplatePriority: 0,
 			},
@@ -340,7 +340,7 @@ func TestSimGroupKey_String(t *testing.T) {
 		},
 		{
 			name: "large priorities",
-			key: SimGroupKey{
+			key: PriorityKey{
 				NodePoolPriority:     100,
 				NodeTemplatePriority: 200,
 			},
