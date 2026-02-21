@@ -42,7 +42,6 @@ func TestGeneratePVCs(t *testing.T) {
 		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvcs), len(pvcYAMLPaths))
 	}
 	for i := range pvcs {
-		pvcYAMLPath := pvcYAMLPaths[i]
 		pvc := pvcs[i]
 		gotName := pvc.Name
 		wantName := wantNames[i]
@@ -91,7 +90,6 @@ func TestGeneratePVs(t *testing.T) {
 		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvs), len(pvYAMLPaths))
 	}
 	for i := range pvs {
-		pvYAMLPath := pvYAMLPaths[i]
 		pv := pvs[i]
 		gotStorage := pv.Spec.Capacity[corev1.ResourceStorage]
 		if gotStorage.Cmp(wantStorage) != 0 {
@@ -115,7 +113,7 @@ func TestGenerateStorageClass(t *testing.T) {
 	if !ok {
 		return
 	}
-	sc, scYAMLPath, err := GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
+	sc, _, err := GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
 	if err != nil {
 		t.Fatalf("GenerateStorageClass() failed: %v", err)
 	}
