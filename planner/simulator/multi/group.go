@@ -8,10 +8,10 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	"slices"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"golang.org/x/sync/errgroup"

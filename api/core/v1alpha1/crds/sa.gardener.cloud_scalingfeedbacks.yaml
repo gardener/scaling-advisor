@@ -55,7 +55,6 @@ spec:
                     type: string
                 required:
                 - name
-                - namespace
                 type: object
               scaleInErrorInfo:
                 description: ScaleInErrorInfo is the scale-in error information for

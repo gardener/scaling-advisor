@@ -6,9 +6,6 @@ package nodeutil
 
 import (
 	"fmt"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"maps"
 	"time"
 
@@ -17,9 +14,12 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // GetInstanceType returns the instance-type of the given node from the label present on it.

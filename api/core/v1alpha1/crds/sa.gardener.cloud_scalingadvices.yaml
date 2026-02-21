@@ -54,7 +54,6 @@ spec:
                     type: string
                 required:
                 - name
-                - namespace
                 type: object
               scaleInPlan:
                 description: ScaleInPlan is the plan for scaling in across node pools.
@@ -102,7 +101,7 @@ spec:
                 description: ScaleOutPlan is the plan for scaling out across node
                   pools.
                 properties:
-                  Items:
+                  items:
                     description: Items is the slice of scaling-out advice for a node
                       pool.
                     items:
@@ -152,7 +151,7 @@ spec:
                       type: string
                     type: array
                 required:
-                - Items
+                - items
                 type: object
             required:
             - constraintRef

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	storagev1 "k8s.io/api/storage/v1"
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -17,9 +16,11 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/pricing"
+
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
 )
@@ -209,6 +210,8 @@ type NodeInfo struct {
 	Capacity corev1.ResourceList `json:"capacity,omitempty"`
 	// Allocatable is the allocatable resource capacity of the node.
 	Allocatable corev1.ResourceList `json:"allocatable,omitempty"`
+	// CSINodeSpec is the CSINodeSpec of the CSINode associated with this Node if any
+	CSINodeSpec *storagev1.CSINodeSpec `json:"csiNodeSpec,omitempty"`
 	// InstanceType is the instance type for the Node
 	InstanceType      string `json:"instanceType"`
 	metav1.ObjectMeta `json:",inline"`
@@ -218,8 +221,6 @@ type NodeInfo struct {
 	Conditions []corev1.NodeCondition `json:"conditions,omitempty"`
 	// Unschedulable indicates whether the node is unschedulable.
 	Unschedulable bool `json:"unschedulable,omitempty"`
-	// CSINodeSpec is the CSINodeSpec of the CSINode associated with this Node if any
-	CSINodeSpec *storagev1.CSINodeSpec `json:"csiNodeSpec,omitempty"`
 }
 
 // GetResourceInfo returns the resource information for the node.
@@ -262,20 +263,20 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
 type PVCInfo struct {
-	metav1.ObjectMeta                `json:",inline"`
 	corev1.PersistentVolumeClaimSpec `json:",inline"`
 	Phase                            corev1.PersistentVolumeClaimPhase `json:"phase,omitempty"`
+	metav1.ObjectMeta                `json:",inline"`
 }
 
 // PVInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolume.
 type PVInfo struct {
+	Capacity          corev1.ResourceList          `json:"capacity,omitempty"`
+	NodeAffinity      *corev1.NodeSelector         `json:"nodeAffinity,omitzero"`
+	ClaimRef          commontypes.NamespacedName   `json:"claimRef,omitzero"`
+	StorageClassName  string                       `json:"storageClassName,omitempty"`
+	Phase             corev1.PersistentVolumePhase `json:"phase,omitempty"`
 	metav1.ObjectMeta `json:",inline"`
 	AccessModes       []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	StorageClassName  string                              `json:"storageClassName,omitempty"`
-	Capacity          corev1.ResourceList                 `json:"capacity,omitempty"`
-	ClaimRef          commontypes.NamespacedName          `json:"claimRef,omitzero"`
-	NodeAffinity      *corev1.NodeSelector                `json:"nodeAffinity,omitzero"`
-	Phase             corev1.PersistentVolumePhase        `json:"phase,omitempty"`
 }
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
@@ -433,15 +434,20 @@ type ScalingPlannerFactory interface {
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
 // Not all the fields may be necessary for constructing a specific simulator implementation.
 type SimulatorArgs struct {
-	Config            SimulatorConfig
-	Strategy          commontypes.SimulatorStrategy
-	ViewAccess        minkapi.ViewAccess
+	// ViewAccess holds the minkapi ViewAccess used to create views against which simulations are run.
+	ViewAccess minkapi.ViewAccess
+	// SchedulerLauncher holds the launched for the embedded kube-scheduler
 	SchedulerLauncher SchedulerLauncher
-	// StorageAccess provides access to storage metadata.
+	// StorageMetaAccess holds the access facade to storage metadata.
 	StorageMetaAccess StorageMetaAccess
-	NodeScorer        NodeScorer
+	// NodeScorer holds the facade to compute NodeScores for simulated scaled nodes.
+	NodeScorer NodeScorer
+	// Strategy holds the simulator strategy which customizes simulator implementation and behaviorchanges simulator implementation and behavior
+	Strategy commontypes.SimulatorStrategy
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
 	TraceDir string
+	// Config holds the static simulator config parameters
+	Config SimulatorConfig
 }
 
 // PriorityKey represents the key for ordering in considering Nodes for simulation. It maybe used as the key

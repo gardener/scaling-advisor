@@ -5,13 +5,15 @@
 package planner
 
 import (
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/planner/testutil"
-	"github.com/gardener/scaling-advisor/samples"
-	storagev1 "k8s.io/api/storage/v1"
 	"math"
 	"testing"
+
+	"github.com/gardener/scaling-advisor/planner/testutil"
+
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/samples"
+	storagev1 "k8s.io/api/storage/v1"
 )
 
 func TestBasicOnePoolUnitScaleOut(t *testing.T) {

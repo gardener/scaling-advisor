@@ -7,16 +7,17 @@ package types
 import (
 	"context"
 	"fmt"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/cache"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Resettable defines types that can reset their state to a default or initial configuration.
@@ -63,6 +64,7 @@ type NamespacedName struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// AsObjectName converts this namespaced name to a client-go cache.ObjectName
 func (nn *NamespacedName) AsObjectName() cache.ObjectName {
 	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
 }

@@ -5,10 +5,11 @@
 package v1alpha1
 
 import (
+	"slices"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"slices"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -106,6 +107,7 @@ type NodePool struct {
 	Priority int32 `json:"priority"`
 }
 
+// GetNodePlacements computes and returns all the possible NodePlacement's for this NodePool.
 func (p *NodePool) GetNodePlacements() []NodePlacement {
 	placements := make([]NodePlacement, 0, len(p.NodeTemplates)*len(p.AvailabilityZones))
 	for _, nt := range p.NodeTemplates {

@@ -72,6 +72,7 @@ type multiSink struct {
 }
 
 var _ logr.LogSink = (*multiSink)(nil)
+
 var _ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
 
 func (m *multiSink) Init(info logr.RuntimeInfo) {

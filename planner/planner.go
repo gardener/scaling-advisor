@@ -7,11 +7,12 @@ package planner
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/planner/scorer"
-	"github.com/gardener/scaling-advisor/planner/util"
 	"io"
 	"path"
 	"path/filepath"
+
+	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/util"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -64,7 +65,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	}
 	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 	if err != nil {
-		err = fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 	}
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,

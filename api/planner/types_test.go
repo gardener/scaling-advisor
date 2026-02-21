@@ -8,11 +8,13 @@ import (
 	"testing"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestClusterSnapshot_GetUnscheduledPods(t *testing.T) {
@@ -84,7 +86,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -98,7 +100,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 						InstanceType: "m5.large",
 					},
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -112,7 +114,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 						InstanceType: "m5.large",
 					},
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-b",
 								commonconstants.LabelNodePoolName:     "pool-b",
@@ -150,7 +152,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodePoolName: "pool-a",
 								corev1.LabelTopologyRegion:        "us-east-1",
@@ -168,7 +170,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								corev1.LabelTopologyRegion:            "us-east-1",
@@ -186,7 +188,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -204,7 +206,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			snapshot: &ClusterSnapshot{
 				Nodes: []NodeInfo{
 					{
-						LeanMeta: LeanMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{
 								commonconstants.LabelNodeTemplateName: "template-a",
 								commonconstants.LabelNodePoolName:     "pool-a",
@@ -252,7 +254,7 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 
 func TestPodInfo_GetResourceInfo(t *testing.T) {
 	podInfo := PodInfo{
-		LeanMeta: LeanMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			UID:       "pod-uid-123",
 			Namespace: "default",
 			Name:      "test-pod",
@@ -264,9 +266,10 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 	}
 
 	expected := PodResourceInfo{
-		UID:       "pod-uid-123",
-		Namespace: "default",
-		Name:      "test-pod",
+		NamespacedName: commontypes.NamespacedName{
+			Namespace: "default",
+			Name:      "test-pod",
+		},
 		AggregatedRequests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1"),
 			corev1.ResourceMemory: resource.MustParse("2048Mi"),
@@ -282,7 +285,7 @@ func TestPodInfo_GetResourceInfo(t *testing.T) {
 
 func TestNodeInfo_GetResourceInfo(t *testing.T) {
 	nodeInfo := NodeInfo{
-		LeanMeta: LeanMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "node-1",
 		},
 		InstanceType: "m5.large",

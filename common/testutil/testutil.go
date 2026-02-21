@@ -9,7 +9,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"os/signal"
 	"reflect"
 	"runtime"
@@ -17,6 +16,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gardener/scaling-advisor/common/ioutil"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"

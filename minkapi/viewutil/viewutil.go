@@ -7,16 +7,17 @@ package viewutil
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/objutil"
+
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	storagev1 "k8s.io/api/storage/v1"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 )
 
 // DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
