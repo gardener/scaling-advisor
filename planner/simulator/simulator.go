@@ -6,14 +6,18 @@ package simulator
 
 import (
 	"fmt"
+
+	"github.com/gardener/scaling-advisor/planner/simulator/multi"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/planner/simulator/multi"
 )
 
 var _ plannerapi.SimulatorFactory = (*defaultFactory)(nil)
 
+// NewFactory returns a default instance of SimulatorFactory, which in turn can be used to create plannerapi.ScaleOutSimulator or
+// plannerapi.ScaleInSimulator
 func NewFactory() plannerapi.SimulatorFactory {
 	return &defaultFactory{}
 }
@@ -25,7 +29,7 @@ func (s *defaultFactory) GetScaleOutSimulator(args plannerapi.SimulatorArgs) (pl
 	case "":
 		return nil, fmt.Errorf("%w: simulation strategy must be specified", plannerapi.ErrCreateSimulator)
 	case commontypes.SimulatorStrategySingleNodeMultiSim:
-		return multi.NewScaleOutSimulator(args)
+		return multi.New(args)
 	case commontypes.SimulatorStrategyMultiNodeSingleSim:
 		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, args.Strategy)
 	default:

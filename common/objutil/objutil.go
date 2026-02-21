@@ -8,15 +8,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"io"
 	"io/fs"
 	"os"
 	"reflect"
 	"strconv"
 
+	"github.com/gardener/scaling-advisor/common/ioutil"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"

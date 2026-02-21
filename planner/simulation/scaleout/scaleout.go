@@ -7,11 +7,11 @@ package scaleout
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/planner/util"
-	storagev1 "k8s.io/api/storage/v1"
 	"maps"
 	"slices"
 	"time"
+
+	"github.com/gardener/scaling-advisor/planner/util"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
@@ -27,6 +27,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
@@ -74,9 +75,11 @@ func (s *defaultScaleOut) Reset() error {
 	}
 	return nil
 }
+
 func (s *defaultScaleOut) PriorityKey() plannerapi.PriorityKey {
 	return s.priorityKey
 }
+
 func (s *defaultScaleOut) Name() string {
 	return s.name
 }
@@ -283,6 +286,7 @@ func (s *defaultScaleOut) createCSINode(ctx context.Context, node *corev1.Node, 
 	}
 	return err
 }
+
 func (s *defaultScaleOut) buildSimulationNode() *corev1.Node {
 	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.args.RunCounter.Load(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)

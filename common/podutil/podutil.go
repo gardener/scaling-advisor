@@ -5,12 +5,11 @@
 package podutil
 
 import (
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"slices"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -139,7 +138,7 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]int64 {
 func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		objectNames = append(objectNames, pod.NamespacedName.String())
+		objectNames = append(objectNames, pod.String())
 	}
 	return objectNames
 }

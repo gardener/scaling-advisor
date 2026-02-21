@@ -2,7 +2,6 @@ package volutil
 
 import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -21,7 +20,7 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 }
 
 // AsPV converts the given plannerapi PVInfo object to a corev1.PersistentVolume
-func AsPV(p planner.PVInfo) *corev1.PersistentVolume {
+func AsPV(p plannerapi.PVInfo) *corev1.PersistentVolume {
 	var volNodeAffinity *corev1.VolumeNodeAffinity
 	if p.NodeAffinity != nil {
 		volNodeAffinity = &corev1.VolumeNodeAffinity{Required: p.NodeAffinity}
@@ -42,7 +41,7 @@ func AsPV(p planner.PVInfo) *corev1.PersistentVolume {
 	}
 }
 
-// AsPVCInfo converts the given k8s corev1.PersistentVolumeClaim object to a lean plannerapi.PVCInfo.
+// AsPVCInfo converts the given k8s corev1.PersistentVolumeClaim object to a lean planner PVCInfo.
 func AsPVCInfo(pvc corev1.PersistentVolumeClaim) plannerapi.PVCInfo {
 	return plannerapi.PVCInfo{
 		ObjectMeta:                pvc.ObjectMeta,

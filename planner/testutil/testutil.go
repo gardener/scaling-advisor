@@ -3,45 +3,49 @@ package testutil
 import (
 	"context"
 	"encoding/json"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/common/testutil"
-	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
-	"github.com/gardener/scaling-advisor/minkapi/view"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-	"github.com/gardener/scaling-advisor/planner/scheduler"
-	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
-	"github.com/gardener/scaling-advisor/samples"
-	"github.com/google/go-cmp/cmp"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"os"
 	"path"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gardener/scaling-advisor/planner/scheduler"
+
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/api/minkapi"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/podutil"
+	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
+	"github.com/gardener/scaling-advisor/minkapi/view"
+	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
+	"github.com/gardener/scaling-advisor/samples"
+	"github.com/google/go-cmp/cmp"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 )
 
-const DefaultPlannerTestVerbosity = 5
+// DefaultPlannerTestVerbosity indicates the default verbosity for the unit tests that construct the ScalingPlanner.
+const DefaultPlannerTestVerbosity = 3
+
+// DefaultPlannerTestTimeout sets the default timeout for unit tests that construct the ScalingPlanner.
 const DefaultPlannerTestTimeout = 30 * time.Second
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner
 type Args struct {
+	Factories                         plannerapi.Factories
 	NumUnscheduledPerResourceCategory map[samples.ResourcePreset]int
 	PoolCategory                      samples.PoolCategory
 	SimulatorStrategy                 commontypes.SimulatorStrategy
 	NodeScoringStrategy               commontypes.NodeScoringStrategy
 	AdviceGenerationMode              commontypes.ScalingAdviceGenerationMode
-	Timeout                           time.Duration
-	PVCNames                          []string
-	Factories                         plannerapi.Factories
 	VolumeBindingMode                 storagev1.VolumeBindingMode
 	Provider                          commontypes.CloudProvider
+	PVCNames                          []string
+	Timeout                           time.Duration
 }
 
 // Data holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
@@ -113,6 +117,8 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 	return
 }
 
+// GenFillStorageAndVolumeObjects uses the given StorageVolGenInput to generate StorageClasses, PVC's and PV's and also
+// populate them in given ClusterSnapshot.
 func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput samples.StorageVolGenInput, snap *plannerapi.ClusterSnapshot) (ok bool) {
 	var (
 		err  error
@@ -187,7 +193,7 @@ func ObtainAndAssertScaleOutPlan(t *testing.T, planner plannerapi.ScalingPlanner
 	}
 }
 
-// CreateTestScalingPlanner creates a ScalingPlanner for unit-tests with the given context timeout for the given  provider,
+// CreateTestScalingPlanner creates a ScalingPlanner for unit-tests with the given context timeout for the given provider,
 // using traceDir for traces and object dumps and leveraging the given factories.
 func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider commontypes.CloudProvider, traceDir string, factories plannerapi.Factories) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
 	var err error
@@ -201,7 +207,7 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 	if timeout == 0 {
 		timeout = DefaultPlannerTestTimeout
 	}
-	runCtx = testutil.NewTestContext(t, timeout, DefaultPlannerTestVerbosity)
+	runCtx = commontestutil.NewTestContext(t, timeout, DefaultPlannerTestVerbosity)
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		t.Fatalf("failed to get instance pricing access: %v", err)

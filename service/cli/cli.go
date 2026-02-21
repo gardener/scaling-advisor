@@ -17,7 +17,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/service"
 	commoncli "github.com/gardener/scaling-advisor/common/cli"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/planner/weigher"
+	"github.com/gardener/scaling-advisor/planner"
 	"github.com/gardener/scaling-advisor/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
@@ -113,8 +113,7 @@ func LaunchApp(ctx context.Context) (app service.App, exitCode int, err error) {
 		exitCode = commoncli.ExitErrStart
 		return
 	}
-	weightsFn := weigher.GetDefaultWeightsFn()
-	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, weightsFn)
+	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, planner.NewFactories())
 	if err != nil {
 		exitCode = commoncli.ExitErrStart
 		return

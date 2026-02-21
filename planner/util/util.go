@@ -7,14 +7,21 @@ package util
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,14 +30,6 @@ import (
 	storagevolume "k8s.io/component-helpers/storage/volume"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
 	"k8s.io/utils/ptr"
-	"strconv"
-
-	"github.com/gardener/scaling-advisor/planner/simulator"
-
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/go-logr/logr"
 )
 
 // SendPlanError wraps the given error with request ref info, embeds the wrapped error within a ScalingAdviceResult and sends the same to the given results channel.

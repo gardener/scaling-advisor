@@ -2,12 +2,14 @@ package planner
 
 import (
 	"context"
+	"io"
+	"sync/atomic"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"io"
+
 	corev1 "k8s.io/api/core/v1"
-	"sync/atomic"
 )
 
 // ScaleOutSimulator is a facade that executes simulations to generate one or more scale-out plans.
@@ -100,7 +102,7 @@ type ScaleOutSimulation interface {
 	// ActivityStatus returns the current ActivityStatus of the simulation
 	ActivityStatus() ActivityStatus
 	// PriorityKey returns the PriorityKey for the simulation which is the key by which simulations are grouped and determines
-	// the order in which simualtions are run.
+	// the order in which simulations are run.
 	PriorityKey() PriorityKey
 	// Run executes the simulation against the given view to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and ScaleOutSimResult consumption.
@@ -142,10 +144,10 @@ type ScaleOutSimArgs struct {
 	AvailabilityZone string
 	// NodeTemplateName is the name of the node template to use in the simulation.
 	NodeTemplateName string
-	// Config is the simulation configuration.
-	Config SimulatorConfig
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
 	TraceDir string
+	// Config is the simulation configuration.
+	Config SimulatorConfig
 }
 
 // ScaleOutSimGroup is a group of ScaleOutSimulation's at the same priority level (ie a partition of simulations).

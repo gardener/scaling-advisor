@@ -21,7 +21,6 @@ import (
 	"github.com/gardener/scaling-advisor/api/service"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/planner"
 	"github.com/gardener/scaling-advisor/planner/scheduler"
 )
 
@@ -36,9 +35,9 @@ type defaultScalingAdvisor struct {
 
 // NewService initializes and returns a ScalingAdvisorService based on the provided dependencies.
 func NewService(ctx context.Context,
-	config service.ScalingAdvisorServiceConfig,
-	pricingAccess plannerapi.InstancePricingAccess,
-	weightsFn plannerapi.GetResourceWeightsFunc) (svc service.ScalingAdvisorService, err error) {
+	config plannerapi.ScalingPlannerServiceConfig,
+	pricingAccess pricingapi.InstancePricingAccess,
+	factories plannerapi.Factories) (svc plannerapi.ScalingPlannerService, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", service.ErrInitFailed, err)
@@ -63,14 +62,17 @@ func NewService(ctx context.Context,
 	if err != nil {
 		return
 	}
-	p := planner.New(plannerapi.ScalingPlannerArgs{
+	p, err := factories.Planner.NewPlanner(plannerapi.ScalingPlannerArgs{
 		ViewAccess:        minKAPIServer,
-		ResourceWeigher:   weightsFn,
+		ResourceWeigher:   factories.ResourceWeigher,
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
 		TraceDir:          config.TraceDir,
 	})
-	svc = &defaultScalingAdvisor{
+	if err != nil {
+		return
+	}
+	svc = &defaultPlannerService{
 		cfg:               config,
 		minKAPIServer:     minKAPIServer,
 		schedulerLauncher: schedulerLauncher,
