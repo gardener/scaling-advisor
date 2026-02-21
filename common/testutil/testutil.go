@@ -37,7 +37,7 @@ func AssertError(t *testing.T, got error, want error) {
 		return
 	}
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Expected error: %v", got)
+		return
 	} else {
 		t.Errorf("Unexpected error, got: %v, want: %v", got, want)
 	}
