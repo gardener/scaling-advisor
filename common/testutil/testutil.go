@@ -41,7 +41,7 @@ func AssertError(t *testing.T, got error, want error) {
 		return
 	}
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Matched error: %v", got)
+		return
 	} else {
 		t.Errorf("Unmatched error, got: %v, want: %v", got, want)
 	}

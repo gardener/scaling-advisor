@@ -44,7 +44,6 @@ func TestGeneratePVCs(t *testing.T) {
 	for i := range pvcs {
 		pvcYAMLPath := pvcYAMLPaths[i]
 		pvc := pvcs[i]
-		t.Logf("Generated PVC yaml %q containing %+v", pvcYAMLPath, pvc)
 		gotName := pvc.Name
 		wantName := wantNames[i]
 		if gotName != wantName {
@@ -94,7 +93,6 @@ func TestGeneratePVs(t *testing.T) {
 	for i := range pvs {
 		pvYAMLPath := pvYAMLPaths[i]
 		pv := pvs[i]
-		t.Logf("GeneratePersistentVolumes generated PV yaml %q containing %+v", pvYAMLPath, pv)
 		gotStorage := pv.Spec.Capacity[corev1.ResourceStorage]
 		if gotStorage.Cmp(wantStorage) != 0 {
 			t.Errorf("GeneratePersistentVolumes gotStorage %q, wantStorage %q", gotStorage.String(), wantStorage.String())
@@ -121,7 +119,6 @@ func TestGenerateStorageClass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateStorageClass() failed: %v", err)
 	}
-	t.Logf("GenerateStorageClass generated StorageClass yaml %q, StorageClass: %+v", scYAMLPath, sc)
 	gotVolumeBindingMode := sc.VolumeBindingMode
 	if gotVolumeBindingMode == nil {
 		t.Fatalf("GenerateStorageClass gotVolumeBindingMode is nil")
@@ -157,11 +154,9 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("Generated %d pods for %q", len(pods), resourceCategory)
 			if len(pods) != podCount {
 				t.Errorf("expecting %d pods for %q, got %d", podCount, resourceCategory, len(pods))
 			}
-			t.Logf("Generated podYAMLPaths %q for %q", podYAMLPaths, resourceCategory)
 			if len(podYAMLPaths) != podCount {
 				t.Errorf("expecting %d paths for %q, got %d", podCount, resourceCategory, len(podYAMLPaths))
 			}
