@@ -106,7 +106,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		return
 	}
 	reqJsonPath := path.Join(testGenDir, "request.json")
-	if err = os.WriteFile(reqJsonPath, data, 0644); err != nil {
+	if err = os.WriteFile(reqJsonPath, data, 0600); err != nil {
 		t.Fatal("failed to write request.json:", err)
 		return
 	}

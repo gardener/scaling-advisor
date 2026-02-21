@@ -5,10 +5,6 @@
 package samples
 
 import (
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"testing"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -67,7 +63,6 @@ func TestGeneratePVCs(t *testing.T) {
 			t.Errorf("GeneratePersistentVolumes gotPhase %q, wantPhase %q", gotPhase, wantPhase)
 		}
 	}
-
 }
 
 func TestGeneratePVs(t *testing.T) {
@@ -114,6 +109,7 @@ func TestGeneratePVs(t *testing.T) {
 		}
 	}
 }
+
 func TestGenerateStorageClass(t *testing.T) {
 	wantName := "default"
 	wantVolumeBindingMode := storagev1.VolumeBindingImmediate
