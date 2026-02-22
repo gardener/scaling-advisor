@@ -36,20 +36,27 @@ const DefaultPlannerTestTimeout = 30 * time.Second
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner
 type Args struct {
-	Factories                         plannerapi.Factories
-	NumUnscheduledPerResourceCategory map[samples.ResourcePreset]int
-	PoolCategory                      samples.PoolCategory
-	SimulatorStrategy                 commontypes.SimulatorStrategy
-	NodeScoringStrategy               commontypes.NodeScoringStrategy
-	AdviceGenerationMode              commontypes.ScalingAdviceGenerationMode
-	VolumeBindingMode                 storagev1.VolumeBindingMode
-	Provider                          commontypes.CloudProvider
-	PVCNames                          []string
-	Timeout                           time.Duration
+	Factories                       plannerapi.Factories
+	NumUnscheduledPerResourcePreset map[samples.ResourcePreset]int
+	PoolPreset                      samples.PoolPreset
+	SimulatorStrategy               commontypes.SimulatorStrategy
+	NodeScoringStrategy             commontypes.NodeScoringStrategy
+	AdviceGenerationMode            commontypes.ScalingAdviceGenerationMode
+	VolumeBindingMode               storagev1.VolumeBindingMode
+	Provider                        commontypes.CloudProvider
+	// PoolZones specifies the availability zones for each pool given in order for the NodePools of the PoolPreset.
+	// If nil, defaults to the PoolPreset zone.
+	PoolZones [][]string
+	PVCNames  []string
+	// PVZones if specified restrict the generated PV's node affinity topology zones to only the given set.
+	// If empty (default), PV's are generated with for all zones across all NodePool's of the ScalingConstraint.
+	PVZones []string
+	Timeout time.Duration
 }
 
 // Data holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
 type Data struct {
+	GenDir         string
 	RunContext     context.Context
 	SnapshotPath   string
 	NodePlacements []sacorev1alpha1.NodePlacement
@@ -59,23 +66,25 @@ type Data struct {
 // CreateTestPlannerAndTestData creates a ScalingPlanner suitable for unit tests and test Data for the given Args.
 func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.ScalingPlanner, testData Data, ok bool) {
 	var (
-		testGenDir string
-		pods       []corev1.Pod
-		err        error
+		pods []corev1.Pod
+		err  error
 	)
 	if ok = testData.validateAndFillDefaults(t, &args); !ok {
 		return
 	}
-	if testGenDir, ok = commontestutil.CreateTestGenDir(t); !ok {
+	if testData.GenDir, ok = commontestutil.CreateTestGenDir(t); !ok {
 		return
 	}
-	if testData.Request.Constraint, err = samples.LoadBasicScalingConstraints(args.PoolCategory); err != nil {
-		t.Fatalf("failed to load constraints: %v", err)
+	constraintGenInput := samples.ConstraintGenInput{GenDir: testData.GenDir, PoolPreset: args.PoolPreset, PoolZones: args.PoolZones}
+	constraintGenOutput, err := samples.GenScalingConstraints(constraintGenInput)
+	if err != nil {
+		t.Fatalf("failed to generate constraints: %v", err)
 		return
 	}
-	for c, n := range args.NumUnscheduledPerResourceCategory {
-		pods, _, err = samples.GenerateSimplePodsForResourceCategory(c, n, samples.PodGenInput{
-			GenDir:        testGenDir,
+	testData.Request.Constraint = &constraintGenOutput.Constraint
+	for c, n := range args.NumUnscheduledPerResourcePreset {
+		pods, _, err = samples.GenerateSimplePodsForResourcePreset(c, n, samples.PodGenInput{
+			GenDir:        testData.GenDir,
 			Name:          string(c),
 			SchedulerName: "bin-packing-scheduler",
 			PVCNames:      args.PVCNames,
@@ -86,16 +95,19 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		}
 		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
 	}
-	allZones := testData.Request.Constraint.Spec.GetAllAvailabilityZones()
 	if len(args.PVCNames) > 0 {
+		if args.PVZones == nil {
+			// If PVZones is not specified, default to all available zones across all NodePools of the ScalingConstraint
+			args.PVZones = testData.Request.Constraint.Spec.GetAllAvailabilityZones()
+		}
 		volGenInput := samples.StorageVolGenInput{
 			Provider:          args.Provider,
-			GenDir:            testGenDir,
+			GenDir:            testData.GenDir,
 			VolumeBindingMode: args.VolumeBindingMode,
 			PVCNames:          args.PVCNames,
-			PVZones:           allZones,
+			PVZones:           args.PVZones,
 		}
-		if ok = GenFillStorageAndVolumeObjects(t, testGenDir, volGenInput, &testData.Request.Snapshot); !ok {
+		if ok = GenFillStorageAndVolumeObjects(t, testData.GenDir, volGenInput, &testData.Request.Snapshot); !ok {
 			return
 		}
 	}
@@ -105,12 +117,12 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatal("failed to marshal request:", err)
 		return
 	}
-	reqJsonPath := path.Join(testGenDir, "request.json")
+	reqJsonPath := path.Join(testData.GenDir, "request.json")
 	if err = os.WriteFile(reqJsonPath, data, 0600); err != nil {
 		t.Fatal("failed to write request.json:", err)
 		return
 	}
-	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args.Timeout, args.Provider, testGenDir, args.Factories); !ok {
+	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args.Timeout, args.Provider, testData.GenDir, args.Factories); !ok {
 		return
 	}
 	ok = true
@@ -177,20 +189,36 @@ func AssertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 // logs the same, and asserts that the embedded ScaleOutPlan within the Response matches the wanted ScaleOutPlan.
 // Returns true if all assertions succeeded or false if assertion failed or on any error.
 func ObtainAndAssertScaleOutPlan(t *testing.T, planner plannerapi.ScalingPlanner, testData *Data, wantPlan *sacorev1alpha1.ScaleOutPlan) bool {
+	response, ok := ObtainPlannerResponse(t, planner, testData)
+	if !ok {
+		return false
+	}
+	return AssertExactScaleOutPlan(t, wantPlan, response.ScaleOutPlan)
+}
+
+// ObtainPlannerResponse executes the given planner with the context and request within testData, obtains the
+// plannerapi.Response logs and returns the same if successful. Returns false in case of any error and also fails the
+// test state.
+func ObtainPlannerResponse(t *testing.T, planner plannerapi.ScalingPlanner, testData *Data) (response plannerapi.Response, ok bool) {
 	responseCh := planner.Plan(testData.RunContext, testData.Request)
-	response := <-responseCh
+	response = <-responseCh
 	if response.Error != nil {
 		t.Fatalf("failed to generate scale-out plan: %v", response.Error)
-		return false
-	} else {
-		planResultJson, err := json.MarshalIndent(response, "", "  ")
-		if err != nil {
-			t.Fatalf("failed to marshal Response: %v", err)
-			return false
-		}
-		t.Logf("Obtained plannerapi.Response %s", planResultJson)
-		return AssertExactScaleOutPlan(t, wantPlan, response.ScaleOutPlan)
+		return
 	}
+	planResultJson, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal Response: %v", err)
+		return
+	}
+	t.Logf("Obtained plannerapi.Response %s", planResultJson)
+	respJsonPath := path.Join(testData.GenDir, "response.json")
+	if err = os.WriteFile(respJsonPath, planResultJson, 0600); err != nil {
+		t.Fatal("failed to write response.json", err)
+		return
+	}
+	ok = true
+	return
 }
 
 // CreateTestScalingPlanner creates a ScalingPlanner for unit-tests with the given context timeout for the given provider,
@@ -262,8 +290,8 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 }
 
 func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
-	if len(args.NumUnscheduledPerResourceCategory) == 0 {
-		t.Fatal("args.NumUnscheduledPerResourceCategory mandatory")
+	if len(args.NumUnscheduledPerResourcePreset) == 0 {
+		t.Fatal("args.NumUnscheduledPerResourcePreset mandatory")
 		return false
 	}
 	d.Request.CreationTime = time.Now()

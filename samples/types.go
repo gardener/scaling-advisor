@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -21,7 +22,7 @@ const (
 	// PoolPreset1P is the pool category variant associated with a basic one-pool with one zone scaling constraint.
 	PoolPreset1P PoolPreset = "1p"
 
-	// PoolPreset2P is the pool category variant associated with a basic two-pool scaling constraint.
+	// PoolPreset2P is the pool category variant associated with a basic two-pool scaling constraint with one zone per pool.
 	PoolPreset2P PoolPreset = "2p"
 )
 
@@ -62,6 +63,23 @@ type AppLabels struct {
 	Component string
 	PartOf    string
 	ManagedBy string
+}
+
+// ConstraintGenInput holds the input data for generating ScalingConstraint's. Currently, it only supports customization of
+// NodePool details, but will be extended in the future.
+type ConstraintGenInput struct {
+	GenDir string
+	// PoolPreset is the PoolPreset variant
+	PoolPreset PoolPreset
+	// PoolZones specifies the availability zones for each pool given in order. If nil, defaults to the preset zone.
+	PoolZones [][]string
+}
+
+// ConstraintGenOutput holds the generated output data after generating NodePools.
+type ConstraintGenOutput struct {
+	// GenYAMLPath provides the generated YAML path of ScalingConstraint
+	GenYAMLPath string
+	Constraint  sacorev1alpha1.ScalingConstraint
 }
 
 // PodGenInput holds the input data for generating simple pods.

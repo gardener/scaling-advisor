@@ -16,7 +16,6 @@ import (
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
@@ -27,27 +26,30 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-const (
-	// CategoryBasic is the name associated with a basic scenario.
-	CategoryBasic = "basic"
-)
-
-//go:embed data/*.*
-var dataFS embed.FS
-
-// LoadClusterConstraints loads cluster constraints from the sample data filesystem.
-func LoadClusterConstraints(categoryName string) (*sacorev1alpha1.ScalingConstraint, error) {
-	var clusterConstraints sacorev1alpha1.ScalingConstraint
-	clusterConstraintsPath := fmt.Sprintf("data/%s-cluster-constraints.json", categoryName)
-	switch categoryName {
-	case CategoryBasic:
-		if err := objutil.LoadIntoRuntimeObj(dataFS, clusterConstraintsPath, &clusterConstraints); err != nil {
-			return nil, err
+// GenScalingConstraints generates a ScalingConstraint encapsulated in ConstraintGenOutput given the ConstraintGenInput.
+func GenScalingConstraints(in ConstraintGenInput) (out ConstraintGenOutput, err error) {
+	presetPath := fmt.Sprintf("data/scaling-constraints/%s.yaml", in.PoolPreset)
+	switch in.PoolPreset {
+	case PoolPreset1P, PoolPreset2P:
+		if err = objutil.LoadIntoRuntimeObj(dataFS, presetPath, &out.Constraint); err != nil {
+			err = fmt.Errorf("failed to load scaling constraints for PoolPreset %q: %v", in.PoolPreset, err)
+			return
 		}
 	default:
-		return nil, fmt.Errorf("%w: unknown %q", commonerrors.ErrUnimplemented, categoryName)
+		err = fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, in.PoolPreset)
+		return
 	}
-	return &clusterConstraints, nil
+	if len(in.PoolZones) > len(out.Constraint.Spec.NodePools) {
+		err = fmt.Errorf("in.PoolZones %q exceeds number of pools %d in preset %q", in.PoolZones, len(out.Constraint.Spec.NodePools), in.PoolPreset)
+		return
+	}
+	for idx, zones := range in.PoolZones {
+		out.Constraint.Spec.NodePools[idx].AvailabilityZones = zones
+	}
+	if in.GenDir != "" {
+		out.GenYAMLPath, err = objutil.SaveRuntimeObjAsYAMLToPath(&out.Constraint, in.GenDir, "constraint.yaml")
+	}
+	return
 }
 
 // LoadClusterSnapshot loads a cluster snapshot from the sample data filesystem.
@@ -97,9 +99,9 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (p
 	return
 }
 
-// GenerateSimplePodsForResourceCategory generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
+// GenerateSimplePodsForResourcePreset generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
 // Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourceCategory(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsForResourcePreset(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	podTmplData := PodTemplateData{
 		PodGenInput: metadata,
 		Resources:   category.AsResourceList(),

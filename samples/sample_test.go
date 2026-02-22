@@ -138,7 +138,7 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 	}
 	for _, resourceCategory := range allResourcePresets {
 		t.Run(string(resourceCategory), func(t *testing.T) {
-			pods, podYAMLPaths, err := GenerateSimplePodsForResourceCategory(resourceCategory, podCount, PodGenInput{
+			pods, podYAMLPaths, err := GenerateSimplePodsForResourcePreset(resourceCategory, podCount, PodGenInput{
 				Name: string(resourceCategory),
 				AppLabels: AppLabels{
 					Name:      string(resourceCategory),
