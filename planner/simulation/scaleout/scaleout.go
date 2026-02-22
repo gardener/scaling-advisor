@@ -29,6 +29,7 @@ import (
 	eventsv1 "k8s.io/api/events/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -55,14 +56,15 @@ func NewDefault(name string, args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleO
 	if err := validateSimulationArgs(&args, nodeTemplate); err != nil {
 		return nil, err
 	}
+
 	sim := &defaultScaleOut{
 		name:         name,
 		args:         &args,
 		nodeTemplate: nodeTemplate,
 		priorityKey:  plannerapi.PriorityKey{NodePoolPriority: args.NodePool.Priority, NodeTemplatePriority: nodeTemplate.Priority},
 		state: &runState{
-			status:              plannerapi.ActivityStatusPending,
-			scheduledPodsByNode: make(map[string][]plannerapi.PodResourceInfo),
+			status:                      plannerapi.ActivityStatusPending,
+			scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
 		},
 	}
 	return sim, nil
@@ -70,8 +72,8 @@ func NewDefault(name string, args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleO
 
 func (s *defaultScaleOut) Reset() error {
 	s.state = &runState{
-		status:              plannerapi.ActivityStatusPending,
-		scheduledPodsByNode: make(map[string][]plannerapi.PodResourceInfo),
+		status:                      plannerapi.ActivityStatusPending,
+		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
 	}
 	return nil
 }
@@ -95,14 +97,14 @@ func (s *defaultScaleOut) Result() (plannerapi.ScaleOutSimResult, error) {
 func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: run of simulation %q failed: %w", plannerapi.ErrRunSimulation, s.name, err)
+			err = fmt.Errorf("%w: cannot run %q, runNum %d: %w", plannerapi.ErrRunSimulation, s.name, s.runNum(), err)
 			s.state.err = err
 			s.state.status = plannerapi.ActivityStatusFailure
 		}
 	}()
 	s.state.status = plannerapi.ActivityStatusRunning
-	s.args.RunCounter.Add(1)
-	log := logr.FromContextOrDiscard(ctx).WithValues("simulationName", s.name, "simulationRunNum", s.args.RunCounter.Load())
+	runNum := s.incRunNum()
+	log := logr.FromContextOrDiscard(ctx).WithValues("simulationName", s.name, "runNum", runNum)
 	simCtx := logr.NewContext(ctx, log)
 
 	if logutil.VerbosityFromContext(simCtx) > 3 {
@@ -112,12 +114,15 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 	// Get unscheduled pods from the view
 	unscheduledPods, err := getUnscheduledPodsMap(simCtx, view)
 	if err != nil {
-		return fmt.Errorf("simulation %q was unable to get unscheduled pods from view %q: %w", s.name, view.GetName(), err)
+		return fmt.Errorf("simulation %q, runNum %d was unable to get unscheduled pods from view %q: %w",
+			s.name, runNum, view.GetName(), err)
 	}
 	if len(unscheduledPods) == 0 {
-		return fmt.Errorf("%w: simulation %q was created with no unscheduled pods in the view %q", plannerapi.ErrNoUnscheduledPods, s.name, view.GetName())
+		return fmt.Errorf("%w: simulation %q, runNum %d was created with no unscheduled pods in the view %q",
+			plannerapi.ErrNoUnscheduledPods, s.name, runNum, view.GetName())
 	}
 	s.state.unscheduledPods = unscheduledPods
+	s.state.leftoverUnscheduledPodNames = sets.New(slices.Collect(maps.Keys(unscheduledPods))...)
 
 	// Create simulation Node and CSINode
 	if err = s.createSimulationNode(simCtx, view); err != nil {
@@ -158,9 +163,12 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 		ScaledNodePlacements:     []sacorev1alpha1.NodePlacement{s.getScaledNodePlacementInfo()},
 		ScaledNodePodAssignments: s.getScaledNodeAssignments(),
 		OtherNodePodAssignments:  otherAssignments,
-		LeftoverUnscheduledPods:  slices.Collect(maps.Keys(s.state.unscheduledPods)),
+		LeftoverUnscheduledPods:  s.state.leftoverUnscheduledPodNames.UnsortedList(),
 	}
 	s.state.status = plannerapi.ActivityStatusSuccess
+	if len(s.state.result.LeftoverUnscheduledPods) > 0 {
+		log.V(3).Info("LeftoverUnscheduledPods after run", "podCount", len(s.state.result.LeftoverUnscheduledPods))
+	}
 	return
 }
 
@@ -211,14 +219,19 @@ func (s *defaultScaleOut) getScaledNodePlacementInfo() sacorev1alpha1.NodePlacem
 }
 
 func (s *defaultScaleOut) getScaledNodeAssignments() []plannerapi.NodePodAssignment {
-	simNodeScheduledPods := s.state.scheduledPodsByNode[s.state.simNode.Name]
+	simNodeScheduledPods := s.state.scheduledPodNamesByNodeName[s.state.simNode.Name]
 	if len(simNodeScheduledPods) == 0 {
 		return nil
+	}
+	scheduledPodNames := s.state.scheduledPodNamesByNodeName[s.state.simNode.Name].UnsortedList()
+	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
+	for _, podName := range scheduledPodNames {
+		scheduledPodInfos = append(scheduledPodInfos, s.state.unscheduledPods[podName])
 	}
 	return []plannerapi.NodePodAssignment{
 		{
 			NodeResources: getNodeResourceInfo(s.state.simNode),
-			ScheduledPods: s.state.scheduledPodsByNode[s.state.simNode.Name],
+			ScheduledPods: scheduledPodInfos,
 		},
 	}
 }
@@ -288,12 +301,12 @@ func (s *defaultScaleOut) createCSINode(ctx context.Context, node *corev1.Node, 
 }
 
 func (s *defaultScaleOut) buildSimulationNode() *corev1.Node {
-	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.args.RunCounter.Load(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
+	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.runNum(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   simNodeName,
-			Labels: nodeutil.CreateNodeLabels(s.name, s.args.NodePool, s.nodeTemplate, s.args.AvailabilityZone, s.args.RunCounter.Load(), simNodeName),
+			Labels: nodeutil.CreateNodeLabels(s.name, s.args.NodePool, s.nodeTemplate, s.args.AvailabilityZone, s.runNum(), simNodeName),
 		},
 		Spec: corev1.NodeSpec{
 			ProviderID: simNodeName,
@@ -329,7 +342,7 @@ func (s *defaultScaleOut) trackUntilStabilized(ctx context.Context, view minkapi
 			if stabilized {
 				return
 			}
-			if len(s.state.unscheduledPods) == 0 {
+			if len(s.state.leftoverUnscheduledPodNames) == 0 {
 				log.V(5).Info("ending simulation run since no unscheduled pods left")
 				return
 			}
@@ -338,7 +351,7 @@ func (s *defaultScaleOut) trackUntilStabilized(ctx context.Context, view minkapi
 }
 
 func (s *defaultScaleOut) getOtherAssignments(ctx context.Context, view minkapi.View) ([]plannerapi.NodePodAssignment, error) {
-	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPodsByNode))
+	nodeNames := slices.Collect(maps.Keys(s.state.scheduledPodNamesByNodeName))
 	nodes, err := view.ListNodes(ctx, nodeNames...)
 	if err != nil {
 		return nil, err
@@ -348,12 +361,12 @@ func (s *defaultScaleOut) getOtherAssignments(ctx context.Context, view minkapi.
 		if node.Name == s.state.simNode.Name {
 			continue
 		}
-		podResources := s.state.scheduledPodsByNode[node.Name]
-		if len(podResources) > 0 {
+		scheduledPodInfos := s.state.scheduledPodInfos()
+		if len(scheduledPodInfos) > 0 {
 			nodeResources := getNodeResourceInfo(&node)
 			assignments = append(assignments, plannerapi.NodePodAssignment{
 				NodeResources: nodeResources,
-				ScheduledPods: podResources,
+				ScheduledPods: scheduledPodInfos,
 			})
 		}
 	}
@@ -361,83 +374,54 @@ func (s *defaultScaleOut) getOtherAssignments(ctx context.Context, view minkapi.
 }
 
 func (s *defaultScaleOut) track(ctx context.Context, view minkapi.View) (stabilized bool, err error) {
-	var (
-		eventTime                  metav1.MicroTime
-		lastRecordedTrackEventTime metav1.MicroTime
-	)
+	var eventTime metav1.MicroTime
 	s.state.numTrackAttempts++
-	lastRecordedTrackEventTime = s.state.latestTrackEventTime
-	log := logr.FromContextOrDiscard(ctx)
 	evList := view.GetEventSink().List()
+	if err = view.GetEventSink().Reset(); err != nil {
+		return
+	}
+	log := logr.FromContextOrDiscard(ctx)
 	log.V(5).Info("Invoked track", "numEvents", len(evList), "numTrackAttempts", s.state.numTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
-	for idx, ev := range view.GetEventSink().List() {
+	for idx, ev := range evList {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime
 		} else {
 			eventTime = ev.EventTime
 		}
-		log.V(5).Info("checking event", "index", idx, "id", ev.UID, "eventTime", eventTime, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-		if s.state.latestTrackEventTime.Equal(&eventTime) || s.state.latestTrackEventTime.After(eventTime.Time) {
-			continue
-		}
+		log.V(5).Info("Checking event", "index", idx, "id", ev.UID, "eventTime", eventTime, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 		s.state.numReceivedEvents++
-		s.state.latestTrackEventTime = eventTime
 		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
 			if ev.Reason == "FailedScheduling" {
 				log.V(4).Info("FailedScheduling event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 			}
 			continue
 		}
-		log.V(4).Info("Scheduled event", "index", idx, "id", ev.UID, "ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance, "Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
-		if err = s.handleScheduledPodEvent(ctx, view, ev); err != nil {
+		if err = s.state.handleScheduledPodEvent(ctx, view, ev); err != nil {
 			return
 		}
 	}
 
-	if lastRecordedTrackEventTime.Equal(&s.state.latestTrackEventTime) {
+	if len(evList) == 0 {
 		s.state.numUnchangedTrackAttempts++
 	}
+
 	if s.state.numUnchangedTrackAttempts >= plannerapi.DefaultMaxUnchangedTrackAttempts {
 		log.V(3).Info("simulation run has stabilized - no new events observed",
 			"numReceivedEvents", s.state.numReceivedEvents,
 			"maxUnchangedTrackAttempts", plannerapi.DefaultMaxUnchangedTrackAttempts,
 			"numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts,
-			"lastRecordedTrackEventTime", s.state.latestTrackEventTime,
 			"numScheduledPods", s.state.numScheduledPods)
 		stabilized = true
 	}
-
 	return
 }
 
-func (s *defaultScaleOut) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
-	log := logr.FromContextOrDiscard(ctx)
-	podNsName := commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
-	log.V(3).Info("scheduledPod event.", "namespacedName", podNsName, "eventNote", ev.Note)
-	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
-	if err != nil {
-		return err
-	}
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
-	}
-	if pod.Spec.NodeName == "" {
-		return fmt.Errorf("scheduledPod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
-	}
-	podsOnNode := s.state.scheduledPodsByNode[pod.Spec.NodeName]
-	found := slices.ContainsFunc(podsOnNode, func(podOnNode plannerapi.PodResourceInfo) bool {
-		return podOnNode.NamespacedName == podNsName
-	})
-	if found {
-		return nil
-	}
-	podsOnNode = append(podsOnNode, podutil.PodResourceInfoFromCoreV1Pod(pod))
-	s.state.scheduledPodsByNode[pod.Spec.NodeName] = podsOnNode
-	s.state.numScheduledPods++
-	log.V(4).Info("scheduledPod added to runState.scheduledPodsByNode", "namespacedName", podNsName, "nodeName", pod.Spec.NodeName, "numScheduledPods", s.state.numScheduledPods)
-	delete(s.state.unscheduledPods, podNsName)
-	return nil
+func (s *defaultScaleOut) runNum() uint32 {
+	return s.args.RunCounter.Load()
+}
+
+func (s *defaultScaleOut) incRunNum() uint32 {
+	return s.args.RunCounter.Add(1)
 }
 
 func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
@@ -452,15 +436,60 @@ func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 
 // runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when defaultScaleOut.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
 type runState struct {
-	latestTrackEventTime      metav1.MicroTime
-	err                       error
-	simNode                   *corev1.Node
-	unscheduledPods           map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of Pod namespacedName to PodResourceInfo
-	scheduledPodsByNode       map[string][]plannerapi.PodResourceInfo                   // map of node names to PodResourceInfo
-	status                    plannerapi.ActivityStatus
-	result                    plannerapi.ScaleOutSimResult
-	numUnchangedTrackAttempts int
-	numTrackAttempts          int
-	numScheduledPods          int
-	numReceivedEvents         int
+	err                         error
+	simNode                     *corev1.Node
+	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
+	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]           // map of node names to set of scheduled pod names
+	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names scheduled during simulation run
+	status                      plannerapi.ActivityStatus
+	result                      plannerapi.ScaleOutSimResult
+	numUnchangedTrackAttempts   int
+	numTrackAttempts            int
+	numReceivedEvents           int
+	numScheduledPods            int
+}
+
+func (s *runState) scheduledPodInfos() []plannerapi.PodResourceInfo {
+	scheduledPodNames := s.scheduledPodNamesByNodeName[s.simNode.Name].UnsortedList()
+	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
+	for _, podName := range scheduledPodNames {
+		scheduledPodInfos = append(scheduledPodInfos, s.unscheduledPods[podName])
+	}
+	return scheduledPodInfos
+}
+
+func (s *runState) handleScheduledPodEvent(ctx context.Context, view minkapi.View, ev eventsv1.Event) error {
+	log := logr.FromContextOrDiscard(ctx)
+	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
+	log.V(4).Info("PodScheduled event.", "podNamespacedName", podNsName, "eventNote", ev.Note)
+	obj, err := view.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
+	if err != nil {
+		return err
+	}
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
+	}
+	if pod.Spec.NodeName == "" {
+		return fmt.Errorf("scheduledPod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
+	}
+	s.addScheduledPod(ctx, pod)
+	return nil
+}
+
+func (s *runState) addScheduledPod(ctx context.Context, pod *corev1.Pod) {
+	log := logr.FromContextOrDiscard(ctx)
+	podNsName := objutil.NamespacedName(pod)
+	scheduledPodNames := s.scheduledPodNamesByNodeName[s.simNode.Name]
+	if scheduledPodNames == nil {
+		scheduledPodNames = sets.New[commontypes.NamespacedName]()
+	}
+	scheduledPodNames.Insert(podNsName)
+	s.scheduledPodNamesByNodeName[pod.Spec.NodeName] = scheduledPodNames
+	s.numScheduledPods++
+	s.leftoverUnscheduledPodNames.Delete(podNsName)
+	log.V(4).Info("Added scheduledPod to simulation.state.scheduledPodNamesByNodeName",
+		"podNamespacedName", podNsName,
+		"numScheduledPods", s.numScheduledPods,
+		"leftoverUnscheduledPodCount", len(s.leftoverUnscheduledPodNames))
 }

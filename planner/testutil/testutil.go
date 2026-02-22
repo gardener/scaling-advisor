@@ -49,7 +49,7 @@ type Args struct {
 	PoolZones [][]string
 	PVCNames  []string
 	// PVZones if specified restrict the generated PV's node affinity topology zones to only the given set.
-	// If empty (default), PV's are generated with for all zones across all NodePool's of the ScalingConstraint.
+	// If empty (default), PV's are generated with for all zones across all NodePool of the ScalingConstraint.
 	PVZones []string
 	Timeout time.Duration
 }
@@ -58,7 +58,6 @@ type Args struct {
 type Data struct {
 	GenDir         string
 	RunContext     context.Context
-	SnapshotPath   string
 	NodePlacements []sacorev1alpha1.NodePlacement
 	Request        plannerapi.Request
 }
