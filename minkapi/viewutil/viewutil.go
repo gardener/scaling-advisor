@@ -84,7 +84,7 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 	if err != nil {
 		return err
 	}
-	log.V(2).Info(prefix+"|count of nodes and pods",
+	log.V(2).Info(prefix+"|count of nodes,pods",
 		"viewName", view.GetName(),
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),

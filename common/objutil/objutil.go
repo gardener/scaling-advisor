@@ -23,6 +23,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -317,9 +318,14 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
 
-// NamespacedName returns the types.NamespacedName for a metav1.Object.
+// NamespacedName returns the commontypes.NamespacedName for a metav1.Object.
 func NamespacedName(mo metav1.Object) commontypes.NamespacedName {
 	return commontypes.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+}
+
+// NamespacedNameFromEventRegarding regards the commontypes.NamespacedName for the object that is the event subject.
+func NamespacedNameFromEventRegarding(ev eventsv1.Event) commontypes.NamespacedName {
+	return commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 }
 
 // GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
