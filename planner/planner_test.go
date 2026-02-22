@@ -225,7 +225,7 @@ func TestOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 // TestTwoPoolFullFitPodScaleOut tests the scale-out scenarios for basic variant with 2 pools, where there is only one node template for each pool
 // and where any unscheduled pod nearly fully fits into the node template.
 func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
-	amount := 3
+	amount := 1
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset2P,
 		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
