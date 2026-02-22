@@ -8,27 +8,22 @@ import (
 	"fmt"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// PoolCategory is the enum type for representing pool categories of a sample scaling constraint.
-type PoolCategory string
+// PoolPreset is the enum type for representing pool presets of a sample scaling constraint.
+type PoolPreset string
 
 const (
-	// PoolCategoryBasicOne is the pool category variant associated with a basic one-pool scaling constraint.
-	PoolCategoryBasicOne PoolCategory = "basic-one-pool"
+	// PoolPreset1P is the pool category variant associated with a basic one-pool with one zone scaling constraint.
+	PoolPreset1P PoolPreset = "1p"
 
-	// PoolCategoryBasicTwo is the pool category variant associated with a basic two-pool scaling constraint.
-	PoolCategoryBasicTwo PoolCategory = "basic-two-pool"
-
-	// PoolCategoryBasicThree is the pool category variant associated with a basic three-pool scaling constraint.
-	PoolCategoryBasicThree PoolCategory = "basic-three-pool"
-
-	// PoolCategoryBasicMany is the pool category variant associated with a basic many pool scaling constraint
-	PoolCategoryBasicMany PoolCategory = "basic-multi-pool"
+	// PoolPreset2P is the pool category variant associated with a basic two-pool scaling constraint with one zone per pool.
+	PoolPreset2P PoolPreset = "2p"
 )
 
 // ResourcePreset is the enum type for different presets of resources.
@@ -68,6 +63,23 @@ type AppLabels struct {
 	Component string
 	PartOf    string
 	ManagedBy string
+}
+
+// ConstraintGenInput holds the input data for generating ScalingConstraint's. Currently, it only supports customization of
+// NodePool details, but will be extended in the future.
+type ConstraintGenInput struct {
+	GenDir string
+	// PoolPreset is the PoolPreset variant
+	PoolPreset PoolPreset
+	// PoolZones specifies the availability zones for each pool given in order. If nil, defaults to the preset zone.
+	PoolZones [][]string
+}
+
+// ConstraintGenOutput holds the generated output data after generating NodePools.
+type ConstraintGenOutput struct {
+	// GenYAMLPath provides the generated YAML path of ScalingConstraint
+	GenYAMLPath string
+	Constraint  sacorev1alpha1.ScalingConstraint
 }
 
 // PodGenInput holds the input data for generating simple pods.

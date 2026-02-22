@@ -16,10 +16,10 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 )
 
-func TestBasicOnePoolUnitScaleOut(t *testing.T) {
+func TestOnePoolUnitScaleOut(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -27,11 +27,11 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         1,
 			},
 		},
@@ -39,10 +39,10 @@ func TestBasicOnePoolUnitScaleOut(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
+func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -51,11 +51,11 @@ func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         1,
 			},
 		},
@@ -63,10 +63,10 @@ func TestBasicOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestBasicOnePoolScaleOutWithUnboundPVC(t *testing.T) {
+func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories:         NewFactories(),
@@ -76,11 +76,38 @@ func TestBasicOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+func TestOnePoolScaleOutWithUnboundPVCAndPVWithZoneAffinity(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories:         NewFactories(),
+		PVCNames:          []string{"stem"},
+		PoolZones:         [][]string{{"eu-west-1c", "eu-west-1b", "eu-west-1a"}},
+		PVZones:           []string{"eu-west-1a"}, // PV only generated for this zone, ScaleOutItem.NodePlacement should have this zone
+		VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+	})
+	if !ok {
+		return
+	}
+	wantPlacement := testData.NodePlacements[2]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: wantPlacement,
 				Delta:         1,
 			},
 		},
@@ -90,8 +117,8 @@ func TestBasicOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 
 func TestReusePlannerAcrossRequests(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -99,11 +126,11 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         1,
 			},
 		},
@@ -119,11 +146,11 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 	}
 }
 
-func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
+func TestOnePoolFullFitPodScaleout(t *testing.T) {
 	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: amount,
 		},
 		Factories: NewFactories(),
@@ -131,11 +158,11 @@ func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         int32(amount),
 			},
 		},
@@ -143,12 +170,12 @@ func TestBasicOnePoolFullFitPodScaleout(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-// TestBasicOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
-func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
+// TestOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
+func TestOnePoolHalfFitPodScaleout(t *testing.T) {
 	amount := 4
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetHalfBerry: amount,
 		},
 		Factories: NewFactories(),
@@ -156,11 +183,11 @@ func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         int32(amount / 2),
 			},
 		},
@@ -168,13 +195,13 @@ func TestBasicOnePoolHalfFitPodScaleout(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-// TestBasicOnePoolHalfAndFullFitPodScaleout tests scale out of one pool using both HalfBerry and Berry pods that half-fit
+// TestOnePoolHalfAndFullFitPodScaleout tests scale out of one pool using both HalfBerry and Berry pods that half-fit
 // and full-fit into pool P's NodeTemplate.
-func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
+func TestOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	amount := 4
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicOne,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetHalfBerry: amount,
 			samples.ResourcePresetBerry:     amount,
 		},
@@ -183,11 +210,11 @@ func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement := testData.NodePlacements[0]
+	poolAPlacement := testData.NodePlacements[0]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         int32(math.Round(float64(amount) * 1.5)),
 			},
 		},
@@ -195,13 +222,13 @@ func TestBasicOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-// TestBasicTwoPoolFullFitPodScaleOut tests the scale-out scenarios for basic variant with 2 pools, where there is only one node template for each pool
+// TestTwoPoolFullFitPodScaleOut tests the scale-out scenarios for basic variant with 2 pools, where there is only one node template for each pool
 // and where any unscheduled pod nearly fully fits into the node template.
-func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
+func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
 	amount := 3
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-		PoolCategory: samples.PoolCategoryBasicTwo,
-		NumUnscheduledPerResourceCategory: map[samples.ResourcePreset]int{
+		PoolPreset: samples.PoolPreset2P,
+		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: amount,
 			samples.ResourcePresetGrape: amount,
 		},
@@ -211,15 +238,15 @@ func TestBasicTwoPoolFullFitPodScaleOut(t *testing.T) {
 	if !ok {
 		return
 	}
-	pPlacement, qPlacement := testData.NodePlacements[0], testData.NodePlacements[1]
+	poolAPlacement, poolBPlacement := testData.NodePlacements[0], testData.NodePlacements[1]
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
-				NodePlacement: pPlacement,
+				NodePlacement: poolAPlacement,
 				Delta:         int32(amount),
 			},
 			{
-				NodePlacement: qPlacement,
+				NodePlacement: poolBPlacement,
 				Delta:         int32(amount),
 			},
 		},

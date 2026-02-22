@@ -17,7 +17,6 @@ import (
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -29,19 +28,30 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// LoadBasicScalingConstraints loads the basic scaling constraints for the given poolCategory from the sample data filesystem.
-func LoadBasicScalingConstraints(poolCategory PoolCategory) (*sacorev1alpha1.ScalingConstraint, error) {
-	var clusterConstraints sacorev1alpha1.ScalingConstraint
-	clusterConstraintsPath := fmt.Sprintf("data/scaling-constraints/%s.json", poolCategory)
-	switch poolCategory {
-	case PoolCategoryBasicOne, PoolCategoryBasicTwo:
-		if err := objutil.LoadIntoRuntimeObj(dataFS, clusterConstraintsPath, &clusterConstraints); err != nil {
-			return nil, fmt.Errorf("failed to load scaling constraints for poolCategory %q: %v", poolCategory, err)
+// GenScalingConstraints generates a ScalingConstraint encapsulated in ConstraintGenOutput given the ConstraintGenInput.
+func GenScalingConstraints(in ConstraintGenInput) (out ConstraintGenOutput, err error) {
+	presetPath := fmt.Sprintf("data/scaling-constraints/%s.yaml", in.PoolPreset)
+	switch in.PoolPreset {
+	case PoolPreset1P, PoolPreset2P:
+		if err = objutil.LoadIntoRuntimeObj(dataFS, presetPath, &out.Constraint); err != nil {
+			err = fmt.Errorf("failed to load scaling constraints for PoolPreset %q: %v", in.PoolPreset, err)
+			return
 		}
 	default:
-		return nil, fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, poolCategory)
+		err = fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, in.PoolPreset)
+		return
 	}
-	return &clusterConstraints, nil
+	if len(in.PoolZones) > len(out.Constraint.Spec.NodePools) {
+		err = fmt.Errorf("in.PoolZones %q exceeds number of pools %d in preset %q", in.PoolZones, len(out.Constraint.Spec.NodePools), in.PoolPreset)
+		return
+	}
+	for idx, zones := range in.PoolZones {
+		out.Constraint.Spec.NodePools[idx].AvailabilityZones = zones
+	}
+	if in.GenDir != "" {
+		out.GenYAMLPath, err = objutil.SaveRuntimeObjAsYAMLToPath(&out.Constraint, in.GenDir, "constraint.yaml")
+	}
+	return
 }
 
 // IncreaseUnscheduledWorkLoad replicates each unscheduled pod by delta inside the given cluster snapshot
@@ -103,9 +113,9 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (p
 	return
 }
 
-// GenerateSimplePodsForResourceCategory generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
+// GenerateSimplePodsForResourcePreset generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
 // Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourceCategory(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsForResourcePreset(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
 	podTmplData := PodTemplateData{
 		PodGenInput: metadata,
 		Resources:   category.AsResourceList(),
