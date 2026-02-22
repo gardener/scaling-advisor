@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gardener/scaling-advisor/planner/util"
@@ -42,6 +43,7 @@ type simulatorState struct {
 	planResultCh         chan plannerapi.ScaleOutPlanResult
 	simulationViews      []minkapi.View
 	simulationGroups     []plannerapi.ScaleOutSimGroup
+	mu                   sync.Mutex
 	simulationRunCounter atomic.Uint32
 }
 
@@ -106,6 +108,8 @@ func (m *SimulatorSingleNodeMultiSim) doSimulate(ctx context.Context) (err error
 // Close closes all the resources of this simulator's state: all simulation minkapi views, resets simulation run counters,
 // clears any ScaleOutSimGroup's, clears the planner Request, etc.
 func (m *SimulatorSingleNodeMultiSim) Close() error {
+	m.state.mu.Lock()
+	defer m.state.mu.Unlock()
 	var errs []error
 	for _, v := range m.state.simulationViews {
 		if err := v.Close(); err != nil {
@@ -179,7 +183,7 @@ func (m *SimulatorSingleNodeMultiSim) runStabilizationCyclesForAllGroups(ctx con
 			return
 		}
 		if len(simGroupCycleResult.WinnerNodeScores) == 0 {
-			log.Info("No winning node scores produced for group. Continuing to next group.")
+			log.V(2).Info("No winning node scores produced for group. Continuing to next group.")
 			groupIndex++
 			continue
 		}
@@ -235,7 +239,7 @@ func (m *SimulatorSingleNodeMultiSim) runStabilizationCycleForGroup(ctx context.
 			}
 			// winningNodeScore being nil indicates that there are no more winning node score, further passes can be aborted.
 			if winningNodeScore == nil {
-				log.Info("No winning node score produced in pass. Ending group passes.")
+				log.V(2).Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
 			if logutil.VerbosityFromContext(passCtx) > 3 {
@@ -278,7 +282,7 @@ func (m *SimulatorSingleNodeMultiSim) runSinglePassForGroup(ctx context.Context,
 		return
 	}
 	if groupScores.WinnerScore == nil {
-		log.Info("simulation group did not produce any WinnerScore for this pass.")
+		log.V(2).Info("simulation group did not produce any WinnerScore for this pass.")
 		nextGroupPassView = groupPassView
 		return
 	}
@@ -292,6 +296,8 @@ func (m *SimulatorSingleNodeMultiSim) runSinglePassForGroup(ctx context.Context,
 }
 
 func (m *SimulatorSingleNodeMultiSim) createSandboxView(ctx context.Context, name string, groupPassView minkapi.View) (minkapi.View, error) {
+	m.state.mu.Lock()
+	defer m.state.mu.Unlock()
 	sandboxView, err := m.viewAccess.GetSandboxViewOverDelegate(ctx, name, groupPassView)
 	if err != nil {
 		return nil, err
@@ -305,7 +311,7 @@ func (m *SimulatorSingleNodeMultiSim) processSimulationGroupRunResults(log logr.
 
 	for _, sr := range simulationRunResults {
 		if len(sr.ScaledNodePodAssignments) == 0 {
-			log.Info("No ScaledNodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name, "simulatedNodePlacement", sr.ScaledNodePlacements[0])
+			log.V(2).Info("No ScaledNodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name, "simulatedNodePlacement", sr.ScaledNodePlacements[0])
 			continue
 		}
 		nodeScore, err = m.nodeScorer.Compute(mapSimulationResultToNodeScoreArgs(sr))

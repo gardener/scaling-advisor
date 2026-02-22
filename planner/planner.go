@@ -115,7 +115,7 @@ func validateRequest(req *plannerapi.Request) error {
 func wrapPlanContext(ctx context.Context, traceLogsDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
 	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
-	if req.DiagnosticVerbosity > 0 {
+	if req.DiagnosticVerbosity > 1 {
 		if traceLogsDir == "" {
 			traceLogsDir = ioutil.GetTempDir()
 		}
