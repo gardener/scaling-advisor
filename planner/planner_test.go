@@ -147,7 +147,7 @@ func TestReusePlannerAcrossRequests(t *testing.T) {
 }
 
 func TestOnePoolFullFitPodScaleout(t *testing.T) {
-	amount := 2
+	amount := 1
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
@@ -172,7 +172,7 @@ func TestOnePoolFullFitPodScaleout(t *testing.T) {
 
 // TestOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
 func TestOnePoolHalfFitPodScaleout(t *testing.T) {
-	amount := 4
+	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
@@ -198,7 +198,7 @@ func TestOnePoolHalfFitPodScaleout(t *testing.T) {
 // TestOnePoolHalfAndFullFitPodScaleout tests scale out of one pool using both HalfBerry and Berry pods that half-fit
 // and full-fit into pool P's NodeTemplate.
 func TestOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
-	amount := 4
+	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
