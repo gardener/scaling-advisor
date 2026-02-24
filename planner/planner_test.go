@@ -63,6 +63,8 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
+// TODO: Add a test TestOnePool2ZonesScaleOutWithBoundPVC - should scale up node with same zone as bound PV
+
 func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
@@ -103,7 +105,7 @@ func TestOnePoolScaleOutWithUnboundPVCAndPVWithZoneAffinity(t *testing.T) {
 	if !ok {
 		return
 	}
-	wantPlacement := testData.NodePlacements[2]
+	wantPlacement := testData.NodePlacements[2] //  NodePlacement in "eu-west-1a" zone
 	wantPlan := &sacorev1alpha1.ScaleOutPlan{
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{

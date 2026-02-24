@@ -168,7 +168,7 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 
 // BindClaimsAndVolumes binds the unbound PV and PVC in the given minkapi.View so that kube-scheduler's
 // VolumeBinding plugin considers the claim satisfied, and the kube-scheduler can proceed with pod binding.
-// For VolumeBinding to succeed, after binding:
+// For the kube-scheduler's VolumeBinding plugin to succeed,
 // PVC must have:
 //   - spec.volumeName set
 //   - status.phase = Bound
