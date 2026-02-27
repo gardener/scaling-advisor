@@ -5,6 +5,8 @@
 package volutil
 
 import (
+	"slices"
+
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -94,4 +96,11 @@ func FindStorageClassWithName(name string, classes []storagev1.StorageClass) *st
 		}
 	}
 	return nil
+}
+
+// SortPersistentVolumesByIncreasingStorage sorts the given slice of `PersistentVolume`s by increasing storage capacity.
+func SortPersistentVolumesByIncreasingStorage(pvs []corev1.PersistentVolume) {
+	slices.SortFunc(pvs, func(a, b corev1.PersistentVolume) int {
+		return a.Spec.Capacity.Storage().Cmp(*b.Spec.Capacity.Storage())
+	})
 }
