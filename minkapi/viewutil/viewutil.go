@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"

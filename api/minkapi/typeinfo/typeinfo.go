@@ -5,55 +5,29 @@
 package typeinfo
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
-	nodev1 "k8s.io/api/node/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-var (
-	// SupportedScheme is a scheme with all supported types registered.
-	SupportedScheme *runtime.Scheme
-)
-
-func init() {
-	schemeAdders := []func(scheme *runtime.Scheme) error{
-		metav1.AddMetaToScheme,
-		corev1.AddToScheme,
-		appsv1.AddToScheme,
-		coordinationv1.AddToScheme,
-		eventsv1.AddToScheme,
-		rbacv1.AddToScheme,
-		schedulingv1.AddToScheme,
-		policyv1.AddToScheme,
-		storagev1.AddToScheme,
-		nodev1.AddToScheme,
-		resourcev1.AddToScheme,
-	}
-
-	SupportedScheme = runtime.NewScheme()
-	for _, fn := range schemeAdders {
-		utilruntime.Must(fn(SupportedScheme))
-	}
-}
+type KindName string
 
 const (
 	// KindNamespace represents a Kubernetes Namespace resource.
@@ -168,7 +142,9 @@ const (
 
 // Descriptor is an aggregate holder of various bits of type information on a given Kind
 type Descriptor struct {
+	Kind         KindName
 	GVK          schema.GroupVersionKind
+	ListKind     KindName
 	ListGVK      schema.GroupVersionKind
 	GVR          schema.GroupVersionResource
 	ListTypeMeta metav1.TypeMeta
@@ -221,7 +197,7 @@ func NewDescriptor(gvk schema.GroupVersionKind, listKind string, namespaced bool
 			// the CRD author for custom resources. Typically, we do not see this being set to anything but `all`. Thus
 			// for now we assume that the only category is `all`.
 			Categories:         []string{"all"},
-			StorageVersionHash: storageVersionHash(gvk),
+			StorageVersionHash: gvk.Kind,
 		},
 	}
 }
@@ -282,24 +258,13 @@ var (
 	// DeviceClassDescriptor is an aggregate holder of type information for DeviceClass resources (introduced as part of DRA).
 	DeviceClassDescriptor = NewDescriptor(resourcev1.SchemeGroupVersion.WithKind(KindDeviceClass), KindDeviceClassList, false, "deviceclasses")
 
-	// SupportedDescriptors is a list of all supported resource descriptors.
 	SupportedDescriptors = []Descriptor{
-		NamespacesDescriptor,
-		ServiceAccountsDescriptor,
-		ConfigMapsDescriptor,
-		NodesDescriptor,
-		PodsDescriptor,
-		ServicesDescriptor,
-		PersistentVolumesDescriptor,
-		PersistentVolumeClaimsDescriptor,
-		ReplicationControllersDescriptor,
+		ServiceAccountsDescriptor, ConfigMapsDescriptor, NamespacesDescriptor, NodesDescriptor, PodsDescriptor, ServicesDescriptor, PersistentVolumesDescriptor, PersistentVolumeClaimsDescriptor, ReplicationControllersDescriptor,
 		PriorityClassesDescriptor,
 		LeaseDescriptor,
 		EventsDescriptor,
 		RolesDescriptor,
-		DeploymentDescriptor,
-		ReplicaSetDescriptor,
-		StatefulSetDescriptor,
+		DeploymentDescriptor, ReplicaSetDescriptor, StatefulSetDescriptor,
 		PodDisruptionBudgetDescriptor,
 		StorageClassDescriptor,
 		CSIDriverDescriptor,
@@ -313,7 +278,8 @@ var (
 		DeviceClassDescriptor,
 	}
 
-	// SupportedAPIVersions is a metav1.APIVersions object representing the supported API versions.
+	SupportedVerbs = []string{"create", "delete", "get", "list", "patch", "watch"}
+
 	SupportedAPIVersions = metav1.APIVersions{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "APIVersions",
@@ -327,10 +293,8 @@ var (
 		},
 	}
 
-	// SupportedAPIGroups is a metav1.APIGroupList object representing the supported API groups.
 	SupportedAPIGroups = buildAPIGroupList()
 
-	// SupportedCoreAPIResourceList is a metav1.APIResourceList object representing the supported core API resources.
 	SupportedCoreAPIResourceList = metav1.APIResourceList{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "APIResourceList",
@@ -349,17 +313,7 @@ var (
 		},
 	}
 
-	// SupportedGroupAPIResourceLists is a list of metav1.APIResourceList objects representing the supported non-core API resources, grouped by their API group.
-	SupportedGroupAPIResourceLists = buildNonCoreAPIResourceLists()
-)
-
-func buildNonCoreAPIResourceLists() []metav1.APIResourceList {
-	metaV1APIResourceList := metav1.TypeMeta{
-		Kind:       "APIResourceList",
-		APIVersion: "v1",
-	}
-
-	return []metav1.APIResourceList{
+	SupportedGroupAPIResourceLists = []metav1.APIResourceList{
 		{
 			TypeMeta:     metaV1APIResourceList,
 			GroupVersion: appsv1.SchemeGroupVersion.String(),
@@ -416,23 +370,34 @@ func buildNonCoreAPIResourceLists() []metav1.APIResourceList {
 				VolumeAttributesClassDescriptor.APIResource,
 			},
 		},
-		{
-			TypeMeta:     metaV1APIResourceList,
-			GroupVersion: nodev1.SchemeGroupVersion.String(),
-			APIResources: []metav1.APIResource{
-				RuntimeClassDescriptor.APIResource,
-			},
-		},
-		{
-			TypeMeta:     metaV1APIResourceList,
-			GroupVersion: resourcev1.SchemeGroupVersion.String(),
-			APIResources: []metav1.APIResource{
-				ResourceSliceDescriptor.APIResource,
-				ResourceClaimDescriptor.APIResource,
-				DeviceClassDescriptor.APIResource,
-			},
-		},
 	}
+)
+
+var (
+	schemeAdders = []func(scheme *runtime.Scheme) error{
+		metav1.AddMetaToScheme,
+		corev1.AddToScheme,
+		appsv1.AddToScheme,
+		coordinationv1.AddToScheme,
+		eventsv1.AddToScheme,
+		rbacv1.AddToScheme,
+		schedulingv1.AddToScheme,
+		policyv1.AddToScheme,
+		storagev1.AddToScheme,
+	}
+
+	metaV1APIResourceList = metav1.TypeMeta{
+		Kind:       "APIResourceList",
+		APIVersion: "v1",
+	}
+)
+
+func RegisterSchemes() (scheme *runtime.Scheme) {
+	scheme = runtime.NewScheme()
+	for _, fn := range schemeAdders {
+		utilruntime.Must(fn(scheme))
+	}
+	return
 }
 
 func buildAPIGroupList() metav1.APIGroupList {
@@ -467,15 +432,69 @@ func buildAPIGroupList() metav1.APIGroupList {
 	}
 }
 
-// StorageVersionHash calculates the storage version hash for a <group/version/kind> tuple.
-// Taken from upstream k8s
-// https://github.com/kubernetes/kubernetes/blob/a79da1e7b527da63d022a188cb602fb81bb77e35/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/storageversionhash.go#L28-L36
-func storageVersionHash(gvk schema.GroupVersionKind) string {
-	gvkStr := gvk.Group + "/" + gvk.Version + "/" + gvk.Kind
-	bytes := sha256.Sum256([]byte(gvkStr))
-	// Assuming there are N kinds in the cluster, and the hash is X-byte long,
-	// the chance of colliding hash P(N,X) approximates to 1-e^(-(N^2)/2^(8X+1)).
-	// P(10,000, 8) ~= 2.7*10^(-12), which is low enough.
-	// See https://en.wikipedia.org/wiki/Birthday_problem#Approximations.
-	return base64.StdEncoding.EncodeToString(bytes[:8])
+func NewDescriptor(kind KindName, listKind KindName, namespaced bool, gvr schema.GroupVersionResource, shortNames ...string) Descriptor {
+	var singularName string
+
+	// please pardon the hack below
+	if strings.HasSuffix(gvr.Resource, "sses") { // Ex: priorityclasses
+		singularName = strings.TrimSuffix(gvr.Resource, "es")
+	} else if strings.HasSuffix(gvr.Resource, "ties") { // Ex: csistoragecapacities
+		singularName = strings.TrimSuffix(gvr.Resource, "ties") + "ty"
+	} else {
+		singularName = strings.TrimSuffix(gvr.Resource, "s")
+	}
+	return Descriptor{
+		Kind: kind,
+		GVK: schema.GroupVersionKind{
+			Group:   gvr.Group,
+			Version: gvr.Version,
+			Kind:    string(kind),
+		},
+		ListKind: listKind,
+		ListGVK: schema.GroupVersionKind{
+			Group:   gvr.Group,
+			Version: gvr.Version,
+			Kind:    string(listKind),
+		},
+		GVR: gvr,
+		ListTypeMeta: metav1.TypeMeta{
+			Kind:       string(listKind),
+			APIVersion: gvr.GroupVersion().String(),
+		},
+		APIResource: metav1.APIResource{
+			Name:               gvr.Resource,
+			SingularName:       singularName,
+			Namespaced:         namespaced,
+			Group:              gvr.Group,
+			Version:            gvr.Version,
+			Kind:               string(kind),
+			Verbs:              SupportedVerbs,
+			ShortNames:         shortNames,
+			Categories:         []string{"all"}, // TODO: Uhhh, WTH is this exactly ? Who uses this ?
+			StorageVersionHash: objutil.GenerateName(singularName),
+		},
+	}
+}
+
+func (d Descriptor) CreateObject() (obj metav1.Object, err error) {
+	runtimeObj, err := SupportedScheme.New(d.GVK)
+	if err != nil {
+		return
+	}
+	obj = runtimeObj.(metav1.Object)
+	return
+}
+
+func (d Descriptor) Resource() string {
+	return d.GVR.Resource
+}
+
+func GenerateName(base string) string {
+	const suffixLen = 5
+	suffix := utilrand.String(suffixLen)
+	m := validation.DNS1123SubdomainMaxLength // 253 for subdomains; use DNS1123LabelMaxLength (63) if you need stricter
+	if len(base)+len(suffix) > m {
+		base = base[:m-len(suffix)]
+	}
+	return base + suffix
 }

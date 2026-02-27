@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/go-logr/logr"

@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/gardener/scaling-advisor/common/webutil"
@@ -31,9 +30,9 @@ import (
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/gardener/scaling-advisor/minkapi/server/view"
 
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/view"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
