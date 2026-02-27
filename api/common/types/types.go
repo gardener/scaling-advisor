@@ -69,9 +69,9 @@ func (nn NamespacedName) AsObjectName() cache.ObjectName {
 	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
 }
 
-// AsObjectReference constructs an ObjectReference referring this name or nil if namespace/name are empty
+// AsObjectReference constructs an ObjectReference referring this name or nil if name is empty.
 func (nn NamespacedName) AsObjectReference() *corev1.ObjectReference {
-	if nn.Namespace == "" && nn.Name == "" {
+	if nn.Name == "" {
 		return nil
 	} else {
 		return &corev1.ObjectReference{Namespace: nn.Namespace, Name: nn.Name}
