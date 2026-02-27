@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package planner
 
 import (
@@ -162,7 +166,7 @@ type ScaleOutSimGroup interface {
 	// AddSimulation adds a simulation to the group.
 	AddSimulation(simulation ScaleOutSimulation)
 	// Run executes all simulations in the group and returns all the simulation run results or any error.
-	Run(ctx context.Context, getViewFn minkapi.ViewFactory) ([]ScaleOutSimResult, error)
+	Run(ctx context.Context, getViewFn minkapi.GetViewFunc) ([]ScaleOutSimResult, error)
 }
 
 // ScaleOutSimGroupPassScores represents the scoring results, including the winner score, for a single pass of a ScaleOutSimGroup

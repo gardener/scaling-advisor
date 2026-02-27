@@ -155,9 +155,9 @@ type View interface {
 	GetKubeConfigPath() string
 }
 
-// ViewFactory is a type alias for view provider functions that take a context and view name and return the associated minkapi View.
-// Used to decouple components.
-type ViewFactory func(ctx context.Context, name string) (View, error)
+// GetViewFunc is a type alias for view provider functions that take a context and view name and construct/return the
+// associated minkapi View. Used to decouple components.
+type GetViewFunc func(ctx context.Context, name string) (View, error)
 
 // ViewType represents the type of View.
 type ViewType string
@@ -168,9 +168,6 @@ const (
 	// SandboxViewType represents a sandboxed private view.
 	SandboxViewType ViewType = "sandbox"
 )
-
-// SandboxFactory represents a factory function for constructing sandbox views from the delegate view and given args
-type SandboxFactory = func(log logr.Logger, delegateView View, args *ViewArgs) (View, error)
 
 // ViewArgs contains arguments for creating a View.
 type ViewArgs struct {
@@ -243,5 +240,5 @@ func (c MatchCriteria) Matches(obj metav1.Object) bool {
 
 // String gets a human-readable string value for the MatchCriteria
 func (c MatchCriteria) String() string {
-	return fmt.Sprintf("(Namespace:%s, PVCNames: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
+	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
 }
