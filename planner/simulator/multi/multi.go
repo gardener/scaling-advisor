@@ -84,6 +84,7 @@ func (m *SimulatorSingleNodeMultiSim) Simulate(ctx context.Context, request *pla
 }
 
 func (m *SimulatorSingleNodeMultiSim) doSimulate(ctx context.Context) (err error) {
+	log := logr.FromContextOrDiscard(ctx)
 	m.state.requestView, err = m.viewAccess.GetSandboxViewOverDelegate(ctx, "request-"+m.state.request.ID, m.viewAccess.GetBaseView())
 	if err != nil {
 		return
@@ -94,7 +95,10 @@ func (m *SimulatorSingleNodeMultiSim) doSimulate(ctx context.Context) (err error
 		return
 	}
 
-	_ = viewutil.LogDumpObjects(ctx, "requestView", m.state.requestView)
+	err = viewutil.LogDumpObjects(ctx, "requestView", m.state.requestView)
+	if err != nil {
+		log.Info("failed to dump view objects", "view", m.state.requestView.GetName(), "error", err)
+	}
 
 	m.state.simulationGroups, err = m.createAndGroupSimulation()
 	if err != nil {

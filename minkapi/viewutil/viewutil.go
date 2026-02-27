@@ -12,7 +12,6 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
@@ -89,7 +88,6 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),
 		"totalUnscheduledPods", podutil.CountUnscheduledPods(allPods))
-	verbosity := logutil.VerbosityFromContext(ctx)
 	for idx, pod := range allPods {
 		log.V(4).Info(prefix+"|pod in view",
 			"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
