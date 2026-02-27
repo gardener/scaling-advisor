@@ -383,7 +383,7 @@ type ScalingPlannerArgs struct {
 	ResourceWeigher ResourceWeigher
 	// PricingAccess provides access to instance pricing information.
 	PricingAccess pricing.InstancePricingAccess
-	// StorageAccess provides access to storage metadata.
+	// StorageMetaAccess provides access to storage metadata.
 	StorageMetaAccess StorageMetaAccess
 	// SchedulerLauncher provides functionality to launch kube-scheduler instances.
 	SchedulerLauncher SchedulerLauncher
