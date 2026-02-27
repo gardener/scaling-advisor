@@ -191,6 +191,8 @@ func BindClaimsAndVolumesForImmediateMode(ctx context.Context, view minkapi.View
 	}
 	var defaultSc = volutil.GetDefaultStorageClass(scs)
 	var boundPVs = make(map[string]plannerapi.VolumeClaimAssignment) // key is pvName
+
+	volutil.SortPersistentVolumesByIncreasingStorage(pvs)
 	for _, pvc := range pvcs {
 		if pvc.Status.Phase != corev1.ClaimPending {
 			continue
