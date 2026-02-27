@@ -29,11 +29,15 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 )
 
-// DefaultPlannerTestVerbosity indicates the default verbosity for the unit tests that construct the ScalingPlanner.
-const DefaultPlannerTestVerbosity = 1
-
-// DefaultPlannerTestTimeout sets the default timeout for unit tests that construct the ScalingPlanner.
-const DefaultPlannerTestTimeout = 30 * time.Second
+const (
+	// DefaultPlannerTestVerbosity indicates the default verbosity for the unit tests that construct the ScalingPlanner.
+	DefaultPlannerTestVerbosity = 1
+	// DefaultPlannerRunTestTimeout sets the default timeout for unit tests that construct the ScalingPlanner.
+	DefaultPlannerRunTestTimeout = 30 * time.Second
+	// DefaultPlannerDebugTestTimeout sets the default timeout in debug mode (DEBUG env = true) for unit tests that construct
+	// the ScalingPlanner.
+	DefaultPlannerDebugTestTimeout = 10 * time.Minute
+)
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner
 type Args struct {
@@ -43,19 +47,15 @@ type Args struct {
 	SimulatorStrategy                   commontypes.SimulatorStrategy
 	NodeScoringStrategy                 commontypes.NodeScoringStrategy
 	AdviceGenerationMode                commontypes.ScalingAdviceGenerationMode
-	VolumeBindingMode                   storagev1.VolumeBindingMode
-	Provider                            commontypes.CloudProvider
 	// PoolZones specifies the availability zones for each pool given in order for the NodePools of the PoolPreset.
 	// If nil, defaults to the PoolPreset zone.
-	PoolZones [][]string
-	PVCNames  []string
-	// PVZones if specified restrict the generated PV's node affinity topology zones to only the given set.
-	// If empty (default), PV's are generated with for all zones across all NodePool of the ScalingConstraint.
-	PVZones []string
-	Timeout time.Duration
+	PoolZones   [][]string
+	VolGenInput samples.VolGenInput
+	Timeout     time.Duration
 }
 
 // Data holds all the common test data necessary for carrying out the scale-out unit-tests of the ScalingPlanner and asserting conditions
+// It also holds the generated test object YAML paths.
 type Data struct {
 	GenDir         string
 	RunContext     context.Context
@@ -66,8 +66,8 @@ type Data struct {
 // CreateTestPlannerAndTestData creates a ScalingPlanner suitable for unit tests and test Data for the given Args.
 func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.ScalingPlanner, testData Data, ok bool) {
 	var (
-		pods []corev1.Pod
-		err  error
+		podGenOutput samples.PodGenOutput
+		err          error
 	)
 	if ok = testData.validateAndFillDefaults(t, &args); !ok {
 		return
@@ -83,31 +83,24 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 	}
 	testData.Request.Constraint = &constraintGenOutput.Constraint
 	for category, num := range args.NumUnscheduledPodsPerResourcePreset {
-		pods, _, err = samples.GenerateSimplePodsForResourcePreset(category, num, samples.PodGenInput{
+		podGenOutput, err = samples.GenerateSimplePodsForResourcePreset(category, num, samples.PodGenInput{
 			GenDir:        testData.GenDir,
 			Name:          string(category),
 			SchedulerName: "bin-packing-scheduler",
-			PVCNames:      args.PVCNames,
+			PVCNames:      args.VolGenInput.PVCNames,
 		})
 		if err != nil {
 			t.Fatalf("failed to generate simple pods for resource category %s: %v", category, err)
 			return
 		}
-		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
+		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(podGenOutput.Pods)...)
 	}
-	if len(args.PVCNames) > 0 {
-		if args.PVZones == nil {
+	if len(args.VolGenInput.PVCNames) > 0 {
+		if args.VolGenInput.PVZones == nil {
 			// If PVZones is not specified, default to all available zones across all NodePools of the ScalingConstraint
-			args.PVZones = testData.Request.Constraint.Spec.GetAllAvailabilityZones()
+			args.VolGenInput.PVZones = testData.Request.Constraint.Spec.GetAllAvailabilityZones()
 		}
-		volGenInput := samples.StorageVolGenInput{
-			Provider:          args.Provider,
-			GenDir:            testData.GenDir,
-			VolumeBindingMode: args.VolumeBindingMode,
-			PVCNames:          args.PVCNames,
-			PVZones:           args.PVZones,
-		}
-		if ok = GenFillStorageAndVolumeObjects(t, testData.GenDir, volGenInput, &testData.Request.Snapshot); !ok {
+		if ok = GenFillStorageAndVolumeObjects(t, testData.GenDir, args.VolGenInput, &testData.Request.Snapshot); !ok {
 			return
 		}
 	}
@@ -122,25 +115,25 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatal("failed to write request.json:", err)
 		return
 	}
-	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args.Timeout, args.Provider, testData.GenDir, args.Factories); !ok {
+	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args.Timeout, args.VolGenInput.Provider, testData.GenDir, args.Factories); !ok {
 		return
 	}
 	ok = true
 	return
 }
 
-// GenFillStorageAndVolumeObjects uses the given StorageVolGenInput to generate StorageClasses, PVC's and PV's and also
+// GenFillStorageAndVolumeObjects uses the given VolGenInput to generate StorageClasses, PVC's and PV's and also
 // populate them in given ClusterSnapshot.
-func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput samples.StorageVolGenInput, snap *plannerapi.ClusterSnapshot) (ok bool) {
+func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput samples.VolGenInput, snap *plannerapi.ClusterSnapshot) (ok bool) {
 	var (
-		err  error
-		sc   storagev1.StorageClass
-		pvcs []corev1.PersistentVolumeClaim
-		pvs  []corev1.PersistentVolume
-		pv   corev1.PersistentVolume
-		pvc  corev1.PersistentVolumeClaim
+		err       error
+		sc        storagev1.StorageClass
+		volGenOut samples.VolGenOutput
+		pv        corev1.PersistentVolume
+		pvc       corev1.PersistentVolumeClaim
 	)
 	if err = volGenInput.ValidateAndFillDefaults(); err != nil {
+		t.Fatalf("failed to validate input: %v", err)
 		return
 	}
 	if sc, _, err = samples.GenerateDefaultStorageClass(testGenDir, volGenInput.Provider, "default", volGenInput.VolumeBindingMode); err != nil {
@@ -149,17 +142,17 @@ func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput
 	}
 	snap.StorageClasses = append(snap.StorageClasses, sc)
 
-	if pvcs, _, err = samples.GeneratePersistentVolumeClaims(volGenInput); err != nil {
+	if volGenOut, err = samples.GeneratePersistentVolumeClaims(testGenDir, volGenInput); err != nil {
 		return
 	}
-	for _, pvc = range pvcs {
+	for _, pvc = range volGenOut.PVCs {
 		snap.PVCs = append(snap.PVCs, volutil.AsPVCInfo(pvc))
 	}
 
-	if pvs, _, err = samples.GeneratePersistentVolumes(volGenInput); err != nil {
+	if volGenOut, err = samples.GeneratePersistentVolumes(testGenDir, volGenInput); err != nil {
 		return
 	}
-	for _, pv = range pvs {
+	for _, pv = range volGenOut.PVs {
 		snap.PVs = append(snap.PVs, volutil.AsPVInfo(pv))
 	}
 	ok = true
@@ -233,7 +226,11 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 		}
 	}()
 	if timeout == 0 {
-		timeout = DefaultPlannerTestTimeout
+		if os.Getenv("DEBUG") == "" {
+			timeout = DefaultPlannerRunTestTimeout
+		} else {
+			timeout = DefaultPlannerDebugTestTimeout
+		}
 	}
 	runCtx = commontestutil.NewTestContext(t, timeout, DefaultPlannerTestVerbosity)
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
@@ -259,9 +256,19 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 		t.Fatalf("failed to load scheduler config: %v", err)
 		return
 	}
-	simulatorConfig := plannerapi.SimulatorConfig{
-		MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
-		TrackPollInterval:      plannerapi.DefaultTrackPollInterval,
+	var simulatorConfig plannerapi.SimulatorConfig
+	if os.Getenv("DEBUG") == "" {
+		simulatorConfig = plannerapi.SimulatorConfig{
+			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
+			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
+			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
+		}
+	} else { // allow comfortable time for debugging
+		simulatorConfig = plannerapi.SimulatorConfig{
+			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
+			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
+			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
+		}
 	}
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
 	if err != nil {
@@ -298,12 +305,9 @@ func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
 	d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
 	d.Request.ID = t.Name()
 	d.Request.ScoringStrategy = cmp.Or(args.NodeScoringStrategy, commontypes.NodeScoringStrategyLeastCost)
-	args.Provider = cmp.Or(args.Provider, commontypes.CloudProviderAWS)
+	args.VolGenInput.Provider = cmp.Or(args.VolGenInput.Provider, commontypes.CloudProviderAWS)
 	d.Request.SimulatorStrategy = cmp.Or(args.SimulatorStrategy, commontypes.SimulatorStrategySingleNodeMultiSim)
 	d.Request.AdviceGenerationMode = cmp.Or(args.AdviceGenerationMode, commontypes.ScalingAdviceGenerationModeAllAtOnce)
-	if args.VolumeBindingMode == "" {
-		args.VolumeBindingMode = storagev1.VolumeBindingImmediate
-	}
 	return true
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/util"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -53,7 +54,7 @@ func NewDefault(name string, args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleO
 			break
 		}
 	}
-	if err := validateSimulationArgs(&args, nodeTemplate); err != nil {
+	if err := validateSimArgs(&args, nodeTemplate); err != nil {
 		return nil, err
 	}
 
@@ -133,8 +134,8 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 		return
 	}
 
-	// Run PVC<->PV Binding
-	if err = util.BindClaimsAndVolumes(simCtx, view); err != nil {
+	// Run static PVC<->PV Binding
+	if _, err = util.BindClaimsAndVolumesForImmediateMode(simCtx, view); err != nil {
 		return
 	}
 
@@ -144,7 +145,8 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 		return
 	}
 	defer ioutil.CloseQuietly(schedulerHandle)
-	err = s.trackUntilStabilized(simCtx, view)
+
+	err = s.workAndTrackUntilStabilized(simCtx, view)
 	if err != nil {
 		return
 	}
@@ -172,7 +174,7 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 	return
 }
 
-func validateSimulationArgs(args *plannerapi.ScaleOutSimArgs, nodeTemplate *sacorev1alpha1.NodeTemplate) error {
+func validateSimArgs(args *plannerapi.ScaleOutSimArgs, nodeTemplate *sacorev1alpha1.NodeTemplate) error {
 	if nodeTemplate == nil {
 		return fmt.Errorf("%w: node template %q not found in node pool %q", plannerapi.ErrCreateSimulation, args.NodeTemplateName, args.NodePool.Name)
 	}
@@ -185,6 +187,9 @@ func validateSimulationArgs(args *plannerapi.ScaleOutSimArgs, nodeTemplate *saco
 	}
 	if args.Config.TrackPollInterval <= 0 {
 		return fmt.Errorf("%w: track poll interval must be positive duration", plannerapi.ErrCreateSimulation)
+	}
+	if args.Config.MaxUnchangedTrackAttempts <= 0 {
+		return fmt.Errorf("%w: max unchanged track attempts must be positive", plannerapi.ErrCreateSimulation)
 	}
 	if args.SchedulerLauncher == nil {
 		return fmt.Errorf("%w: scheduler launcher must not be nil", plannerapi.ErrCreateSimulation)
@@ -303,10 +308,20 @@ func (s *defaultScaleOut) createCSINode(ctx context.Context, node *corev1.Node, 
 func (s *defaultScaleOut) buildSimulationNode() *corev1.Node {
 	simNodeName := fmt.Sprintf("simNode-%d_%s_%s_%s", s.runNum(), s.args.NodePool.Name, s.args.NodeTemplateName, s.args.AvailabilityZone)
 	nodeTaints := slices.Clone(s.args.NodePool.Taints)
+	nodeLabels := make(map[string]string)
+	nodeLabels[commonconstants.LabelSimulationRunNum] = fmt.Sprintf("%d", s.runNum())
+	nodeutil.AddNodeLabels(nodeLabels, s.nodeTemplate.Architecture, simNodeName, sacorev1alpha1.NodePlacement{
+		NodePoolName:     s.args.NodePool.Name,
+		NodeTemplateName: s.args.NodeTemplateName,
+		InstanceType:     s.nodeTemplate.InstanceType,
+		Region:           s.args.NodePool.Region,
+		AvailabilityZone: s.args.AvailabilityZone,
+	})
+	nodeLabels["topology.ebs.csi.aws.com/zone"] = s.args.AvailabilityZone // TODO: need this for edge cases
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   simNodeName,
-			Labels: nodeutil.CreateNodeLabels(s.name, s.args.NodePool, s.nodeTemplate, s.args.AvailabilityZone, s.runNum(), simNodeName),
+			Labels: nodeLabels,
 		},
 		Spec: corev1.NodeSpec{
 			ProviderID: simNodeName,
@@ -320,12 +335,12 @@ func (s *defaultScaleOut) buildSimulationNode() *corev1.Node {
 	}
 }
 
-// trackUntilStabilized starts a loop which updates the state of the simulation until one of the following conditions is met:
+// workAndTrackUntilStabilized starts a loop which performs work and tracks the state of the simulation until one of the following conditions is met:
 //  1. All the pods are scheduled.
 //  2. Events have stabilized. i.e., no more scheduling events within maxUnchangedTrackAttempts
 //  3. Context timeout.
 //  4. Any error
-func (s *defaultScaleOut) trackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
+func (s *defaultScaleOut) workAndTrackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var stabilized bool
 	for {
@@ -334,16 +349,15 @@ func (s *defaultScaleOut) trackUntilStabilized(ctx context.Context, view minkapi
 			err = ctx.Err()
 			return
 		default:
-			<-time.After(s.args.Config.TrackPollInterval)
-			stabilized, err = s.track(ctx, view)
-			if err != nil {
+			if err = s.doWork(ctx, view); err != nil {
 				return
 			}
-			if stabilized {
+			<-time.After(s.args.Config.TrackPollInterval)
+			if stabilized, err = s.track(ctx, view); err != nil || stabilized {
 				return
 			}
 			if len(s.state.leftoverUnscheduledPodNames) == 0 {
-				log.V(5).Info("ending simulation run since no unscheduled pods left")
+				log.V(2).Info("ending simulation run since leftoverUnscheduledPodNames is zero", "numTrackAttempts", s.state.numTrackAttempts)
 				return
 			}
 		}
@@ -381,7 +395,7 @@ func (s *defaultScaleOut) track(ctx context.Context, view minkapi.View) (stabili
 		return
 	}
 	log := logr.FromContextOrDiscard(ctx)
-	log.V(5).Info("Invoked track", "numEvents", len(evList), "numTrackAttempts", s.state.numTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
+	log.V(4).Info("Invoked track", "numEvents", len(evList), "numTrackAttempts", s.state.numTrackAttempts, "numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts)
 	for idx, ev := range evList {
 		if ev.Series != nil {
 			eventTime = ev.Series.LastObservedTime
@@ -405,10 +419,10 @@ func (s *defaultScaleOut) track(ctx context.Context, view minkapi.View) (stabili
 		s.state.numUnchangedTrackAttempts++
 	}
 
-	if s.state.numUnchangedTrackAttempts >= plannerapi.DefaultMaxUnchangedTrackAttempts {
-		log.V(3).Info("simulation run has stabilized - no new events observed",
+	if s.state.numUnchangedTrackAttempts >= s.args.Config.MaxUnchangedTrackAttempts {
+		log.V(3).Info("simulation run stabilized - no new events observed",
 			"numReceivedEvents", s.state.numReceivedEvents,
-			"maxUnchangedTrackAttempts", plannerapi.DefaultMaxUnchangedTrackAttempts,
+			"maxUnchangedTrackAttempts", s.args.Config.MaxUnchangedTrackAttempts,
 			"numUnchangedTrackAttempts", s.state.numUnchangedTrackAttempts,
 			"numScheduledPods", s.state.numScheduledPods)
 		stabilized = true
@@ -424,6 +438,24 @@ func (s *defaultScaleOut) incRunNum() uint32 {
 	return s.args.RunCounter.Add(1)
 }
 
+// doWork does miscellaneous simulation work to ensure that the kube-scheduler can
+// continue pod-node bindings. Currently, it only delegates to
+// util.BindClaimsAndVolumesWithNonNilClaimRefs, but other reconcile logic is likely to be incorporated in the future.
+func (s *defaultScaleOut) doWork(ctx context.Context, view minkapi.View) error {
+	log := logr.FromContextOrDiscard(ctx)
+	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
+	numBound, err := util.BindClaimsAndVolumesWithNonNilClaimRefs(ctx, view)
+	if err != nil {
+		return err
+	}
+	if numBound > 0 {
+		log.V(3).Info("Reset numUnchangedTrackAttempts since BindClaimsAndVolumesWithNonNilClaimRefs performed work", "numBound", numBound)
+		// reset track state
+		s.state.numUnchangedTrackAttempts = 0
+	}
+	return nil
+}
+
 func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 	instanceType := nodeutil.GetInstanceType(node)
 	return plannerapi.NodeResourceInfo{
@@ -434,7 +466,7 @@ func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 	}
 }
 
-// runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when defaultScaleOut.track is invoked regularly by singleNodeScalingSimulation.trackUntilStabilized.
+// runState is an internal state struct encapsulating details of parent singleNodeScalingSimulation.Run() and is updated when defaultScaleOut.track is invoked regularly by singleNodeScalingSimulation.workAndTrackUntilStabilized.
 type runState struct {
 	err                         error
 	simNode                     *corev1.Node

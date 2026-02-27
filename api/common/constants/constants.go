@@ -40,10 +40,8 @@ const (
 	LabelSimulationName = "sa.gardener.cloud/simulation-name"
 	// LabelSimulationGroupName is the label key to identify the name of the simulation group.
 	LabelSimulationGroupName = "sa.gardener.cloud/simulation-group-name"
-	// LabelSimulationGroupNumPasses is the label key to identify the number of passes made for this simulation group.
-	LabelSimulationGroupNumPasses = "sa.gardener.cloud/simulation-group-num-passes"
-	// LabelTotalSimulations is the label key to identify the total number of simulations across all simulation groups at the time the group run result was produced.
-	LabelTotalSimulations = "sa.gardener.cloud/total-simulations"
+	// LabelSimulationRunNum is the label key to identify the run number for the simulation which produced this object.
+	LabelSimulationRunNum = "sa.gardener.cloud/simulation-run-num"
 	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
 	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
 	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
