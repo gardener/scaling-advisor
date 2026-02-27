@@ -172,7 +172,7 @@ func TestOnePoolFullFitPodScaleout(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-// TestOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool P's NodeTemplate.
+// TestOnePoolHalfFitPodScaleout tests scale out of one pool using HalfBerry pods that half-fit into pool A's NodeTemplate.
 func TestOnePoolHalfFitPodScaleout(t *testing.T) {
 	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
