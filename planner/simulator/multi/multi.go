@@ -192,8 +192,9 @@ func (m *SimulatorSingleNodeMultiSim) runStabilizationCyclesForAllGroups(ctx con
 				return
 			}
 		}
-		if len(leftoverUnscheduledPods) == 0 {
-			log.Info("Ending runAllGroups: all pods have been scheduled after processing group")
+		allSimGroupCycleResults = append(allSimGroupCycleResults, simGroupCycleResult)
+		if len(simGroupCycleResult.LeftoverUnscheduledPods) == 0 {
+			log.V(2).Info("Ending further runStabilizationCycleForGroup since there are no LeftoverUnscheduledPods.")
 			break
 		}
 	}
