@@ -136,7 +136,7 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 	return nil
 }
 
-// ListStorageClassesClaimsAndVolumes gets the slice of StoreClass, PersistentVolume's and PersistentVolumes from the given minkapi view or an error
+// ListStorageClassesClaimsAndVolumes gets the slice of StoreClass, PersistentVolumeClaims and PersistentVolumes from the given minkapi view or an error
 func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []storagev1.StorageClass, pvcs []corev1.PersistentVolumeClaim, pvs []corev1.PersistentVolume, err error) {
 	scObjs, _, err := view.ListMetaObjects(ctx, typeinfo.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
