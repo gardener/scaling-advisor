@@ -93,11 +93,15 @@ type PodGenInput struct {
 	PVCNames []string
 }
 
-// StorageVolGenInput represents bag of input parameters to generate PVC's and PV's.
-type StorageVolGenInput struct {
+// PodGenOutput is the output container for generated pod data.
+type PodGenOutput struct {
+	YAMLPaths map[commontypes.NamespacedName]string
+	Pods      []corev1.Pod
+}
+
+// VolGenInput represents bag of input parameters to generate PVC's and PV's.
+type VolGenInput struct {
 	Provider commontypes.CloudProvider
-	// GenDir is the directory into which to generate the object YAML's.
-	GenDir string
 	// Namespace represents the PVC nameespace.
 	Namespace string
 	// Storage is used to set the corev1.ResourceStorage quantity in generated PVC.Spec.Resoures.Requests
@@ -106,19 +110,12 @@ type StorageVolGenInput struct {
 	AccessMode corev1.PersistentVolumeAccessMode
 	// StorageClassName is used to set the generated PVC.spec.storageClassName and PV.spec.storageClassName
 	StorageClassName string
-	// VolumeBindingMode is used to determine whether the PVC is bound to the PV.
-	//
-	// If VolumeBindingMode is set to "Immediate" (default): 
-	//   1. PV.spec.claimRef is set to refer to its associated PVC
-	//   2. PV.status.phase is set to "Bound"
-	//   3. "pv.kubernetes.io/provisioned-by" annotation is set on the PV
-	//   4. PVC.spec.volumeName refers to the PV.Spec.CSI.VolumeHandle
-	//   5. PVC.status.phase is set to "Bound".
-	//   6. "pv.kubernetes.io/bind-completed" annotation is set to "yes" on PVC
-	//
-	// If VolumeBindingMode is set to "WaitForFirstConsumer", the above claimRef and annotations
-	// are not set and the PV.status.phase is set to "Available"
-	// and the PVC.status.phase is set to "Pending".
+	// PVCCLaimPhase represents whether PVC is bound or unbound to a PV. If PVC Phase is "Pending" (default),
+	// then the generated PVC is not bound to the generated PV.
+	ClaimPhase corev1.PersistentVolumeClaimPhase
+	// VolumeBindingMode represents whether the PVC should be bound Immediately or WaitForFirstConsumer (WFFC)
+	// Always defaults to Immediate, unless explicitly set.
+	// If not explicitly set and if the ClaimPhase is Pending, then VolumeBindingMode is defaulted to Immediate.
 	VolumeBindingMode storagev1.VolumeBindingMode
 	// PVCNames if specified determine the number of PVCs and names of the generated PVCs.
 	PVCNames []string
@@ -129,11 +126,8 @@ type StorageVolGenInput struct {
 	MaxAllocatableVolumes int32
 }
 
-// ValidateAndFillDefaults validates required fields in StorageVolGenInput and fills other fields with defaults.
-func (v *StorageVolGenInput) ValidateAndFillDefaults() error {
-	if v.GenDir == "" {
-		return fmt.Errorf("empty GenDir")
-	}
+// ValidateAndFillDefaults validates required fields in VolGenInput and fills other fields with defaults.
+func (v *VolGenInput) ValidateAndFillDefaults() error {
 	if len(v.PVCNames) == 0 {
 		return fmt.Errorf("empty PVCNames")
 	}
@@ -143,8 +137,11 @@ func (v *StorageVolGenInput) ValidateAndFillDefaults() error {
 	if v.Namespace == "" {
 		v.Namespace = metav1.NamespaceDefault
 	}
+	if v.ClaimPhase == "" {
+		return fmt.Errorf("ClaimPhase must be set")
+	}
 	if v.VolumeBindingMode == "" {
-		return fmt.Errorf("empty VolumeBindingMode")
+		v.VolumeBindingMode = storagev1.VolumeBindingImmediate
 	}
 	if v.StorageClassName == "" {
 		v.StorageClassName = "default"
@@ -159,6 +156,13 @@ func (v *StorageVolGenInput) ValidateAndFillDefaults() error {
 		v.Storage = resource.MustParse("1Gi")
 	}
 	return nil
+}
+
+// VolGenOutput is the output container for generated volume data.
+type VolGenOutput struct {
+	YAMLPaths map[commontypes.NamespacedName]string
+	PVs       []corev1.PersistentVolume
+	PVCs      []corev1.PersistentVolumeClaim
 }
 
 // PodTemplateData holds all pod template data values for executing the simple pod template.

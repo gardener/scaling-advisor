@@ -7,12 +7,12 @@ package types
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -61,10 +61,10 @@ type QPSBurst struct {
 // NOTE: This is only needed since k8s APIMachinery types.NamespacedName does not have JSON tags and k8s maintainers
 // recommended that every project should use their own copy of NamespacedName.
 type NamespacedName struct {
-	// Name is the name of the object.
-	Name string `json:"name"`
 	// Namespace is the namespace of the object.
 	Namespace string `json:"namespace,omitempty"`
+	// Name is the name of the object.
+	Name string `json:"name"`
 }
 
 // AsObjectName converts this namespaced name to a client-go cache.ObjectName

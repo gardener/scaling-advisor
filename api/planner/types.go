@@ -276,6 +276,7 @@ type PVInfo struct {
 	StorageClassName  string                       `json:"storageClassName,omitempty"`
 	Phase             corev1.PersistentVolumePhase `json:"phase,omitempty"`
 	metav1.ObjectMeta `json:",inline"`
+	VolumeMode        corev1.PersistentVolumeMode         `json:"volumeMode,omitempty"`
 	AccessModes       []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
@@ -373,6 +374,9 @@ type SimulatorConfig struct {
 	MaxParallelSimulations int
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
 	TrackPollInterval time.Duration
+	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
+	// considered as stabilized.
+	MaxUnchangedTrackAttempts int
 }
 
 // ScalingPlannerArgs encapsulates the arguments required to create a ScalingPlanner.

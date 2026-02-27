@@ -47,10 +47,10 @@ spec:
                   that this advice is based on.
                 properties:
                   name:
-                    description: Name is the name of the ClusterScalingConstraint.
+                    description: Name is the name of the object.
                     type: string
                   namespace:
-                    description: Namespace is the namespace of the ClusterScalingConstraint.
+                    description: Namespace is the namespace of the object.
                     type: string
                 required:
                 - name

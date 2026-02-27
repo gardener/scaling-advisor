@@ -25,40 +25,38 @@ func TestGeneratePVCs(t *testing.T) {
 	if !ok {
 		return
 	}
-	vg := StorageVolGenInput{
-		GenDir:            testGenDir,
-		Namespace:         wantNS,
-		Storage:           wantStorage,
-		AccessMode:        wantAccessMode,
-		PVCNames:          wantNames,
-		Provider:          commontypes.CloudProviderAWS,
-		VolumeBindingMode: storagev1.VolumeBindingImmediate,
+	vg := VolGenInput{
+		Namespace:  wantNS,
+		Storage:    wantStorage,
+		AccessMode: wantAccessMode,
+		PVCNames:   wantNames,
+		Provider:   commontypes.CloudProviderAWS,
+		ClaimPhase: corev1.ClaimBound,
 	}
-	pvcs, pvcYAMLPaths, err := GeneratePersistentVolumeClaims(vg)
+	out, err := GeneratePersistentVolumeClaims(testGenDir, vg)
 	if err != nil {
-		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
+		t.Fatalf("failed: %v", err)
 	}
-	if len(pvcs) != len(pvcYAMLPaths) {
-		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvcs), len(pvcYAMLPaths))
+	if len(out.PVCs) != len(out.YAMLPaths) {
+		t.Fatalf("mismatch: returned %d PVCs and %d YAMLPaths", len(out.PVCs), len(out.YAMLPaths))
 	}
-	for i := range pvcs {
-		pvc := pvcs[i]
+	for i, pvc := range out.PVCs {
 		gotName := pvc.Name
 		wantName := wantNames[i]
 		if gotName != wantName {
-			t.Errorf("GeneratePersistentVolumes gotName %q, wantName %q", gotName, wantName)
+			t.Errorf("gotName %q, wantName %q", gotName, wantName)
 		}
 		gotStorage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 		if gotStorage.Cmp(wantStorage) != 0 {
-			t.Errorf("GeneratePersistentVolumes gotStorage %q, wantStorage %q", gotStorage.String(), wantStorage.String())
+			t.Errorf("pvcName %q, gotStorage %q, wantStorage %q", pvc.Name, gotStorage.String(), wantStorage.String())
 		}
 		gotAccessMode := pvc.Spec.AccessModes[0]
 		if gotAccessMode != wantAccessMode {
-			t.Errorf("GeneratePersistentVolumes gotAccessMode %q, wantAccessMode %q", gotAccessMode, wantAccessMode)
+			t.Errorf("pvcName %q, gotAccessMode %q, wantAccessMode %q", pvc.Name, gotAccessMode, wantAccessMode)
 		}
 		gotPhase := pvc.Status.Phase
 		if gotPhase != wantPhase {
-			t.Errorf("GeneratePersistentVolumes gotPhase %q, wantPhase %q", gotPhase, wantPhase)
+			t.Errorf("pvcName %q, gotPhase %q, wantPhase %q", pvc.Name, gotPhase, wantPhase)
 		}
 	}
 }
@@ -68,40 +66,38 @@ func TestGeneratePVs(t *testing.T) {
 	wantStorage := resource.MustParse("1Gi")
 	wantAccessMode := corev1.ReadWriteOnce
 	wantZone := "eu-west-1a"
-	wantNames := []string{"stem", "branch"}
+	pvcNames := []string{"stem", "branch"}
 	testGenDir, ok := commontestutil.CreateTestGenDir(t)
 	if !ok {
 		return
 	}
-	pvs, pvYAMLPaths, err := GeneratePersistentVolumes(StorageVolGenInput{
-		GenDir:            testGenDir,
-		Namespace:         wantNS,
-		Storage:           wantStorage,
-		AccessMode:        wantAccessMode,
-		PVCNames:          wantNames,
-		Provider:          commontypes.CloudProviderAWS,
-		PVZones:           []string{wantZone},
-		VolumeBindingMode: storagev1.VolumeBindingImmediate,
+	out, err := GeneratePersistentVolumes(testGenDir, VolGenInput{
+		Namespace:  wantNS,
+		Storage:    wantStorage,
+		AccessMode: wantAccessMode,
+		PVCNames:   pvcNames,
+		Provider:   commontypes.CloudProviderAWS,
+		PVZones:    []string{wantZone},
+		ClaimPhase: corev1.ClaimBound,
 	})
 	if err != nil {
-		t.Fatalf("GeneratePersistentVolumes() failed: %v", err)
+		t.Fatalf("failed: %v", err)
 	}
-	if len(pvs) != len(pvYAMLPaths) {
-		t.Fatalf("GeneratePersistentVolumes() returned %d PVs, expected %d", len(pvs), len(pvYAMLPaths))
+	if len(out.PVs) != len(out.YAMLPaths) {
+		t.Fatalf("mismatch: returned %d PVs and %d YAMLPaths", len(out.PVs), len(out.YAMLPaths))
 	}
-	for i := range pvs {
-		pv := pvs[i]
+	for _, pv := range out.PVs {
 		gotStorage := pv.Spec.Capacity[corev1.ResourceStorage]
 		if gotStorage.Cmp(wantStorage) != 0 {
-			t.Errorf("GeneratePersistentVolumes gotStorage %q, wantStorage %q", gotStorage.String(), wantStorage.String())
+			t.Errorf("pv %q, gotStorage %q, wantStorage %q", pv.Name, gotStorage.String(), wantStorage.String())
 		}
 		gotZone := pv.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Values[0]
 		if gotZone != wantZone {
-			t.Errorf("GeneratePersistentVolumes gotZone %q, wantZone %q", gotZone, wantZone)
+			t.Errorf("pv %q, gotZone %q, wantZone %q", pv.Name, gotZone, wantZone)
 		}
 		gotAccessMode := pv.Spec.AccessModes[0]
 		if gotAccessMode != wantAccessMode {
-			t.Errorf("GeneratePersistentVolumes gotAccessMode %q, wantAccessMode %q", gotAccessMode, wantAccessMode)
+			t.Errorf("pv %q, gotAccessMode %q, wantAccessMode %q", pv.Name, gotAccessMode, wantAccessMode)
 		}
 	}
 }
@@ -138,7 +134,7 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 	}
 	for _, resourceCategory := range allResourcePresets {
 		t.Run(string(resourceCategory), func(t *testing.T) {
-			pods, podYAMLPaths, err := GenerateSimplePodsForResourcePreset(resourceCategory, podCount, PodGenInput{
+			out, err := GenerateSimplePodsForResourcePreset(resourceCategory, podCount, PodGenInput{
 				Name: string(resourceCategory),
 				AppLabels: AppLabels{
 					Name:      string(resourceCategory),
@@ -152,15 +148,15 @@ func TestGenerateSimplePodsWithResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(pods) != podCount {
-				t.Errorf("expecting %d pods for %q, got %d", podCount, resourceCategory, len(pods))
+			if len(out.Pods) != podCount {
+				t.Errorf("expecting %d pods for %q, got %d", podCount, resourceCategory, len(out.Pods))
 			}
-			if len(podYAMLPaths) != podCount {
-				t.Errorf("expecting %d paths for %q, got %d", podCount, resourceCategory, len(podYAMLPaths))
+			if len(out.YAMLPaths) != podCount {
+				t.Errorf("expecting %d paths for %q, got %d", podCount, resourceCategory, len(out.YAMLPaths))
 			}
 
 			want := resourceCategory.AsResourceList()
-			for _, p := range pods {
+			for _, p := range out.Pods {
 				if len(p.Spec.Containers) == 0 {
 					t.Fatalf("pod %q has no containers", p.Name)
 				}

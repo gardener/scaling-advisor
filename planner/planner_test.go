@@ -10,9 +10,9 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/testutil"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/samples"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 )
 
@@ -46,7 +46,10 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
-		PVCNames:  []string{"stem"},
+		VolGenInput: samples.VolGenInput{
+			PVCNames:   []string{"stem"},
+			ClaimPhase: corev1.ClaimBound,
+		},
 	})
 	if !ok {
 		return
@@ -63,17 +66,18 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-// TODO: Add a test TestOnePool2ZonesScaleOutWithBoundPVC - should scale up node with same zone as bound PV
-
-func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
+func TestOnePoolScaleOutWithUnboundPVC_ImmediateVolumeBinding(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
-		Factories:         NewFactories(),
-		PVCNames:          []string{"stem"},
-		VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingImmediate,
+		},
 	})
 	if !ok {
 		return
@@ -90,17 +94,48 @@ func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestOnePoolScaleOutWithUnboundPVCAndPVWithZoneAffinity(t *testing.T) {
+func TestOnePoolScaleOutWithUnboundPVC_WaitForFirstConsumer(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
-		Factories:         NewFactories(),
-		PVCNames:          []string{"stem"},
-		PoolZones:         [][]string{{"eu-west-1c", "eu-west-1b", "eu-west-1a"}},
-		PVZones:           []string{"eu-west-1a"}, // PV only generated for this zone, ScaleOutItem.NodePlacement should have this zone
-		VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+		},
+	})
+	if !ok {
+		return
+	}
+	poolAPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: poolAPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+func TestOnePoolScaleOutWithUnboundPVC_WaitForFirstConsumer_PVWithZoneAffinity(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			PVZones:           []string{"eu-west-1a"}, // PV only generated for this zone, ScaleOutItem.NodePlacement should have this zone
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+		},
+		PoolZones: [][]string{{"eu-west-1c", "eu-west-1b", "eu-west-1a"}},
 	})
 	if !ok {
 		return
@@ -234,8 +269,7 @@ func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
 			samples.ResourcePresetBerry: amount,
 			samples.ResourcePresetGrape: amount,
 		},
-		AdviceGenerationMode: commontypes.ScalingAdviceGenerationModeAllAtOnce,
-		Factories:            NewFactories(),
+		Factories: NewFactories(),
 	})
 	if !ok {
 		return

@@ -7,6 +7,8 @@ package util
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"time"
 
@@ -25,10 +27,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	storagevolume "k8s.io/component-helpers/storage/volume"
-	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
 	"k8s.io/utils/ptr"
 )
 
@@ -166,10 +168,11 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 	return groupByPlacement
 }
 
-// BindClaimsAndVolumes binds the unbound PV and PVC in the given minkapi.View so that kube-scheduler's
-// VolumeBinding plugin considers the claim satisfied, and the kube-scheduler can proceed with pod binding.
-// For the kube-scheduler's VolumeBinding plugin to succeed,
-// PVC must have:
+// BindClaimsAndVolumesForImmediateMode binds the unbound PV and PVC for the
+// "Immediate" VolumeBindingMode in the given minkapi.View so that
+// kube-scheduler's VolumeBinding plugin considers the claim satisfied, and the
+// kube-scheduler can proceed with pod-node binding. For the kube-scheduler's
+// VolumeBinding plugin to succeed, PVC must have:
 //   - spec.volumeName set
 //   - status.phase = Bound
 //   - annotations["pv.kubernetes.io/bind-completed"] = "yes"
@@ -177,23 +180,16 @@ func groupNodeScoresByNodePlacement(nodeScores []plannerapi.NodeScore) map[sacor
 // PV must have:
 //   - spec.claimRef populated
 //   - status.phase = Bound
-func BindClaimsAndVolumes(ctx context.Context, view minkapi.View) error {
+func BindClaimsAndVolumesForImmediateMode(ctx context.Context, view minkapi.View) ([]plannerapi.VolumeClaimAssignment, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	scs, pvcs, pvs, err := viewutil.ListStorageClassesClaimsAndVolumes(ctx, view)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(scs) == 0 || len(pvcs) == 0 || len(pvs) == 0 {
-		return nil
+		return nil, nil
 	}
-	var defaultSc *storagev1.StorageClass
-	for _, sc := range scs {
-		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
-			defaultSc = &sc
-			break
-		}
-	}
-
+	var defaultSc = volutil.GetDefaultStorageClass(scs)
 	var boundPVs = make(map[string]plannerapi.VolumeClaimAssignment) // key is pvName
 	for _, pvc := range pvcs {
 		if pvc.Status.Phase != corev1.ClaimPending {
@@ -203,17 +199,21 @@ func BindClaimsAndVolumes(ctx context.Context, view minkapi.View) error {
 		var sc *storagev1.StorageClass
 		if pvc.Spec.StorageClassName == nil {
 			if defaultSc == nil {
-				log.V(2).Info("pvc does not have storage class, skipping", "pvc", pvc.Name)
+				log.V(2).Info("pvc does not have storage class, skipping", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
 				continue
 			}
 			pvc.Spec.StorageClassName = ptr.To(defaultSc.Name)
 			sc = defaultSc
 		} else {
-			scObj, err := view.GetObject(ctx, typeinfo.StorageClassDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, *pvc.Spec.StorageClassName))
-			if err != nil {
-				return err
+			sc = volutil.FindStorageClassWithName(*pvc.Spec.StorageClassName, scs)
+			if sc == nil {
+				log.V(2).Info("cannot find PVC storage class", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace, "storageClassName", *pvc.Spec.StorageClassName)
+				continue
 			}
-			sc = scObj.(*storagev1.StorageClass)
+		}
+
+		if sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+			continue
 		}
 
 		var selectedPV corev1.PersistentVolume
@@ -232,11 +232,18 @@ func BindClaimsAndVolumes(ctx context.Context, view minkapi.View) error {
 		}
 
 		if err = BindClaimAndVolume(ctx, view, &pvc, &selectedPV); err != nil {
-			return err
+			return nil, err
+		}
+		boundPVs[selectedPV.Name] = plannerapi.VolumeClaimAssignment{
+			ClaimName:  commontypes.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name},
+			VolumeName: selectedPV.Name,
 		}
 	}
-
-	return nil
+	claimAssignments := slices.Collect(maps.Values(boundPVs))
+	if len(claimAssignments) >= 0 {
+		log.V(3).Info("BindClaimsAndVolumesForImmediateMode succeeded", "numClaimAssignments", len(claimAssignments))
+	}
+	return claimAssignments, nil
 }
 
 // BindClaimAndVolume binds the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
@@ -284,6 +291,15 @@ func IsPVBindCandidate(ctx context.Context, pvc *corev1.PersistentVolumeClaim, p
 	if pv.Spec.StorageClassName != storageClassName {
 		return false
 	}
+	if pvc.Spec.VolumeMode == nil {
+		pvc.Spec.VolumeMode = ptr.To(corev1.PersistentVolumeFilesystem)
+	}
+	if pv.Spec.VolumeMode == nil {
+		pv.Spec.VolumeMode = ptr.To(corev1.PersistentVolumeFilesystem)
+	}
+	if *pvc.Spec.VolumeMode != *pv.Spec.VolumeMode {
+		return false
+	}
 	requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	capacity := pv.Spec.Capacity[corev1.ResourceStorage]
 	if capacity.Cmp(requested) < 0 {
@@ -297,7 +313,73 @@ func IsPVBindCandidate(ctx context.Context, pvc *corev1.PersistentVolumeClaim, p
 	if !areAccessModesCompatible(pvc.Spec.AccessModes, pv.Spec.AccessModes) {
 		return false
 	}
-	return true
+	matches, err := objutil.SelectorMatchesLabels(pvc.Spec.Selector, pv.Labels)
+	if err != nil {
+		log.V(3).Info("PVC selector conversion error", "pvcName", pvc.Name, "error", err)
+		return false
+	}
+	return matches
+}
+
+// BindClaimsAndVolumesWithNonNilClaimRefs fully completes the PVC<->PV binding after the kube-scheduler VolumeBinding plugin
+// has set the PersistentVolume.Spec.ClaimRef. It obtains the PersistentVolume's from the view and does the following for each PV.
+//
+// if PV.spec.claimRef != nil and AND claimRef PVC.spec.volumeName == ""
+//   - update PVC.spec.volumeName
+//   - update PVC.status.phase = Bound
+//   - update PV.status.phase = Bound
+func BindClaimsAndVolumesWithNonNilClaimRefs(ctx context.Context, view minkapi.View) (numBound int, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", plannerapi.ErrBindClaimVolume, err)
+		}
+	}()
+	var (
+		log = logr.FromContextOrDiscard(ctx)
+		obj runtime.Object
+		pvs []corev1.PersistentVolume
+		pvc *corev1.PersistentVolumeClaim
+	)
+	pvs, err = viewutil.ListPersistentVolumes(ctx, view)
+	if err != nil {
+		return
+	}
+	for _, pv := range pvs {
+		ref := pv.Spec.ClaimRef
+		if ref == nil {
+			continue
+		}
+		if pv.Status.Phase == corev1.VolumeBound {
+			continue
+		}
+		log.V(3).Info("kube-scheduler has bound PV.Spec.ClaimRef", "pvName", pv.Name, "claimRef", ref)
+		obj, err = view.GetObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(ref.Namespace, ref.Name))
+		if err != nil {
+			return
+		}
+		pvc = obj.(*corev1.PersistentVolumeClaim)
+		if pvc.Spec.VolumeName != "" {
+			continue
+		}
+		pvc.Spec.VolumeName = pv.Name
+		pvc.Status.Phase = corev1.ClaimBound
+		if pvc.Annotations == nil {
+			pvc.Annotations = map[string]string{}
+		}
+		pvc.Annotations[storagevolume.AnnBindCompleted] = "yes"
+		pv.Status.Phase = corev1.VolumeBound
+		err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc)
+		if err != nil {
+			return
+		}
+		err = view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, &pv)
+		if err != nil {
+			return
+		}
+		numBound++
+		log.V(3).Info("fully bound claim to volume", "pvName", pv.Name, "pvcName", pvc.Name)
+	}
+	return
 }
 
 func areAccessModesCompatible(requested, available []corev1.PersistentVolumeAccessMode) bool {

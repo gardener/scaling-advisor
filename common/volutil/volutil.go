@@ -6,21 +6,31 @@ package volutil
 
 import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
 )
 
 // AsPVInfo converts the given corev1.PersistentVolume to a lean plannerapi PVInfo.
 func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
-	return plannerapi.PVInfo{
+	pvi := plannerapi.PVInfo{
 		AccessModes:      pv.Spec.AccessModes,
 		Capacity:         pv.Spec.Capacity,
-		ClaimRef:         objutil.NamespacedName(&pv),
 		ObjectMeta:       pv.ObjectMeta,
 		NodeAffinity:     pv.Spec.NodeAffinity.Required,
 		StorageClassName: pv.Spec.StorageClassName,
 		Phase:            pv.Status.Phase,
 	}
+	if pv.Spec.ClaimRef != nil {
+		pvi.ClaimRef.Namespace = pv.Spec.ClaimRef.Namespace
+		pvi.ClaimRef.Name = pv.Spec.ClaimRef.Name
+	}
+	if pv.Spec.VolumeMode != nil {
+		pvi.VolumeMode = *pv.Spec.VolumeMode
+	} else {
+		pvi.VolumeMode = corev1.PersistentVolumeFilesystem // default according to k8s
+	}
+	return pvi
 }
 
 // AsPV converts the given plannerapi PVInfo object to a corev1.PersistentVolume
@@ -63,4 +73,25 @@ func AsPVC(p plannerapi.PVCInfo) *corev1.PersistentVolumeClaim {
 			Phase: p.Phase,
 		},
 	}
+}
+
+// GetDefaultStorageClass gets the `StorageClass` annotated with the "storageclass.kubernetes.io/is-default-class"
+// annotation in the given classses slice or nil if no such StoreClasss is found
+func GetDefaultStorageClass(classes []storagev1.StorageClass) *storagev1.StorageClass {
+	for _, sc := range classes {
+		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
+			return &sc
+		}
+	}
+	return nil
+}
+
+// FindStorageClassWithName finds a storage class with the given name in the given slice of `StorageClass`s or nil if not found
+func FindStorageClassWithName(name string, classes []storagev1.StorageClass) *storagev1.StorageClass {
+	for _, sc := range classes {
+		if sc.Name == name {
+			return &sc
+		}
+	}
+	return nil
 }

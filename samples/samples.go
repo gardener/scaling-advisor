@@ -88,7 +88,7 @@ func LoadBinPackingSchedulerConfig() ([]byte, error) {
 
 // GenerateSimplePodsWithTemplateData generates a slice of corev1.Pod objects with count length using the given pod template data in podTmplData.
 // Also generates the pod YAMLs for these pods within the temp directory.
-func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (output PodGenOutput, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, simplePodTemplatePath)
 	if err != nil {
 		return
@@ -97,6 +97,8 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (p
 		err = fmt.Errorf("PodTemplateData.GenDir is empty")
 		return
 	}
+	output.Pods = make([]corev1.Pod, 0, num)
+	output.YAMLPaths = make(map[commontypes.NamespacedName]string, num)
 	for i := 1; i <= num; i++ {
 		var pod corev1.Pod
 		tmplData := fillPodTemplateDataDefaults(podTmplData)
@@ -107,15 +109,16 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (p
 			return
 		}
 		pod.CreationTimestamp = metav1.Now()
-		pods = append(pods, pod)
-		podYAMLPaths = append(podYAMLPaths, outYAMLPath)
+		output.Pods = append(output.Pods, pod)
+		output.YAMLPaths[objutil.NamespacedName(&pod)] = outYAMLPath
 	}
 	return
 }
 
-// GenerateSimplePodsForResourcePreset generates simple pods with a container specifying requests for the given resourceCategory and using the given metadata.
-// Also generates the pod YAML's for these pods within the temp directory.
-func GenerateSimplePodsForResourcePreset(category ResourcePreset, num int, metadata PodGenInput) (pods []corev1.Pod, podYAMLPaths []string, err error) {
+// GenerateSimplePodsForResourcePreset generates simple pods with a container specifying requests for the given
+// resourceCategory and using the given metadata. Also generates the pod YAML's for these pods within the temp
+// directory. Pod objects and their YAML paths are encapsulated in the returned PodGenOutput.
+func GenerateSimplePodsForResourcePreset(category ResourcePreset, num int, metadata PodGenInput) (output PodGenOutput, err error) {
 	podTmplData := PodTemplateData{
 		PodGenInput: metadata,
 		Resources:   category.AsResourceList(),
@@ -123,8 +126,10 @@ func GenerateSimplePodsForResourcePreset(category ResourcePreset, num int, metad
 	return GenerateSimplePodsWithTemplateData(num, podTmplData)
 }
 
-// GeneratePersistentVolumeClaims generates a slice of corev1.PersistentVolumeClaim objects with the given pvcNames,  storage and accessMode in the given namespace.
-func GeneratePersistentVolumeClaims(vi StorageVolGenInput) (pvcs []corev1.PersistentVolumeClaim, pvcYAMLPaths []string, err error) {
+// GeneratePersistentVolumeClaims generates a slice of corev1.PersistentVolumeClaim objects with the given
+// VolGenInput.PVCNames, VolGenInput.Storage and VolGenInput.AccessMode in the given VolGenInput.Namespace and writes
+// generated object YAML files to genDir. Generated PVC's and their YAMLPaths are returned in VolGenOutput.
+func GeneratePersistentVolumeClaims(genDir string, vi VolGenInput) (output VolGenOutput, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pvc-template.yaml")
 	if err != nil {
 		return
@@ -132,17 +137,15 @@ func GeneratePersistentVolumeClaims(vi StorageVolGenInput) (pvcs []corev1.Persis
 	if err = vi.ValidateAndFillDefaults(); err != nil {
 		return
 	}
+	output.YAMLPaths = make(map[commontypes.NamespacedName]string, len(vi.PVCNames))
+	output.PVCs = make([]corev1.PersistentVolumeClaim, 0, len(vi.PVCNames))
 	for _, pvcName := range vi.PVCNames {
 		var (
-			pvc         corev1.PersistentVolumeClaim
-			claimPhase  = corev1.ClaimBound
-			volumeName  = "pv-" + pvcName
-			outYAMLPath = path.Join(vi.GenDir, "pvc-"+pvcName+".yaml")
+			pvc        corev1.PersistentVolumeClaim
+			volumeName string
+			yamlPath   = path.Join(genDir, "pvc-"+pvcName+".yaml")
 		)
-		if vi.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
-			volumeName = ""
-			claimPhase = corev1.ClaimPending
-		} else if len(vi.PVZones) >= 0 {
+		if vi.ClaimPhase == corev1.ClaimBound {
 			volumeName = "pv-" + pvcName + "-0" // always bind to first PV if there is more than one PV
 		}
 		pvcTmplData := struct {
@@ -159,28 +162,31 @@ func GeneratePersistentVolumeClaims(vi StorageVolGenInput) (pvcs []corev1.Persis
 			Namespace:        vi.Namespace,
 			Storage:          vi.Storage.String(),
 			AccessMode:       string(vi.AccessMode),
-			Phase:            string(claimPhase),
+			Phase:            string(vi.ClaimPhase),
 			StorageClassName: vi.StorageClassName,
 			VolumeName:       volumeName,
 			UID:              pvcName,
 		}
-		err = GenerateAndLoad(tmpl, pvcTmplData, outYAMLPath, &pvc)
+		err = GenerateAndLoad(tmpl, pvcTmplData, yamlPath, &pvc)
 		if err != nil {
 			return
 		}
 		pvc.CreationTimestamp = metav1.Now()
-		pvcs = append(pvcs, pvc)
-		pvcYAMLPaths = append(pvcYAMLPaths, outYAMLPath)
+		output.PVCs = append(output.PVCs, pvc)
+		output.YAMLPaths[objutil.NamespacedName(&pvc)] = yamlPath
 	}
 	return
 }
 
-// GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given pvcNames suitable for the given provider in the given
-// namespace for the given storage and access mode and returns the PV objects and their generated YAML paths.
-// If StorageVolGenInput.VolumeBindingMode is `storagev1.VolumeBindingWaitForFirstConsumer`, then the generated PVs are unbound with no `claimRef` set
-// and have their phase set to `corev1.VolumeAvailable`.
-// Otherwise, their phase is set to `corev1.VolumeBound` with their `claimRef` referring to the PVC.
-func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
+// GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given VolGenInput.PVCNames
+// suitable for the given provider in the given VolGenInput.Namespace for the given VolGenInput.Storage and
+// VolGenInput.AccessMode and returns the PersistentVolume objects and their generated YAML paths encapsulated within
+// VolGenOutput.
+//
+// If VolGenInput.ClaimPhase is "Pending", then the generated PVs are unbound with no `claimRef` set
+// and have their phase set to `corev1.VolumeAvailable`. Otherwise, their phase is set to `corev1.VolumeBound` with
+// their `claimRef` referring to the PVC.
+func GeneratePersistentVolumes(genDir string, vi VolGenInput) (output VolGenOutput, err error) {
 	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
 	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pv-template.yaml")
@@ -198,6 +204,9 @@ func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVo
 	if err != nil {
 		return
 	}
+	numPVs := len(vi.PVCNames) * len(vi.PVZones)
+	output.PVCs = make([]corev1.PersistentVolumeClaim, 0, numPVs)
+	output.YAMLPaths = make(map[commontypes.NamespacedName]string, numPVs)
 	for _, pvcName := range vi.PVCNames {
 		var (
 			pv          corev1.PersistentVolume
@@ -205,12 +214,12 @@ func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVo
 			pvName      string
 			yamlPath    string
 		)
-		if vi.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+		if vi.ClaimPhase == corev1.ClaimPending {
 			volumePhase = corev1.VolumeAvailable
 		}
 		for i, zone := range vi.PVZones {
 			pvName = fmt.Sprintf("pv-%s-%d", pvcName, i)
-			yamlPath = path.Join(vi.GenDir, pvName+".yaml")
+			yamlPath = path.Join(genDir, pvName+".yaml")
 			pvTmplData := struct {
 				CSIDriver        string
 				Name             string
@@ -241,8 +250,8 @@ func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVo
 				return
 			}
 			pv.CreationTimestamp = metav1.Now()
-			pvs = append(pvs, pv)
-			pvYAMLPaths = append(pvYAMLPaths, yamlPath)
+			output.PVs = append(output.PVs, pv)
+			output.YAMLPaths[objutil.NamespacedName(&pv)] = yamlPath
 		}
 	}
 	return

@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -311,6 +312,24 @@ func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 		}
 	}
 	return
+}
+
+// SelectorMatchesLabels attempts to match the given selector against the given lbl labels map.
+// It returns:
+//   - true if the selector matches the labels (or is empty/nil and labels exist)
+//   - false if the selector does not match
+//   - an error only when the selector is syntactically invalid
+func SelectorMatchesLabels(selector *metav1.LabelSelector, lbl map[string]string) (bool, error) {
+	if selector == nil || (len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0) {
+		return true, nil
+	}
+
+	sel, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return false, err
+	}
+
+	return sel.Matches(labels.Set(lbl)), nil
 }
 
 // CacheName returns the cache.ObjectName for a metav1.Object.

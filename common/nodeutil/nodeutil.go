@@ -5,8 +5,6 @@
 package nodeutil
 
 import (
-	"fmt"
-	"maps"
 	"time"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -78,22 +76,16 @@ func BuildReadyConditions(transitionTime time.Time) []corev1.NodeCondition {
 	}
 }
 
-// CreateNodeLabels creates the labels for a simulated node.
-func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplate *sacorev1alpha1.NodeTemplate, az string, groupRunPassNum uint32, nodeName string) map[string]string {
-	nodeLabels := maps.Clone(nodePool.Labels)
-	if nodeLabels == nil {
-		nodeLabels = make(map[string]string)
-	}
-	nodeLabels[commonconstants.LabelSimulationName] = simulationName
-	nodeLabels[commonconstants.LabelSimulationGroupNumPasses] = fmt.Sprintf("%d", groupRunPassNum)
-	nodeLabels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
-	nodeLabels[corev1.LabelArchStable] = nodeTemplate.Architecture
-	nodeLabels[corev1.LabelTopologyZone] = az
-	nodeLabels[corev1.LabelTopologyRegion] = nodePool.Region
+// AddNodeLabels adds the node labels for the given NodePlacement, architecture, and hostname to nodeLabels.
+func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, placement sacorev1alpha1.NodePlacement) {
+	nodeLabels[corev1.LabelInstanceTypeStable] = placement.InstanceType
+	nodeLabels[corev1.LabelArchStable] = arch
+	nodeLabels[corev1.LabelTopologyZone] = placement.AvailabilityZone
+	nodeLabels[corev1.LabelTopologyRegion] = placement.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
-	nodeLabels[corev1.LabelHostname] = nodeName
-	nodeLabels[commonconstants.LabelNodePoolName] = nodePool.Name
-	return nodeLabels
+	nodeLabels[corev1.LabelHostname] = hostName
+	nodeLabels[commonconstants.LabelNodePoolName] = placement.NodePoolName
+	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.NodeTemplateName
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec
