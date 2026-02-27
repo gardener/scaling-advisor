@@ -95,6 +95,11 @@ func (m *SimulatorSingleNodeMultiSim) doSimulate(ctx context.Context) (err error
 		return
 	}
 
+	// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
+	if _, err = util.BindClaimsAndVolumesForImmediateMode(ctx, m.state.requestView); err != nil {
+		return
+	}
+
 	err = viewutil.LogDumpObjects(ctx, "requestView", m.state.requestView)
 	if err != nil {
 		log.Info("failed to dump view objects", "view", m.state.requestView.GetName(), "error", err)

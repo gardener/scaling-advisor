@@ -134,11 +134,6 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 		return
 	}
 
-	// Run static PVC<->PV Binding
-	if _, err = util.BindClaimsAndVolumesForImmediateMode(simCtx, view); err != nil {
-		return
-	}
-
 	// Launch scheduler to operate on the simulation view and wait until stabilization
 	schedulerHandle, err := s.launchSchedulerForSimulation(simCtx, view)
 	if err != nil {
