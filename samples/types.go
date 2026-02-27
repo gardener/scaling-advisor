@@ -108,12 +108,16 @@ type StorageVolGenInput struct {
 	StorageClassName string
 	// VolumeBindingMode is used to determine whether the PVC is bound to the PV.
 	//
-	//  If VolumeBindingMode is set to "Immediate" (default), then the PV.spec.claimRef is set to refer to its associated
-	// PVC, the "pv.kubernetes.io/provisioned-by" is set on the PV, the PV.status.phase is set to "Bound", the
-	// "pv.kubernetes.io/bind-completed" annotation is set to "yes"` on PVC, the PVC.spec.volumeName refers to the PV.Spec.CSI.VolumeHandle
-	// and the PVC.status.phase is set to "Bound".
+	// If VolumeBindingMode is set to "Immediate" (default): 
+	//   1. PV.spec.claimRef is set to refer to its associated PVC
+	//   2. PV.status.phase is set to "Bound"
+	//   3. "pv.kubernetes.io/provisioned-by" annotation is set on the PV
+	//   4. PVC.spec.volumeName refers to the PV.Spec.CSI.VolumeHandle
+	//   5. PVC.status.phase is set to "Bound".
+	//   6. "pv.kubernetes.io/bind-completed" annotation is set to "yes" on PVC
 	//
-	//  If VolumeBindingMode is set to "WaitForFirstConsumer, the above claimRef and annotations are not set, the PV.status.phase is set to "Available"
+	// If VolumeBindingMode is set to "WaitForFirstConsumer", the above claimRef and annotations
+	// are not set and the PV.status.phase is set to "Available"
 	// and the PVC.status.phase is set to "Pending".
 	VolumeBindingMode storagev1.VolumeBindingMode
 	// PVCNames if specified determine the number of PVCs and names of the generated PVCs.
