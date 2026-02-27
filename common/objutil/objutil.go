@@ -98,7 +98,7 @@ func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string
 	return
 }
 
-// SaveRuntimeObjAsYAMLToPath serializes the given k8s runtime.Object as json using
+// SaveRuntimeObjAsYAMLToPath serializes the given k8s runtime.Object as YAML using
 // the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
 // NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
 func SaveRuntimeObjAsYAMLToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {

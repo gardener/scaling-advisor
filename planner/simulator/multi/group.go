@@ -51,7 +51,7 @@ func (g *simGroup) AddSimulation(sim planner.ScaleOutSimulation) {
 	g.simulations = append(g.simulations, sim)
 }
 
-func (g *simGroup) Run(ctx context.Context, getViewFn minkapi.ViewFactory) (runResults []planner.ScaleOutSimResult, err error) {
+func (g *simGroup) Run(ctx context.Context, getViewFn minkapi.GetViewFunc) (runResults []planner.ScaleOutSimResult, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot run %q: %w", planner.ErrRunSimulationGroup, g.Name(), err)

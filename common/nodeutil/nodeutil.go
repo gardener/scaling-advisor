@@ -28,9 +28,6 @@ func GetInstanceType(node *corev1.Node) string {
 }
 
 // AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
-// It additionally takes in csiDriverVolumeMaximums, which is a map
-// of CSI driver names to the maximum number of volumes managed by
-// the driver on the node.
 func AsNodeInfo(node corev1.Node) plannerapi.NodeInfo {
 	return plannerapi.NodeInfo{
 		ObjectMeta:    node.ObjectMeta,

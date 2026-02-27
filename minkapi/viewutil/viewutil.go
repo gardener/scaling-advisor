@@ -133,9 +133,6 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 			"claimRef", pv.Spec.ClaimRef,
 			"labels", pv.Labels)
 	}
-	if verbosity < DefaultDumpVerbosity {
-		return nil
-	}
 	return nil
 }
 

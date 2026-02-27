@@ -22,7 +22,7 @@ const (
 	// PoolPreset1P is the pool category variant associated with a basic one-pool with one zone scaling constraint.
 	PoolPreset1P PoolPreset = "1p"
 
-	// PoolPreset2P is the pool category variant associated with a basic two-pool scaling constraint with one zone per pool.
+	// PoolPreset2P is the pool category variant associated with a basic two-pool scaling constraint.
 	PoolPreset2P PoolPreset = "2p"
 )
 

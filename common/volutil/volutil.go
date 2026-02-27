@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package volutil
 
 import (
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -11,7 +15,7 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 	return plannerapi.PVInfo{
 		AccessModes:      pv.Spec.AccessModes,
 		Capacity:         pv.Spec.Capacity,
-		ClaimRef:         commontypes.NamespacedName{Namespace: pv.GetNamespace(), Name: pv.GetName()},
+		ClaimRef:         objutil.NamespacedName(&pv),
 		ObjectMeta:       pv.ObjectMeta,
 		NodeAffinity:     pv.Spec.NodeAffinity.Required,
 		StorageClassName: pv.Spec.StorageClassName,

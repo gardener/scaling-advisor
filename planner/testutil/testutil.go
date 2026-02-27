@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"os"
@@ -23,7 +24,7 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/gardener/scaling-advisor/samples"
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 )
@@ -36,14 +37,14 @@ const DefaultPlannerTestTimeout = 30 * time.Second
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner
 type Args struct {
-	Factories                       plannerapi.Factories
-	NumUnscheduledPerResourcePreset map[samples.ResourcePreset]int
-	PoolPreset                      samples.PoolPreset
-	SimulatorStrategy               commontypes.SimulatorStrategy
-	NodeScoringStrategy             commontypes.NodeScoringStrategy
-	AdviceGenerationMode            commontypes.ScalingAdviceGenerationMode
-	VolumeBindingMode               storagev1.VolumeBindingMode
-	Provider                        commontypes.CloudProvider
+	Factories                           plannerapi.Factories
+	NumUnscheduledPodsPerResourcePreset map[samples.ResourcePreset]int
+	PoolPreset                          samples.PoolPreset
+	SimulatorStrategy                   commontypes.SimulatorStrategy
+	NodeScoringStrategy                 commontypes.NodeScoringStrategy
+	AdviceGenerationMode                commontypes.ScalingAdviceGenerationMode
+	VolumeBindingMode                   storagev1.VolumeBindingMode
+	Provider                            commontypes.CloudProvider
 	// PoolZones specifies the availability zones for each pool given in order for the NodePools of the PoolPreset.
 	// If nil, defaults to the PoolPreset zone.
 	PoolZones [][]string
@@ -81,15 +82,15 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		return
 	}
 	testData.Request.Constraint = &constraintGenOutput.Constraint
-	for c, n := range args.NumUnscheduledPerResourcePreset {
-		pods, _, err = samples.GenerateSimplePodsForResourcePreset(c, n, samples.PodGenInput{
+	for category, num := range args.NumUnscheduledPodsPerResourcePreset {
+		pods, _, err = samples.GenerateSimplePodsForResourcePreset(category, num, samples.PodGenInput{
 			GenDir:        testData.GenDir,
-			Name:          string(c),
+			Name:          string(category),
 			SchedulerName: "bin-packing-scheduler",
 			PVCNames:      args.PVCNames,
 		})
 		if err != nil {
-			t.Fatalf("failed to generate simple pods for resource category %s: %v", c, err)
+			t.Fatalf("failed to generate simple pods for resource category %s: %v", category, err)
 			return
 		}
 		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(pods)...)
@@ -177,7 +178,7 @@ func AssertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
 		return strings.Compare(a.NodePoolName, b.NodePoolName)
 	})
-	if diff := cmp.Diff(want, got); diff != "" {
+	if diff := gocmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)
 		return false
 	}
@@ -289,31 +290,17 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 }
 
 func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
-	if len(args.NumUnscheduledPerResourcePreset) == 0 {
-		t.Fatal("args.NumUnscheduledPerResourcePreset mandatory")
+	if len(args.NumUnscheduledPodsPerResourcePreset) == 0 {
+		t.Fatal("args.NumUnscheduledPodsPerResourcePreset mandatory")
 		return false
 	}
 	d.Request.CreationTime = time.Now()
 	d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
 	d.Request.ID = t.Name()
-	if args.NodeScoringStrategy != "" {
-		d.Request.ScoringStrategy = args.NodeScoringStrategy
-	} else {
-		d.Request.ScoringStrategy = commontypes.NodeScoringStrategyLeastCost
-	}
-	if args.Provider == "" {
-		args.Provider = commontypes.CloudProviderAWS
-	}
-	if args.SimulatorStrategy != "" {
-		d.Request.SimulatorStrategy = args.SimulatorStrategy
-	} else {
-		d.Request.SimulatorStrategy = commontypes.SimulatorStrategySingleNodeMultiSim
-	}
-	if args.AdviceGenerationMode != "" {
-		d.Request.AdviceGenerationMode = args.AdviceGenerationMode
-	} else {
-		d.Request.AdviceGenerationMode = commontypes.ScalingAdviceGenerationModeAllAtOnce
-	}
+	d.Request.ScoringStrategy = cmp.Or(args.NodeScoringStrategy, commontypes.NodeScoringStrategyLeastCost)
+	args.Provider = cmp.Or(args.Provider, commontypes.CloudProviderAWS)
+	d.Request.SimulatorStrategy = cmp.Or(args.SimulatorStrategy, commontypes.SimulatorStrategySingleNodeMultiSim)
+	d.Request.AdviceGenerationMode = cmp.Or(args.AdviceGenerationMode, commontypes.ScalingAdviceGenerationModeAllAtOnce)
 	if args.VolumeBindingMode == "" {
 		args.VolumeBindingMode = storagev1.VolumeBindingImmediate
 	}

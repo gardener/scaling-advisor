@@ -19,7 +19,7 @@ import (
 func TestOnePoolUnitScaleOut(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -42,7 +42,7 @@ func TestOnePoolUnitScaleOut(t *testing.T) {
 func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -68,7 +68,7 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories:         NewFactories(),
@@ -93,7 +93,7 @@ func TestOnePoolScaleOutWithUnboundPVC(t *testing.T) {
 func TestOnePoolScaleOutWithUnboundPVCAndPVWithZoneAffinity(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories:         NewFactories(),
@@ -120,7 +120,7 @@ func TestOnePoolScaleOutWithUnboundPVCAndPVWithZoneAffinity(t *testing.T) {
 func TestReusePlannerAcrossRequests(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: 1,
 		},
 		Factories: NewFactories(),
@@ -152,7 +152,7 @@ func TestOnePoolFullFitPodScaleout(t *testing.T) {
 	amount := 1
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: amount,
 		},
 		Factories: NewFactories(),
@@ -177,7 +177,7 @@ func TestOnePoolHalfFitPodScaleout(t *testing.T) {
 	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetHalfBerry: amount,
 		},
 		Factories: NewFactories(),
@@ -203,7 +203,7 @@ func TestOnePoolHalfAndFullFitPodScaleout(t *testing.T) {
 	amount := 2
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetHalfBerry: amount,
 			samples.ResourcePresetBerry:     amount,
 		},
@@ -230,7 +230,7 @@ func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
 	amount := 1
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset2P,
-		NumUnscheduledPerResourcePreset: map[samples.ResourcePreset]int{
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
 			samples.ResourcePresetBerry: amount,
 			samples.ResourcePresetGrape: amount,
 		},

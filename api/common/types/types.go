@@ -58,9 +58,9 @@ type QPSBurst struct {
 
 // NamespacedName is a fully qualified object name.
 type NamespacedName struct {
-	// Name is the name of the ClusterScalingConstraint.
+	// Name is the name of the object.
 	Name string `json:"name"`
-	// Namespace is the namespace of the ClusterScalingConstraint.
+	// Namespace is the namespace of the object.
 	Namespace string `json:"namespace,omitempty"`
 }
 
