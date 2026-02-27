@@ -177,6 +177,9 @@ func GeneratePersistentVolumeClaims(vi StorageVolGenInput) (pvcs []corev1.Persis
 
 // GeneratePersistentVolumes generates a slice of PersistentVolume objects bound to the given pvcNames suitable for the given provider in the given
 // namespace for the given storage and access mode and returns the PV objects and their generated YAML paths.
+// If StorageVolGenInput.VolumeBindingMode is `storagev1.VolumeBindingWaitForFirstConsumer`, then the generated PVs are unbound with no `claimRef` set
+// and have their phase set to `corev1.VolumeAvailable`.
+// Otherwise, their phase is set to `corev1.VolumeBound` with their `claimRef` referring to the PVC.
 func GeneratePersistentVolumes(vi StorageVolGenInput) (pvs []corev1.PersistentVolume, pvYAMLPaths []string, err error) {
 	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
 	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
@@ -262,8 +265,9 @@ func GetCSINodeDrivers(provider commontypes.CloudProvider, maxAllocatableVolumes
 	}, nil
 }
 
-// GenerateStorageClass generates a StorageClass suitable for the given provider for the specified VolumeBindingMode.
-func GenerateStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
+// GenerateDefaultStorageClass generates a StorageClass suitable for the given provider for the specified VolumeBindingMode.
+// The generated storage class has the annotation `storageclass.kubernetes.io/is-default-class` set to `true`.
+func GenerateDefaultStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/sc-template.yaml")
 	if err != nil {
 		return

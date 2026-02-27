@@ -7,6 +7,7 @@ package types
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 
@@ -57,6 +58,8 @@ type QPSBurst struct {
 }
 
 // NamespacedName is a fully qualified object name.
+// NOTE: This is only needed since k8s APIMachinery types.NamespacedName does not have JSON tags and k8s maintainers
+// recommended that every project should use their own copy of NamespacedName.
 type NamespacedName struct {
 	// Name is the name of the object.
 	Name string `json:"name"`
@@ -78,9 +81,10 @@ func (nn NamespacedName) AsObjectReference() *corev1.ObjectReference {
 	}
 }
 
-// String returns the general purpose string representation
+// String returns the general purpose string representation.
+// Matches implementation in APIMachinery types.NamespacedName
 func (nn NamespacedName) String() string {
-	return nn.Namespace + "/" + nn.Name
+	return nn.Namespace + string(types.Separator) + nn.Name
 }
 
 // SimulatorStrategy represents a simulation strategy variant.

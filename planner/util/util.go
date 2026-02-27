@@ -190,6 +190,7 @@ func BindClaimsAndVolumes(ctx context.Context, view minkapi.View) error {
 	for _, sc := range scs {
 		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
 			defaultSc = &sc
+			break
 		}
 	}
 

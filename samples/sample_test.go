@@ -113,19 +113,19 @@ func TestGenerateStorageClass(t *testing.T) {
 	if !ok {
 		return
 	}
-	sc, _, err := GenerateStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
+	sc, _, err := GenerateDefaultStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
 	if err != nil {
-		t.Fatalf("GenerateStorageClass() failed: %v", err)
+		t.Fatalf("GenerateDefaultStorageClass() failed: %v", err)
 	}
 	gotVolumeBindingMode := sc.VolumeBindingMode
 	if gotVolumeBindingMode == nil {
-		t.Fatalf("GenerateStorageClass gotVolumeBindingMode is nil")
+		t.Fatalf("GenerateDefaultStorageClass gotVolumeBindingMode is nil")
 	}
 	if *gotVolumeBindingMode != wantVolumeBindingMode {
-		t.Errorf("GenerateStorageClass gotVolumeBindingMode %q, wantVolumeBindingMode %q", *gotVolumeBindingMode, wantVolumeBindingMode)
+		t.Errorf("GenerateDefaultStorageClass gotVolumeBindingMode %q, wantVolumeBindingMode %q", *gotVolumeBindingMode, wantVolumeBindingMode)
 	}
 	if sc.Name != wantName {
-		t.Errorf("GenerateStorageClass gotName %q, wantName %q", sc.Name, wantName)
+		t.Errorf("GenerateDefaultStorageClass gotName %q, wantName %q", sc.Name, wantName)
 	}
 }
 

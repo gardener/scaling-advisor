@@ -143,7 +143,7 @@ func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput
 	if err = volGenInput.ValidateAndFillDefaults(); err != nil {
 		return
 	}
-	if sc, _, err = samples.GenerateStorageClass(testGenDir, volGenInput.Provider, "default", volGenInput.VolumeBindingMode); err != nil {
+	if sc, _, err = samples.GenerateDefaultStorageClass(testGenDir, volGenInput.Provider, "default", volGenInput.VolumeBindingMode); err != nil {
 		t.Fatalf("failed to generate storage class %q: %v", "default", err)
 		return
 	}
