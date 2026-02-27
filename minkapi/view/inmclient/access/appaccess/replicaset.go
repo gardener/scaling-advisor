@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"

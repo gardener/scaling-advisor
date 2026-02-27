@@ -11,8 +11,8 @@ import (
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
