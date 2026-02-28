@@ -11,7 +11,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/gardener/scaling-advisor/planner/util"
+	"github.com/gardener/scaling-advisor/planner/simulation"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -435,11 +435,11 @@ func (s *defaultScaleOut) incRunNum() uint32 {
 
 // doWork does miscellaneous simulation work to ensure that the kube-scheduler can
 // continue pod-node bindings. Currently, it only delegates to
-// util.BindClaimsAndVolumesWithNonNilClaimRefs, but other reconcile logic is likely to be incorporated in the future.
+// BindClaimsAndVolumesWithNonNilClaimRefs, but other reconcile logic is likely to be incorporated in the future.
 func (s *defaultScaleOut) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
-	numBound, err := util.BindClaimsAndVolumesWithNonNilClaimRefs(ctx, view)
+	numBound, err := simulation.BindClaimsAndVolumesWithNonNilClaimRefs(ctx, view)
 	if err != nil {
 		return err
 	}

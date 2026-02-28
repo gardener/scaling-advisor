@@ -22,17 +22,16 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/viewutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 )
 
 var (
-	_ commontypes.Resettable = (*SimulatorState)(nil)
+	_ commontypes.Resettable = (*RequestState)(nil)
 )
 
-// SimulatorState holds the internal state of a ScaleOutSimulator when executing simulations
-type SimulatorState struct {
+// RequestState holds the internal Request scoped state of a ScaleOutSimulator
+type RequestState struct {
 	viewAccess minkapi.ViewAccess
 	// SimulationFactory is used to create `ScaleOutSimulation`s
 	SimulationFactory plannerapi.SimulationFactory
@@ -44,29 +43,24 @@ type SimulatorState struct {
 	views         []minkapi.View
 	// SimulationGroups is the slice of ScaleOutSimGroup (if any) created for satisfying the current request.
 	SimulationGroups []plannerapi.ScaleOutSimGroup
-	simConfig        plannerapi.SimulatorConfig
 	mu               sync.Mutex
 }
 
-// NewSimulatorState constructs a fresh [SimulatorState] for the [plannerapi.ScaleOutSimulator] processing the given
-// [plannerapi.Request] with the given parameters
-func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) *SimulatorState {
-	return &SimulatorState{
+// RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
+func RequestStateWith(request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) RequestState {
+	return RequestState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleOutPlanResult),
 		SimulationFactory: simulationFactory,
 		SimRunCounter:     &atomic.Uint32{},
-		simConfig:         simConfig,
 		viewAccess:        viewAccess,
 	}
 }
 
-// InitializeRequestView performs common initialization on this simulator state. This currently includes:
-//   - populating the request view
-//   - Binding volume claims for immediate volume binding mode
-func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
+// Initialize performs out common initialization on this simulator state.
+func (s *RequestState) Initialize(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
-	requestView, err := s.createRequestView(ctx, s.viewAccess)
+	requestView, err := s.createRequestView(ctx)
 	if err != nil {
 		return err
 	}
@@ -76,14 +70,12 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 		return err
 	}
 
-	if s.simConfig.BindVolumeClaimsForImmediateMode {
-		// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView
-		// for all simulations
-		if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
-			return err
-		}
+	// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
+	if _, err = simulator.BindClaimsAndVolumesForImmediateMode(ctx, requestView); err != nil {
+		return err
 	}
-	err = viewutil.LogObjects(ctx, "requestView", requestView)
+
+	err = viewutil.LogDumpObjects(ctx, "requestView", requestView)
 	if err != nil {
 		log.Info("failed to dump requestView objects", "requestView", requestView.GetName(), "error", err)
 	}
@@ -92,7 +84,7 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 
 // CreateSandboxView creates a sandbox view with the given name from the given delegate view, adds the new view to
 // internal slice of views and returns the same.
-func (s *SimulatorState) CreateSandboxView(ctx context.Context, name string, delegate minkapi.View) (minkapi.View, error) {
+func (s *RequestState) CreateSandboxView(ctx context.Context, name string, delegate minkapi.View) (minkapi.View, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sandboxView, err := s.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegate)
@@ -104,8 +96,8 @@ func (s *SimulatorState) CreateSandboxView(ctx context.Context, name string, del
 }
 
 // RequestView gets the request minkapi view within this state. request Views are views that only have the request
-// cluster snapshot populated within them along with any initialization done by InitializeRequestView.
-func (s *SimulatorState) RequestView() minkapi.View {
+// cluster snapshot populated within them along with any initialization done by Initialize.
+func (s *RequestState) RequestView() minkapi.View {
 	if len(s.views) == 0 {
 		return nil
 	} else {
@@ -113,8 +105,8 @@ func (s *SimulatorState) RequestView() minkapi.View {
 	}
 }
 
-// Reset clears and resets this SimulatorState
-func (s *SimulatorState) Reset() error {
+// Reset clears and resets this RequestState
+func (s *RequestState) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var errs []error
@@ -175,64 +167,8 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
-// CreateAllNodeTemplates creates a slice of all possible [plannerapi.ScaleOutNodeTemplate] for the given slice of
-// [sacorev1alpha1.NodePool].
-func CreateAllNodeTemplates(pools []sacorev1alpha1.NodePool) []plannerapi.ScaleOutNodeTemplate {
-	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0, len(pools)*2)
-	for _, np := range pools {
-		for _, nt := range np.NodeTemplates {
-			for _, az := range np.AvailabilityZones {
-				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az))
-			}
-		}
-	}
-	return allNodeTemplates
-}
-
-// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
-// [plannerapi.ScaleOutNodeTemplate]
-func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTemplate) map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate {
-	templatesByPriority := make(map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate)
-	for _, t := range templates {
-		pk := t.PriorityKey
-		group, ok := templatesByPriority[pk]
-		if !ok {
-			group = []plannerapi.ScaleOutNodeTemplate{t}
-		}
-		group = append(group, t)
-		templatesByPriority[pk] = group
-	}
-	return templatesByPriority
-}
-
-// createNodeTemplate creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
-// [sacorev1alpha1.NodeTemplate] and availability zone.
-func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
-	return plannerapi.ScaleOutNodeTemplate{
-		NodePlacement: sacorev1alpha1.NodePlacement{
-			PoolName:         pool.Name,
-			TemplateName:     template.Name,
-			InstanceType:     template.InstanceType,
-			Region:           pool.Region,
-			AvailabilityZone: zone,
-		},
-		Labels:      pool.Labels,
-		Annotations: pool.Annotations,
-		Quota:       pool.Quota,
-		Taints:      pool.Taints,
-		PriorityKey: commontypes.PriorityKey{
-			First:  pool.Priority,
-			Second: template.Priority,
-		},
-		Capacity:       template.Capacity,
-		KubeReserved:   template.KubeReserved,
-		SystemReserved: template.SystemReserved,
-		Architecture:   template.Architecture,
-	}
-}
-
-func (s *SimulatorState) createRequestView(ctx context.Context, viewAccess minkapi.ViewAccess) (view minkapi.View, err error) {
-	view, err = viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, viewAccess.GetBaseView())
+func (s *RequestState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
+	view, err = s.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, s.viewAccess.GetBaseView())
 	if err != nil {
 		return
 	}

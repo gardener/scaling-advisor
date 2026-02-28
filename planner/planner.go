@@ -12,7 +12,6 @@ import (
 	"path"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
-	"github.com/gardener/scaling-advisor/planner/util"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
@@ -44,7 +43,7 @@ func (p *defaultPlanner) Plan(ctx context.Context, req planner.ScalingAdviceRequ
 	var err error
 	defer func() {
 		if err != nil {
-			util.SendPlanError(resultCh, req.ScalingAdviceRequestRef, err)
+			SendErrorResponse(responseCh, req.GetRef(), err)
 		}
 	}()
 	return responseCh
@@ -144,4 +143,14 @@ func validateArgs(args *plannerapi.ScalingPlannerArgs) error {
 		return fmt.Errorf("%w: simulationFactory must be set", plannerapi.ErrCreatePlanner)
 	}
 	return nil
+}
+
+// SendErrorResponse wraps the given error with the sentinel error plannerapi.ErrGenScalingPlan, embeds the wrapped error
+// within a plannerapi.Response and sends the response to the given results channel.
+func SendErrorResponse(resultsCh chan<- plannerapi.Response, requestRef plannerapi.RequestRef, err error) {
+	err = plannerapi.AsGenError(requestRef.ID, requestRef.CorrelationID, err)
+	resultsCh <- plannerapi.Response{
+		ID:    objutil.GenerateName("plan-error"),
+		Error: err,
+	}
 }

@@ -10,9 +10,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
