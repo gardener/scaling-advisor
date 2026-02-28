@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package multi
+package scaleout
 
 import (
 	"cmp"
@@ -97,8 +97,8 @@ func asResettable(simulations []planner.ScaleOutSimulation) []commontypes.Resett
 	return resettable
 }
 
-// groupSimulations groups the given ScaleOutSimulation instances into one or more SimulationGroups
-func groupSimulations(requestRef planner.RequestRef, simulations []planner.ScaleOutSimulation) ([]planner.ScaleOutSimGroup, error) {
+// GroupSimulations groups the given ScaleOutSimulation instances into one or more SimulationGroups
+func GroupSimulations(requestRef planner.RequestRef, simulations []planner.ScaleOutSimulation) ([]planner.ScaleOutSimGroup, error) {
 	groupsByKey := make(map[planner.PriorityKey]planner.ScaleOutSimGroup)
 	groupCount := 0
 	for _, sim := range simulations {

@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	gocmp "github.com/google/go-cmp/cmp"
