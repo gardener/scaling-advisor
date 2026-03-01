@@ -13,9 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
@@ -175,7 +174,7 @@ func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtim
 		return
 	}
 	if !exists {
-		log.V(4).Info("did not find object by key", "key", key)
+		log.V(6).Info("did not find object by key", "key", key)
 		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
 		return
 	}

@@ -6,10 +6,8 @@ REPO_HACK_DIR           := $(REPO_ROOT)/hack
 include $(REPO_HACK_DIR)/tools.mk
 
 # Change these variables as necessary.
-service_main_pkg_path = ./cmd/splanner
-service_binary_name = splanner
-ctl_main_pkg_path = ./cmd/splanctl
-ctl_binary_name = splanctl
+service_main_pkg_path = ./cmd/scaling-planner
+service_binary_name = scaling-planner
 
 ## help: print this help message
 .PHONY: help
@@ -47,7 +45,6 @@ tidy:
 build:
 	mkdir -p bin
 	go build -buildvcs -o=bin/${service_binary_name} ${service_main_pkg_path}
-	go build -buildvcs -o=bin/${ctl_binary_name} ${ctl_main_pkg_path}
 
 .PHONY: format
 format: $(GOIMPORTS_REVISER)

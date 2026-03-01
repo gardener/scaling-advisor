@@ -15,15 +15,20 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/ioutil"
+
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -84,22 +89,23 @@ func LoadJSONIntoObject(dirFS fs.FS, objPath string, obj any) (err error) {
 	return json.Unmarshal(objBytes, obj)
 }
 
-// SaveRuntimeObjAsJSONToPath saves the given runtime object ToYAML serializes the given k8s runtime.Object as json using
+// SaveRuntimeObjAsJSONToPath serializes the given runtime object as JSON using
 // the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
 // NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
 func SaveRuntimeObjAsJSONToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
 	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: false, Pretty: true})
 	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
-	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
-	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		err = fmt.Errorf("failed to open file %q: %w", savePath, err)
-		return
-	}
-	err = ser.Encode(obj, f)
-	if err != nil {
-		err = fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
-	}
+	err = saveObjToPath(ser, obj, savePath)
+	return
+}
+
+// SaveRuntimeObjAsYAMLToPath serializes the given k8s runtime.Object as YAML using
+// the ScalingAdvisorScheme and saves the serialized data to the given saveFilename under saveDir.
+// NOTE: The signature of this function deliberately takes a saveDir to satisfy gosec G304 (CWE-22).
+func SaveRuntimeObjAsYAMLToPath(obj runtime.Object, saveDir, saveFilename string) (savePath string, err error) {
+	ser := kjson.NewSerializerWithOptions(kjson.DefaultMetaFactory, ScalingAdvisorScheme, ScalingAdvisorScheme, kjson.SerializerOptions{Yaml: true, Pretty: true})
+	savePath = filepath.Join(saveDir, filepath.Base(saveFilename))
+	err = saveObjToPath(ser, obj, savePath)
 	return
 }
 
@@ -308,18 +314,41 @@ func MaxResourceVersion(objs []metav1.Object) (maxVersion int64, err error) {
 	return
 }
 
+// SelectorMatchesLabels attempts to match the given selector against the given lbl labels map.
+// It returns:
+//   - true if the selector matches the labels (or is empty/nil and labels exist)
+//   - false if the selector does not match
+//   - an error only when the selector is syntactically invalid
+func SelectorMatchesLabels(selector *metav1.LabelSelector, lbl map[string]string) (bool, error) {
+	if selector == nil || (len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0) {
+		return true, nil
+	}
+
+	sel, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return false, err
+	}
+
+	return sel.Matches(labels.Set(lbl)), nil
+}
+
 // CacheName returns the cache.ObjectName for a metav1.Object.
 func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
 
-// NamespacedName returns the types.NamespacedName for a metav1.Object.
-func NamespacedName(mo metav1.Object) types.NamespacedName {
-	return types.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+// NamespacedName returns the commontypes.NamespacedName for a metav1.Object.
+func NamespacedName(mo metav1.Object) commontypes.NamespacedName {
+	return commontypes.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+}
+
+// NamespacedNameFromEventRegarding regards the commontypes.NamespacedName for the object that is the event subject.
+func NamespacedNameFromEventRegarding(ev eventsv1.Event) commontypes.NamespacedName {
+	return commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 }
 
 // GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
-func GetFullNames(nsNames []types.NamespacedName) []string {
+func GetFullNames(nsNames []commontypes.NamespacedName) []string {
 	if len(nsNames) == 0 {
 		return nil
 	}
@@ -359,6 +388,11 @@ func AsPtrMetaV1Time(t time.Time) *metav1.Time {
 	return mt
 }
 
+// AsStdTimeOrZero dereferences the given metav1.Time and returns the stdlib time.Time if not-nil or returns the zero value.
+func AsStdTimeOrZero(t *metav1.Time) time.Time {
+	return ptr.Deref(t, metav1.Time{}).Time
+}
+
 // Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
 func Cast[T any](obj any) (t T, err error) {
 	t, ok := obj.(T)
@@ -376,4 +410,18 @@ func TypeName[T any]() string {
 		typ = typ.Elem()
 	}
 	return typ.PkgPath() + "." + typ.Name()
+}
+
+func saveObjToPath(ser *kjson.Serializer, obj runtime.Object, savePath string) error {
+	// #nosec G304 -- savePath is cleaned via filepath.Join + Base (no traversal possible)
+	f, err := os.OpenFile(savePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open file %q: %w", savePath, err)
+	}
+	defer ioutil.CloseQuietly(f)
+	err = ser.Encode(obj, f)
+	if err != nil {
+		return fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
+	}
+	return nil
 }

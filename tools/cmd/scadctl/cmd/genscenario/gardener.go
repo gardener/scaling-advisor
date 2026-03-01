@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -73,9 +72,8 @@ type ShootAccess interface {
 	ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
 	ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error)
-	// GetCSIDriverToVolCount returns a map of CSI driver names to maximum number of
-	// volumes managed by the driver on the nodes present on a shoot cluster.
-	GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, error)
+	// GetCSINodeSpecs returns a map of node name to CSINodeSpec if a CSINode was present in the shoot cluster.
+	GetCSINodeSpecs(ctx context.Context) (map[string]storagev1.CSINodeSpec, error)
 	// GetShootWorker fetches the extension worker objects present in the shoot
 	// namespace of the control (seed) cluster.
 	GetShootWorker(ctx context.Context) (map[string]any, error)
@@ -403,7 +401,7 @@ func (a *access) ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass,
 	return runtimeClassList.Items, err
 }
 
-func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, error) {
+func (a *access) GetCSINodeSpecs(ctx context.Context) (map[string]storagev1.CSINodeSpec, error) {
 	var csiNodeList storagev1.CSINodeList
 	err := a.shootClient.List(ctx, &csiNodeList)
 	if err != nil {
@@ -414,21 +412,11 @@ func (a *access) GetCSIDriverToVolCount(ctx context.Context) (map[string]int32, 
 		return nil, fmt.Errorf("no CSI nodes found")
 	}
 
-	volMap := make(map[string]int32)
+	csiNodeSpecs := make(map[string]storagev1.CSINodeSpec)
 	for _, csiNode := range csiNodeList.Items {
-		for _, d := range csiNode.Spec.Drivers {
-			if d.Allocatable != nil {
-				allocatableSize := ptr.Deref(d.Allocatable.Count, 0)
-				if _, present := volMap[d.Name]; present {
-					volMap[d.Name] = max(volMap[d.Name], allocatableSize)
-				} else {
-					volMap[d.Name] = allocatableSize
-				}
-			}
-		}
+		csiNodeSpecs[csiNode.Name] = csiNode.Spec
 	}
-
-	return volMap, nil
+	return csiNodeSpecs, nil
 }
 
 func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstraint, a *access) (planner.ClusterSnapshot, error) {
@@ -443,9 +431,9 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		return nodeB.CreationTimestamp.Compare(nodeA.CreationTimestamp.Time)
 	})
 	snap.Nodes = make([]planner.NodeInfo, 0, len(nodes))
-	volMap, err := a.GetCSIDriverToVolCount(ctx)
+	csiNodeSpecs, err := a.GetCSINodeSpecs(ctx)
 	if err != nil {
-		return snap, fmt.Errorf("failed to create volume map: %w", err)
+		return snap, fmt.Errorf("failed to obtain csiNodeSpecs: %w", err)
 	}
 	pods, err := a.ListPods(ctx, minkapi.MatchCriteria{}, excludeKubeSystemPods)
 	if err != nil {
@@ -474,7 +462,10 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 			return snap, fmt.Errorf("failed to find matching node template for pool %q and instance-type %q", poolName, instanceType)
 		}
 		sanitizeNode(&node)
-		ni := nodeutil.AsNodeInfo(node, volMap)
+		ni := nodeutil.AsNodeInfo(node)
+		if cns, ok := csiNodeSpecs[ni.Name]; ok {
+			ni.CSINodeSpec = &cns
+		}
 		ni.Labels[commonconstants.LabelNodePoolName] = poolName
 		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
 		ni.Labels[commonconstants.LabelNodeTemplateName] = matchingNodeTemplateName

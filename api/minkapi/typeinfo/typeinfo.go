@@ -10,7 +10,7 @@ import (
 	"slices"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/common/objutil"
+
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -219,7 +219,7 @@ func NewDescriptor(gvk schema.GroupVersionKind, listKind string, namespaced bool
 			// the CRD author for custom resources. Typically, we do not see this being set to anything but `all`. Thus
 			// for now we assume that the only category is `all`.
 			Categories:         []string{"all"},
-			StorageVersionHash: objutil.GenerateName(gvk.Kind),
+			StorageVersionHash: gvk.Kind,
 		},
 	}
 }

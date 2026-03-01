@@ -35,7 +35,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "2", "4")
-	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
 	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
 		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
@@ -43,7 +43,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 	tests := map[string]struct {
 		input         plannerapi.NodeScorerArgs
 		access        pricingapi.InstancePricingAccess
-		weightsFn     plannerapi.GetResourceWeightsFunc
+		weigher       plannerapi.ResourceWeigher
 		expectedErr   error
 		expectedScore plannerapi.NodeScore
 	}{
@@ -55,7 +55,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -76,7 +76,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -94,7 +94,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -111,10 +111,8 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access: access,
-			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
-				return nil, errors.New("testing error")
-			},
+			access:        access,
+			weigher:       &testWeigher{inError: true},
 			expectedErr:   plannerapi.ErrComputeNodeScore,
 			expectedScore: plannerapi.NodeScore{},
 		},
@@ -125,17 +123,15 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access: &testInfoAccess{err: errors.New("testing error")},
-			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
-				return nil, errors.New("testing error")
-			},
+			access:        &testInfoAccess{err: errors.New("testing error")},
+			weigher:       &testWeigher{inError: true},
 			expectedErr:   plannerapi.ErrComputeNodeScore,
 			expectedScore: plannerapi.NodeScore{},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, tc.access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, tc.access, tc.weigher)
 			if err != nil {
 				t.Fatal(err)
 				return
@@ -167,7 +163,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	}
 	//test case where weights are not defined for all resources
 	podWithStorage := createPodResourceInfo("simStorage", "1", "2")
-	podWithStorage.AggregatedRequests["Storage"] = resource.MustParse("10")
+	podWithStorage.AggregatedRequests[corev1.ResourceStorage] = resource.MustParse("10")
 	assignmentWithStorage := plannerapi.NodePodAssignment{
 		NodeResources: createNodeResourceInfo("simNode1", "instance-a-2", "2", "4"),
 		ScheduledPods: []plannerapi.PodResourceInfo{podWithStorage},
@@ -175,7 +171,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 	tests := map[string]struct {
 		input         plannerapi.NodeScorerArgs
 		access        pricingapi.InstancePricingAccess
-		weightsFn     plannerapi.GetResourceWeightsFunc
+		weigher       plannerapi.ResourceWeigher
 		expectedErr   error
 		expectedScore plannerapi.NodeScore
 	}{
@@ -187,7 +183,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -208,7 +204,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				}},
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -226,7 +222,7 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
 			access:      access,
-			weightsFn:   testWeightsFunc,
+			weigher:     &testWeigher{},
 			expectedErr: nil,
 			expectedScore: plannerapi.NodeScore{
 				Name:               "testing",
@@ -242,10 +238,8 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access: access,
-			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
-				return nil, errors.New("testing error")
-			},
+			access:        access,
+			weigher:       &testWeigher{inError: true},
 			expectedErr:   plannerapi.ErrComputeNodeScore,
 			expectedScore: plannerapi.NodeScore{},
 		},
@@ -256,17 +250,15 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 				ScaledNodePodAssignment: &assignment,
 				OtherNodePodAssignments: nil,
 				LeftOverUnscheduledPods: nil},
-			access: &testInfoAccess{err: errors.New("testing error")},
-			weightsFn: func(_ string) (map[corev1.ResourceName]float64, error) {
-				return nil, errors.New("testing error")
-			},
+			access:        &testInfoAccess{err: errors.New("testing error")},
+			weigher:       &testWeigher{inError: true},
 			expectedErr:   plannerapi.ErrComputeNodeScore,
 			expectedScore: plannerapi.NodeScore{},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, tc.access, tc.weightsFn)
+			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, tc.access, tc.weigher)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,12 +281,12 @@ func TestSelectMaxAllocatable(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, &testWeigher{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	simNodeWithStorage := createNodeResourceInfo("simNode1", "instance-a-1", "2", "4")
-	simNodeWithStorage.Allocatable["Storage"] = resource.MustParse("10")
+	simNodeWithStorage.Allocatable[corev1.ResourceStorage] = resource.MustParse("10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +418,7 @@ func TestSelectMinPrice(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
+	scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, access, &testWeigher{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +549,7 @@ func TestGetNodeScorer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetInstancePricingAccessWithFakeData failed with error: %v", err)
 			}
-			got, err := GetNodeScorer(tc.input, access, plannerapi.GetResourceWeightsFunc(testWeightsFunc))
+			got, err := GetNodeScorer(tc.input, access, &testWeigher{})
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("Expected error to be nil but got %v", err)
@@ -598,9 +590,7 @@ func createNodeResourceInfo(name, instanceType string, cpu, memory string) plann
 // Helper function to create mock pods with cpu and memory requests
 func createPodResourceInfo(name string, cpu, memory string) plannerapi.PodResourceInfo {
 	return plannerapi.PodResourceInfo{
-		UID:       "pod-12345",
-		Name:      name,
-		Namespace: metav1.NamespaceDefault,
+		NamespacedName: commontypes.NamespacedName{Namespace: metav1.NamespaceDefault, Name: name},
 		AggregatedRequests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse(cpu),
 			corev1.ResourceMemory: resource.MustParse(memory),
@@ -608,8 +598,16 @@ func createPodResourceInfo(name string, cpu, memory string) plannerapi.PodResour
 	}
 }
 
-// Helper weights function for testing
-func testWeightsFunc(_ string) (map[corev1.ResourceName]float64, error) {
+var _ plannerapi.ResourceWeigher = (*testWeigher)(nil)
+
+type testWeigher struct {
+	inError bool
+}
+
+func (t *testWeigher) GetWeights(_ string) (map[corev1.ResourceName]float64, error) {
+	if t.inError {
+		return nil, errors.New("testing error")
+	}
 	return map[corev1.ResourceName]float64{corev1.ResourceCPU: 5, corev1.ResourceMemory: 1}, nil
 }
 

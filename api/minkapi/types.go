@@ -175,6 +175,10 @@ type View interface {
 	GetKubeConfigPath() string
 }
 
+// GetViewFunc is a type alias for view provider functions that take a context and view name and construct/return the
+// associated minkapi View. Used to decouple components.
+type GetViewFunc func(ctx context.Context, name string) (View, error)
+
 // ViewType represents the type of View.
 type ViewType string
 
@@ -184,9 +188,6 @@ const (
 	// ViewTypeSandbox represents a sandboxed private view.
 	ViewTypeSandbox ViewType = "sandbox"
 )
-
-// CreateSandboxViewFunc represents a creator function for constructing sandbox views from the delegate view and given args
-type CreateSandboxViewFunc = func(log logr.Logger, delegateView View, args *ViewArgs) (View, error)
 
 // ViewArgs contains arguments for creating a View.
 type ViewArgs struct {

@@ -44,7 +44,7 @@ type ScalingAdviceSpec struct {
 	// ScaleInPlan is the plan for scaling in across node pools.
 	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
 	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.ConstraintReference `json:"constraintRef"`
+	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
 
 // ScalingAdviceStatus defines the observed state of ScalingAdvice.
@@ -90,10 +90,10 @@ type ScaleOutItem struct {
 
 // NodePlacement provides information about the placement of a node.
 type NodePlacement struct {
-	// NodePoolName is the name of the node pool.
-	NodePoolName string `json:"nodePoolName"`
-	// NodeTemplateName is the name of the node template.
-	NodeTemplateName string `json:"nodeTemplateName"`
+	// PoolName is the name of the node pool.
+	PoolName string `json:"poolName"`
+	// TemplateName is the name of the node template.
+	TemplateName string `json:"templateName"`
 	// InstanceType is the instance type of the Node
 	InstanceType string `json:"instanceType"`
 	// Region is the region of the instance

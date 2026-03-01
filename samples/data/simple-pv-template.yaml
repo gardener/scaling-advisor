@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  annotations:
+    pv.kubernetes.io/provisioned-by: "{{.CSIDriver}}"
+  name: "{{.Name}}"
+spec:
+  accessModes:
+    - "{{.AccessMode}}"
+  capacity:
+    storage: "{{.Storage}}"
+{{- if eq .Phase "Bound"  }}
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: "{{.PVCName}}"
+    namespace: "{{.Namespace}}"
+{{- end }}
+  csi:
+    driver: "{{.CSIDriver}}"
+    volumeHandle: "{{.VolumeHandle}}"
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: "topology.kubernetes.io/zone"
+              operator: In
+              values:
+                - "{{.Zone}}"
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: "{{.StorageClassName}}"
+  volumeMode: Filesystem
+status:
+  phase: "{{.Phase}}"

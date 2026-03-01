@@ -19,14 +19,15 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/cliutil"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
-	"github.com/gardener/scaling-advisor/planner/weights"
+	"github.com/gardener/scaling-advisor/planner"
 	"github.com/gardener/scaling-advisor/pricing"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 )
 
-// App represents an application process `scalp` that wraps a ScalingPlannerService, an application context and application cancel func.
-// `main` entry-point functions that embed scalp are expected to construct a new App instance via cli.LaunchApp and shutdown applications via cli.ShutdownApp
+// App represents an application process `scaling-planner` that wraps a ScalingPlannerService, an application context
+// and application cancel func. `main` entry-point functions that embed ScalingPlannerService are expected to launch a new App
+// instance via cli.LaunchApp and shutdown the instance via cli.ShutdownApp.
 type App struct {
 	// Service is the scaling planner service.
 	Service plannerapi.ScalingPlannerService
@@ -41,7 +42,7 @@ type Opts struct {
 	InstancePricingPath string
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider    string
-	TraceLogBaseDir  string
+	TraceDir         string
 	ServerConfig     commontypes.ServerConfig
 	ClientConfig     commontypes.QPSBurst
 	WatchConfig      minkapi.WatchConfig
@@ -108,15 +109,14 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 		ClientConfig:    cliOpts.ClientConfig,
 		CloudProvider:   cloudProvider,
 		SimulatorConfig: cliOpts.SimulationConfig,
-		TraceLogBaseDir: cliOpts.TraceLogBaseDir,
+		TraceDir:        cliOpts.TraceDir,
 	}
 	pricingAccess, err := pricing.GetInstancePricingAccess(cloudProvider, cliOpts.InstancePricingPath)
 	if err != nil {
 		exitCode = cliutil.ExitErrStart
 		return
 	}
-	weightsFn := weights.GetDefaultWeightsFn()
-	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, weightsFn)
+	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, planner.NewFactories())
 	if err != nil {
 		exitCode = cliutil.ExitErrStart
 		return
@@ -186,7 +186,7 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(commontypes.CloudProviderAWS), "cloud provider")
 	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", plannerapi.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
 	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", plannerapi.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
-	flagSet.StringVar(&opts.TraceLogBaseDir, "trace-log-base-dir", os.TempDir(), "base directory for trace logs")
+	flagSet.StringVar(&opts.TraceDir, "trace-dir", os.TempDir(), "directory for traces ")
 	flagSet.StringVarP(&opts.InstancePricingPath, "pricing", "p", "", "path to instance pricing file")
 	return flagSet, &opts
 }
