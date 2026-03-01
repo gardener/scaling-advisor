@@ -32,7 +32,7 @@ var (
 )
 
 var (
-	// FmtInitFailed is a error format indicating that the quoted component failed to initialize.
+	// FmtInitFailed is an error format indicating that the quoted component failed to initialize.
 	FmtInitFailed = "%q initialization failed"
 	// FmtStartFailed is a error format indicating that the quoted component failed to start.
 	FmtStartFailed = "%q start failed"

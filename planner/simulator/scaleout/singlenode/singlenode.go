@@ -9,9 +9,12 @@ package singlenode
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
@@ -95,17 +98,18 @@ func (s *simulatorMultiSim) createAndGroupSimulation() ([]plannerapi.ScaleOutSim
 				)
 				simCount++
 				simulationName := fmt.Sprintf("sim-%d_%s_%s_%s", simCount, nodePool.Name, nodeTemplate.Name, zone)
+				ptz := scaleout.CreateNodeArgs(nodePool, nodeTemplate, zone)
 				simArgs := plannerapi.ScaleOutSimArgs{
+					Name:              simulationName,
 					RunCounter:        s.state.SimRunCounter,
-					AvailabilityZone:  zone,
-					NodePool:          &nodePool,
-					NodeTemplateName:  nodeTemplate.Name,
 					SchedulerLauncher: s.schedulerLauncher,
 					StorageMetaAccess: s.storageMetaAccess,
 					Config:            s.simulatorConfig,
 					TraceDir:          s.traceDir,
+					NodeTemplates:     []plannerapi.ScaleOutNodeTemplate{ptz},
+					Strategy:          commontypes.SimulatorStrategySingleNodeMultiSim,
 				}
-				sim, err = s.state.SimulationFactory.NewScaleOut(simulationName, simArgs)
+				sim, err = s.state.SimulationFactory.NewScaleOut(simArgs)
 				if err != nil {
 					return nil, err
 				}
@@ -258,8 +262,8 @@ func (s *simulatorMultiSim) processSimulationGroupRunResults(log logr.Logger, si
 	var nodeScore plannerapi.NodeScore
 
 	for _, sr := range simulationRunResults {
-		if len(sr.ScaledNodePodAssignments) == 0 {
-			log.V(2).Info("No ScaledNodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name, "simulatedNodePlacement", sr.ScaledNodePlacements[0])
+		if len(sr.NodePodAssignments) == 0 {
+			log.V(2).Info("No NodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name)
 			continue
 		}
 		nodeScore, err = s.nodeScorer.Compute(mapSimulationResultToNodeScoreArgs(sr))
@@ -294,10 +298,11 @@ func (s *simulatorMultiSim) processSimulationGroupRunResults(log logr.Logger, si
 }
 
 func mapSimulationResultToNodeScoreArgs(simResult plannerapi.ScaleOutSimResult) plannerapi.NodeScorerArgs {
+	scaleOutNodePlacement := slices.Collect(maps.Keys(simResult.NodePlacements))[0]
 	return plannerapi.NodeScorerArgs{
 		ID:                      simResult.Name,
-		ScaledNodePlacement:     simResult.ScaledNodePlacements[0],
-		ScaledNodePodAssignment: &simResult.ScaledNodePodAssignments[0],
+		ScaledNodePlacement:     scaleOutNodePlacement,
+		ScaledNodePodAssignment: &simResult.NodePodAssignments[0],
 		OtherNodePodAssignments: simResult.OtherNodePodAssignments,
 		LeftOverUnscheduledPods: simResult.LeftoverUnscheduledPods,
 	}

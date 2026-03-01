@@ -113,8 +113,8 @@ func (p *NodePool) GetNodePlacements() []NodePlacement {
 	for _, nt := range p.NodeTemplates {
 		for _, az := range p.AvailabilityZones {
 			placements = append(placements, NodePlacement{
-				NodePoolName:     p.Name,
-				NodeTemplateName: nt.Name,
+				PoolName:         p.Name,
+				TemplateName:     nt.Name,
 				InstanceType:     nt.InstanceType,
 				Region:           p.Region,
 				AvailabilityZone: az,

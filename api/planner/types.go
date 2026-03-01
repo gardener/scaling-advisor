@@ -252,8 +252,8 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 		return
 	}
 	placement = sacorev1alpha1.NodePlacement{
-		NodePoolName:     n.Labels[commonconstants.LabelNodePoolName],
-		NodeTemplateName: n.Labels[commonconstants.LabelNodeTemplateName],
+		PoolName:         n.Labels[commonconstants.LabelNodePoolName],
+		TemplateName:     n.Labels[commonconstants.LabelNodeTemplateName],
 		InstanceType:     n.InstanceType,
 		Region:           n.Labels[corev1.LabelTopologyRegion],
 		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],

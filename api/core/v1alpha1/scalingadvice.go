@@ -90,10 +90,10 @@ type ScaleOutItem struct {
 
 // NodePlacement provides information about the placement of a node.
 type NodePlacement struct {
-	// NodePoolName is the name of the node pool.
-	NodePoolName string `json:"nodePoolName"`
-	// NodeTemplateName is the name of the node template.
-	NodeTemplateName string `json:"nodeTemplateName"`
+	// PoolName is the name of the node pool.
+	PoolName string `json:"poolName"`
+	// TemplateName is the name of the node template.
+	TemplateName string `json:"templateName"`
 	// InstanceType is the instance type of the Node
 	InstanceType string `json:"instanceType"`
 	// Region is the region of the instance

@@ -166,10 +166,10 @@ func AssertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 		return false
 	}
 	slices.SortFunc(want.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
-		return strings.Compare(a.NodePoolName, b.NodePoolName)
+		return strings.Compare(a.PoolName, b.PoolName)
 	})
 	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
-		return strings.Compare(a.NodePoolName, b.NodePoolName)
+		return strings.Compare(a.PoolName, b.PoolName)
 	})
 	if diff := gocmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)

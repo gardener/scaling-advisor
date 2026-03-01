@@ -167,6 +167,32 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
+// CreateNodeArgs creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
+// [sacorev1alpha1.NodeTemplate] and availability zone.
+func CreateNodeArgs(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
+	return plannerapi.ScaleOutNodeTemplate{
+		NodePlacement: sacorev1alpha1.NodePlacement{
+			PoolName:         pool.Name,
+			TemplateName:     template.Name,
+			InstanceType:     template.InstanceType,
+			Region:           pool.Region,
+			AvailabilityZone: zone,
+		},
+		Labels:      pool.Labels,
+		Annotations: pool.Annotations,
+		Quota:       pool.Quota,
+		Taints:      pool.Taints,
+		PriorityKey: plannerapi.PriorityKey{
+			NodePoolPriority:     pool.Priority,
+			NodeTemplatePriority: template.Priority,
+		},
+		Capacity:       template.Capacity,
+		KubeReserved:   template.KubeReserved,
+		SystemReserved: template.SystemReserved,
+		Architecture:   template.Architecture,
+	}
+}
+
 func (s *RequestState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
 	view, err = s.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, s.viewAccess.GetBaseView())
 	if err != nil {
