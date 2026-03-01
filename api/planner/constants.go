@@ -16,7 +16,7 @@ const (
 	DefaultTrackPollInterval = 30 * time.Millisecond
 	//DefaultMaxUnchangedTrackAttempts is the default value for the maximum number of unchanged simulation track attempts after which
 	// a simulation run is considered as stabilized.
-	DefaultMaxUnchangedTrackAttempts = 33
+	DefaultMaxUnchangedTrackAttempts = 32
 	// ServiceName is the program binary name for the independent scaling planner microservice.
 	ServiceName = "scaling-planner"
 )

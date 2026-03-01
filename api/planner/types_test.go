@@ -132,15 +132,15 @@ func TestClusterSnapshot_GetNodeCountByPlacement(t *testing.T) {
 			expectError: false,
 			expected: map[sacorev1alpha1.NodePlacement]int32{
 				{
-					NodePoolName:     "pool-a",
-					NodeTemplateName: "template-a",
+					PoolName:         "pool-a",
+					TemplateName:     "template-a",
 					InstanceType:     "m5.large",
 					Region:           "us-east-1",
 					AvailabilityZone: "us-east-1a",
 				}: 2,
 				{
-					NodePoolName:     "pool-b",
-					NodeTemplateName: "template-b",
+					PoolName:         "pool-b",
+					TemplateName:     "template-b",
 					InstanceType:     "m5.xlarge",
 					Region:           "us-west-2",
 					AvailabilityZone: "us-west-2a",
