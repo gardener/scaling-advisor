@@ -20,6 +20,6 @@ func New() plannerapi.SimulationFactory {
 
 type defaultFactory struct{}
 
-func (s *defaultFactory) NewScaleOut(name string, args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation, error) {
-	return scaleout.NewDefault(name, args)
+func (s *defaultFactory) NewScaleOut(args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation, error) {
+	return scaleout.NewDefault(args)
 }

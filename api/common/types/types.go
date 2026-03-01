@@ -101,6 +101,16 @@ const (
 	SimulationStrategySingleSimulationPerGroup SimulationStrategy = "single-simulation-per-group"
 )
 
+// IsMultiNode returns true if the strategy scales multiple nodes, false otherwise.
+func (s SimulatorStrategy) IsMultiNode() bool {
+	return s == SimulatorStrategyMultiNodeSingleSim
+}
+
+// IsSingleNode returns true if the strategy scales only a single node, false otherwise.
+func (s SimulatorStrategy) IsSingleNode() bool {
+	return s == SimulatorStrategySingleNodeMultiSim
+}
+
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
 // +enum
 type ScalingAdviceGenerationMode string

@@ -84,8 +84,8 @@ func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, p
 	nodeLabels[corev1.LabelTopologyRegion] = placement.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
 	nodeLabels[corev1.LabelHostname] = hostName
-	nodeLabels[commonconstants.LabelNodePoolName] = placement.NodePoolName
-	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.NodeTemplateName
+	nodeLabels[commonconstants.LabelNodePoolName] = placement.PoolName
+	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.TemplateName
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec

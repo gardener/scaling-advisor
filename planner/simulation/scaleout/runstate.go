@@ -36,7 +36,7 @@ type RunState struct {
 	ctx                         context.Context
 	view                        minkapi.View
 	scaleOutNodes               map[string]*corev1.Node                                   // map of node names to scale-out nodes
-	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int32                    // map of NodePlacement's to counts
+	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int                      // map of NodePlacement's to counts
 	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
 	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]           // map of node names to a set of scheduled pod names
 	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names scheduled during simulation run
@@ -51,13 +51,13 @@ type RunState struct {
 	nodeCount                   atomic.Uint32
 }
 
-// MakeRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
-func MakeRunState() RunState {
+// FreshRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
+func FreshRunState() RunState {
 	return RunState{
 		status:                      plannerapi.ActivityStatusPending,
 		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
 		scaleOutNodes:               make(map[string]*corev1.Node),
-		scaleOutPlacements:          make(map[sacorev1alpha1.NodePlacement]int32),
+		scaleOutPlacements:          make(map[sacorev1alpha1.NodePlacement]int),
 	}
 }
 
@@ -102,7 +102,7 @@ func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMet
 
 // Track is used to track the RunState of the simulation by recording the pod-node binding(s) if any made in this
 // [RunState]'s view by the `kube-scheduler`. It returns true if the RunState has not changed over many Track
-// attempts that exceed the given maxUnchangedTrackAttempts or an error.
+// attempts that exceed tbe given maxUnchangedTrackAttempts or an error.
 //
 // Track does the following internally:
 //   - Increments numTrackAttempts and gets the last slice of events (if any) in the [minkapi.EventSink] of
@@ -161,19 +161,6 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 	}
 
 	return
-}
-
-// GetScaleOutItems returns the slice of [sacorev1alpha1.ScaleOutItem] where each item
-// encapsulates the [sacorev1alpha1.NodePlacement] and associated delta.
-func (r *RunState) GetScaleOutItems() []sacorev1alpha1.ScaleOutItem {
-	scaleOutItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(r.scaleOutPlacements))
-	for np, delta := range r.scaleOutPlacements {
-		scaleOutItems = append(scaleOutItems, sacorev1alpha1.ScaleOutItem{
-			NodePlacement: np,
-			Delta:         delta,
-		})
-	}
-	return scaleOutItems
 }
 
 func (r *RunState) createNode(nodeTemplate plannerapi.ScaleOutNodeTemplate) (*corev1.Node, error) {
@@ -248,14 +235,14 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate plannerapi.ScaleOutNodeTemp
 	}
 }
 
-func (r *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
-	scheduledPodNames := r.scheduledPodNamesByNodeName[nodeName].UnsortedList()
+func (s *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
+	scheduledPodNames := s.scheduledPodNamesByNodeName[nodeName].UnsortedList()
 	if len(scheduledPodNames) == 0 {
 		return nil
 	}
 	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
 	for _, podName := range scheduledPodNames {
-		scheduledPodInfos = append(scheduledPodInfos, r.unscheduledPods[podName])
+		scheduledPodInfos = append(scheduledPodInfos, s.unscheduledPods[podName])
 	}
 	return scheduledPodInfos
 }
@@ -356,14 +343,4 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map
 		}
 	}
 	return
-}
-
-func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
-	instanceType := nodeutil.GetInstanceType(node)
-	return plannerapi.NodeResourceInfo{
-		Name:         node.Name,
-		InstanceType: instanceType,
-		Capacity:     node.Status.Capacity,
-		Allocatable:  node.Status.Allocatable,
-	}
 }

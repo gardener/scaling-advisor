@@ -307,24 +307,20 @@ type ResourceMeta struct {
 	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
 }
 
-// InstancePriceInfo contains pricing and specification information for a cloud instance type.
-type InstancePriceInfo struct {
-	// InstanceType is the name of the instance type.
-	InstanceType string `json:"instanceType"`
-	// Region is the cloud region where the instance is available.
-	Region string `json:"region"`
-	// OS is the operating system for the instance type.
-	OS string `json:"os"`
-	// Memory is the amount of memory in GB for the instance type.
-	Memory int64 `json:"memory"`
-	// GPUMemory is the amount of GPU memory in GB for the instance type.
-	GPUMemory int64 `json:"GPUMemory"`
-	// HourlyPrice is the hourly cost for the instance type.
-	HourlyPrice float64 `json:"hourlyPrice"`
-	// GPU is the number of GPUs for the instance type.
-	GPU int32 `json:"GPU"`
-	// VCPU is the number of virtual CPUs for the instance type.
-	VCPU int32 `json:"VCPU"`
+// GetNodePlacement extracts the node placement information from this NodeInfo.
+func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, err error) {
+	err = n.ValidateLabels()
+	if err != nil {
+		return
+	}
+	placement = sacorev1alpha1.NodePlacement{
+		PoolName:         n.Labels[commonconstants.LabelNodePoolName],
+		TemplateName:     n.Labels[commonconstants.LabelNodeTemplateName],
+		InstanceType:     n.InstanceType,
+		Region:           n.Labels[corev1.LabelTopologyRegion],
+		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],
+	}
+	return
 }
 
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
@@ -531,7 +527,7 @@ type SimulatorFactory interface {
 // SimulationFactory is a factory facade for creating Simulation objects
 type SimulationFactory interface {
 	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
-	NewScaleOut(name string, args ScaleOutSimArgs) (ScaleOutSimulation, error)
+	NewScaleOut(args ScaleOutSimArgs) (ScaleOutSimulation, error)
 	// TODO: Add NewScaleIn method here.
 }
 
