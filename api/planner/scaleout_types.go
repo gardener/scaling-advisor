@@ -22,27 +22,14 @@ import (
 //
 // Depending upon the implementation creates and organizes [ScaleOutSimulation]'s into [ScaleOutSimGroup]'s differently.
 //
-// Approach for [commontypes.SimulatorStrategySingleNodeMultiSim]
-//
 //	ScalingConstraints (Legend: pa -> "Pool-A", "ta" -> "Node Template A", "zx" -> "Zone X"
 //		{pa:1, {ta: 1, tb: 2, tc: 1}, {zx, zy}}
 //		{pb:2, {tq: 2, tr: 1, ts: 1}, {zz}}
-//	SimulationGroups
+//	groups
+//		g1: PriorityKey(2,2): [ {pb, tq, zz} ]
+//		g2: PriorityKey(2,1): [ {pb, tr, zz}, {pb, ts, zz}]
+//		g3: PriorityKey(1,2): [ {pa, tb, zx}, {pa, tb, zy}]
 //		g1: PriorityKey(1,1): [ {pa, ta, zx}, {pa, ta, zy}, {pa, tc, zx}, {pa, tc, zy} ]
-//		g2: PriorityKey(1,2): [ {pa, tb, zx}, {pa, tb, zy}]
-//		g3: PriorityKey(2,1): [ {pb, tr, zz}, {pb, ts, zz}]
-//		g4: PriorityKey(2,2): [ {pb, tq, zz} ]
-//
-// Approach for [commontypes.SimulatorStrategyMultiNodeSingleSim]
-//
-//	np-A: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
-//	np-B: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
-//	np-C: 1 {nt-x: 2, nt-y: 1}
-//
-//	g1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
-//	g2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
-//	g3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//	g4: {PoolPriority: 2, NTPriority: 2, nt-q}
 //
 // An [ScaleOutSimulator] implementation created, will do the
 // following when Simulate is invoked:
@@ -101,7 +88,7 @@ type ScaleOutSimulation interface {
 	Status() ActivityStatus
 	// PriorityKey returns the PriorityKey for the simulation which is the key by which simulations are grouped and determines
 	// the order in which simulations are run.
-	PriorityKey() PriorityKey
+	PriorityKey() commontypes.PriorityKey
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and ScaleOutSimResult consumption.
 	Run(ctx context.Context, view minkapi.View) error
@@ -161,7 +148,7 @@ type ScaleOutNodeTemplate struct {
 	// Taints is a list of taints applied to all the nodes in this node pool.
 	Taints []corev1.Taint `json:"taints,omitempty"`
 	// PriorityKey is the priority key for this ScaleOutNodeTemplate.
-	PriorityKey PriorityKey
+	PriorityKey commontypes.PriorityKey
 }
 
 // ScaleOutSimResult contains the results of a completed simulation run.
@@ -170,8 +157,9 @@ type ScaleOutSimResult struct {
 	Name string
 	// View is the minkapi View against which the simulation was run.
 	View minkapi.View
-	// NodePlacements represents the node placement counts for the scale-out Nodes.
-	NodePlacements map[sacorev1alpha1.NodePlacement]int
+	// Items is the slice of [sacorev1alpha1.ScaleOutItem] where each item encapsulates the
+	// [sacorev1alpha1.NodePlacement] and associated delta.
+	Items []sacorev1alpha1.ScaleOutItem
 	// NodePodAssignments represents the assignment of Pods to simulated scale-out Nodes.
 	NodePodAssignments []NodePodAssignment
 	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of
@@ -188,7 +176,7 @@ type ScaleOutSimGroup interface {
 	// Name returns the name of the simulation group.
 	Name() string
 	// GetKey returns the simulation group key.
-	GetKey() PriorityKey
+	PriorityKey() commontypes.PriorityKey
 	// GetSimulations returns all simulations in this group.
 	GetSimulations() []ScaleOutSimulation
 	// AddSimulation adds a simulation to the group.
@@ -222,4 +210,19 @@ type ScaleOutSimGroupCycleResult struct {
 	// PassNum is the number of passes executed in this group before moving to the next group.
 	// A pass is defined as the execution of all simulations in a group.
 	PassNum int
+}
+
+// CmpScaleOutSimulationDecreasingPriority is a cmp function for [ScaleOutSimulation] that compares by decreasing PriorityKey.
+func CmpScaleOutSimulationDecreasingPriority(s1, s2 ScaleOutSimulation) int {
+	return commontypes.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+}
+
+// CmpScaleOutSimGroup is a cmp function for [ScaleOutSimGroup] that compares by decreasing PriorityKey.
+func CmpScaleOutSimGroup(s1, s2 ScaleOutSimGroup) int {
+	return commontypes.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+}
+
+// CmpScaleOutNodeTemplate is a cmp function for [ScaleOutNodeTemplate] that compares by decreasing PriorityKey.
+func CmpScaleOutNodeTemplate(a, b ScaleOutNodeTemplate) int {
+	return commontypes.CmpPriorityKeyDecreasing(a.PriorityKey, b.PriorityKey)
 }

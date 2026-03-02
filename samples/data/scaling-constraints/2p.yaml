@@ -29,7 +29,7 @@ spec:
             pid: 20k
           name: m5l
           priority: 0
-      priority: 0
+      priority: 1
       region: eu-west-1
     - availabilityZones:
         - eu-west-1a
@@ -54,5 +54,5 @@ spec:
             pid: 20k
           name: m5xl
           priority: 0
-      priority: 1
+      priority: 0
       region: eu-west-1

@@ -172,9 +172,39 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
-// CreateNodeArgs creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
+// CreateAllNodeTemplates creates a slice of all possible [plannerapi.ScaleOutNodeTemplate] for the given slice of
+// [sacorev1alpha1.NodePool].
+func CreateAllNodeTemplates(pools []sacorev1alpha1.NodePool) []plannerapi.ScaleOutNodeTemplate {
+	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0, len(pools)*2)
+	for _, np := range pools {
+		for _, nt := range np.NodeTemplates {
+			for _, az := range np.AvailabilityZones {
+				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az))
+			}
+		}
+	}
+	return allNodeTemplates
+}
+
+// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
+// [plannerapi.ScaleOutNodeTemplate]
+func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTemplate) map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate {
+	templatesByPriority := make(map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate)
+	for _, t := range templates {
+		pk := t.PriorityKey
+		group, ok := templatesByPriority[pk]
+		if !ok {
+			group = []plannerapi.ScaleOutNodeTemplate{t}
+		}
+		group = append(group, t)
+		templatesByPriority[pk] = group
+	}
+	return templatesByPriority
+}
+
+// createNodeTemplate creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
 // [sacorev1alpha1.NodeTemplate] and availability zone.
-func CreateNodeArgs(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
+func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
 	return plannerapi.ScaleOutNodeTemplate{
 		NodePlacement: sacorev1alpha1.NodePlacement{
 			PoolName:         pool.Name,
@@ -187,9 +217,9 @@ func CreateNodeArgs(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTe
 		Annotations: pool.Annotations,
 		Quota:       pool.Quota,
 		Taints:      pool.Taints,
-		PriorityKey: plannerapi.PriorityKey{
-			NodePoolPriority:     pool.Priority,
-			NodeTemplatePriority: template.Priority,
+		PriorityKey: commontypes.PriorityKey{
+			First:  pool.Priority,
+			Second: template.Priority,
 		},
 		Capacity:       template.Capacity,
 		KubeReserved:   template.KubeReserved,

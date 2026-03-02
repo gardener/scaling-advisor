@@ -5,6 +5,7 @@
 package types
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -225,3 +226,25 @@ const (
 	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
 	TraceLogPathCtxKey ContextKey = "trace-log"
 )
+
+// PriorityKey represents the key for ordering [NodePlacement]'s
+type PriorityKey struct {
+	// First is the first priority value. Higher values represent higher priority.
+	First int32
+	// Second is the 2nd priority value. Higher value represent higher priority. Secondary weight compared to First
+	Second int32
+}
+
+// String returns a string representation of the PriorityKey.
+func (k PriorityKey) String() string {
+	return fmt.Sprintf("%d-%d", k.First, k.Second)
+}
+
+// CmpPriorityKeyDecreasing is a compare function for [PriorityKey] in decreasing value of priority.
+// ie higher priority values  before lower priority values which is the kubernetes convention.
+func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
+	if firstCmp := cmp.Compare(b.First, a.First); firstCmp != 0 {
+		return firstCmp
+	}
+	return cmp.Compare(b.Second, a.Second)
+}

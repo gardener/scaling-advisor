@@ -48,7 +48,7 @@ func (s *defaulSimulation) Reset() error {
 	return nil
 }
 
-func (s *defaulSimulation) PriorityKey() plannerapi.PriorityKey {
+func (s *defaulSimulation) PriorityKey() commontypes.PriorityKey {
 	return s.args.NodeTemplates[0].PriorityKey
 }
 
@@ -112,7 +112,7 @@ func (s *defaulSimulation) Run(ctx context.Context, view minkapi.View) (err erro
 	s.result = plannerapi.ScaleOutSimResult{
 		Name:                    s.args.Name,
 		View:                    view,
-		NodePlacements:          s.state.scaleOutPlacements,
+		Items:                   s.state.GetScaleOutItems(),
 		NodePodAssignments:      s.state.getScaleOutNodeAssignments(),
 		OtherNodePodAssignments: otherNodePodAssignments,
 		LeftoverUnscheduledPods: s.state.leftoverUnscheduledPodNames.UnsortedList(),

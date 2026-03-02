@@ -36,7 +36,7 @@ type RunState struct {
 	ctx                         context.Context
 	view                        minkapi.View
 	scaleOutNodes               map[string]*corev1.Node                                   // map of node names to scale-out nodes
-	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int                      // map of NodePlacement's to counts
+	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int32                    // map of NodePlacement's to counts
 	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
 	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]           // map of node names to a set of scheduled pod names
 	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names scheduled during simulation run
@@ -57,7 +57,7 @@ func FreshRunState() RunState {
 		status:                      plannerapi.ActivityStatusPending,
 		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
 		scaleOutNodes:               make(map[string]*corev1.Node),
-		scaleOutPlacements:          make(map[sacorev1alpha1.NodePlacement]int),
+		scaleOutPlacements:          make(map[sacorev1alpha1.NodePlacement]int32),
 	}
 }
 
@@ -161,6 +161,19 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 	}
 
 	return
+}
+
+// GetScaleOutItems returns the slice of [sacorev1alpha1.ScaleOutItem] where each item
+// encapsulates the [sacorev1alpha1.NodePlacement] and associated delta.
+func (r *RunState) GetScaleOutItems() []sacorev1alpha1.ScaleOutItem {
+	scaleOutItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(r.scaleOutPlacements))
+	for np, delta := range r.scaleOutPlacements {
+		scaleOutItems = append(scaleOutItems, sacorev1alpha1.ScaleOutItem{
+			NodePlacement: np,
+			Delta:         delta,
+		})
+	}
+	return scaleOutItems
 }
 
 func (r *RunState) createNode(nodeTemplate plannerapi.ScaleOutNodeTemplate) (*corev1.Node, error) {

@@ -470,20 +470,6 @@ type SimulatorArgs struct {
 	Config SimulatorConfig
 }
 
-// PriorityKey represents the key for ordering in considering Nodes for simulation. It maybe used as the key
-// to group ScaleOutSimulation or for ordering Nodes to consider for ScaleInSimulation or other reasons.
-type PriorityKey struct {
-	// NodePoolPriority is the priority of the node pool.
-	NodePoolPriority int32
-	// NodeTemplatePriority is the priority of the node template.
-	NodeTemplatePriority int32
-}
-
-// String returns a string representation of the PriorityKey.
-func (k PriorityKey) String() string {
-	return fmt.Sprintf("%d-%d", k.NodePoolPriority, k.NodeTemplatePriority)
-}
-
 // ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
 // Offers a REST API for the embedded ScalingPlanner
 type ScalingPlannerService interface {
