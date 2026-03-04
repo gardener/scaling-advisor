@@ -71,19 +71,6 @@ type ScaleOutSimulator interface {
 	Simulate(ctx context.Context, request *Request, simulationFactory SimulationFactory) (planResult <-chan ScaleOutPlanResult)
 }
 
-// SimulatorFactory is a factory facade for constructing various kinds of simulators.
-type SimulatorFactory interface {
-	GetScaleOutSimulator(args SimulatorArgs) (ScaleOutSimulator, error)
-	// TODO: Add GetScaleInSimulator here.
-}
-
-// SimulationFactory is a factory facade for creating Simulation objects
-type SimulationFactory interface {
-	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
-	NewScaleOut(name string, args ScaleOutSimArgs) (ScaleOutSimulation, error)
-	// TODO: Add NewScaleIn method here.
-}
-
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
 type ScaleOutPlanResult struct {
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
@@ -96,15 +83,16 @@ type ScaleOutPlanResult struct {
 }
 
 // ScaleOutSimulation represents a simulation that scales virtual node(s) and performs valid unscheduled pod to ready node
-// assignments against a minkapi View.
-// A ScaleOutSimulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model
-// from the pod/node data and run a tool that solves the model.
+// bindings against a minkapi View.
+// The default ScaleOutSimulation implementation uses an embedded k8s scheduler to perform this work.
+// More exotic implementations could form a SAT (Satisfiability Testing) /MIP (Mixed Integer Programming)
+// constraint model from the pod/node data and run a tool that solves the model.
 type ScaleOutSimulation interface {
 	commontypes.Resettable
 	// Name returns the logical simulation name
 	Name() string
-	// ActivityStatus returns the current ActivityStatus of the simulation
-	ActivityStatus() ActivityStatus
+	// Status returns the current ActivityStatus of the simulation
+	Status() ActivityStatus
 	// PriorityKey returns the PriorityKey for the simulation which is the key by which simulations are grouped and determines
 	// the order in which simulations are run.
 	PriorityKey() PriorityKey
@@ -148,8 +136,6 @@ type ScaleOutSimArgs struct {
 	AvailabilityZone string
 	// NodeTemplateName is the name of the node template to use in the simulation.
 	NodeTemplateName string
-	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
-	TraceDir string
 	// Config is the simulation configuration.
 	Config SimulatorConfig
 }

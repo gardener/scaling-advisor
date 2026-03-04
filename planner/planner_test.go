@@ -66,7 +66,36 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestOnePoolScaleOutWithUnboundPVC_ImmediateVolumeBinding(t *testing.T) {
+func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_ImmediateVolumeBinding_(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingImmediate,
+			GeneratePV:        true,
+		},
+	})
+	if !ok {
+		return
+	}
+	poolAPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: poolAPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+func TestOnePoolScaleOutWithUnboundPVC_SimulatedPV_ImmediateVolumeBinding(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{

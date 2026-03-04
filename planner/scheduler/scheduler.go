@@ -50,7 +50,7 @@ type schedulerHandle struct {
 // Returns an error if the configuration file cannot be read or parsed.
 // Then delegates to NewLauncherFromConfig
 func NewLauncher(schedulerConfigPath string, maxParallel int) (planner.SchedulerLauncher, error) {
-	// Initialize the scheduler with the provided configuration
+	// InitializeRequestView the scheduler with the provided configuration
 	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", planner.ErrLoadSchedulerConfig, err)
@@ -125,12 +125,13 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 		}
 	}()
 
-	verbosity := logutil.VerbosityFromContext(ctx)
+	verbosity, _, _ := logutil.ContextValues(ctx)
 	if verbosity > 0 {
+		apiVerbosity := logsapiv1.VerbosityLevel(verbosity)
 		loggingConfig := logsapiv1.LoggingConfiguration{
 			Format:         logsapiv1.DefaultLogFormat,
 			FlushFrequency: logsapiv1.TimeOrMetaDuration{Duration: metav1.Duration{Duration: time.Second * 1}},
-			Verbosity:      verbosity,
+			Verbosity:      apiVerbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
 		err = logsapiv1.ValidateAndApply(&loggingConfig, nil)

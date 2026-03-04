@@ -6,7 +6,10 @@ package logutil
 
 import (
 	"context"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	"io"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,20 +17,56 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
-	logsapiv1 "k8s.io/component-base/logs/api/v1"
 )
 
-// VerbosityFromContext retrieves the verbosity level from the given context.
-func VerbosityFromContext(ctx context.Context) logsapiv1.VerbosityLevel {
-	v := ctx.Value(commonconstants.VerbosityCtxKey)
+// DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
+const (
+	DefaultDumpVerbosity = 5
+)
+
+// ContextValues retrieves the verbosity level, the trace dir and the trace log path from the given context.
+func ContextValues(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
+	v := ctx.Value(commontypes.VerbosityCtxKey)
 	if v == nil {
-		return 0
+		verbosity = 0
 	}
 	verbosity, ok := v.(uint32)
 	if !ok {
-		return 0
+		verbosity = 0
 	}
-	return logsapiv1.VerbosityLevel(verbosity)
+	d := ctx.Value(commontypes.TraceDirCtxKey)
+	if d != nil {
+		traceDir = d.(string)
+	}
+	l := ctx.Value(commontypes.TraceLogPathCtxKey)
+	if l != nil {
+		traceLogPath = l.(string)
+	}
+	return
+}
+
+// DumpObjectIfNeeded dumps the YAML for the given object into a `object-name.yaml` file within a `traceDir` obtained
+// from the context if any
+func DumpObjectIfNeeded(ctx context.Context, obj metav1.Object) error {
+	l := logr.FromContextOrDiscard(ctx)
+	verbosity, traceDir, _ := ContextValues(ctx)
+	if verbosity < DefaultDumpVerbosity || traceDir == "" {
+		return nil
+	}
+	runtimeObj := obj.(runtime.Object)
+	var yamlDumpPath string
+	yamlDumpPath, err := objutil.SaveRuntimeObjAsYAMLToPath(runtimeObj, traceDir, obj.GetName()+".yaml")
+	if err != nil {
+		return err
+	}
+	l.V(DefaultDumpVerbosity).Info("dumped object", "kind", runtimeObj.GetObjectKind().GroupVersionKind().Kind,
+		"yamlDumpPath", yamlDumpPath, "name", obj.GetName(), "namespace", obj.GetNamespace())
+	return nil
+}
+
+// GetCleanLogFileName removes all special characters from fileName and returns the clean fileName
+func GetCleanLogFileName(fileName string) string {
+	return fileNameCleanRe.ReplaceAllString(fileName, "")
 }
 
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
@@ -61,14 +100,10 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	return
 }
 
-// multiSink forwards to multiple sinks (e.g., original + file).
-type multiSink struct {
-	sinks []logr.LogSink
-}
-
-var _ logr.LogSink = (*multiSink)(nil)
-
-var _ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
+var (
+	_ logr.LogSink          = (*multiSink)(nil)
+	_ logr.CallDepthLogSink = (*multiSink)(nil) // If a sink implements CallDepthLogSink, logr will use it to adjust the call stack depth correctly.
+)
 
 func (m *multiSink) Init(info logr.RuntimeInfo) {
 	for _, s := range m.sinks {
@@ -139,3 +174,5 @@ func (m *multiSink) WithCallDepth(depth int) logr.LogSink {
 	}
 	return &multiSink{sinks: newSinks}
 }
+
+var fileNameCleanRe = regexp.MustCompile(`[^\w.-]`)

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"os"
 	"path"
 	"slices"
@@ -34,9 +35,6 @@ const (
 	DefaultPlannerTestVerbosity = 1
 	// DefaultPlannerRunTestTimeout sets the default timeout for unit tests that construct the ScalingPlanner.
 	DefaultPlannerRunTestTimeout = 30 * time.Second
-	// DefaultPlannerDebugTestTimeout sets the default timeout in debug mode (DEBUG env = true) for unit tests that construct
-	// the ScalingPlanner.
-	DefaultPlannerDebugTestTimeout = 10 * time.Minute
 )
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner
@@ -69,6 +67,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		podGenOutput samples.PodGenOutput
 		err          error
 	)
+	testData.Request.DiagnosticVerbosity = ioutil.GetEnvAsUint32("VERBOSITY", DefaultPlannerTestVerbosity)
 	if ok = testData.validateAndFillDefaults(t, &args); !ok {
 		return
 	}
@@ -100,7 +99,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			// If PVZones is not specified, default to all available zones across all NodePools of the ScalingConstraint
 			args.VolGenInput.PVZones = testData.Request.Constraint.Spec.GetAllAvailabilityZones()
 		}
-		if ok = GenFillStorageAndVolumeObjects(t, testData.GenDir, args.VolGenInput, &testData.Request.Snapshot); !ok {
+		if ok = GenAndFillStorageAndVolumeObjects(t, testData.GenDir, args.VolGenInput, &testData.Request.Snapshot); !ok {
 			return
 		}
 	}
@@ -115,16 +114,16 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatal("failed to write request.json:", err)
 		return
 	}
-	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args.Timeout, args.VolGenInput.Provider, testData.GenDir, args.Factories); !ok {
+	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args, testData.GenDir, testData.Request.DiagnosticVerbosity); !ok {
 		return
 	}
 	ok = true
 	return
 }
 
-// GenFillStorageAndVolumeObjects uses the given VolGenInput to generate StorageClasses, PVC's and PV's and also
-// populate them in given ClusterSnapshot.
-func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput samples.VolGenInput, snap *plannerapi.ClusterSnapshot) (ok bool) {
+// GenAndFillStorageAndVolumeObjects uses the given VolGenInput to generate StorageClasses, PVC's and PV's and also
+// fills the given ClusterSnapshot with the generated objects.
+func GenAndFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput samples.VolGenInput, snap *plannerapi.ClusterSnapshot) (ok bool) {
 	var (
 		err       error
 		sc        storagev1.StorageClass
@@ -149,11 +148,13 @@ func GenFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenInput
 		snap.PVCs = append(snap.PVCs, volutil.AsPVCInfo(pvc))
 	}
 
-	if volGenOut, err = samples.GeneratePersistentVolumes(testGenDir, volGenInput); err != nil {
-		return
-	}
-	for _, pv = range volGenOut.PVs {
-		snap.PVs = append(snap.PVs, volutil.AsPVInfo(pv))
+	if volGenInput.GeneratePV {
+		if volGenOut, err = samples.GeneratePersistentVolumes(testGenDir, volGenInput); err != nil {
+			return
+		}
+		for _, pv = range volGenOut.PVs {
+			snap.PVs = append(snap.PVs, volutil.AsPVInfo(pv))
+		}
 	}
 	ok = true
 	return
@@ -216,7 +217,8 @@ func ObtainPlannerResponse(t *testing.T, planner plannerapi.ScalingPlanner, test
 
 // CreateTestScalingPlanner creates a ScalingPlanner for unit-tests with the given context timeout for the given provider,
 // using traceDir for traces and object dumps and leveraging the given factories.
-func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider commontypes.CloudProvider, traceDir string, factories plannerapi.Factories) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
+func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosity uint32) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
+	//t *testing.T, timeout time.Duration, provider commontypes.CloudProvider, traceDir string, factories plannerapi.Factories) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -225,14 +227,14 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 			return
 		}
 	}()
-	if timeout == 0 {
+	if args.Timeout == 0 {
 		if os.Getenv("DEBUG") == "" {
-			timeout = DefaultPlannerRunTestTimeout
+			args.Timeout = DefaultPlannerRunTestTimeout
 		} else {
-			timeout = DefaultPlannerDebugTestTimeout
+			args.Timeout = DefaultPlannerRunTestTimeout * 10
 		}
 	}
-	runCtx = commontestutil.NewTestContext(t, timeout, DefaultPlannerTestVerbosity)
+	runCtx = commontestutil.NewTestContext(t, args.Timeout, int(verbosity))
 	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
 	if err != nil {
 		t.Fatalf("failed to get instance pricing access: %v", err)
@@ -270,24 +272,25 @@ func CreateTestScalingPlanner(t *testing.T, timeout time.Duration, provider comm
 			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
 		}
 	}
+	simulatorConfig.BindVolumeClaimsForImmediateMode = true
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
 	if err != nil {
 		t.Fatalf("failed to create SchedulerLauncher: %v", err)
 		return
 	}
-	storageMetaAccess := &testStorageMetaAccess{provider: provider}
+	storageMetaAccess := &testStorageMetaAccess{provider: args.VolGenInput.Provider}
 	scalePlannerArgs := plannerapi.ScalingPlannerArgs{
 		ViewAccess:        viewAccess,
-		ResourceWeigher:   factories.ResourceWeigher,
+		ResourceWeigher:   args.Factories.ResourceWeigher,
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
 		StorageMetaAccess: storageMetaAccess,
 		SimulatorConfig:   simulatorConfig,
-		SimulatorFactory:  factories.Simulator,
-		SimulationFactory: factories.Simulation,
+		SimulatorFactory:  args.Factories.Simulator,
+		SimulationFactory: args.Factories.Simulation,
 		TraceDir:          traceDir,
 	}
-	planr, err = factories.Planner.NewPlanner(scalePlannerArgs)
+	planr, err = args.Factories.Planner.NewPlanner(scalePlannerArgs)
 	if err != nil {
 		t.Fatalf("failed to create ScalingPlanner from args %+v: %v", scalePlannerArgs, err)
 	} else {
@@ -302,7 +305,9 @@ func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
 		return false
 	}
 	d.Request.CreationTime = time.Now()
-	d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
+	if d.Request.DiagnosticVerbosity <= 0 {
+		d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
+	}
 	d.Request.ID = t.Name()
 	d.Request.ScoringStrategy = cmp.Or(args.NodeScoringStrategy, commontypes.NodeScoringStrategyLeastCost)
 	args.VolGenInput.Provider = cmp.Or(args.VolGenInput.Provider, commontypes.CloudProviderAWS)
