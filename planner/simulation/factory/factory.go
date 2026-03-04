@@ -20,6 +20,11 @@ func New() plannerapi.SimulationFactory {
 
 type defaultFactory struct{}
 
+func (s *defaultFactory) NewScaleIn(args plannerapi.ScaleInSimArgs) (plannerapi.ScaleInSimulation, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (s *defaultFactory) NewScaleOut(args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation, error) {
 	return scaleout.NewDefault(args)
 }

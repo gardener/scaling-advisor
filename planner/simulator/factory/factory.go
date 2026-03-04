@@ -7,7 +7,6 @@ package factory
 
 import (
 	"fmt"
-
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout/singlenode"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -36,4 +35,9 @@ func (s *defaultFactory) GetScaleOutSimulator(args plannerapi.SimulatorArgs) (pl
 	default:
 		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", plannerapi.ErrUnsupportedSimulatorStrategy, args.Strategy)
 	}
+}
+
+func (s *defaultFactory) GetScaleInSimulator(args plannerapi.SimulatorArgs) (plannerapi.ScaleInSimulator, error) {
+	//TODO implement me
+	panic("implement me")
 }

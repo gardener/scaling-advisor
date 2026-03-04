@@ -33,6 +33,13 @@ const (
 	// This is applied by a user/tool on the ClusterScalingConstraint object which produces diagnostics within
 	// the generated ClusterScalingAdvice.Status.
 	AnnotationEnableScalingDiagnostics = "sa.gardener.cloud/enable-scaling-diagnostics"
+
+	// AnnotationScaleInDisabledKey is the annotation key present on a node to indicate that scale-in for this node is disabled.
+	AnnotationScaleInDisabledKey = "sa.gardener.cloud/scale-in-disabled"
+
+	// AnnotationSafeToEvict is the annotation key present on a pod to indicate that it is safe to evict the pod.
+	// If false, it indicates that the node this hosts this pod cannot be scaled in.
+	AnnotationSafeToEvict = "sa.gardener.cloud/safe-to-evict"
 )
 
 const (
