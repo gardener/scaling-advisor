@@ -67,9 +67,9 @@ type Request struct {
 	// DiagnosticVerbosity indicates the level of diagnostics produced during scaling advice generation.
 	// By default, its value is 0 that disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
-	DiagnosticVerbosity int
-	// AdviceGenerationTimeout is the maximum duration allowed for generating scaling advice.
-	AdviceGenerationTimeout time.Duration
+	DiagnosticVerbosity uint32 `json:"diagnosticVerbosity,omitzero"`
+	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
+	Memento *Memento
 }
 
 // GetRef returns the unique reference for the scaling advice request.
@@ -521,14 +521,15 @@ type ScalingPlannerFactory interface {
 // SimulatorFactory is a factory facade for constructing various kinds of simulators.
 type SimulatorFactory interface {
 	GetScaleOutSimulator(args SimulatorArgs) (ScaleOutSimulator, error)
-	// TODO: Add GetScaleInSimulator here.
+	GetScaleInSimulator(args SimulatorArgs) (ScaleInSimulator, error)
 }
 
 // SimulationFactory is a factory facade for creating Simulation objects
 type SimulationFactory interface {
 	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
 	NewScaleOut(args ScaleOutSimArgs) (ScaleOutSimulation, error)
-	// TODO: Add NewScaleIn method here.
+	// NewScaleIn creates a ScaleInSimulation instance with the given name and arguments.
+	NewScaleIn(args ScaleInSimArgs) (ScaleInSimulation, error)
 }
 
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
@@ -579,4 +580,11 @@ type Factories struct {
 	Simulator       SimulatorFactory
 	Simulation      SimulationFactory
 	ResourceWeigher ResourceWeigher
+}
+
+// Memento is an encapsulation of partial details of a completed simulation that can be used by subsequent simulations to optimize their execution.
+type Memento struct {
+	// LastIdentifiedNodesForScaleIn is a map of nodeName to the timestamp of when it was last successfully simulated for scale-in.
+	// This can be used by subsequent simulations to skip simulating the same node again within a certain time window.
+	ScaleIn *ScaleInMemento
 }
