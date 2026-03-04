@@ -7,7 +7,6 @@ package viewutil
 import (
 	"context"
 	"fmt"
-
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
@@ -16,10 +15,9 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 )
-
-// DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
-const DefaultDumpVerbosity = 5
 
 // ListUnscheduledPods returns all Pods from the given View that are not scheduled to any Node.
 func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, error) {
@@ -37,42 +35,42 @@ func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, 
 }
 
 // ListPersistentVolumes lists all the persistent volumes in the given minkapi view.
-func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]corev1.PersistentVolume, error) {
+func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]*corev1.PersistentVolume, error) {
 	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumesDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return nil, err
 	}
-	allPVs := make([]corev1.PersistentVolume, 0, len(objs))
+	allPVs := make([]*corev1.PersistentVolume, 0, len(objs))
 	for _, o := range objs {
 		pv, ok := o.(*corev1.PersistentVolume)
 		if !ok {
 			return nil, fmt.Errorf("expected PersistentVolume, unexpected object %v", o)
 		}
-		allPVs = append(allPVs, *pv)
+		allPVs = append(allPVs, pv)
 	}
 	return allPVs, nil
 }
 
 // ListPersistentVolumeClaims lists all the persistent volume claims in the given minkapi view.
-func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]corev1.PersistentVolumeClaim, error) {
+func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]*corev1.PersistentVolumeClaim, error) {
 	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return nil, err
 	}
-	allPVCs := make([]corev1.PersistentVolumeClaim, 0, len(objs))
+	allPVCs := make([]*corev1.PersistentVolumeClaim, 0, len(objs))
 	for _, o := range objs {
 		pvc, ok := o.(*corev1.PersistentVolumeClaim)
 		if !ok {
 			return nil, fmt.Errorf("expected PersistentVolumeClaim, unexpected object %v", o)
 		}
-		allPVCs = append(allPVCs, *pvc)
+		allPVCs = append(allPVCs, pvc)
 	}
 	return allPVCs, nil
 }
 
-// LogDumpObjects logs the node and pod names in the given minkapi view using logger from the given context if any.
+// LogObjects logs the node and pod names in the given minkapi view using logger from the given context if any.
 // At higher log verbosity, it also dumps all scheduling relevant objects into <tempDir>/<viewName>/ directory.
-func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error {
+func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
@@ -134,18 +132,18 @@ func LogDumpObjects(ctx context.Context, prefix string, view minkapi.View) error
 }
 
 // ListStorageClassesClaimsAndVolumes gets the slice of StoreClass, PersistentVolumeClaims and PersistentVolumes from the given minkapi view or an error
-func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []storagev1.StorageClass, pvcs []corev1.PersistentVolumeClaim, pvs []corev1.PersistentVolume, err error) {
+func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []*storagev1.StorageClass, pvcs []*corev1.PersistentVolumeClaim, pvs []*corev1.PersistentVolume, err error) {
 	scObjs, _, err := view.ListMetaObjects(ctx, typeinfo.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return
 	}
-	scs = make([]storagev1.StorageClass, 0, len(scObjs))
+	scs = make([]*storagev1.StorageClass, 0, len(scObjs))
 	var sc *storagev1.StorageClass
 	for _, o := range scObjs {
 		if sc, err = objutil.Cast[*storagev1.StorageClass](o); err != nil {
 			return
 		}
-		scs = append(scs, *sc)
+		scs = append(scs, sc)
 	}
 
 	if pvcs, err = ListPersistentVolumeClaims(ctx, view); err != nil {
@@ -156,4 +154,13 @@ func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) 
 		return
 	}
 	return
+}
+
+// GetPersistentVolume returns the PersistentVolume with the given name from the given [minkapi.View]
+func GetPersistentVolume(ctx context.Context, name string, view minkapi.View) (*corev1.PersistentVolume, error) {
+	obj, err := view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, name))
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*corev1.PersistentVolume), err
 }

@@ -48,7 +48,7 @@ func (s *simulatorSingleSim) Close() error {
 }
 
 func (s *simulatorSingleSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) (planResult <-chan plannerapi.ScaleOutPlanResult) {
-	s.state = scaleout.RequestStateWith(request, simulationFactory, s.viewAccess)
+	s.state = scaleout.RequestStateWith(request, s.simulatorConfig, simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
 		if err := s.doSimulate(ctx); err != nil {
@@ -59,7 +59,7 @@ func (s *simulatorSingleSim) Simulate(ctx context.Context, request *plannerapi.R
 }
 
 func (s *simulatorSingleSim) doSimulate(ctx context.Context) (err error) {
-	if err = s.state.Initialize(ctx); err != nil {
+	if err = s.state.InitializeRequestView(ctx); err != nil {
 		return
 	}
 	err = fmt.Errorf("%w: to be implemented", commonerrors.ErrUnimplemented)

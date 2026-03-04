@@ -119,11 +119,13 @@ type VolGenInput struct {
 	VolumeBindingMode storagev1.VolumeBindingMode
 	// PVCNames if specified determine the number of PVCs and names of the generated PVCs.
 	PVCNames []string
-	// PVZones if specified determine the number of PV's - there is a PV generated per PVCName and PVZone combo.
+	// PVZones if specified determine the total number of PV's - there is a PV generated per PVCName and PVZone combo.
 	// The zone is used as the match expression in the PersistentVolume.Spec.NodeAffinity for the generated PV.
 	PVZones []string
 	// MaxAllocatableVolumes specifies the max number of PV's that can be allocated to the Node. It is a CSI specific value.
 	MaxAllocatableVolumes int32
+	// GeneratePV should be set to true if PV objects should be generated or skipped.
+	GeneratePV bool
 }
 
 // ValidateAndFillDefaults validates required fields in VolGenInput and fills other fields with defaults.

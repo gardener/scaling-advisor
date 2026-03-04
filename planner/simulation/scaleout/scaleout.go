@@ -7,11 +7,10 @@ package scaleout
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"maps"
 	"slices"
 	"time"
-
-	"github.com/gardener/scaling-advisor/planner/simulation"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -24,7 +23,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -87,7 +85,7 @@ func (s *defaultScaleOut) Name() string {
 	return s.name
 }
 
-func (s *defaultScaleOut) ActivityStatus() plannerapi.ActivityStatus {
+func (s *defaultScaleOut) Status() plannerapi.ActivityStatus {
 	return s.state.status
 }
 
@@ -107,10 +105,6 @@ func (s *defaultScaleOut) Run(ctx context.Context, view minkapi.View) (err error
 	runNum := s.incRunNum()
 	log := logr.FromContextOrDiscard(ctx).WithValues("simulationName", s.name, "runNum", runNum)
 	simCtx := logr.NewContext(ctx, log)
-
-	if logutil.VerbosityFromContext(simCtx) > 3 {
-		_ = viewutil.LogDumpObjects(simCtx, "SIMULATION-VIEW_BEFORE-RUN", view)
-	}
 
 	// Get unscheduled pods from the view
 	unscheduledPods, err := getUnscheduledPodsMap(simCtx, view)
@@ -265,12 +259,8 @@ func (s *defaultScaleOut) createSimulationNode(ctx context.Context, view minkapi
 		"capacity", s.state.simNode.Status.Capacity,
 		"allocatable", s.state.simNode.Status.Allocatable,
 		"numUnscheduledPods", len(s.state.unscheduledPods))
-	if logutil.VerbosityFromContext(ctx) >= viewutil.DefaultDumpVerbosity {
-		simNodeDumpPath, err := objutil.SaveRuntimeObjAsYAMLToPath(s.state.simNode, s.args.TraceDir, s.state.simNode.Name+".yaml")
-		if err != nil {
-			return err
-		}
-		log.V(viewutil.DefaultDumpVerbosity).Info("dumped simulation node YAML", "simNodeName", simNode.Name, "simNodeDumpPath", simNodeDumpPath)
+	if err = logutil.DumpObjectIfNeeded(ctx, s.state.simNode); err != nil {
+		return err
 	}
 	return nil
 }
@@ -290,12 +280,8 @@ func (s *defaultScaleOut) createCSINode(ctx context.Context, node *corev1.Node, 
 	csiNodeObj := runtimeObj.(*storagev1.CSINode)
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(4).Info("created CSINode for scaled node", "name", csiNodeObj.GetName(), "ownerReferences", csiNodeObj.GetOwnerReferences())
-	if logutil.VerbosityFromContext(ctx) >= viewutil.DefaultDumpVerbosity {
-		csiNodeDumpPath, err := objutil.SaveRuntimeObjAsYAMLToPath(csiNodeObj, s.args.TraceDir, "csi-"+s.state.simNode.Name+".yaml")
-		if err != nil {
-			return err
-		}
-		log.V(viewutil.DefaultDumpVerbosity).Info("dumped CSINode YAML", "csiNodeName", csiNodeObj.Name, "csiNodeDumpPath", csiNodeDumpPath)
+	if err = logutil.DumpObjectIfNeeded(ctx, csiNodeObj); err != nil {
+		return err
 	}
 	return err
 }
@@ -435,16 +421,16 @@ func (s *defaultScaleOut) incRunNum() uint32 {
 
 // doWork does miscellaneous simulation work to ensure that the kube-scheduler can
 // continue pod-node bindings. Currently, it only delegates to
-// BindClaimsAndVolumesWithNonNilClaimRefs, but other reconcile logic is likely to be incorporated in the future.
+// FinalizeStaticBindingsForSelectedClaims, but other reconcile logic is likely to be incorporated in the future.
 func (s *defaultScaleOut) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
-	numBound, err := simulation.BindClaimsAndVolumesWithNonNilClaimRefs(ctx, view)
+	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaims(ctx, view)
 	if err != nil {
 		return err
 	}
 	if numBound > 0 {
-		log.V(3).Info("Reset numUnchangedTrackAttempts since BindClaimsAndVolumesWithNonNilClaimRefs performed work", "numBound", numBound)
+		log.V(3).Info("Reset numUnchangedTrackAttempts since FinalizeStaticBindingsForSelectedClaims performed work", "numBound", numBound)
 		// reset track state
 		s.state.numUnchangedTrackAttempts = 0
 	}

@@ -95,8 +95,8 @@ func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINod
 			Name: nodeName,
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "v1",
-					Kind:       typeinfo.NodesDescriptor.GetKind(),
+					APIVersion: storagev1.SchemeGroupVersion.Version,
+					Kind:       typeinfo.CSINodeDescriptor.GetKind(),
 					Name:       nodeName,
 					UID:        nodeUID,
 				},

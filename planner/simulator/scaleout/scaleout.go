@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -43,22 +44,25 @@ type RequestState struct {
 	views         []minkapi.View
 	// SimulationGroups is the slice of ScaleOutSimGroup (if any) created for satisfying the current request.
 	SimulationGroups []plannerapi.ScaleOutSimGroup
+	simConfig        plannerapi.SimulatorConfig
 	mu               sync.Mutex
 }
 
 // RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
-func RequestStateWith(request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) RequestState {
+func RequestStateWith(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig,
+	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) RequestState {
 	return RequestState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleOutPlanResult),
 		SimulationFactory: simulationFactory,
 		SimRunCounter:     &atomic.Uint32{},
+		simConfig:         simConfig,
 		viewAccess:        viewAccess,
 	}
 }
 
-// Initialize performs out common initialization on this simulator state.
-func (s *RequestState) Initialize(ctx context.Context) error {
+// InitializeRequestView performs out common initialization on this simulator state.
+func (s *RequestState) InitializeRequestView(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
 	requestView, err := s.createRequestView(ctx)
 	if err != nil {
@@ -70,12 +74,13 @@ func (s *RequestState) Initialize(ctx context.Context) error {
 		return err
 	}
 
-	// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
-	if _, err = simulator.BindClaimsAndVolumesForImmediateMode(ctx, requestView); err != nil {
-		return err
+	if s.simConfig.BindVolumeClaimsForImmediateMode {
+		// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
+		if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
+			return err
+		}
 	}
-
-	err = viewutil.LogDumpObjects(ctx, "requestView", requestView)
+	err = viewutil.LogObjects(ctx, "requestView", requestView)
 	if err != nil {
 		log.Info("failed to dump requestView objects", "requestView", requestView.GetName(), "error", err)
 	}
@@ -96,7 +101,7 @@ func (s *RequestState) CreateSandboxView(ctx context.Context, name string, deleg
 }
 
 // RequestView gets the request minkapi view within this state. request Views are views that only have the request
-// cluster snapshot populated within them along with any initialization done by Initialize.
+// cluster snapshot populated within them along with any initialization done by InitializeRequestView.
 func (s *RequestState) RequestView() minkapi.View {
 	if len(s.views) == 0 {
 		return nil

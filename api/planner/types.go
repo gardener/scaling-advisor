@@ -377,6 +377,9 @@ type SimulatorConfig struct {
 	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
 	// considered as stabilized.
 	MaxUnchangedTrackAttempts int
+	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
+	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
+	BindVolumeClaimsForImmediateMode bool
 }
 
 // ScalingPlannerArgs encapsulates the arguments required to create a ScalingPlanner.
@@ -433,6 +436,19 @@ type ScalingPlanner interface {
 type ScalingPlannerFactory interface {
 	// NewPlanner accepts ScallingPlannerArgs and constructs a new ScalingPlanner.
 	NewPlanner(args ScalingPlannerArgs) (ScalingPlanner, error)
+}
+
+// SimulatorFactory is a factory facade for constructing various kinds of simulators.
+type SimulatorFactory interface {
+	GetScaleOutSimulator(args SimulatorArgs) (ScaleOutSimulator, error)
+	// TODO: Add GetScaleInSimulator here.
+}
+
+// SimulationFactory is a factory facade for creating Simulation objects
+type SimulationFactory interface {
+	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
+	NewScaleOut(name string, args ScaleOutSimArgs) (ScaleOutSimulation, error)
+	// TODO: Add NewScaleIn method here.
 }
 
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.

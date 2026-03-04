@@ -28,8 +28,10 @@ var (
 	// ErrRunSimulationGroup is a sentinel error indicating that the planner could not run a scaling simulation group.
 	ErrRunSimulationGroup = errors.New("cannot run simulation group")
 
-	// ErrBindClaimVolume is a sentinel erorr indicating that a scaling simulation cannot bind PVC<->PV
+	// ErrBindClaimVolume is a sentinel error indicating that a scaling simulation cannot bind PVC<->PV
 	ErrBindClaimVolume = errors.New("cannot bind claim to volume")
+	// ErrProvisionVolume is a sentinel error indicating that a scaling simulation cannot dynamically provision a simulated PV
+	ErrProvisionVolume = errors.New("cannot provision volume")
 	// ErrComputeNodeScore is a sentinel error indicating that the NodeScorer cannot compute a score
 	ErrComputeNodeScore = errors.New("cannot compute node score")
 	// ErrNoWinningNodeScore is a sentinel error indicating that there is no winning NodeScore

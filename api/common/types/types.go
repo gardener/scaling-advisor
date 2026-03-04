@@ -209,6 +209,9 @@ const (
 	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
 	VerbosityCtxKey ContextKey = "verbosity"
 
+	// TraceDirCtxKey is the context key under which the dir path to the trace dir is stored.
+	TraceDirCtxKey ContextKey = "trace-dir"
+
 	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-	TraceLogPathCtxKey ContextKey = "trace-log-path"
+	TraceLogPathCtxKey ContextKey = "trace-log"
 )

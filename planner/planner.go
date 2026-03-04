@@ -111,15 +111,17 @@ func validateRequest(req *plannerapi.Request) error {
 	return nil
 }
 
-func wrapPlanContext(ctx context.Context, traceLogsDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
+func wrapPlanContext(ctx context.Context, traceDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
 	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 1 {
-		if traceLogsDir == "" {
-			traceLogsDir = ioutil.GetTempDir()
+		if traceDir == "" {
+			traceDir = ioutil.GetTempDir()
 		}
-		filepath.Clean(traceLogsDir)
-		logPath := path.Join(traceLogsDir, logutil.GetCleanLogFileName(fmt.Sprintf("%s.log", req.ID)))
+		genCtx = context.WithValue(genCtx, commontypes.TraceDirCtxKey, traceDir)
+		genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
+		filepath.Clean(traceDir)
+		logPath := path.Join(traceDir, logutil.GetCleanLogFileName(fmt.Sprintf("%s.log", req.ID)))
 		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, req.CorrelationID, logPath)
 		log := logr.FromContextOrDiscard(genCtx)
 		log.Info("Diagnostics enabled for this request", "logPath", logPath, "diagnosticVerbosity", req.DiagnosticVerbosity)

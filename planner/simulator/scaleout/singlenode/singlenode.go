@@ -55,7 +55,7 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 // sent on the planResultCh, otherwise the cycle result is stored until all cycles are finished. Following which, a
 // cumulative ScaleOutPlanResult is determined from all ScaleOutSimGroupCycleResult's obtained so far and sent on the planResultCh.
 func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleOutPlanResult {
-	s.state = scaleout.RequestStateWith(request, simulationFactory, s.viewAccess)
+	s.state = scaleout.RequestStateWith(request, s.simulatorConfig, simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
 		if err := s.doSimulate(ctx); err != nil {
@@ -66,7 +66,7 @@ func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Re
 }
 
 func (s *simulatorMultiSim) doSimulate(ctx context.Context) (err error) {
-	if err = s.state.Initialize(ctx); err != nil {
+	if err = s.state.InitializeRequestView(ctx); err != nil {
 		return
 	}
 	s.state.SimulationGroups, err = s.createAndGroupSimulation()
@@ -103,7 +103,6 @@ func (s *simulatorMultiSim) createAndGroupSimulation() ([]plannerapi.ScaleOutSim
 					SchedulerLauncher: s.schedulerLauncher,
 					StorageMetaAccess: s.storageMetaAccess,
 					Config:            s.simulatorConfig,
-					TraceDir:          s.traceDir,
 				}
 				sim, err = s.state.SimulationFactory.NewScaleOut(simulationName, simArgs)
 				if err != nil {
@@ -201,9 +200,9 @@ func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, g
 				log.V(2).Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
-			if logutil.VerbosityFromContext(passCtx) > 3 {
-				err = viewutil.LogDumpObjects(passCtx, "post_runSinglePassForGroup", cycleResult.NextGroupPassView)
-				if err != nil {
+			verbosity, _, _ := logutil.ContextValues(passCtx)
+			if verbosity > 3 {
+				if err = viewutil.LogObjects(passCtx, "post_runSinglePassForGroup", cycleResult.NextGroupPassView); err != nil {
 					return
 				}
 			}
