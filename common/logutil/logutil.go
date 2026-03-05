@@ -38,8 +38,8 @@ func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
 		return
 	}
 	v, ok := val.(int) // check if int
-	if ok {
-		verbosity = uint32(v)
+	if ok && v >= 0 {
+		verbosity = uint32(v) // #nosec G115 -- safe: v >= 0 already checked
 	}
 	return
 }
