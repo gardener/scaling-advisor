@@ -28,9 +28,18 @@ const (
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
-	v := ctx.Value(commontypes.VerbosityCtxKey)
-	if v != nil {
-		verbosity = v.(uint32)
+	val := ctx.Value(commontypes.VerbosityCtxKey)
+	if val == nil {
+		return
+	}
+	var ok bool
+	verbosity, ok = val.(uint32)
+	if ok {
+		return
+	}
+	v, ok := val.(int) // check if int
+	if ok {
+		verbosity = uint32(v)
 	}
 	return
 }
