@@ -13,10 +13,10 @@ const (
 	// DefaultMaxParallelSimulations is the default maximum number of parallel simulations that can be run by the scaling advisor simulator.
 	DefaultMaxParallelSimulations = 1
 	// DefaultTrackPollInterval is the default polling interval for tracking pod scheduling in the view of the simulator.
-	DefaultTrackPollInterval = 30 * time.Millisecond
+	DefaultTrackPollInterval = 35 * time.Millisecond
 	//DefaultMaxUnchangedTrackAttempts is the default value for the maximum number of unchanged simulation track attempts after which
 	// a simulation run is considered as stabilized.
-	DefaultMaxUnchangedTrackAttempts = 32
+	DefaultMaxUnchangedTrackAttempts = 60
 	// ServiceName is the program binary name for the independent scaling planner microservice.
 	ServiceName = "scaling-planner"
 )

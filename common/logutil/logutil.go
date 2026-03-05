@@ -6,18 +6,19 @@ package logutil
 
 import (
 	"context"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	"io"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // DefaultDumpVerbosity represents the verbosity level at which objects are dumped into the file system for diagnosis
@@ -28,12 +29,8 @@ const (
 // ContextValues retrieves the verbosity level, the trace dir and the trace log path from the given context.
 func ContextValues(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
 	v := ctx.Value(commontypes.VerbosityCtxKey)
-	if v == nil {
-		verbosity = 0
-	}
-	verbosity, ok := v.(uint32)
-	if !ok {
-		verbosity = 0
+	if v != nil {
+		verbosity = v.(uint32)
 	}
 	d := ctx.Value(commontypes.TraceDirCtxKey)
 	if d != nil {

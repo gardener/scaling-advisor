@@ -8,7 +8,6 @@ package scaleout
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	"strings"
 	"time"
 
@@ -17,6 +16,8 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -160,17 +161,27 @@ func (s *defaulSimulation) workAndTrackUntilStabilized(ctx context.Context, view
 func (s *defaulSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
+	provisionedPvs, err := volutil.DynamicProvisionAndBindVolumesForSelectedClaims(ctx, view)
+	if err != nil {
+		return err
+	}
+	if len(provisionedPvs) > 0 {
+		log.V(3).Info("DynamicProvisionAndBindVolumesForSelectedClaims performed work - reset RunState.numUnchangedTrackAttempts since ",
+			"numProvisionedPvs", len(provisionedPvs))
+		s.state.numUnchangedTrackAttempts = 0
+	}
 	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaims(ctx, view)
 	if err != nil {
 		return err
 	}
 	if numBound > 0 {
-		log.V(3).Info("Reset RunState.numUnchangedTrackAttempts since BindClaimsAndVolumesWithNonNilClaimRefs performed work", "numBound", numBound)
+		log.V(3).Info("BindClaimsAndVolumesWithNonNilClaimRefs performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
 		s.state.numUnchangedTrackAttempts = 0
 	}
 	if s.args.Strategy.IsMultiNode() {
 		err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.NodeTemplates)
 	}
+	_ = viewutil.LogObjects(ctx, "doWork done", view)
 	return err
 }
 

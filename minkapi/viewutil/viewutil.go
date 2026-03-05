@@ -7,6 +7,7 @@ package viewutil
 import (
 	"context"
 	"fmt"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
@@ -112,16 +113,19 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 		log.V(4).Info(prefix+"|pvc in view", "viewName", view.GetName(),
 			"pvcName", pvc.Name,
 			"pvcNamespace", pvc.Namespace,
+			"pvcAnnotations", pvc.Annotations,
 			"phase", pvc.Status.Phase,
 			"storageClassName", pvc.Spec.StorageClassName,
 			"storageRequest", pvc.Spec.Resources.Requests.Storage(),
 			"selector", pvc.Spec.Selector,
+			"pvcAnnotations", pvc.Annotations,
 			"uid", string(pvc.UID))
 	}
 	for _, pv := range pvs {
 		log.V(4).Info(prefix+"|pv in view",
 			"viewName", view.GetName(),
 			"pvName", pv.GetName(),
+			"pvAnnotations", pv.Annotations,
 			"phase", pv.Status.Phase,
 			"storageClassName", pv.Spec.StorageClassName,
 			"storageCapacity", pv.Spec.Capacity.Storage(),

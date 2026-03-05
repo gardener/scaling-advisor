@@ -67,7 +67,7 @@ func TestOnePoolScaleOutWithBoundPVC(t *testing.T) {
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_ImmediateVolumeBinding_(t *testing.T) {
+func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_ImmediateVolumeBinding(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
@@ -96,91 +96,61 @@ func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_ImmediateVolumeBinding_(t *tes
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
 }
 
-//func TestOnePoolScaleOutWithUnboundPVC_SimulatedPV_ImmediateVolumeBinding(t *testing.T) {
-//	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-//		PoolPreset: samples.PoolPreset1P,
-//		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-//			samples.ResourcePresetBerry: 1,
-//		},
-//		Factories: NewFactories(),
-//		VolGenInput: samples.VolGenInput{
-//			PVCNames:          []string{"stem"},
-//			ClaimPhase:        corev1.ClaimPending,
-//			VolumeBindingMode: storagev1.VolumeBindingImmediate,
-//		},
-//	})
-//	if !ok {
-//		return
-//	}
-//	poolAPlacement := testData.NodePlacements[0]
-//	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-//		Items: []sacorev1alpha1.ScaleOutItem{
-//			{
-//				NodePlacement: poolAPlacement,
-//				Delta:         1,
-//			},
-//		},
-//	}
-//	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-//}
-//
-//func TestOnePoolScaleOutWithUnboundPVC_WaitForFirstConsumer(t *testing.T) {
-//	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-//		PoolPreset: samples.PoolPreset1P,
-//		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-//			samples.ResourcePresetBerry: 1,
-//		},
-//		Factories: NewFactories(),
-//		VolGenInput: samples.VolGenInput{
-//			PVCNames:          []string{"stem"},
-//			ClaimPhase:        corev1.ClaimPending,
-//			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
-//		},
-//	})
-//	if !ok {
-//		return
-//	}
-//	poolAPlacement := testData.NodePlacements[0]
-//	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-//		Items: []sacorev1alpha1.ScaleOutItem{
-//			{
-//				NodePlacement: poolAPlacement,
-//				Delta:         1,
-//			},
-//		},
-//	}
-//	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-//}
-//
-//func TestOnePoolScaleOutWithUnboundPVC_WaitForFirstConsumer_PVWithZoneAffinity(t *testing.T) {
-//	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
-//		PoolPreset: samples.PoolPreset1P,
-//		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
-//			samples.ResourcePresetBerry: 1,
-//		},
-//		Factories: NewFactories(),
-//		VolGenInput: samples.VolGenInput{
-//			PVCNames:          []string{"stem"},
-//			PVZones:           []string{"eu-west-1a"}, // PV only generated for this zone, ScaleOutItem.NodePlacement should have this zone
-//			ClaimPhase:        corev1.ClaimPending,
-//			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
-//		},
-//		PoolZones: [][]string{{"eu-west-1c", "eu-west-1b", "eu-west-1a"}},
-//	})
-//	if !ok {
-//		return
-//	}
-//	wantPlacement := testData.NodePlacements[2] //  NodePlacement in "eu-west-1a" zone
-//	wantPlan := &sacorev1alpha1.ScaleOutPlan{
-//		Items: []sacorev1alpha1.ScaleOutItem{
-//			{
-//				NodePlacement: wantPlacement,
-//				Delta:         1,
-//			},
-//		},
-//	}
-//	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
-//}
+func TestOnePoolScaleOutWithUnboundPVC_SimulatedPV_ImmediateVolumeBinding(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingImmediate,
+		},
+	})
+	if !ok {
+		return
+	}
+	poolAPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: poolAPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+func TestOnePoolScaleOutWithUnboundPVC_WaitForFirstConsumer(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset: samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{
+			samples.ResourcePresetBerry: 1,
+		},
+		Factories: NewFactories(),
+		VolGenInput: samples.VolGenInput{
+			PVCNames:          []string{"stem"},
+			ClaimPhase:        corev1.ClaimPending,
+			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
+		},
+	})
+	if !ok {
+		return
+	}
+	poolAPlacement := testData.NodePlacements[0]
+	wantPlan := &sacorev1alpha1.ScaleOutPlan{
+		Items: []sacorev1alpha1.ScaleOutItem{
+			{
+				NodePlacement: poolAPlacement,
+				Delta:         1,
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
 
 func TestReusePlannerAcrossRequests(t *testing.T) {
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{

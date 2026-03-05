@@ -323,29 +323,29 @@ func TestSimGroupKey_String(t *testing.T) {
 	tests := []struct {
 		name     string
 		expected string
-		key      PriorityKey
+		key      commontypes.PriorityKey
 	}{
 		{
 			name: "both priorities positive",
-			key: PriorityKey{
-				NodePoolPriority:     1,
-				NodeTemplatePriority: 2,
+			key: commontypes.PriorityKey{
+				First:  1,
+				Second: 2,
 			},
 			expected: "1-2",
 		},
 		{
 			name: "zero priorities",
-			key: PriorityKey{
-				NodePoolPriority:     0,
-				NodeTemplatePriority: 0,
+			key: commontypes.PriorityKey{
+				First:  0,
+				Second: 0,
 			},
 			expected: "0-0",
 		},
 		{
 			name: "large priorities",
-			key: PriorityKey{
-				NodePoolPriority:     100,
-				NodeTemplatePriority: 200,
+			key: commontypes.PriorityKey{
+				First:  100,
+				Second: 200,
 			},
 			expected: "100-200",
 		},

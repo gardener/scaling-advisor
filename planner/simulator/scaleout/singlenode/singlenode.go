@@ -9,6 +9,7 @@ package singlenode
 import (
 	"context"
 	"fmt"
+
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"

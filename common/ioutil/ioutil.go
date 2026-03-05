@@ -83,14 +83,14 @@ func MakeTempSubDir(name string) (subDir string, err error) {
 // GetEnvAsUint32 parses the env with given varname as uint32 and returns the same or returns the default value
 // if empty or invalid.
 func GetEnvAsUint32(varname string, defaultValue uint32) uint32 {
-	valStr := os.Getenv("VERBOSITY")
+	valStr := os.Getenv(varname)
 	if strings.TrimSpace(valStr) == "" {
 		return defaultValue
 	}
 	val64, err := strconv.ParseUint(valStr, 10, 32)
 	if err != nil {
 		return defaultValue
-	} else if val64 < 0 || val64 > math.MaxUint32 {
+	} else if val64 == 0 || val64 > math.MaxUint32 {
 		return defaultValue
 	} else {
 		return uint32(val64)

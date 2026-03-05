@@ -7,26 +7,27 @@ package volutil
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+
+	"github.com/gardener/scaling-advisor/common/logutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	"github.com/gardener/scaling-advisor/common/logutil"
-	"github.com/gardener/scaling-advisor/common/objutil"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	storagevolume "k8s.io/component-helpers/storage/volume"
-	"k8s.io/utils/ptr"
-	"maps"
-	"slices"
-
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
+	"k8s.io/utils/ptr"
 )
 
 // AsPVInfo converts the given corev1.PersistentVolume to a lean plannerapi PVInfo.
@@ -114,7 +115,7 @@ func FindStorageClassWithName(name string, classes []*storagev1.StorageClass) *s
 	return nil
 }
 
-// SortPersistentVolumesByIncreasingStorage sorts the given slice of `PersistentVolumeClaim`s by increasing storage capacity.
+// SortPVCByIncreasingStorage sorts the given slice of `PersistentVolumeClaim`s by increasing storage capacity.
 func SortPVCByIncreasingStorage(pvcs []*corev1.PersistentVolumeClaim) {
 	slices.SortFunc(pvcs, func(a, b *corev1.PersistentVolumeClaim) int {
 		return a.Spec.Resources.Requests.Storage().Cmp(*b.Spec.Resources.Requests.Storage())
@@ -175,9 +176,12 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) ([]plann
 		if sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 			continue
 		}
-		chosenPV, _, err = FindExistingOrCreateSimulatedBindableVolume(ctx, view, pvc, pvs, chosenPVs)
+		chosenPV, _, err = FindExistingOrCreateSimulatedBindableVolume(ctx, view, sc, pvc, pvs, chosenPVs)
 		if err != nil {
 			return nil, err
+		}
+		if chosenPV == nil {
+			continue
 		}
 		if err = BindClaimAndVolume(ctx, view, pvc, chosenPV); err != nil {
 			return nil, err
@@ -188,25 +192,27 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) ([]plann
 		}
 	}
 	claimAssignments := slices.Collect(maps.Values(boundPVs))
-	if len(claimAssignments) >= 0 {
+	if len(claimAssignments) > 0 {
 		log.V(3).Info("BindClaimsForImmediateMode succeeded", "numClaimAssignments", len(claimAssignments))
 	}
 	return claimAssignments, nil
 }
 
-// ProvisionVolumesForSelectedClaims performs dynamic provisioning of [corev1.PersistentVolume]'s for
+// DynamicProvisionAndBindVolumesForSelectedClaims performs dynamic provisioning of [corev1.PersistentVolume]'s for
 // [corev1.PersistentVolumeClaim]'s selected by the `kube-scheduler`. It queries the given [minkapi.View] for PVC's that
 // have been marked with [storagevolume.AnnSelectedNode] which indicates that scheduler has triggered the PVC to be
-// dynamically provisioned. It then creates a simulated virtual PV that satisfies the PVC.
-func ProvisionVolumesForSelectedClaims(ctx context.Context, view minkapi.View) (provisionPVs []*corev1.PersistentVolume, err error) {
+// dynamically provisioned. It then creates a simulated virtual PV that satisfies the PVC and also binds the same.
+func DynamicProvisionAndBindVolumesForSelectedClaims(ctx context.Context, view minkapi.View) (provisionPVs []*corev1.PersistentVolume, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", plannerapi.ErrProvisionVolume, err)
 		}
 	}()
 	var (
-		log  = logr.FromContextOrDiscard(ctx)
-		pvcs []*corev1.PersistentVolumeClaim
+		log   = logr.FromContextOrDiscard(ctx)
+		pvcs  []*corev1.PersistentVolumeClaim
+		zone  string
+		simPV *corev1.PersistentVolume
 	)
 	if pvcs, err = viewutil.ListPersistentVolumeClaims(ctx, view); err != nil {
 		return
@@ -215,39 +221,22 @@ func ProvisionVolumesForSelectedClaims(ctx context.Context, view minkapi.View) (
 		if pvc.Status.Phase != corev1.ClaimPending || !metav1.HasAnnotation(pvc.ObjectMeta, storagevolume.AnnSelectedNode) {
 			continue
 		}
-		simPV := newSimulatedMatchingVolume(pvc)
-		// safety-check to see if a simPV is already present in the view, if so skip
-		if _, err = view.GetObject(ctx,
-			typeinfo.PersistentVolumesDescriptor.GVK,
-			cache.NewObjectName(metav1.NamespaceNone, simPV.Name)); err == nil {
-			log.V(4).Info("simulated PV already created for PVC", ""+
-				"pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
-			continue
-		}
-		if !apierrors.IsNotFound(err) {
+		zone, err = getSelectedNodeZone(ctx, view, pvc)
+		if err != nil {
 			return
 		}
-		// TODO: set node affinity!
-		//simPV.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
-		//	Required: &corev1.NodeSelector{
-		//		NodeSelectorTerms: []corev1.NodeSelectorTerm{
-		//			{
-		//				MatchExpressions: []corev1.NodeSelectorRequirement{
-		//					{
-		//						Key:      corev1.LabelTopologyZone,
-		//						Operator: corev1.NodeSelectorOpIn,
-		//						Values:   []string{zone},
-		//					},
-		//				},
-		//			},
-		//		},
-		//	},
-		//}
+		if simPV, err = createSimulatedVolumeMatchingClaim(ctx, view, pvc, zone); err != nil {
+			return
+		}
+		if simPV == nil {
+			continue
+		}
 		if err = BindClaimAndVolume(ctx, view, pvc, simPV); err != nil {
 			return
 		}
 		provisionPVs = append(provisionPVs, simPV)
 	}
+	log.V(4).Info("DynamicProvisionAndBindVolumesForSelectedClaims completed", "numProvisionPVs", len(provisionPVs))
 	return
 }
 
@@ -297,12 +286,13 @@ func FinalizeStaticBindingsForSelectedClaims(ctx context.Context, view minkapi.V
 		if pvc.Spec.VolumeName != "" {
 			continue
 		}
+
+		pv = pv.DeepCopy() // deepcopy needed to ensure scheduler informer caches see updated objects
+		pvc = pvc.DeepCopy()
+
 		pvc.Spec.VolumeName = pv.Name
 		pvc.Status.Phase = corev1.ClaimBound
-		if pvc.Annotations == nil {
-			pvc.Annotations = map[string]string{}
-		}
-		pvc.Annotations[storagevolume.AnnBindCompleted] = "yes"
+		metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 		pv.Status.Phase = corev1.VolumeBound
 		err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc)
 		if err != nil {
@@ -320,10 +310,10 @@ func FinalizeStaticBindingsForSelectedClaims(ctx context.Context, view minkapi.V
 
 // FindExistingOrCreateSimulatedBindableVolume attempts to find a matching existing unbound PV within the given slice of pvs
 // for the given pvc, excluding ones in chosenPVs. If a chosenPV could not be found, it will simulate one to satisfy
-// the PVC and return the same.
-func FindExistingOrCreateSimulatedBindableVolume(
-	ctx context.Context,
+// the PVC and return the same. When creating a simulated PV will pick the first zone from the allowedTopologies (if any)
+func FindExistingOrCreateSimulatedBindableVolume(ctx context.Context,
 	view minkapi.View,
+	sc *storagev1.StorageClass,
 	pvc *corev1.PersistentVolumeClaim,
 	pvs []*corev1.PersistentVolume,
 	chosenPVs map[string]*corev1.PersistentVolume) (chosenPV *corev1.PersistentVolume, isSimulatedPV bool, err error) {
@@ -338,20 +328,40 @@ func FindExistingOrCreateSimulatedBindableVolume(
 		return
 	}
 	log.V(3).Info("could not choose an existing PV for PVC - creating simulated matching PV", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
-	chosenPV, isSimulatedPV = newSimulatedMatchingVolume(pvc), true
+	zone, err := pickZoneFromAllowedTopologies(sc)
+	if err != nil {
+		return
+	}
+	if chosenPV, err = createSimulatedVolumeMatchingClaim(ctx, view, pvc, zone); err != nil || chosenPV == nil {
+		return
+	}
 	//safety-check to see if pv-controller helper function actually chooses this simulated PV. It is an error if it does not
 	chosenPV, err = storagevolume.FindMatchingVolume(pvc, []*corev1.PersistentVolume{chosenPV}, nil, chosenPVs, false, true)
 	if err != nil {
 		err = fmt.Errorf("simulated PV was not chosen for PVC %q: %w", objutil.NamespacedName(pvc), err)
 	} else if chosenPV == nil {
 		err = fmt.Errorf("simulated PV was not chosen for PVC %q", objutil.NamespacedName(pvc))
-	} else {
-		if _, err = view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, chosenPV); err != nil {
-			err = fmt.Errorf("could not create simulated PV %q matching PVC %q: %w", chosenPV.Name, objutil.NamespacedName(pvc), err)
-		}
-		if err = logutil.DumpObjectIfNeeded(ctx, chosenPV); err != nil {
-			return
-		}
+	}
+	isSimulatedPV = true
+	return
+}
+
+// getSelectedNodeZone gets the [storagevolume.AnnSelectedNode] annotation from the PVC, obtains the Node object from the view
+// and gets the node's topology zone. If any of the above do not succeed, returns an error.
+func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim) (zone string, err error) {
+	selectedNodeName := pvc.Annotations[storagevolume.AnnSelectedNode]
+	if selectedNodeName == "" {
+		err = fmt.Errorf("annotation %q empty for PVC with name %q", storagevolume.AnnSelectedNode, objutil.NamespacedName(pvc))
+		return
+	}
+	obj, err := view.GetObject(ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, selectedNodeName))
+	if err != nil {
+		return
+	}
+	node := obj.(*corev1.Node)
+	zone, ok := node.Labels[corev1.LabelTopologyZone]
+	if !ok {
+		err = fmt.Errorf("%q not found for selected node %q on PVC %q", corev1.LabelTopologyZone, selectedNodeName, objutil.NamespacedName(pvc))
 	}
 	return
 }
@@ -359,6 +369,8 @@ func FindExistingOrCreateSimulatedBindableVolume(
 // BindClaimAndVolume performs end to end binding between the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
 func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume) error {
 	log := logr.FromContextOrDiscard(ctx)
+	pv = pv.DeepCopy() // deepcopy needed to ensure scheduler informer caches see updated objects
+	pvc = pvc.DeepCopy()
 
 	// Bind PV → PVC
 	pv.Spec.ClaimRef = &corev1.ObjectReference{
@@ -370,6 +382,7 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	}
 	pv.Status.Phase = corev1.VolumeBound
 	pv.Status.LastPhaseTransitionTime = ptr.To(metav1.Now())
+	metav1.SetMetaDataAnnotation(&pv.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
 		log.Error(err, "failed to bind pv->pvc", "pv", pv, "pvc", pvc)
 		return fmt.Errorf("%w: failed to bind pv %q ->pvc %q: %w", plannerapi.ErrBindClaimVolume, pv.Name, pvc.Name, err)
@@ -378,12 +391,11 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	//  Bind PVC → PV
 	pvc.Spec.VolumeName = pv.Name
 	pvc.Status.Phase = corev1.ClaimBound
-	if pvc.Annotations == nil {
-		pvc.Annotations = map[string]string{}
-	}
-	pvc.Annotations[storagevolume.AnnBindCompleted] = "yes"
+	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
+	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
+	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
-		log.Error(err, "failed to bind pvc->pv", "pvc", pvc, "pv", pv)
+		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
 	}
 
@@ -391,11 +403,27 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	return nil
 }
 
-// newSimulatedMatchingVolume returns a PV that satisfies the given PVC but will not set any binding information.
-func newSimulatedMatchingVolume(pvc *corev1.PersistentVolumeClaim) *corev1.PersistentVolume {
-	return &corev1.PersistentVolume{
+// createSimulatedVolumeMatchingClaim creates a PV that satisfies the given PVC but will not set any binding information.
+func createSimulatedVolumeMatchingClaim(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, zone string) (pv *corev1.PersistentVolume, err error) {
+	var (
+		log   = logr.FromContextOrDiscard(ctx)
+		pvObj runtime.Object
+	)
+	pvName := simulatedVolumeNamePrefix + pvc.Namespace + "-" + pvc.Name
+	if pvObj, err = view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pvName)); pvObj != nil {
+		pv = pvObj.(*corev1.PersistentVolume)
+		log.V(4).Info("simulated PV already created for PVC", "pvName", pv.Name, "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
+		return
+	}
+	if !apierrors.IsNotFound(err) {
+		return
+	}
+	pv = &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: simulatedVolumeNamePrefix + pvc.Name,
+			Name: simulatedVolumeNamePrefix + pvc.Namespace + "-" + pvc.Name,
+			Annotations: map[string]string{
+				storagevolume.AnnDynamicallyProvisioned: "scaling-advisor",
+			},
 		},
 		Spec: corev1.PersistentVolumeSpec{
 			Capacity: corev1.ResourceList{
@@ -403,7 +431,7 @@ func newSimulatedMatchingVolume(pvc *corev1.PersistentVolumeClaim) *corev1.Persi
 			},
 			AccessModes:                   pvc.Spec.AccessModes,
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
-			StorageClassName:              *pvc.Spec.StorageClassName,
+			StorageClassName:              ptr.Deref(pvc.Spec.StorageClassName, ""),
 			VolumeMode:                    pvc.Spec.VolumeMode,
 			VolumeAttributesClassName:     pvc.Spec.VolumeAttributesClassName,
 		},
@@ -411,32 +439,50 @@ func newSimulatedMatchingVolume(pvc *corev1.PersistentVolumeClaim) *corev1.Persi
 			Phase: corev1.VolumeAvailable,
 		},
 	}
+	if zone != "" {
+		pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
+			Required: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      corev1.LabelTopologyZone,
+								Operator: corev1.NodeSelectorOpIn,
+								Values:   []string{zone},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	if _, err = view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+		err = fmt.Errorf("could not create simulated PV %q matching PVC %q: %w", pv.Name, objutil.NamespacedName(pvc), err)
+		return
+	}
+	if err = logutil.DumpObjectIfNeeded(ctx, pv); err != nil {
+		return
+	}
+	log.V(3).Info("created simulated PV matching PVC", "pvName", pv.Name,
+		"pvcName", pvc.Name, "pvcNamespace", pvc.Namespace, "zone", zone)
+	return
 }
 
-//func setStorageClassName(log logr.Logger,
-//	pvc *corev1.PersistentVolumeClaim,
-//	defaultSc *storagev1.StorageClass,
-//	scs []storagev1.StorageClass) {
-//	var (
-//		sc *storagev1.StorageClass
-//
-//	)
-//	var
-//	if pvc.Spec.StorageClassName == nil {
-//		if defaultSc == nil {
-//			log.V(2).Info("pvc does not have storage class, skipping", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
-//			continue
-//		}
-//		pvc.Spec.StorageClassName = ptr.To(defaultSc.Name)
-//		sc = defaultSc
-//	} else {
-//		sc = FindStorageClassWithName(*pvc.Spec.StorageClassName, scs)
-//		if sc == nil {
-//			log.V(2).Info("cannot find PVC storage class", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace, "storageClassName", *pvc.Spec.StorageClassName)
-//			continue
-//		}
-//	}
-//
-//}
+func pickZoneFromAllowedTopologies(sc *storagev1.StorageClass) (string, error) {
+	if sc.AllowedTopologies == nil {
+		return "", nil // no topology restriction
+	}
+
+	for _, term := range sc.AllowedTopologies {
+		for _, expr := range term.MatchLabelExpressions {
+			if expr.Key == corev1.LabelTopologyZone && len(expr.Values) > 0 {
+				// Deterministic choice: first value
+				return expr.Values[0], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("allowedTopologies specified but no %q found", corev1.LabelTopologyZone)
+}
 
 const simulatedVolumeNamePrefix = "simVol-"
