@@ -103,7 +103,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			return
 		}
 	}
-	testData.NodePlacements = testData.Request.Constraint.Spec.GetAllNodePlacements()
+	testData.NodePlacements = getAllNodePlacements(testData.Request.Constraint.Spec)
 	data, err := json.Marshal(testData.Request)
 	if err != nil {
 		t.Fatal("failed to marshal request:", err)
@@ -326,4 +326,13 @@ func (s *testStorageMetaAccess) GetFallbackCSINodeSpec(instanceType string) (csi
 	maxVolumes := samples.GetMaxAllocatableVolumes(s.provider, instanceType)
 	csiNodeSpec.Drivers, err = samples.GetCSINodeDrivers(s.provider, maxVolumes)
 	return
+}
+
+// getAllNodePlacements computes all the possible NodePlacements for the ScalingConstraintSpec.
+func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []sacorev1alpha1.NodePlacement) {
+	placements = make([]sacorev1alpha1.NodePlacement, 0, len(c.NodePools)*len(c.GetAllAvailabilityZones()))
+	for _, p := range c.NodePools {
+		placements = append(placements, p.GetNodePlacements()...)
+	}
+	return placements
 }

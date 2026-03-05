@@ -12,8 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
-	"time"
 
 	"github.com/gardener/scaling-advisor/common/ioutil"
 
@@ -40,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/utils/ptr"
 )
 
 // ScalingAdvisorScheme is the runtime.Scheme for Scaling Advisor types.
@@ -379,20 +378,6 @@ func AsMeta(o any) (mo metav1.Object, err error) {
 	return
 }
 
-// AsPtrMetaV1Time returns the given Go time as a metav1.Time pointer or nil value if t is zero value.
-func AsPtrMetaV1Time(t time.Time) *metav1.Time {
-	var mt *metav1.Time
-	if !t.IsZero() {
-		mt = ptr.To(metav1.NewTime(t))
-	}
-	return mt
-}
-
-// AsStdTimeOrZero dereferences the given metav1.Time and returns the stdlib time.Time if not-nil or returns the zero value.
-func AsStdTimeOrZero(t *metav1.Time) time.Time {
-	return ptr.Deref(t, metav1.Time{}).Time
-}
-
 // Cast attempts to cast an interface{} into a type T and returns an error if the cast fails.
 func Cast[T any](obj any) (t T, err error) {
 	t, ok := obj.(T)
@@ -424,4 +409,11 @@ func saveObjToPath(ser *kjson.Serializer, obj runtime.Object, savePath string) e
 		return fmt.Errorf("failed to write object of kind %q to file %q: %w", obj.GetObjectKind(), savePath, err)
 	}
 	return nil
+}
+
+// SortByDecreasingCreationTime sorts the given slice of [metav1.Object] by decreasing creation time.
+func SortByDecreasingCreationTime[T metav1.Object](objs []T) {
+	slices.SortStableFunc(objs, func(a, b T) int {
+		return b.GetCreationTimestamp().Compare(a.GetCreationTimestamp().Time)
+	})
 }

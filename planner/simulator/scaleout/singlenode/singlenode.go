@@ -31,20 +31,21 @@ type simulatorMultiSim struct {
 	schedulerLauncher plannerapi.SchedulerLauncher
 	storageMetaAccess plannerapi.StorageMetaAccess
 	nodeScorer        plannerapi.NodeScorer
-	traceDir          string
-	state             scaleout.RequestState
+	state             *scaleout.SimulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
 }
 
 // New creates a new plannerapi.ScaleOutSimulator that runs simulations for a single scaled node concurrently.
 func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
+	if err := validateSimulatorArgs(args); err != nil {
+		return nil, err
+	}
 	return &simulatorMultiSim{
 		simulatorConfig:   args.Config,
 		viewAccess:        args.ViewAccess,
 		schedulerLauncher: args.SchedulerLauncher,
 		storageMetaAccess: args.StorageMetaAccess,
 		nodeScorer:        args.NodeScorer,
-		traceDir:          args.TraceDir,
 	}, nil
 }
 
@@ -56,7 +57,7 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 // sent on the planResultCh, otherwise the cycle result is stored until all cycles are finished. Following which, a
 // cumulative ScaleOutPlanResult is determined from all ScaleOutSimGroupCycleResult's obtained so far and sent on the planResultCh.
 func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleOutPlanResult {
-	s.state = scaleout.RequestStateWith(request, s.simulatorConfig, simulationFactory, s.viewAccess)
+	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
 		if err := s.doSimulate(ctx); err != nil {
@@ -97,7 +98,6 @@ func (s *simulatorMultiSim) createAndGroupSimulations() ([]plannerapi.ScaleOutSi
 			SchedulerLauncher: s.schedulerLauncher,
 			StorageMetaAccess: s.storageMetaAccess,
 			Config:            s.simulatorConfig,
-			TraceDir:          s.traceDir,
 			NodeTemplates:     []plannerapi.ScaleOutNodeTemplate{snt},
 			Strategy:          commontypes.SimulatorStrategySingleNodeMultiSim,
 		}
@@ -127,7 +127,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 	simGroupCycleResult.NextGroupPassView = s.state.RequestView()
 	for groupIndex := 0; groupIndex < len(s.state.SimulationGroups); {
 		group := s.state.SimulationGroups[groupIndex]
-		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name())
+		log := log.WithValues("groupIndex", groupIndex, "groupName", group.Name()) // in-loop log enhanced with further params
 		grpCtx := logr.NewContext(ctx, log)
 		log.V(3).Info("Invoking runStabilizationCycleForGroup")
 		simGroupCycleResult, err = s.runStabilizationCycleForGroup(grpCtx, simGroupCycleResult.NextGroupPassView, group)
@@ -172,9 +172,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 //   - there is no winner node score after running a pass for the group
 //   - the context is done.
 func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.ScaleOutSimGroup) (cycleResult plannerapi.ScaleOutSimGroupCycleResult, err error) {
-	var (
-		winningNodeScore *plannerapi.NodeScore
-	)
+	var winningNodeScore *plannerapi.NodeScore
 	cycleResult.NextGroupPassView = groupPassView
 	cycleResult.PassNum = 0
 	for {
@@ -195,7 +193,7 @@ func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, g
 				log.V(2).Info("No winning node score produced in pass. Ending group passes.")
 				return
 			}
-			verbosity, _, _ := logutil.ContextValues(passCtx)
+			verbosity := logutil.VerbosityFromContext(passCtx)
 			if verbosity > 3 {
 				if err = viewutil.LogObjects(passCtx, "post_runSinglePassForGroup", cycleResult.NextGroupPassView); err != nil {
 					return
@@ -295,4 +293,20 @@ func mapSimulationResultToNodeScoreArgs(simResult plannerapi.ScaleOutSimResult) 
 		OtherNodePodAssignments: simResult.OtherNodePodAssignments,
 		LeftOverUnscheduledPods: simResult.LeftoverUnscheduledPods,
 	}
+}
+
+func validateSimulatorArgs(args plannerapi.SimulatorArgs) error {
+	if args.ViewAccess == nil {
+		return fmt.Errorf("%w: view access is required", plannerapi.ErrCreateSimulator)
+	}
+	if args.NodeScorer == nil {
+		return fmt.Errorf("%w: node scorer is required", plannerapi.ErrCreateSimulator)
+	}
+	if args.SchedulerLauncher == nil {
+		return fmt.Errorf("%w: scheduler launcher is required", plannerapi.ErrCreateSimulator)
+	}
+	if args.StorageMetaAccess == nil {
+		return fmt.Errorf("%w: storage meta access is required", plannerapi.ErrCreateSimulator)
+	}
+	return nil
 }

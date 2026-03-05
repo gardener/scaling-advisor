@@ -15,10 +15,8 @@ require (
 	k8s.io/apimachinery v0.34.4
 	k8s.io/client-go v0.34.4
 	k8s.io/component-base v0.34.3
-	k8s.io/component-helpers v0.34.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.35.2
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 )
 
 require (
@@ -76,12 +74,14 @@ require (
 	k8s.io/apiextensions-apiserver v0.34.3 // indirect
 	k8s.io/apiserver v0.34.3 // indirect
 	k8s.io/cloud-provider v0.0.0 // indirect
+	k8s.io/component-helpers v0.34.3 // indirect
 	k8s.io/controller-manager v0.34.3 // indirect
 	k8s.io/csi-translation-lib v0.0.0 // indirect
 	k8s.io/dynamic-resource-allocation v0.34.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/kube-scheduler v0.34.1 // indirect
 	k8s.io/kubelet v0.34.3 // indirect
+	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect

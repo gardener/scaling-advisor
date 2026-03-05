@@ -126,7 +126,7 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 	}()
 	log := logr.FromContextOrDiscard(ctx)
 
-	verbosity, _, _ := logutil.ContextValues(ctx)
+	verbosity := logutil.VerbosityFromContext(ctx)
 	if verbosity > 0 {
 		apiVerbosity := logsapiv1.VerbosityLevel(verbosity)
 		loggingConfig := logsapiv1.LoggingConfiguration{

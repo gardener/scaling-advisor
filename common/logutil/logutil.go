@@ -26,12 +26,18 @@ const (
 	DefaultDumpVerbosity = 5
 )
 
-// ContextValues retrieves the verbosity level, the trace dir and the trace log path from the given context.
-func ContextValues(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
+// VerbosityFromContext retrieves the verbosity level from the given context.
+func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
 	v := ctx.Value(commontypes.VerbosityCtxKey)
 	if v != nil {
 		verbosity = v.(uint32)
 	}
+	return
+}
+
+// VerbosityTraceFromContext retrieves the verbosity level, the trace dir and the trace log path from the given context.
+func VerbosityTraceFromContext(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
+	verbosity = VerbosityFromContext(ctx)
 	d := ctx.Value(commontypes.TraceDirCtxKey)
 	if d != nil {
 		traceDir = d.(string)
@@ -47,7 +53,7 @@ func ContextValues(ctx context.Context) (verbosity uint32, traceDir string, trac
 // from the context if any
 func DumpObjectIfNeeded(ctx context.Context, obj metav1.Object) error {
 	l := logr.FromContextOrDiscard(ctx)
-	verbosity, traceDir, _ := ContextValues(ctx)
+	verbosity, traceDir, _ := VerbosityTraceFromContext(ctx)
 	if verbosity < DefaultDumpVerbosity || traceDir == "" {
 		return nil
 	}

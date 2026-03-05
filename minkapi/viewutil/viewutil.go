@@ -86,6 +86,9 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),
 		"totalUnscheduledPods", podutil.CountUnscheduledPods(allPods))
+	if !log.V(4).Enabled() {
+		return nil
+	}
 	for idx, pod := range allPods {
 		log.V(4).Info(prefix+"|pod in view",
 			"viewName", view.GetName(), "idx", idx, "podName", pod.Name, "podNamespace", pod.Namespace,
@@ -135,7 +138,8 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	return nil
 }
 
-// ListStorageClassesClaimsAndVolumes gets the slice of StoreClass, PersistentVolumeClaims and PersistentVolumes from the given minkapi view or an error
+// ListStorageClassesClaimsAndVolumes gets the slice of [storagev1.StorageClass],
+// slice of [corev1.PersistentVolumeClaim] and slice of [corev1.PersistentVolume] from the given minkapi view or an error
 func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []*storagev1.StorageClass, pvcs []*corev1.PersistentVolumeClaim, pvs []*corev1.PersistentVolume, err error) {
 	scObjs, _, err := view.ListMetaObjects(ctx, typeinfo.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {

@@ -28,11 +28,11 @@ import (
 )
 
 var (
-	_ commontypes.Resettable = (*RequestState)(nil)
+	_ commontypes.Resettable = (*SimulatorState)(nil)
 )
 
-// RequestState holds the internal Request scoped state of a ScaleOutSimulator
-type RequestState struct {
+// SimulatorState holds the internal state of a ScaleOutSimulator when executing simulations
+type SimulatorState struct {
 	viewAccess minkapi.ViewAccess
 	// SimulationFactory is used to create `ScaleOutSimulation`s
 	SimulationFactory plannerapi.SimulationFactory
@@ -48,10 +48,10 @@ type RequestState struct {
 	mu               sync.Mutex
 }
 
-// RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
-func RequestStateWith(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig,
-	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) RequestState {
-	return RequestState{
+// NewSimulatorState constructs a fresh [SimulatorState] for the [plannerapi.ScaleOutSimulator] processing the given
+// [plannerapi.Request] with the given parameters
+func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) *SimulatorState {
+	return &SimulatorState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleOutPlanResult),
 		SimulationFactory: simulationFactory,
@@ -61,10 +61,12 @@ func RequestStateWith(request *plannerapi.Request, simConfig plannerapi.Simulato
 	}
 }
 
-// InitializeRequestView performs out common initialization on this simulator state.
-func (s *RequestState) InitializeRequestView(ctx context.Context) error {
+// InitializeRequestView performs common initialization on this simulator state. This currently includes:
+//   - populating the request view
+//   - Binding volume claims for immediate volume binding mode
+func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
-	requestView, err := s.createRequestView(ctx)
+	requestView, err := s.createRequestView(ctx, s.viewAccess)
 	if err != nil {
 		return err
 	}
@@ -89,7 +91,7 @@ func (s *RequestState) InitializeRequestView(ctx context.Context) error {
 
 // CreateSandboxView creates a sandbox view with the given name from the given delegate view, adds the new view to
 // internal slice of views and returns the same.
-func (s *RequestState) CreateSandboxView(ctx context.Context, name string, delegate minkapi.View) (minkapi.View, error) {
+func (s *SimulatorState) CreateSandboxView(ctx context.Context, name string, delegate minkapi.View) (minkapi.View, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sandboxView, err := s.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegate)
@@ -102,7 +104,7 @@ func (s *RequestState) CreateSandboxView(ctx context.Context, name string, deleg
 
 // RequestView gets the request minkapi view within this state. request Views are views that only have the request
 // cluster snapshot populated within them along with any initialization done by InitializeRequestView.
-func (s *RequestState) RequestView() minkapi.View {
+func (s *SimulatorState) RequestView() minkapi.View {
 	if len(s.views) == 0 {
 		return nil
 	} else {
@@ -110,8 +112,8 @@ func (s *RequestState) RequestView() minkapi.View {
 	}
 }
 
-// Reset clears and resets this RequestState
-func (s *RequestState) Reset() error {
+// Reset clears and resets this SimulatorState
+func (s *SimulatorState) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var errs []error
@@ -228,8 +230,8 @@ func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.No
 	}
 }
 
-func (s *RequestState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
-	view, err = s.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, s.viewAccess.GetBaseView())
+func (s *SimulatorState) createRequestView(ctx context.Context, viewAccess minkapi.ViewAccess) (view minkapi.View, err error) {
+	view, err = viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, viewAccess.GetBaseView())
 	if err != nil {
 		return
 	}

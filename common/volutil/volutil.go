@@ -42,6 +42,7 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 	}
 	if pv.Spec.ClaimRef != nil {
 		pvi.ClaimRef.Namespace = pv.Spec.ClaimRef.Namespace
+
 		pvi.ClaimRef.Name = pv.Spec.ClaimRef.Name
 	}
 	if pv.Spec.VolumeMode != nil {
@@ -97,6 +98,7 @@ func AsPVC(p plannerapi.PVCInfo) *corev1.PersistentVolumeClaim {
 // GetDefaultStorageClass gets the `StorageClass` annotated with the "storageclass.kubernetes.io/is-default-class"
 // annotation in the given classses slice or nil if no such StoreClasss is found
 func GetDefaultStorageClass(classes []*storagev1.StorageClass) *storagev1.StorageClass {
+	objutil.SortByDecreasingCreationTime(classes)
 	for _, sc := range classes {
 		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
 			return sc
@@ -134,14 +136,19 @@ func SortPVCByIncreasingStorage(pvcs []*corev1.PersistentVolumeClaim) {
 // PV must have:
 //   - spec.claimRef populated
 //   - status.phase = Bound
-func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) ([]plannerapi.VolumeClaimAssignment, error) {
+func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAssignments []plannerapi.VolumeClaimAssignment, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: cannot bind claims for immediate mode: %w", plannerapi.ErrBindClaimVolume, err)
+		}
+	}()
 	log := logr.FromContextOrDiscard(ctx)
 	scs, pvcs, pvs, err := viewutil.ListStorageClassesClaimsAndVolumes(ctx, view)
 	if err != nil {
-		return nil, err
+		return
 	}
 	if len(scs) == 0 || len(pvcs) == 0 {
-		return nil, nil
+		return
 	}
 	var (
 		defaultSc = GetDefaultStorageClass(scs)
@@ -176,26 +183,24 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) ([]plann
 		if sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 			continue
 		}
-		chosenPV, _, err = FindExistingOrCreateSimulatedBindableVolume(ctx, view, sc, pvc, pvs, chosenPVs)
+		chosenPV, err = FindExistingOrCreateSimulatedBindableVolume(ctx, view, sc, pvc, pvs, chosenPVs)
 		if err != nil {
-			return nil, err
+			return
 		}
 		if chosenPV == nil {
 			continue
 		}
 		if err = BindClaimAndVolume(ctx, view, pvc, chosenPV); err != nil {
-			return nil, err
+			return
 		}
 		boundPVs[chosenPV.Name] = plannerapi.VolumeClaimAssignment{
 			ClaimName:  commontypes.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name},
 			VolumeName: chosenPV.Name,
 		}
 	}
-	claimAssignments := slices.Collect(maps.Values(boundPVs))
-	if len(claimAssignments) > 0 {
-		log.V(3).Info("BindClaimsForImmediateMode succeeded", "numClaimAssignments", len(claimAssignments))
-	}
-	return claimAssignments, nil
+	claimAssignments = slices.Collect(maps.Values(boundPVs))
+	log.V(3).Info("BindClaimsForImmediateMode succeeded", "numClaimAssignments", len(claimAssignments))
+	return
 }
 
 // DynamicProvisionAndBindVolumesForSelectedClaims performs dynamic provisioning of [corev1.PersistentVolume]'s for
@@ -271,21 +276,16 @@ func FinalizeStaticBindingsForSelectedClaims(ctx context.Context, view minkapi.V
 	}
 	for _, pv := range pvs {
 		ref := pv.Spec.ClaimRef
-		if ref == nil {
-			continue
-		}
-		if pv.Status.Phase == corev1.VolumeBound {
+		if ref == nil || pv.Status.Phase == corev1.VolumeBound {
 			continue
 		}
 		log.V(3).Info("kube-scheduler has bound PV.Spec.ClaimRef", "pvName", pv.Name, "claimRef", ref)
 		obj, err = view.GetObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(ref.Namespace, ref.Name))
 		if err != nil {
-			return
-		}
-		pvc = obj.(*corev1.PersistentVolumeClaim)
-		if pvc.Spec.VolumeName != "" {
+			log.V(1).Info("cannot get PVC in PV.Spec.ClaimRef", "pvName", pv.Name, "claimRef", ref)
 			continue
 		}
+		pvc = obj.(*corev1.PersistentVolumeClaim)
 
 		pv = pv.DeepCopy() // deepcopy needed to ensure scheduler informer caches see updated objects
 		pvc = pvc.DeepCopy()
@@ -316,7 +316,7 @@ func FindExistingOrCreateSimulatedBindableVolume(ctx context.Context,
 	sc *storagev1.StorageClass,
 	pvc *corev1.PersistentVolumeClaim,
 	pvs []*corev1.PersistentVolume,
-	chosenPVs map[string]*corev1.PersistentVolume) (chosenPV *corev1.PersistentVolume, isSimulatedPV bool, err error) {
+	chosenPVs map[string]*corev1.PersistentVolume) (chosenPV *corev1.PersistentVolume, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	// Leverage shared helper function used by both pv-controller and kube-scheduler and avoid writing our own code here.
 	chosenPV, err = storagevolume.FindMatchingVolume(pvc, pvs, nil, chosenPVs, false, true)
@@ -342,7 +342,6 @@ func FindExistingOrCreateSimulatedBindableVolume(ctx context.Context,
 	} else if chosenPV == nil {
 		err = fmt.Errorf("simulated PV was not chosen for PVC %q", objutil.NamespacedName(pvc))
 	}
-	isSimulatedPV = true
 	return
 }
 
@@ -372,6 +371,17 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pv = pv.DeepCopy() // deepcopy needed to ensure scheduler informer caches see updated objects
 	pvc = pvc.DeepCopy()
 
+	//  Bind PVC → PV
+	pvc.Spec.VolumeName = pv.Name
+	pvc.Status.Phase = corev1.ClaimBound
+	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
+	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
+	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
+	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
+		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
+	}
+
 	// Bind PV → PVC
 	pv.Spec.ClaimRef = &corev1.ObjectReference{
 		Kind:       typeinfo.KindPersistentVolumeClaim,
@@ -388,18 +398,7 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 		return fmt.Errorf("%w: failed to bind pv %q ->pvc %q: %w", plannerapi.ErrBindClaimVolume, pv.Name, pvc.Name, err)
 	}
 
-	//  Bind PVC → PV
-	pvc.Spec.VolumeName = pv.Name
-	pvc.Status.Phase = corev1.ClaimBound
-	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
-	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
-	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
-		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
-		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
-	}
-
-	log.V(3).Info("bound pvc<->pv", "pvcName", pvc.Name, "pvName", pv.Name)
+	log.V(3).Info("bound pvc<->pv", "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace, "pvName", pv.Name)
 	return nil
 }
 
