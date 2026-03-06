@@ -124,9 +124,8 @@ func SortPVCByIncreasingStorage(pvcs []*corev1.PersistentVolumeClaim) {
 	})
 }
 
-// BindClaimsForImmediateMode binds the unbound PV and PVC for the
-// "Immediate" VolumeBindingMode in the given minkapi.View so that
-// kube-scheduler's VolumeBinding plugin considers the claim satisfied, and the
+// BindClaimsForImmediateMode binds the unbound PV and PVC for the "Immediate" VolumeBindingMode in the given
+// minkapi.View so that kube-scheduler's VolumeBinding plugin considers the claim satisfied, and the
 // kube-scheduler can proceed with pod-node binding. For the kube-scheduler's
 // VolumeBinding plugin to succeed, PVC must have:
 //   - spec.volumeName set
@@ -203,18 +202,18 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAs
 	return
 }
 
-// DynamicProvisionAndBindVolumesForSelectedClaims performs dynamic provisioning of [corev1.PersistentVolume]'s for
-// [corev1.PersistentVolumeClaim]'s selected by the `kube-scheduler`. It queries the given [minkapi.View] for PVC's that
-// have been marked with [storagevolume.AnnSelectedNode] which indicates that scheduler has triggered the PVC to be
-// dynamically provisioned. It then creates a simulated virtual PV that satisfies the PVC and also binds the same.
-func DynamicProvisionAndBindVolumesForSelectedClaims(ctx context.Context, view minkapi.View) (provisionPVs []*corev1.PersistentVolume, err error) {
+// ProvisionAndBindVolumesFoSelectedClaimsInWFFC performs provisioning of [corev1.PersistentVolume]'s for
+// [corev1.PersistentVolumeClaim]'s selected by the `kube-scheduler` for WaitForFirstConsumer volume binding.
+// It queries the given [minkapi.View] for PVC's that have been marked with [storagevolume.AnnSelectedNode] which
+// indicates that scheduler has triggered the PVC to be dynamically provisioned. It then creates a simulated virtual PV
+// that satisfies the PVC and also binds the same.
+func ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx context.Context, view minkapi.View) (provisionPVs []*corev1.PersistentVolume, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", plannerapi.ErrProvisionVolume, err)
 		}
 	}()
 	var (
-		log   = logr.FromContextOrDiscard(ctx)
 		pvcs  []*corev1.PersistentVolumeClaim
 		zone  string
 		simPV *corev1.PersistentVolume
@@ -241,11 +240,10 @@ func DynamicProvisionAndBindVolumesForSelectedClaims(ctx context.Context, view m
 		}
 		provisionPVs = append(provisionPVs, simPV)
 	}
-	log.V(4).Info("DynamicProvisionAndBindVolumesForSelectedClaims completed", "numProvisionPVs", len(provisionPVs))
 	return
 }
 
-// FinalizeStaticBindingsForSelectedClaims completes PVC↔PV bindings for statically provisioned volumes that were
+// FinalizeStaticBindingsForSelectedClaimsInWFFC completes PVC↔PV bindings for statically provisioned volumes that were
 // selected by the kube-scheduler under WaitForFirstConsumer semantics.
 //
 // This function simulates the PV controller reconciliation step that occurs after the scheduler's VolumeBinding plugin
@@ -258,7 +256,7 @@ func DynamicProvisionAndBindVolumesForSelectedClaims(ctx context.Context, view m
 //	  - sets PVC.Status.Phase = Bound
 //	  - sets PV.Status.Phase = Bound
 //	  - sets pvc.Annotations[storagevolume.AnnBindCompleted] = "yes"
-func FinalizeStaticBindingsForSelectedClaims(ctx context.Context, view minkapi.View) (numBound int, err error) {
+func FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx context.Context, view minkapi.View) (numBound int, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", plannerapi.ErrBindClaimVolume, err)
@@ -348,6 +346,7 @@ func FindExistingOrCreateSimulatedBindableVolume(ctx context.Context,
 // getSelectedNodeZone gets the [storagevolume.AnnSelectedNode] annotation from the PVC, obtains the Node object from the view
 // and gets the node's topology zone. If any of the above do not succeed, returns an error.
 func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim) (zone string, err error) {
+	log := logr.FromContextOrDiscard(ctx)
 	selectedNodeName := pvc.Annotations[storagevolume.AnnSelectedNode]
 	if selectedNodeName == "" {
 		err = fmt.Errorf("annotation %q empty for PVC with name %q", storagevolume.AnnSelectedNode, objutil.NamespacedName(pvc))
@@ -362,6 +361,7 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 	if !ok {
 		err = fmt.Errorf("%q not found for selected node %q on PVC %q", corev1.LabelTopologyZone, selectedNodeName, objutil.NamespacedName(pvc))
 	}
+	log.V(3).Info(storagevolume.AnnSelectedNode+"for PVC by kube-scheduler", "pvcName", pvc.Name, "selectedNodeName", selectedNodeName, "zone", zone)
 	return
 }
 

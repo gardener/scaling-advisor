@@ -161,16 +161,16 @@ func (s *defaulSimulation) workAndTrackUntilStabilized(ctx context.Context, view
 func (s *defaulSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
-	provisionedPvs, err := volutil.DynamicProvisionAndBindVolumesForSelectedClaims(ctx, view)
+	provisionedPvs, err := volutil.ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx, view)
 	if err != nil {
 		return err
 	}
 	if len(provisionedPvs) > 0 {
-		log.V(3).Info("DynamicProvisionAndBindVolumesForSelectedClaims performed work - reset RunState.numUnchangedTrackAttempts since ",
+		log.V(3).Info("ProvisionAndBindVolumesFoSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ",
 			"numProvisionedPvs", len(provisionedPvs))
 		s.state.numUnchangedTrackAttempts = 0
 	}
-	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaims(ctx, view)
+	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx, view)
 	if err != nil {
 		return err
 	}
