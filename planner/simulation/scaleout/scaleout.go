@@ -175,7 +175,7 @@ func (s *defaulSimulation) doWork(ctx context.Context, view minkapi.View) error 
 		return err
 	}
 	if numBound > 0 {
-		log.V(3).Info("BindClaimsAndVolumesWithNonNilClaimRefs performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
+		log.V(3).Info("FinalizeStaticBindingsForSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
 		s.state.numUnchangedTrackAttempts = 0
 	}
 	if s.args.Strategy.IsMultiNode() {
