@@ -49,7 +49,7 @@ type schedulerHandle struct {
 // Returns an error if the configuration file cannot be read or parsed.
 // Then delegates to NewLauncherFromConfig
 func NewLauncher(schedulerConfigPath string, maxParallel int) (planner.SchedulerLauncher, error) {
-	// InitializeRequestView the scheduler with the provided configuration
+	// Initialize the scheduler with the provided configuration
 	configBytes, err := os.ReadFile(filepath.Clean(schedulerConfigPath))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", planner.ErrLoadSchedulerConfig, err)
