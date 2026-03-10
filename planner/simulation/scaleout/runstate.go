@@ -102,7 +102,7 @@ func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMet
 
 // Track is used to track the RunState of the simulation by recording the pod-node binding(s) if any made in this
 // [RunState]'s view by the `kube-scheduler`. It returns true if the RunState has not changed over many Track
-// attempts that exceed tbe given maxUnchangedTrackAttempts or an error.
+// attempts that exceed the given maxUnchangedTrackAttempts or an error.
 //
 // Track does the following internally:
 //   - Increments numTrackAttempts and gets the last slice of events (if any) in the [minkapi.EventSink] of
