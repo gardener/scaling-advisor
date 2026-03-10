@@ -248,7 +248,7 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate plannerapi.ScaleOutNodeTemp
 	}
 }
 
-func (s *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
+func (r *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
 	scheduledPodNames := s.scheduledPodNamesByNodeName[nodeName].UnsortedList()
 	if len(scheduledPodNames) == 0 {
 		return nil
