@@ -22,8 +22,8 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
-	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 )
 

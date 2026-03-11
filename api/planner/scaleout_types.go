@@ -141,7 +141,6 @@ type ScaleOutNodeTemplate struct {
 	KubeReserved corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
 	// SystemReserved defines the capacity for system reserved resources.
 	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
-	// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
 	SystemReserved               corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
 	sacorev1alpha1.NodePlacement `json:",inline"`
 	// Architecture is the CPU architecture of the node's instance type.

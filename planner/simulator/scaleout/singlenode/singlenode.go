@@ -17,7 +17,7 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
-	"github.com/gardener/scaling-advisor/minkapi/viewutil"
+	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/go-logr/logr"
 )
 

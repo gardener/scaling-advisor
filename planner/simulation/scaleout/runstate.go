@@ -51,8 +51,8 @@ type RunState struct {
 	nodeCount                   atomic.Uint32
 }
 
-// FreshRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
-func FreshRunState() RunState {
+// MakeRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
+func MakeRunState() RunState {
 	return RunState{
 		status:                      plannerapi.ActivityStatusPending,
 		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
@@ -249,13 +249,13 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate plannerapi.ScaleOutNodeTemp
 }
 
 func (r *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
-	scheduledPodNames := s.scheduledPodNamesByNodeName[nodeName].UnsortedList()
+	scheduledPodNames := r.scheduledPodNamesByNodeName[nodeName].UnsortedList()
 	if len(scheduledPodNames) == 0 {
 		return nil
 	}
 	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
 	for _, podName := range scheduledPodNames {
-		scheduledPodInfos = append(scheduledPodInfos, s.unscheduledPods[podName])
+		scheduledPodInfos = append(scheduledPodInfos, r.unscheduledPods[podName])
 	}
 	return scheduledPodInfos
 }
@@ -356,4 +356,14 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map
 		}
 	}
 	return
+}
+
+func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
+	instanceType := nodeutil.GetInstanceType(node)
+	return plannerapi.NodeResourceInfo{
+		Name:         node.Name,
+		InstanceType: instanceType,
+		Capacity:     node.Status.Capacity,
+		Allocatable:  node.Status.Allocatable,
+	}
 }

@@ -227,11 +227,11 @@ const (
 	TraceLogPathCtxKey ContextKey = "trace-log"
 )
 
-// PriorityKey represents the key for ordering [NodePlacement]'s
+// PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
 type PriorityKey struct {
 	// First is the first priority value. Higher values represent higher priority.
 	First int32
-	// Second is the 2nd priority value. Higher value represent higher priority. Secondary weight compared to First
+	// Second is the second priority value. Higher value represent higher priority. Secondary weight compared to First
 	Second int32
 }
 

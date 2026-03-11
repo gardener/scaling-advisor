@@ -15,17 +15,15 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
-	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 )
 
-var _ plannerapi.ScaleOutSimulation = (*defaulSimulation)(nil)
+var _ plannerapi.ScaleOutSimulation = (*defaultSimulation)(nil)
 
-// defaulSimulation is the default implementation of a ScaleOutSimulation.
-type defaulSimulation struct {
+// defaultSimulation is the default implementation of a ScaleOutSimulation.
+type defaultSimulation struct {
 	args   *plannerapi.ScaleOutSimArgs
 	result plannerapi.ScaleOutSimResult
 	state  RunState
@@ -37,31 +35,31 @@ func NewDefault(args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation,
 		return nil, fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulation, err)
 	}
 
-	sim := &defaulSimulation{
+	sim := &defaultSimulation{
 		args:  &args,
-		state: FreshRunState(),
+		state: MakeRunState(),
 	}
 	return sim, nil
 }
 
-func (s *defaulSimulation) Reset() error {
-	s.state = FreshRunState()
+func (s *defaultSimulation) Reset() error {
+	s.state = MakeRunState()
 	return nil
 }
 
-func (s *defaulSimulation) PriorityKey() commontypes.PriorityKey {
+func (s *defaultSimulation) PriorityKey() commontypes.PriorityKey {
 	return s.args.NodeTemplates[0].PriorityKey
 }
 
-func (s *defaulSimulation) Name() string {
+func (s *defaultSimulation) Name() string {
 	return s.args.Name
 }
 
-func (s *defaulSimulation) Status() plannerapi.ActivityStatus {
+func (s *defaultSimulation) Status() plannerapi.ActivityStatus {
 	return s.state.status
 }
 
-func (s *defaulSimulation) Result() (result plannerapi.ScaleOutSimResult, err error) {
+func (s *defaultSimulation) Result() (result plannerapi.ScaleOutSimResult, err error) {
 	switch s.state.status {
 	case plannerapi.ActivityStatusPending:
 		err = fmt.Errorf("simulation %q is still pending", s.args.Name)
@@ -77,7 +75,7 @@ func (s *defaulSimulation) Result() (result plannerapi.ScaleOutSimResult, err er
 	return
 }
 
-func (s *defaulSimulation) Run(ctx context.Context, view minkapi.View) (err error) {
+func (s *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot run %q, runNum %d: %w", plannerapi.ErrRunSimulation, s.args.Name, s.runNum(), err)
@@ -131,7 +129,7 @@ func (s *defaulSimulation) Run(ctx context.Context, view minkapi.View) (err erro
 //  2. Events have stabilized. i.e., no more scheduling events within maxUnchangedTrackAttempts
 //  3. Context timeout.
 //  4. Any error
-func (s *defaulSimulation) workAndTrackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
+func (s *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var stabilized bool
 	for {
@@ -158,7 +156,7 @@ func (s *defaulSimulation) workAndTrackUntilStabilized(ctx context.Context, view
 // doWork does miscellaneous simulation work to ensure that the kube-scheduler can
 // continue pod-node bindings. Currently, it delegates to BindClaimsAndVolumesWithNonNilClaimRefs and if the parent
 // SimulatorStrategy supports multiple node scaling, a call is issued to CreateSimulationNodes
-func (s *defaulSimulation) doWork(ctx context.Context, view minkapi.View) error {
+func (s *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
 	provisionedPvs, err := volutil.ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx, view)
@@ -225,7 +223,7 @@ func validateSimArgs(args *plannerapi.ScaleOutSimArgs) error {
 	return nil
 }
 
-func (s *defaulSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (plannerapi.SchedulerHandle, error) {
+func (s *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (plannerapi.SchedulerHandle, error) {
 	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
 	if err != nil {
 		return nil, err
@@ -237,20 +235,11 @@ func (s *defaulSimulation) launchSchedulerForSimulation(ctx context.Context, sim
 	return s.args.SchedulerLauncher.Launch(ctx, schedLaunchParams)
 }
 
-func (s *defaulSimulation) runNum() uint32 {
+func (s *defaultSimulation) runNum() uint32 {
 	return s.args.RunCounter.Load()
 }
 
-func (s *defaulSimulation) incRunNum() uint32 {
+func (s *defaultSimulation) incRunNum() uint32 {
 	return s.args.RunCounter.Add(1)
 }
 
-func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
-	instanceType := nodeutil.GetInstanceType(node)
-	return plannerapi.NodeResourceInfo{
-		Name:         node.Name,
-		InstanceType: instanceType,
-		Capacity:     node.Status.Capacity,
-		Allocatable:  node.Status.Allocatable,
-	}
-}
