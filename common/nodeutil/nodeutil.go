@@ -5,19 +5,19 @@
 package nodeutil
 
 import (
-	"fmt"
-	"maps"
 	"time"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // GetInstanceType returns the instance-type of the given node from the label present on it.
@@ -25,15 +25,23 @@ func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
 }
 
+// AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
+func AsNodeInfo(node corev1.Node) plannerapi.NodeInfo {
+	return plannerapi.NodeInfo{
+		ObjectMeta:    node.ObjectMeta,
+		InstanceType:  node.Labels[corev1.LabelInstanceTypeStable],
+		Unschedulable: node.Spec.Unschedulable,
+		Taints:        node.Spec.Taints,
+		Capacity:      node.Status.Capacity,
+		Allocatable:   node.Status.Allocatable,
+		Conditions:    node.Status.Conditions,
+	}
+}
+
 // AsNode converts a plannerapi.NodeInfo to a corev1.Node object.
 func AsNode(info plannerapi.NodeInfo) *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              info.Name,
-			Labels:            info.Labels,
-			Annotations:       info.Annotations,
-			DeletionTimestamp: objutil.AsPtrMetaV1Time(info.DeletionTimestamp),
-		},
+		ObjectMeta: info.ObjectMeta,
 		Spec: corev1.NodeSpec{
 			Taints:        info.Taints,
 			Unschedulable: info.Unschedulable,
@@ -68,46 +76,32 @@ func BuildReadyConditions(transitionTime time.Time) []corev1.NodeCondition {
 	}
 }
 
-// CreateNodeLabels creates the labels for a simulated node.
-func CreateNodeLabels(simulationName string, nodePool *sacorev1alpha1.NodePool, nodeTemplate *sacorev1alpha1.NodeTemplate, az string, groupRunPassNum uint32, nodeName string) map[string]string {
-	nodeLabels := maps.Clone(nodePool.Labels)
-	if nodeLabels == nil {
-		nodeLabels = make(map[string]string)
-	}
-	nodeLabels[commonconstants.LabelSimulationName] = simulationName
-	nodeLabels[commonconstants.LabelSimulationGroupNumPasses] = fmt.Sprintf("%d", groupRunPassNum)
-	nodeLabels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
-	nodeLabels[corev1.LabelArchStable] = nodeTemplate.Architecture
-	nodeLabels[corev1.LabelTopologyZone] = az
-	nodeLabels[corev1.LabelTopologyRegion] = nodePool.Region
+// AddNodeLabels adds the node labels for the given NodePlacement, architecture, and hostname to nodeLabels.
+func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, placement sacorev1alpha1.NodePlacement) {
+	nodeLabels[corev1.LabelInstanceTypeStable] = placement.InstanceType
+	nodeLabels[corev1.LabelArchStable] = arch
+	nodeLabels[corev1.LabelTopologyZone] = placement.AvailabilityZone
+	nodeLabels[corev1.LabelTopologyRegion] = placement.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
-	nodeLabels[corev1.LabelHostname] = nodeName
-	nodeLabels[commonconstants.LabelNodePoolName] = nodePool.Name
-
-	return nodeLabels
+	nodeLabels[corev1.LabelHostname] = hostName
+	nodeLabels[commonconstants.LabelNodePoolName] = placement.PoolName
+	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.TemplateName
 }
 
-// AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
-// It additionally takes in csiDriverVolumeMaximums, which is a map
-// of CSI driver names to the maximum number of volumes managed by
-// the driver on the node.
-func AsNodeInfo(node corev1.Node, csiDriverVolumeMaximums map[string]int32) plannerapi.NodeInfo {
-	return plannerapi.NodeInfo{
-		BasicMeta: plannerapi.BasicMeta{
-			UID:               node.UID,
-			Name:              node.Name,
-			Namespace:         node.Namespace,
-			Labels:            node.Labels,
-			Annotations:       node.Annotations,
-			DeletionTimestamp: ptr.Deref(node.DeletionTimestamp, metav1.Time{}).Time,
-			OwnerReferences:   node.OwnerReferences,
+// NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec
+func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINodeSpec) *storagev1.CSINode {
+	return &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: storagev1.SchemeGroupVersion.Version,
+					Kind:       typeinfo.CSINodeDescriptor.GetKind(),
+					Name:       nodeName,
+					UID:        nodeUID,
+				},
+			},
 		},
-		InstanceType:            node.Labels[corev1.LabelInstanceTypeStable],
-		Unschedulable:           node.Spec.Unschedulable,
-		Taints:                  node.Spec.Taints,
-		Capacity:                node.Status.Capacity,
-		Allocatable:             node.Status.Allocatable,
-		Conditions:              node.Status.Conditions,
-		CSIDriverVolumeMaximums: csiDriverVolumeMaximums,
+		Spec: csiNodeSpec,
 	}
 }

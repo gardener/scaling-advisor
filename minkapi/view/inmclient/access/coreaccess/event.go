@@ -9,10 +9,10 @@ import (
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

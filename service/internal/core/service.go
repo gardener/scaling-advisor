@@ -19,7 +19,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
-	"github.com/gardener/scaling-advisor/planner"
 	"github.com/gardener/scaling-advisor/planner/scheduler"
 )
 
@@ -36,7 +35,7 @@ type defaultPlannerService struct {
 func NewService(ctx context.Context,
 	config plannerapi.ScalingPlannerServiceConfig,
 	pricingAccess pricingapi.InstancePricingAccess,
-	weightsFn plannerapi.GetResourceWeightsFunc) (svc plannerapi.ScalingPlannerService, err error) {
+	factories plannerapi.Factories) (svc plannerapi.ScalingPlannerService, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", plannerapi.ErrServiceInitFailed, err)
@@ -61,13 +60,16 @@ func NewService(ctx context.Context,
 	if err != nil {
 		return
 	}
-	p := planner.New(plannerapi.ScalingPlannerArgs{
+	p, err := factories.Planner.NewPlanner(plannerapi.ScalingPlannerArgs{
 		ViewAccess:        minKAPIServer,
-		ResourceWeigher:   weightsFn,
+		ResourceWeigher:   factories.ResourceWeigher,
 		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
-		TraceLogsBaseDir:  config.TraceLogBaseDir,
+		TraceDir:          config.TraceDir,
 	})
+	if err != nil {
+		return
+	}
 	svc = &defaultPlannerService{
 		cfg:               config,
 		minKAPIServer:     minKAPIServer,
@@ -120,7 +122,7 @@ func setServiceConfigDefaults(cfg *plannerapi.ScalingPlannerServiceConfig) {
 	if strings.TrimSpace(cfg.ServerConfig.BindAddress) == "" {
 		cfg.ServerConfig.BindAddress = commonconstants.DefaultAdvisorServiceBindAddress
 	}
-	if cfg.TraceLogBaseDir == "" {
-		cfg.TraceLogBaseDir = ioutil.GetTempDir()
+	if cfg.TraceDir == "" {
+		cfg.TraceDir = ioutil.GetTempDir()
 	}
 }

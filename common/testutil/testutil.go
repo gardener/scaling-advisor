@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/ioutil"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2/ktesting"
@@ -39,7 +41,7 @@ func AssertError(t *testing.T, got error, want error) {
 		return
 	}
 	if errors.Is(got, want) || strings.Contains(got.Error(), want.Error()) {
-		t.Logf("Matched error: %v", got)
+		return
 	} else {
 		t.Errorf("Unmatched error, got: %v, want: %v", got, want)
 	}
@@ -116,4 +118,16 @@ func NewTestContext(t *testing.T, timeout time.Duration, logVerbosity int) conte
 	log := ktesting.NewLogger(t, config)
 	ctx = logr.NewContext(ctx, log)
 	return ctx
+}
+
+// CreateTestGenDir creates a subdirectory for generated test data and returns path to the same.
+// Fails the test if there was an error and returns empty string otherwise.
+func CreateTestGenDir(t *testing.T) (testGenDir string, ok bool) {
+	testGenDir, err := ioutil.MakeTempSubDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	ok = true
+	return
 }

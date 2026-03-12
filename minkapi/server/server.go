@@ -23,10 +23,10 @@ import (
 
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/view"
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
 	"github.com/go-logr/logr"

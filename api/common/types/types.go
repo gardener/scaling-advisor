@@ -5,17 +5,21 @@
 package types
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Resettable defines types that can reset their state to a default or initial configuration.
@@ -54,12 +58,34 @@ type QPSBurst struct {
 	Burst int `json:"burst"`
 }
 
-// ConstraintReference is a reference to the ClusterScalingConstraint for which this advice is generated.
-type ConstraintReference struct {
-	// Name is the name of the ClusterScalingConstraint.
+// NamespacedName is a fully qualified object name.
+// NOTE: This is only needed since k8s APIMachinery types.NamespacedName does not have JSON tags and k8s maintainers
+// recommended that every project should use their own copy of NamespacedName.
+type NamespacedName struct {
+	// Namespace is the namespace of the object.
+	Namespace string `json:"namespace,omitempty"`
+	// Name is the name of the object.
 	Name string `json:"name"`
-	// Namespace is the namespace of the ClusterScalingConstraint.
-	Namespace string `json:"namespace"`
+}
+
+// AsObjectName converts this namespaced name to a client-go cache.ObjectName
+func (nn NamespacedName) AsObjectName() cache.ObjectName {
+	return cache.ObjectName{Name: nn.Name, Namespace: nn.Namespace}
+}
+
+// AsObjectReference constructs an ObjectReference referring this name or nil if name is empty.
+func (nn NamespacedName) AsObjectReference() *corev1.ObjectReference {
+	if nn.Name == "" {
+		return nil
+	} else {
+		return &corev1.ObjectReference{Namespace: nn.Namespace, Name: nn.Name}
+	}
+}
+
+// String returns the general purpose string representation.
+// Matches implementation in APIMachinery types.NamespacedName
+func (nn NamespacedName) String() string {
+	return nn.Namespace + string(types.Separator) + nn.Name
 }
 
 // SimulatorStrategy represents a simulation strategy variant.
@@ -74,6 +100,16 @@ const (
 	// all combinations of NodePool, NodeTemplate and AvailabilityZone.
 	SimulatorStrategyMultiNodeSingleSim SimulatorStrategy = "multi-node-single-sim"
 )
+
+// IsMultiNode returns true if the strategy scales multiple nodes, false otherwise.
+func (s SimulatorStrategy) IsMultiNode() bool {
+	return s == SimulatorStrategyMultiNodeSingleSim
+}
+
+// IsSingleNode returns true if the strategy scales only a single node, false otherwise.
+func (s SimulatorStrategy) IsSingleNode() bool {
+	return s == SimulatorStrategySingleNodeMultiSim
+}
 
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
 // +enum
@@ -184,6 +220,31 @@ const (
 	// VerbosityCtxKey is the context key indicating the diagnostic/log verbosity.
 	VerbosityCtxKey ContextKey = "verbosity"
 
+	// TraceDirCtxKey is the context key under which the dir path to the trace dir is stored.
+	TraceDirCtxKey ContextKey = "trace-dir"
+
 	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
-	TraceLogPathCtxKey ContextKey = "trace-log-path"
+	TraceLogPathCtxKey ContextKey = "trace-log"
 )
+
+// PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
+type PriorityKey struct {
+	// First is the first priority value. Higher values represent higher priority.
+	First int32
+	// Second is the second priority value. Higher value represent higher priority. Secondary weight compared to First
+	Second int32
+}
+
+// String returns a string representation of the PriorityKey.
+func (k PriorityKey) String() string {
+	return fmt.Sprintf("%d-%d", k.First, k.Second)
+}
+
+// CmpPriorityKeyDecreasing is a compare function for [PriorityKey] in decreasing value of priority.
+// ie higher priority values  before lower priority values which is the kubernetes convention.
+func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
+	if firstCmp := cmp.Compare(b.First, a.First); firstCmp != 0 {
+		return firstCmp
+	}
+	return cmp.Compare(b.Second, a.Second)
+}

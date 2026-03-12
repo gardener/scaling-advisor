@@ -5,12 +5,14 @@
 package typeinfo
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"maps"
 	"slices"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/common/objutil"
+
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -219,7 +221,7 @@ func NewDescriptor(gvk schema.GroupVersionKind, listKind string, namespaced bool
 			// the CRD author for custom resources. Typically, we do not see this being set to anything but `all`. Thus
 			// for now we assume that the only category is `all`.
 			Categories:         []string{"all"},
-			StorageVersionHash: objutil.GenerateName(gvk.Kind),
+			StorageVersionHash: storageVersionHash(gvk),
 		},
 	}
 }
@@ -463,4 +465,17 @@ func buildAPIGroupList() metav1.APIGroupList {
 		},
 		Groups: slices.Collect(maps.Values(groups)),
 	}
+}
+
+// StorageVersionHash calculates the storage version hash for a <group/version/kind> tuple.
+// Taken from upstream k8s
+// https://github.com/kubernetes/kubernetes/blob/a79da1e7b527da63d022a188cb602fb81bb77e35/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/storageversionhash.go#L28-L36
+func storageVersionHash(gvk schema.GroupVersionKind) string {
+	gvkStr := gvk.Group + "/" + gvk.Version + "/" + gvk.Kind
+	bytes := sha256.Sum256([]byte(gvkStr))
+	// Assuming there are N kinds in the cluster, and the hash is X-byte long,
+	// the chance of colliding hash P(N,X) approximates to 1-e^(-(N^2)/2^(8X+1)).
+	// P(10,000, 8) ~= 2.7*10^(-12), which is low enough.
+	// See https://en.wikipedia.org/wiki/Birthday_problem#Approximations.
+	return base64.StdEncoding.EncodeToString(bytes[:8])
 }

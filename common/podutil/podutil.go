@@ -7,6 +7,9 @@ package podutil
 import (
 	"slices"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -60,14 +63,7 @@ func GetPodCondition(status *corev1.PodStatus, conditionType corev1.PodCondition
 // AsPod converts a planner.PodInfo to a corev1.Pod object.
 func AsPod(info planner.PodInfo) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            info.Name,
-			Namespace:       info.Namespace,
-			Labels:          info.Labels,
-			Annotations:     info.Annotations,
-			UID:             info.UID,
-			OwnerReferences: info.OwnerReferences,
-		},
+		ObjectMeta: info.ObjectMeta,
 		Spec: corev1.PodSpec{
 			Volumes:                   info.Volumes,
 			NodeSelector:              info.NodeSelector,
@@ -100,9 +96,7 @@ func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResour
 	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
 		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
-			UID:                podInfo.UID,
-			Name:               podInfo.Name,
-			Namespace:          podInfo.Namespace,
+			NamespacedName:     objutil.NamespacedName(&podInfo),
 			AggregatedRequests: podInfo.AggregatedRequests,
 		})
 	}
@@ -132,9 +126,7 @@ func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
 // corev1 pod resource along with its identification into a PodResourceInfo object.
 func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
 	return planner.PodResourceInfo{
-		UID:                p.UID,
-		Name:               p.Name,
-		Namespace:          p.Namespace,
+		NamespacedName:     commontypes.NamespacedName{Namespace: p.Namespace, Name: p.Name},
 		AggregatedRequests: AggregatePodRequests(p),
 	}
 }
@@ -158,7 +150,7 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]resource.Quanti
 func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		objectNames = append(objectNames, pod.GetNamespacedName().String())
+		objectNames = append(objectNames, pod.String())
 	}
 	return objectNames
 }
@@ -166,15 +158,7 @@ func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string
 // AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
 func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
-		BasicMeta: planner.BasicMeta{
-			UID:               pod.UID,
-			Name:              pod.Name,
-			Namespace:         pod.Namespace,
-			Labels:            pod.Labels,
-			Annotations:       pod.Annotations,
-			DeletionTimestamp: ptr.Deref(pod.DeletionTimestamp, metav1.Time{}).Time,
-			OwnerReferences:   pod.OwnerReferences,
-		},
+		ObjectMeta:                pod.ObjectMeta,
 		AggregatedRequests:        AggregatePodRequests(&pod),
 		Volumes:                   pod.Spec.Volumes,
 		NodeSelector:              pod.Spec.NodeSelector,
@@ -190,6 +174,17 @@ func AsPodInfo(pod corev1.Pod) planner.PodInfo {
 		TopologySpreadConstraints: pod.Spec.TopologySpreadConstraints,
 		ResourceClaims:            pod.Spec.ResourceClaims,
 	}
+}
+
+// GetPVCNames returns the slice of PVC Names for the given pod
+func GetPVCNames(pod corev1.Pod) []string {
+	pvcNames := make([]string, 0, len(pod.Spec.Volumes))
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil {
+			pvcNames = append(pvcNames, vol.PersistentVolumeClaim.ClaimName)
+		}
+	}
+	return pvcNames
 }
 
 // CountUnscheduledPods returns the count of unscheduled pods in the given slice of pods

@@ -1,0 +1,22 @@
+apiVersion: sa.gardener.cloud/v1alpha1
+kind: ScalingConstraint
+spec:
+  nodePools:
+    - availabilityZones:
+        - eu-west-1c
+      name: a
+      nodeTemplates:
+        - architecture: amd64
+          capacity:
+            cpu: "2"
+            gpu: "0"
+            memory: 8Gi
+          instanceType: m5.large
+          kubeReservedCapacity:
+            cpu: 80m
+            memory: 1Gi
+            pid: 20k
+          name: m5l
+          priority: 0
+      priority: 0
+      region: eu-west-1

@@ -128,10 +128,11 @@ func (s *schedulerLauncher) createSchedulerHandle(ctx context.Context, cancelFn 
 
 	verbosity := logutil.VerbosityFromContext(ctx)
 	if verbosity > 0 {
+		apiVerbosity := logsapiv1.VerbosityLevel(verbosity)
 		loggingConfig := logsapiv1.LoggingConfiguration{
 			Format:         logsapiv1.DefaultLogFormat,
 			FlushFrequency: logsapiv1.TimeOrMetaDuration{Duration: metav1.Duration{Duration: time.Second * 1}},
-			Verbosity:      verbosity,
+			Verbosity:      apiVerbosity,
 			Options:        logsapiv1.FormatOptions{},
 		}
 		logsapiv1.ReapplyHandling = logsapiv1.ReapplyHandlingIgnoreUnchanged

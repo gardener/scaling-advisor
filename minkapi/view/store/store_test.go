@@ -13,9 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/minkapi/view/typeinfo"
-
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"

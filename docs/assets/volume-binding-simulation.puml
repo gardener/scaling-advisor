@@ -1,0 +1,10 @@
+@startuml
+
+participant "ScaleOutSimulator" as simr
+participant "ScaleOutSimulation" as sim
+participant "kube-scheduler" as ks
+participant "volutil"
+
+simr->sim:Run(view)
+sim->sim:doWork
+@enduml

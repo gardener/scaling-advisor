@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync/atomic"
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -21,8 +20,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 )
 
@@ -46,7 +45,7 @@ type RequestRef struct {
 	ID string `json:"id"`
 	// CorrelationID is the correlation identifier for the request.
 	// This can be used to correlate chains of requests and responses into a higher level activity.
-	CorrelationID string `json:"correlationID"`
+	CorrelationID string `json:"correlationID,omitempty"`
 }
 
 // Request represents a request to the scaling planner to generate a scaling plan.
@@ -66,14 +65,14 @@ type Request struct {
 	Snapshot ClusterSnapshot `json:"snapshot,omitzero"`
 	// AdviceGenerationTimeout is the maximum duration allowed for generating scaling advice.
 	AdviceGenerationTimeout time.Duration `json:",omitzero"`
-	// DiagnosticVerbosity indicates the level of  diagnostics produced during scaling advice generation.
-	// By default, its value is 0 which disables diagnostics.
+	// DiagnosticVerbosity indicates the level of diagnostics produced during scaling advice generation.
+	// By default, its value is 0 that disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
 	DiagnosticVerbosity uint32 `json:"diagnosticVerbosity,omitzero"`
 }
 
 // GetRef returns the unique reference for the scaling advice request.
-func (r Request) GetRef() RequestRef {
+func (r *Request) GetRef() RequestRef {
 	return RequestRef{
 		ID:            r.ID,
 		CorrelationID: r.CorrelationID,
@@ -127,6 +126,13 @@ type ClusterSnapshot struct {
 	Pods []PodInfo `json:"pods,omitempty"`
 	// Nodes are the nodes that are present in the cluster.
 	Nodes []NodeInfo `json:"nodes,omitempty"`
+	// PVs are the information about PersistentVolumes in the cluster. Should not contain deleted PVs.
+	// Should only contain *bound* PVs ie those with populated claimRef.
+	PVs []PVInfo `json:"pvs,omitempty"`
+	// PVCs are the information about PersistentVolumeClaims in the cluster. Should not contain deleted PVCs.
+	PVCs []PVCInfo `json:"pvcs,omitempty"`
+	//StorageClasses are the storage classes that are present in the cluster
+	StorageClasses []storagev1.StorageClass `json:"storageClasses,omitempty"`
 	// PriorityClasses are the priority classes that are present in the cluster.
 	PriorityClasses []schedulingv1.PriorityClass `json:"priorityClasses,omitempty"`
 	// RuntimeClasses are the runtime classes that are present in the cluster.
@@ -157,23 +163,7 @@ func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlac
 	return nodeCountByPlacement, nil
 }
 
-// BasicMeta contains the basic metadata associated with Kubernetes resource objects that is relevant for the scaling planner	.
-type BasicMeta struct {
-	// UID is the unique identifier for the resource.
-	UID       types.UID `json:"uid"`
-	Namespace string    `json:"namespace,omitempty"`
-	Name      string    `json:"name"`
-	// Labels are the labels associated with the resource.
-	Labels map[string]string `json:"labels,omitempty"`
-	// Annotations are the annotations associated with the resource.
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// DeletionTimestamp is the timestamp when the resource deletion was triggered.
-	DeletionTimestamp time.Time `json:"deletionTimestamp,omitzero"`
-	// OwnerReferences are the owner references associated with the resource.
-	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
-}
-
-// PodInfo contains the minimum set of information about corev1.Pod that will be required by the kube-scheduler.
+// PodInfo encapsulates only the necessary information about corev1.Pod that is required by the kube-scheduler.
 // NOTES:
 //  1. PodSchedulingGates should not be not part of PodInfo. It is expected that pods having scheduling gates will be filtered out before setting up simulation runs.
 //  2. Consider including PodSpec.Resources in future when it graduates to beta/GA.
@@ -193,22 +183,23 @@ type PodInfo struct {
 	PriorityClassName string                  `json:"priorityClassName,omitempty"`
 	PreemptionPolicy  corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
 	RuntimeClassName  string                  `json:"runtimeClassName,omitempty"`
-	BasicMeta
+	metav1.ObjectMeta `json:",inline"`
 	// Volumes are the volumes that are attached to the Pod.
-	Volumes []corev1.Volume `json:",omitempty"`
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
 	// Tolerations are the tolerations for the Pod.
-	Tolerations               []corev1.Toleration               `json:",omitempty"`
-	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:",omitempty"`
-	ResourceClaims            []corev1.PodResourceClaim         `json:",omitempty"`
-	Priority                  int32                             `json:",omitzero"`
+	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty"`
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	ResourceClaims            []corev1.PodResourceClaim         `json:"resourceClaims,omitempty"`
+	Priority                  int32                             `json:"priority,omitempty"`
 }
 
 // GetResourceInfo returns the resource information for the pod.
 func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 	return PodResourceInfo{
-		UID:                p.UID,
-		Namespace:          p.Namespace,
-		Name:               p.Name,
+		NamespacedName: commontypes.NamespacedName{
+			Namespace: p.Namespace,
+			Name:      p.Name,
+		},
 		AggregatedRequests: p.AggregatedRequests,
 	}
 }
@@ -216,21 +207,20 @@ func (p *PodInfo) GetResourceInfo() PodResourceInfo {
 // NodeInfo contains the minimum set of information about corev1.Node that will be required by the kube-scheduler.
 type NodeInfo struct {
 	// Capacity is the total resource capacity of the node.
-	Capacity corev1.ResourceList `json:",omitempty"`
+	Capacity corev1.ResourceList `json:"capacity,omitempty"`
 	// Allocatable is the allocatable resource capacity of the node.
-	Allocatable corev1.ResourceList `json:",omitempty"`
-	// CSIDriverVolumeMaximums is a map of CSI driver names to the maximum number of unique volumes managed by the
-	// CSI driver that can be used on a node.
-	CSIDriverVolumeMaximums map[string]int32 `json:",omitempty"`
+	Allocatable corev1.ResourceList `json:"allocatable,omitempty"`
+	// CSINodeSpec is the CSINodeSpec of the CSINode associated with this Node if any
+	CSINodeSpec *storagev1.CSINodeSpec `json:"csiNodeSpec,omitempty"`
 	// InstanceType is the instance type for the Node
-	InstanceType string
-	BasicMeta
+	InstanceType      string `json:"instanceType"`
+	metav1.ObjectMeta `json:",inline"`
 	// Taints are the node's taints.
-	Taints []corev1.Taint `json:",omitempty"`
+	Taints []corev1.Taint `json:"taints,omitempty"`
 	// Conditions are the node's conditions.
-	Conditions []corev1.NodeCondition `json:",omitempty"`
+	Conditions []corev1.NodeCondition `json:"conditions,omitempty"`
 	// Unschedulable indicates whether the node is unschedulable.
-	Unschedulable bool `json:",omitzero"`
+	Unschedulable bool `json:"unschedulable,omitempty"`
 }
 
 // GetResourceInfo returns the resource information for the node.
@@ -262,8 +252,8 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 		return
 	}
 	placement = sacorev1alpha1.NodePlacement{
-		NodePoolName:     n.Labels[commonconstants.LabelNodePoolName],
-		NodeTemplateName: n.Labels[commonconstants.LabelNodeTemplateName],
+		PoolName:         n.Labels[commonconstants.LabelNodePoolName],
+		TemplateName:     n.Labels[commonconstants.LabelNodeTemplateName],
 		InstanceType:     n.InstanceType,
 		Region:           n.Labels[corev1.LabelTopologyRegion],
 		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],
@@ -271,12 +261,23 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 	return
 }
 
-// GetNamespacedName returns the NamespacedName for this basic meta.
-func (m *BasicMeta) GetNamespacedName() types.NamespacedName {
-	return types.NamespacedName{
-		Namespace: m.Namespace,
-		Name:      m.Name,
-	}
+// PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
+type PVCInfo struct {
+	corev1.PersistentVolumeClaimSpec `json:",inline"`
+	Phase                            corev1.PersistentVolumeClaimPhase `json:"phase,omitempty"`
+	metav1.ObjectMeta                `json:",inline"`
+}
+
+// PVInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolume.
+type PVInfo struct {
+	Capacity          corev1.ResourceList          `json:"capacity,omitempty"`
+	NodeAffinity      *corev1.NodeSelector         `json:"nodeAffinity,omitzero"`
+	ClaimRef          commontypes.NamespacedName   `json:"claimRef,omitzero"`
+	StorageClassName  string                       `json:"storageClassName,omitempty"`
+	Phase             corev1.PersistentVolumePhase `json:"phase,omitempty"`
+	metav1.ObjectMeta `json:",inline"`
+	VolumeMode        corev1.PersistentVolumeMode         `json:"volumeMode,omitempty"`
+	AccessModes       []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
 // GetNodeScorer is a factory function for creating NodeScorer implementations.
@@ -299,11 +300,11 @@ type NodeScorerArgs struct {
 	ScaledNodePlacement sacorev1alpha1.NodePlacement
 	// ScaledNodePodAssignment represents the node-pod assignment of the scaled Node for the current run.
 	ScaledNodePodAssignment *NodePodAssignment
-	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot
+	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot,
 	// or it is a winning simulated Node from a previous run.
 	OtherNodePodAssignments []NodePodAssignment
 	// LeftOverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
-	LeftOverUnscheduledPods []types.NamespacedName
+	LeftOverUnscheduledPods []commontypes.NamespacedName
 }
 
 // NodeScore represents the scoring result for a node in scaling simulations.
@@ -313,17 +314,25 @@ type NodeScore struct {
 	Placement sacorev1alpha1.NodePlacement
 	// Name uniquely identifies this NodeScore
 	Name            string
-	UnscheduledPods []types.NamespacedName
+	UnscheduledPods []commontypes.NamespacedName
 	// Value is the score value for this Node.
 	Value int
 }
 
-// GetResourceWeightsFunc is a function type for retrieving resource weights for scoring.
-type GetResourceWeightsFunc func(instanceType string) (map[corev1.ResourceName]float64, error)
+// NodePodAssignment represents the assignment of pods to a node for simulation purposes.
+type NodePodAssignment struct {
+	// NodeResources contains the resource information for the node.
+	NodeResources NodeResourceInfo
+	// ScheduledPods contains the list of pods scheduled to this node.
+	ScheduledPods []PodResourceInfo
+}
 
-// GetWeights returns the resource weights for the given instance type.
-func (f GetResourceWeightsFunc) GetWeights(instanceType string) (map[corev1.ResourceName]float64, error) {
-	return f(instanceType)
+// VolumeClaimAssignment represents the assignment of a PersistentVolumeClaim to a PersistentVolume
+type VolumeClaimAssignment struct {
+	// ClaimName is the PVC namespaced name.
+	ClaimName commontypes.NamespacedName
+	// VolumeName is the name of the bound PV
+	VolumeName string
 }
 
 // ResourceWeigher defines an interface for obtaining resource weights for scoring.
@@ -332,22 +341,19 @@ type ResourceWeigher interface {
 	GetWeights(instanceType string) (map[corev1.ResourceName]float64, error)
 }
 
+// StorageMetaAccess defines an interface for querying misc storage metadata
+type StorageMetaAccess interface {
+	// GetFallbackCSINodeSpec gets the default storagev1.CSINodeSpec which is suitable for the given instanceType.
+	// Used as a fallback when there is no CSINodeSpec associated with the NodeInfo or in a scale-from-zero
+	// scenario.
+	GetFallbackCSINodeSpec(instanceType string) (storagev1.CSINodeSpec, error)
+}
+
 // PodResourceInfo contains resource information for a pod used in scoring calculations.
 type PodResourceInfo struct {
 	// AggregatedRequests is an aggregated resource requests for all containers of the Pod.
-	AggregatedRequests corev1.ResourceList `json:"aggregatedRequests,omitempty"`
-	Namespace          string              `json:"namespace,omitempty"`
-	Name               string              `json:"name"`
-	// UID is the unique identifier for the pod.
-	UID types.UID `json:"uid"`
-}
-
-// GetNamespacedName returns the NamespacedName for this PodResourceInfo.
-func (m *PodResourceInfo) GetNamespacedName() types.NamespacedName {
-	return types.NamespacedName{
-		Namespace: m.Namespace,
-		Name:      m.Name,
-	}
+	AggregatedRequests         corev1.ResourceList `json:"aggregatedRequests,omitempty"`
+	commontypes.NamespacedName `json:",inline"`
 }
 
 // NodeResourceInfo represents the subset of NodeInfo such that NodeScorer can compute an effective NodeScore.
@@ -362,20 +368,18 @@ type NodeResourceInfo struct {
 	InstanceType string
 }
 
-// NodePodAssignment represents the assignment of pods to a node for simulation purposes.
-type NodePodAssignment struct {
-	// NodeResources contains the resource information for the node.
-	NodeResources NodeResourceInfo
-	// ScheduledPods contains the list of pods scheduled to this node.
-	ScheduledPods []PodResourceInfo
-}
-
 // SimulatorConfig holds the configuration for the internal simulator used by the scaling advisor planner.
 type SimulatorConfig struct {
 	// MaxParallelSimulations is the maximum number of parallel simulations that can be run by the scaling advisor planner.
 	MaxParallelSimulations int
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
 	TrackPollInterval time.Duration
+	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
+	// considered as stabilized.
+	MaxUnchangedTrackAttempts int
+	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
+	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
+	BindVolumeClaimsForImmediateMode bool
 }
 
 // ScalingPlannerArgs encapsulates the arguments required to create a ScalingPlanner.
@@ -386,10 +390,16 @@ type ScalingPlannerArgs struct {
 	ResourceWeigher ResourceWeigher
 	// PricingAccess provides access to instance pricing information.
 	PricingAccess pricing.InstancePricingAccess
+	// StorageMetaAccess provides access to storage metadata.
+	StorageMetaAccess StorageMetaAccess
 	// SchedulerLauncher provides functionality to launch kube-scheduler instances.
 	SchedulerLauncher SchedulerLauncher
-	// TraceLogsBaseDir is the base directory for storing trace logs when diagnostics are enabled for a scaling advice request.
-	TraceLogsBaseDir string
+	// SimulatorFactory is the factory facade to create simulators
+	SimulatorFactory SimulatorFactory
+	// SimulationFactory is the factory facade to create simulations.
+	SimulationFactory SimulationFactory
+	// TraceDir is the directory for storing traces when diagnostics are enabled.
+	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
 	SimulatorConfig SimulatorConfig
 }
@@ -399,7 +409,7 @@ type ScalingPlanner interface {
 	// Plan begins generation of scaling plans accepting a Request and returning a response channel
 	// on which one or more planner Response is delivered.
 	//
-	// The channel will be closed when plan generation has completed, an error has occurred, orthe context is canceled or
+	// The channel will be closed when plan generation has completed, an error has occurred, context is canceled or
 	// timed-out.
 	//
 	// The caller must consume all Response's from the channel until it is closed to
@@ -422,225 +432,42 @@ type ScalingPlanner interface {
 	Plan(ctx context.Context, req Request) <-chan Response
 }
 
-// ScaleOutSimulator is a facade that executes simulations to generate one or more scale-out plans.
-// Implementations vary depending on the commontypes.SimulatorStrategy used.
-//
-// Depending upon the SimulatorStrategy, the implementation creates and organizes Simulation into SimulationGroup's differently.
-//
-//	(TODO: extend the example below with two availability zones - currently a single default one is assumed)
-//
-// SimulatorStrategySingleNodeMultiSim
-//
-//	ScalingConstraints
-//		np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
-//		np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
-//	SimulationGroups
-//		g1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c}
-//		g2: {PoolPriority: 1, NTPriority: 2, nt-b}
-//		g3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//		g4: {PoolPriority: 2, NTPriority: 2, nt-q}
-//
-// SimulatorStrategyMultiNodeSingleSim
-//
-//	np-a: 1 {nt-a: 1, nt-b: 2, nt-c: 1}
-//	np-b: 2 {nt-q: 2, nt-r: 1, nt-s: 1}
-//	np-c: 1 {nt-x: 2, nt-y: 1}
-//
-//	g1: {PoolPriority: 1, NTPriority: 1, nt-a, nt-c, nt-y}
-//	g2: {PoolPriority: 1, NTPriority: 2, nt-b, nt-x}
-//	g3: {PoolPriority: 2, NTPriority: 1, nt-r, nt-s}
-//	g4: {PoolPriority: 2, NTPriority: 2, nt-q}
-//
-// An implementation created for the SimulatorStrategySingleNodeMultiSim, will run the different Simulation's of a SimulationGroup
-// concurrently where each simulation Run virtually scales ONE one node in its MinKAPI overlay View for a combination of NodePool, NodeTemplate and
-// AvailabilityZone. The configured SchedulerLauncher is used to launch embedded Scheduler which does pod assignments to the virtual scaled node.
-// This concludes one "Run" of the simulation.
-// The scaled node which is the "winner" of this pass
-//
-// Or may run a single
-// simulation by scaling
-// multiple nodes for a given
-// group for all combinations of NodePool, NodeTemplate and AvailabilityZone. Simulations for a group are run before moving
-// to the group at the next priority level. Moving to the next group is only done if there are leftover unscheduled pods after
-// running all simulations in the current group.
-type ScaleOutSimulator interface {
-	io.Closer
-	// Simulate is the high level activity that
-	//  - Creates Simulation's using the given SimulationCreator
-	//  - Organizes Simulation's into SimulationGroup's according to priority and the configured SimulatorStrategy.
-	//  - Executes each SimulationGroup until stabilization, collecting SimulationRunResult's and aggregating them into SimulationGroupRunResult
-	//  - The SimulationGroupRunResult is c
-	//  - invoke the NodeScorer to determine a winner NodeScore
-	//
-	// the simulator specific SimulatorStrategy to generate one or more ScaleOutPlan's each encapsulated within a
-	// ScaleOutPlanResult that is offered on the resultCh channel.
-	Simulate(ctx context.Context, request *Request, simulationCreator SimulationCreator) (planResult <-chan ScaleOutPlanResult)
+// ScalingPlannerFactory is a factory for ScalingPlanner's
+type ScalingPlannerFactory interface {
+	// NewPlanner accepts ScallingPlannerArgs and constructs a new ScalingPlanner.
+	NewPlanner(args ScalingPlannerArgs) (ScalingPlanner, error)
 }
 
-// ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
-type ScaleOutPlanResult struct {
-	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
-	// No further responses will be sent for the associated request.
-	Error error `json:"error,omitempty"`
-	// Labels is the associated metadata.
-	Labels map[string]string `json:"labels,omitempty"`
-	// ScaleOutPlan is the generated scale-out plan.
-	ScaleOutPlan *sacorev1alpha1.ScaleOutPlan `json:"scaleOutPlan,omitempty"`
+// SimulatorFactory is a factory facade for constructing various kinds of simulators.
+type SimulatorFactory interface {
+	GetScaleOutSimulator(args SimulatorArgs) (ScaleOutSimulator, error)
+	// TODO: Add GetScaleInSimulator here.
 }
 
-// Simulation represents an activity that performs valid unscheduled pod to ready node assignments on a minkapi View.
-// A simulation implementation may use a k8s scheduler - either embedded or external to do this, or it may form a SAT/MIP model
-// from the pod/node data and run a tool that solves the model.
-type Simulation interface {
-	commontypes.Resettable
-	// Name returns the logical simulation name
-	Name() string
-	// ActivityStatus returns the current ActivityStatus of the simulation
-	ActivityStatus() ActivityStatus
-	// NodePool returns the target node pool against which the simulation should be run
-	NodePool() *sacorev1alpha1.NodePool
-	// NodeTemplate returns the target node template against which the simulation should be run
-	NodeTemplate() *sacorev1alpha1.NodeTemplate
-	// Run executes the simulation against the given view to completion and returns any encountered error.
-	// This is a blocking call, and callers are expected to manage concurrency and SimulationRunResult consumption.
-	Run(ctx context.Context, view minkapi.View) error
-	// Result returns the latest SimulationRunResult if the simulation is in ActivityStatusSuccess,
-	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
-	// or an error if the ActivityStatus is ActivityStatusFailure
-	Result() (SimulationRunResult, error)
+// SimulationFactory is a factory facade for creating Simulation objects
+type SimulationFactory interface {
+	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
+	NewScaleOut(args ScaleOutSimArgs) (ScaleOutSimulation, error)
+	// TODO: Add NewScaleIn method here.
 }
 
-// SimulationRunResult contains the results of a completed simulation run.
-type SimulationRunResult struct {
-	// Name of the Simulation that produced this result.
-	Name string
-	// View is the minkapi View against which the simulation was run.
-	View minkapi.View
-	// ScaledNodePlacements represents the placement information for the scaled Nodes.
-	ScaledNodePlacements []sacorev1alpha1.NodePlacement
-	// ScaledNodePodAssignments represents the assignment of Pods to scaled Nodes.
-	ScaledNodePodAssignments []NodePodAssignment
-	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of the ClusterSnapshot
-	// or it is a winning simulated Node from a previous run.
-	OtherNodePodAssignments []NodePodAssignment
-	// LeftoverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after simulation is completed.
-	LeftoverUnscheduledPods []types.NamespacedName
-}
-
-// SimulationArgs represents the argument necessary for creating a simulation instance.
-type SimulationArgs struct {
-	// SchedulerLauncher is used to launch scheduler instances for the simulation.
+// SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
+// Not all the fields may be necessary for constructing a specific simulator implementation.
+type SimulatorArgs struct {
+	// ViewAccess holds the minkapi ViewAccess used to create views against which simulations are run.
+	ViewAccess minkapi.ViewAccess
+	// SchedulerLauncher holds the launched for the embedded kube-scheduler
 	SchedulerLauncher SchedulerLauncher
-	// NodePool is the target node pool for the simulation.
-	NodePool *sacorev1alpha1.NodePool
-	// RunCounter is an atomic counter for tracking simulation runs.
-	RunCounter *atomic.Uint32
-	// AvailabilityZone is the target availability zone for the simulation.
-	AvailabilityZone string
-	// NodeTemplateName is the name of the node template to use in the simulation.
-	NodeTemplateName string
-	// Config is the simulation configuration.
+	// StorageMetaAccess holds the access facade to storage metadata.
+	StorageMetaAccess StorageMetaAccess
+	// NodeScorer holds the facade to compute NodeScores for simulated scaled nodes.
+	NodeScorer NodeScorer
+	// Strategy holds the simulator strategy which customizes simulator implementation and behaviorchanges simulator implementation and behavior
+	Strategy commontypes.SimulatorStrategy
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
+	TraceDir string
+	// Config holds the static simulator config parameters
 	Config SimulatorConfig
-}
-
-// SimulationCreatorFunc is a factory function for constructing a simulation instance.
-// It implements the SimulationCreator interface.
-type SimulationCreatorFunc func(name string, args *SimulationArgs) (Simulation, error)
-
-// SimulationCreator is an interface that wraps a method that satisfied SimulationCreatorFunc
-type SimulationCreator interface {
-	// Create creates a simulation instance with the given name and arguments.
-	Create(name string, args *SimulationArgs) (Simulation, error)
-}
-
-// Create constructs a new simulation instance with the given name and arguments. Satisfies SimulationCreatorFunc
-func (f SimulationCreatorFunc) Create(name string, args *SimulationArgs) (Simulation, error) {
-	return f(name, args)
-}
-
-// GetSimulationViewFunc is a type alias for view provider functions that take a context and view name and return the associated minkapi View.
-// Used to decouple components.
-type GetSimulationViewFunc func(ctx context.Context, name string) (minkapi.View, error)
-
-// SimulationGroup is a group of simulations at the same priority level (ie a partition of simulations).
-type SimulationGroup interface {
-	commontypes.Resettable
-	// Name returns the name of the simulation group.
-	Name() string
-	// GetKey returns the simulation group key.
-	GetKey() SimGroupKey
-	// GetSimulations returns all simulations in this group.
-	GetSimulations() []Simulation
-	// AddSimulation adds a simulation to the group.
-	AddSimulation(simulation Simulation)
-	// Run executes all simulations in the group and returns all the simulation run results or any error.
-	Run(ctx context.Context, getViewFn GetSimulationViewFunc) ([]SimulationRunResult, error)
-}
-
-// SimulationGrouperFunc represents a factory function for grouping Simulation instances into one or more SimulationGroups
-type SimulationGrouperFunc func(simulations []Simulation) ([]SimulationGroup, error)
-
-// SimulationGrouper is an interface that wraps a method that satisfies SimulationGrouperFunc
-type SimulationGrouper interface {
-	Group(simulations []Simulation) ([]SimulationGroup, error)
-}
-
-// Group groups Simulation instances into one or more SimulationGroups. Satisfies SimulationGrouperFunc
-func (f SimulationGrouperFunc) Group(simulations []Simulation) ([]SimulationGroup, error) {
-	return f(simulations)
-}
-
-// SimGroupKey represents the key for a SimulationGroup.
-type SimGroupKey struct {
-	// NodePoolPriority is the priority of the node pool.
-	NodePoolPriority int32
-	// NodeTemplatePriority is the priority of the node template.
-	NodeTemplatePriority int32
-}
-
-// String returns a string representation of the SimGroupKey.
-func (k SimGroupKey) String() string {
-	return fmt.Sprintf("%d-%d", k.NodePoolPriority, k.NodeTemplatePriority)
-}
-
-// FIXME TODO: I don't think this is necessary.
-//SimulationGroupRunResult contains the results of running a simulation group.
-//type SimulationGroupRunResult struct {
-//	// Name of the group that produced this result.
-//	Name string
-//	// SimulationResults contains the results from all simulations in the group.
-//	SimulationResults []SimulationRunResult
-//	// Key is the simulation group key (partition key)
-//	Key SimGroupKey
-//}
-
-// SimulationGroupPassScores represents the scoring results, including the winner score, for a single pass of a SimulationGroup
-// after running the NodeScorer against the SimulationRunResult's of the pass.
-type SimulationGroupPassScores struct {
-	// WinnerScore is the highest scoring node in the group.
-	WinnerScore *NodeScore
-	// WinnerNode is the actual node corresponding to the winner score.
-	WinnerNode *corev1.Node
-	// AllScores contains all computed node scores for the group.
-	AllScores []NodeScore
-}
-
-// SimulationGroupCycleResult represents the result of running all passes for a SimulationGroup.
-type SimulationGroupCycleResult struct {
-	// CreatedAt is the time when this group run result was created.
-	CreatedAt time.Time
-	// NextGroupPassView is the updated view after executing all passes in this group.
-	// The next group, if any, should use this view as its base view for its overlay view.
-	NextGroupPassView minkapi.View
-	// Name is the name of the simulation group.
-	Name string
-	// WinnerNodeScores contains the node scores of the winning nodes.
-	WinnerNodeScores []NodeScore
-	// LeftoverUnscheduledPods contains the namespaced names of pods that could not be scheduled.
-	LeftoverUnscheduledPods []types.NamespacedName
-	// PassNum is the number of passes executed in this group before moving to the next group.
-	// A pass is defined as the execution of all simulations in a group.
-	PassNum int
 }
 
 // ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
@@ -654,8 +481,8 @@ type ScalingPlannerService interface {
 type ScalingPlannerServiceConfig struct {
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider commontypes.CloudProvider
-	// TraceLogBaseDir is the base directory for storing trace log files used by the scaling advisor planner.
-	TraceLogBaseDir string
+	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
+	TraceDir string
 	// ServerConfig holds the server configuration for the scaling advisor planner.
 	ServerConfig commontypes.ServerConfig
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.
@@ -664,4 +491,12 @@ type ScalingPlannerServiceConfig struct {
 	ClientConfig commontypes.QPSBurst
 	// SimulatorConfig holds the configuration used by the internal simulator.
 	SimulatorConfig SimulatorConfig
+}
+
+// Factories is a struct that holds all planner factories.
+type Factories struct {
+	Planner         ScalingPlannerFactory
+	Simulator       SimulatorFactory
+	Simulation      SimulationFactory
+	ResourceWeigher ResourceWeigher
 }
