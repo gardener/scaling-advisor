@@ -268,8 +268,8 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 	} else { // allow comfortable time for debugging
 		simulatorConfig = plannerapi.SimulatorConfig{
 			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
+			TrackPollInterval:         2 * plannerapi.DefaultTrackPollInterval,
+			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
 		}
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true

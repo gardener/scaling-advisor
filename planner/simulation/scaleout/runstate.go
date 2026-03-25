@@ -21,7 +21,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -35,11 +34,10 @@ type RunState struct {
 	err                         error
 	ctx                         context.Context
 	view                        minkapi.View
-	scaleOutNodes               map[string]*corev1.Node                                   // map of node names to scale-out nodes
-	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int32                    // map of NodePlacement's to counts
-	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
-	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]           // map of node names to a set of scheduled pod names
-	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names scheduled during simulation run
+	nodeAndPlacementByName      map[string]nodeAndPlacement                       // map of node names to scale-out nodes and their placement
+	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodInfo // map of unscheduled Pod namespacedName to PodInfo
+	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]   // map of node names to a set of scheduled pod names
+	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]              // represents a set of pod names scheduled during simulation run
 	status                      plannerapi.ActivityStatus
 	name                        string
 	traceDir                    string
@@ -56,8 +54,7 @@ func MakeRunState() RunState {
 	return RunState{
 		status:                      plannerapi.ActivityStatusPending,
 		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
-		scaleOutNodes:               make(map[string]*corev1.Node),
-		scaleOutPlacements:          make(map[sacorev1alpha1.NodePlacement]int32),
+		nodeAndPlacementByName:      make(map[string]nodeAndPlacement),
 	}
 }
 
@@ -83,17 +80,23 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 
 // CreateSimulationNodes creates one or more scale-out simulation node(s) and associated CSI node(s)
 // according to the given [plannerapi.ScaleOutNodeTemplate](s).
-func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMetaAccess, nodeTemplates []plannerapi.ScaleOutNodeTemplate) error {
+func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMetaAccess, strategy commontypes.SimulatorStrategy, nodeTemplates []plannerapi.ScaleOutNodeTemplate) error {
 	log := logr.FromContextOrDiscard(r.ctx)
 	numCreated := 0
-	for _, nodeTemplate := range nodeTemplates {
-		scaleOutSimNode, err := r.createNode(nodeTemplate)
-		if err != nil {
-			return err
-		}
-		numCreated++
-		if err = r.createCSINode(storageMetaAccess, scaleOutSimNode); err != nil {
-			return err
+	nodeTemplateCounts, err := ComputeNodeTemplateCounts(strategy, nodeTemplates, slices.Collect(maps.Values(r.unscheduledPods)))
+	if err != nil {
+		return err
+	}
+	for _, ntc := range nodeTemplateCounts {
+		for range ntc.count {
+			scaleOutSimNode, err := r.createNode(ntc.ScaleOutNodeTemplate)
+			if err != nil {
+				return err
+			}
+			numCreated++
+			if err = r.createCSINode(storageMetaAccess, scaleOutSimNode); err != nil {
+				return err
+			}
 		}
 	}
 	log.V(2).Info("CreateSimulationNodes created ScaleOutSimNode(s)", "numCreated", numCreated)
@@ -166,8 +169,14 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 // GetScaleOutItems returns the slice of [sacorev1alpha1.ScaleOutItem] where each item
 // encapsulates the [sacorev1alpha1.NodePlacement] and associated delta.
 func (r *RunState) GetScaleOutItems() []sacorev1alpha1.ScaleOutItem {
-	scaleOutItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(r.scaleOutPlacements))
-	for np, delta := range r.scaleOutPlacements {
+	assignedNodeNames := slices.Collect(maps.Keys(r.scheduledPodNamesByNodeName))
+	placementCounts := make(map[sacorev1alpha1.NodePlacement]int32)
+	for _, n := range assignedNodeNames {
+		placement := r.nodeAndPlacementByName[n].placement
+		placementCounts[placement]++
+	}
+	scaleOutItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(placementCounts))
+	for np, delta := range placementCounts {
 		scaleOutItems = append(scaleOutItems, sacorev1alpha1.ScaleOutItem{
 			NodePlacement: np,
 			Delta:         delta,
@@ -190,14 +199,16 @@ func (r *RunState) createNode(nodeTemplate plannerapi.ScaleOutNodeTemplate) (*co
 		"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
 		"region", node.Labels[corev1.LabelTopologyRegion],
 		"availabilityZone", node.Labels[corev1.LabelTopologyZone],
+		"nodeTemplateName", nodeTemplate.TemplateName,
 		"capacity", node.Status.Capacity,
-		"allocatable", node.Status.Allocatable,
-		"numUnscheduledPods", len(r.unscheduledPods))
+		"allocatable", node.Status.Allocatable)
 	if err = logutil.DumpObjectIfNeeded(r.ctx, node); err != nil {
 		return nil, err
 	}
-	r.scaleOutNodes[node.Name] = node
-	r.scaleOutPlacements[nodeTemplate.NodePlacement]++
+	r.nodeAndPlacementByName[node.Name] = nodeAndPlacement{
+		node:      node,
+		placement: nodeTemplate.NodePlacement,
+	}
 	return node, nil
 }
 
@@ -248,14 +259,14 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate plannerapi.ScaleOutNodeTemp
 	}
 }
 
-func (r *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
+func (r *RunState) scheduledPodResourceInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
 	scheduledPodNames := r.scheduledPodNamesByNodeName[nodeName].UnsortedList()
 	if len(scheduledPodNames) == 0 {
 		return nil
 	}
 	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
 	for _, podName := range scheduledPodNames {
-		scheduledPodInfos = append(scheduledPodInfos, r.unscheduledPods[podName])
+		scheduledPodInfos = append(scheduledPodInfos, r.unscheduledPods[podName].GetResourceInfo())
 	}
 	return scheduledPodInfos
 }
@@ -296,6 +307,7 @@ func (r *RunState) addScheduledPod(pod *corev1.Pod) error {
 	r.numUnchangedTrackAttempts = 0
 	log.V(4).Info("Added scheduledPod to RunState.scheduledPodNamesByNodeName and reset numUnchangedTrackAttempts",
 		"podNamespacedName", podNsName,
+		"assignedNodeName", pod.Spec.NodeName,
 		"numScheduledPods", r.numScheduledPods,
 		"leftoverUnscheduledPodCount", len(r.leftoverUnscheduledPodNames))
 	return nil
@@ -303,10 +315,10 @@ func (r *RunState) addScheduledPod(pod *corev1.Pod) error {
 
 // getScaleOutNodeAssignments gets the slice of [plannerapi.NodePodAssignment] to scale-out nodes of this simulation run.
 func (r *RunState) getScaleOutNodeAssignments() (scaleOutAssignments []plannerapi.NodePodAssignment) {
-	for name, node := range r.scaleOutNodes {
-		scheduledPodInfos := r.getScheduledPodInfosForNode(name)
+	for name, np := range r.nodeAndPlacementByName {
+		scheduledPodInfos := r.scheduledPodResourceInfosForNode(name)
 		if len(scheduledPodInfos) > 0 {
-			nodeResources := getNodeResourceInfo(node)
+			nodeResources := getNodeResourceInfo(np.node)
 			scaleOutAssignments = append(scaleOutAssignments, plannerapi.NodePodAssignment{
 				NodeResources: nodeResources,
 				ScheduledPods: scheduledPodInfos,
@@ -324,13 +336,13 @@ func (r *RunState) getOtherPodNodeAssignments() ([]plannerapi.NodePodAssignment,
 	if err != nil {
 		return nil, err
 	}
-	otherAssignments := make([]plannerapi.NodePodAssignment, len(assignedNodes))
+	otherAssignments := make([]plannerapi.NodePodAssignment, 0, len(assignedNodes))
 	for _, node := range assignedNodes {
-		_, isScaledOutNode := r.scaleOutNodes[node.Name]
+		_, isScaledOutNode := r.nodeAndPlacementByName[node.Name]
 		if isScaledOutNode {
 			continue
 		}
-		scheduledPodInfos := r.getScheduledPodInfosForNode(node.Name)
+		scheduledPodInfos := r.scheduledPodResourceInfosForNode(node.Name)
 		if len(scheduledPodInfos) > 0 {
 			nodeResources := getNodeResourceInfo(&node)
 			otherAssignments = append(otherAssignments, plannerapi.NodePodAssignment{
@@ -342,28 +354,7 @@ func (r *RunState) getOtherPodNodeAssignments() ([]plannerapi.NodePodAssignment,
 	return otherAssignments, nil
 }
 
-func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
-	log := logr.FromContextOrDiscard(ctx)
-	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
-	if err != nil {
-		return
-	}
-	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodResourceInfo, len(pods))
-	for _, p := range pods {
-		if podutil.IsUnscheduledPod(&p) {
-			log.V(5).Info("found unscheduled pod", "pod", p)
-			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
-		}
-	}
-	return
-}
-
-func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
-	instanceType := nodeutil.GetInstanceType(node)
-	return plannerapi.NodeResourceInfo{
-		Name:         node.Name,
-		InstanceType: instanceType,
-		Capacity:     node.Status.Capacity,
-		Allocatable:  node.Status.Allocatable,
-	}
+type nodeAndPlacement struct {
+	node      *corev1.Node
+	placement sacorev1alpha1.NodePlacement
 }

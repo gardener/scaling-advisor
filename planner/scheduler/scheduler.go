@@ -27,14 +27,15 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/profile"
 )
 
-var _ planner.SchedulerLauncher = (*schedulerLauncher)(nil)
+var (
+	_ planner.SchedulerLauncher = (*schedulerLauncher)(nil)
+	_ planner.SchedulerHandle   = (*schedulerHandle)(nil)
+)
 
 type schedulerLauncher struct {
 	schedulerConfig *schedulerapiconfig.KubeSchedulerConfiguration
 	semaphore       *semaphore.Weighted
 }
-
-var _ planner.SchedulerHandle = (*schedulerHandle)(nil)
 
 type schedulerHandle struct {
 	ctx       context.Context

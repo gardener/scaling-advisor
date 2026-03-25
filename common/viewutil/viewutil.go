@@ -8,11 +8,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -73,6 +74,9 @@ func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]*core
 // At higher log verbosity, it also dumps all scheduling relevant objects into <tempDir>/<viewName>/ directory.
 func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
+	if log.GetV() < 3 {
+		return nil
+	}
 	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return err
@@ -81,7 +85,7 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	if err != nil {
 		return err
 	}
-	log.V(2).Info(prefix+"|count of nodes,pods",
+	log.V(3).Info(prefix+"|count of nodes,pods",
 		"viewName", view.GetName(),
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),

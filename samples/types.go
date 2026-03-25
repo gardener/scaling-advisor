@@ -179,3 +179,31 @@ type CSIDefaults struct {
 	DriverName   string
 	TopologyKeys []string
 }
+
+var (
+	allResourcePresets = []ResourcePreset{
+		ResourcePresetPea, ResourcePresetBerry, ResourcePresetHalfBerry, ResourcePresetGrape, ResourcePresetHalfGrape,
+	}
+	resourcePresetsToResourceListMap = map[ResourcePreset]corev1.ResourceList{
+		ResourcePresetPea: {
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
+		},
+		ResourcePresetBerry: {
+			corev1.ResourceCPU:    resource.MustParse("1000m"),
+			corev1.ResourceMemory: resource.MustParse("5200Mi"),
+		},
+		ResourcePresetHalfBerry: {
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("2500Mi"),
+		},
+		ResourcePresetGrape: {
+			corev1.ResourceCPU:    resource.MustParse("3"),
+			corev1.ResourceMemory: resource.MustParse("13Gi"),
+		},
+		ResourcePresetHalfGrape: {
+			corev1.ResourceCPU:    resource.MustParse("1500m"),
+			corev1.ResourceMemory: resource.MustParse("6400Mi"),
+		},
+	}
+)

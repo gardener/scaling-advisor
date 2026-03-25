@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -194,7 +196,7 @@ type PodInfo struct {
 }
 
 // GetResourceInfo returns the resource information for the pod.
-func (p *PodInfo) GetResourceInfo() PodResourceInfo {
+func (p PodInfo) GetResourceInfo() PodResourceInfo {
 	return PodResourceInfo{
 		NamespacedName: commontypes.NamespacedName{
 			Namespace: p.Namespace,
@@ -350,10 +352,41 @@ type StorageMetaAccess interface {
 }
 
 // PodResourceInfo contains resource information for a pod used in scoring calculations.
+// It is the resource request vector of a Pod.
 type PodResourceInfo struct {
 	// AggregatedRequests is an aggregated resource requests for all containers of the Pod.
 	AggregatedRequests         corev1.ResourceList `json:"aggregatedRequests,omitempty"`
 	commontypes.NamespacedName `json:",inline"`
+}
+
+// RequestKey returns a deterministic string key for use in maps. This is used as a canonical key for grouping Pods with
+// identical resource requests. The key is constructed by sorting resource names and concatenating "resource=value"
+// pairs converting quantities to `int64` representation.
+//
+// Example:
+//
+//	cpu=2000,memory=4294967296,nvidia.com/gpu=1
+func (p PodResourceInfo) RequestKey() string {
+	var parts = make([]string, 0, len(p.AggregatedRequests))
+	for r, q := range p.AggregatedRequests {
+		parts = append(parts, fmt.Sprintf("%s=%d", r, q.Value()))
+	}
+	slices.Sort(parts)
+	return strings.Join(parts, ",")
+}
+
+// IsWithin returns true if the AggregatedRequests on this pod is within the given capacity
+func (p PodResourceInfo) IsWithin(capacity corev1.ResourceList) bool {
+	for r, req := range p.AggregatedRequests {
+		resCap, ok := capacity[r]
+		if !ok {
+			return false
+		}
+		if req.Cmp(resCap) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // NodeResourceInfo represents the subset of NodeInfo such that NodeScorer can compute an effective NodeScore.

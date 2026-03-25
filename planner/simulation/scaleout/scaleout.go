@@ -15,9 +15,13 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var _ plannerapi.ScaleOutSimulation = (*defaultSimulation)(nil)
@@ -88,7 +92,7 @@ func (s *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 		return
 	}
 
-	if err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.NodeTemplates); err != nil {
+	if err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.Strategy, s.args.NodeTemplates); err != nil {
 		return
 	}
 
@@ -118,9 +122,7 @@ func (s *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 	}
 	s.state.status = plannerapi.ActivityStatusSuccess
 	log := logr.FromContextOrDiscard(ctx)
-	if len(s.result.LeftoverUnscheduledPods) > 0 {
-		log.V(3).Info("LeftoverUnscheduledPods after run", "leftoverUnscheduledPodCount", len(s.result.LeftoverUnscheduledPods))
-	}
+	log.V(3).Info("LeftoverUnscheduledPods after run", "leftoverUnscheduledPodCount", len(s.result.LeftoverUnscheduledPods))
 	return
 }
 
@@ -176,9 +178,10 @@ func (s *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error
 		log.V(3).Info("FinalizeStaticBindingsForSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
 		s.state.numUnchangedTrackAttempts = 0
 	}
-	if s.args.Strategy.IsMultiNode() {
-		err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.NodeTemplates)
-	}
+	// TODO: needs discussion.
+	//if s.args.Strategy.IsMultiNode() && s.state.numScheduledPods > 0{
+	//	err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.Strategy, s.args.NodeTemplates)
+	//}
 	_ = viewutil.LogObjects(ctx, "doWork done", view)
 	return err
 }
@@ -243,3 +246,66 @@ func (s *defaultSimulation) incRunNum() uint32 {
 	return s.args.RunCounter.Add(1)
 }
 
+// ComputeNodeTemplateCounts computes the number of nodes to scale-out for the given slice of
+// [plannerapi.ScaleOutNodeTemplate] and given slice of unscheduled [plannerapi.PodResourceInfo] in the scale-out simulation
+// It returns a slice of [NodeTemplateCount] which encapsulates the [plannerapi.ScaleOutNodeTemplate] and the scale-out count.
+//
+// At the moment, it uses simplistic logic, where
+//   - for [SimulatorStrategySingleNodeMultiSim], it just returns the a [NodeTemplateCount] using first [plannerapi.ScaleOutNodeTemplate] and count as `1`
+//   - for [SimulatorStrategyMultiNodeSingleSim], it returns a [NodeTemplateCount] with count as the number of unscheduled pod(s) (multiplicative blowup of scale-out nodes)
+func ComputeNodeTemplateCounts(strategy commontypes.SimulatorStrategy, templates []plannerapi.ScaleOutNodeTemplate, podInfos []plannerapi.PodInfo) ([]NodeTemplateCount, error) {
+	if strategy.IsSingleNode() {
+		if len(templates) > 1 {
+			return nil, fmt.Errorf("%w: strategy %q should not have %d (>1) scale-out nodetemplate", plannerapi.ErrCreateSimNodes, strategy, len(templates))
+		}
+		return []NodeTemplateCount{
+			{
+				ScaleOutNodeTemplate: templates[0],
+				count:                1,
+			},
+		}, nil
+	}
+	var (
+		templateCounts = make([]NodeTemplateCount, 0, len(templates))
+	)
+	for _, tmpl := range templates {
+		templateCounts = append(templateCounts, NodeTemplateCount{
+			ScaleOutNodeTemplate: tmpl,
+			count:                len(podInfos),
+		})
+	}
+	return templateCounts, nil
+}
+
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[commontypes.NamespacedName]plannerapi.PodInfo, err error) {
+	log := logr.FromContextOrDiscard(ctx)
+	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
+	if err != nil {
+		return
+	}
+	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodInfo, len(pods))
+	for _, p := range pods {
+		if podutil.IsUnscheduledPod(&p) {
+			log.V(5).Info("found unscheduled pod", "pod", p)
+			unscheduled[objutil.NamespacedName(&p)] = podutil.AsPodInfo(&p)
+		}
+	}
+	return
+}
+
+func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
+	instanceType := nodeutil.GetInstanceType(node)
+	return plannerapi.NodeResourceInfo{
+		Name:         node.Name,
+		InstanceType: instanceType,
+		Capacity:     node.Status.Capacity,
+		Allocatable:  node.Status.Allocatable,
+	}
+}
+
+// NodeTemplateCount extends the [plannerapi.ScaleOutNodeTemplate] with a count representing the number of nodes to create
+// for this template
+type NodeTemplateCount struct {
+	plannerapi.ScaleOutNodeTemplate
+	count int
+}
