@@ -8,9 +8,9 @@ package factory
 import (
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/planner/simulator/scaleout/multinode"
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout/singlenode"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 )
@@ -32,7 +32,7 @@ func (s *defaultFactory) GetScaleOutSimulator(args plannerapi.SimulatorArgs) (pl
 	case commontypes.SimulatorStrategySingleNodeMultiSim:
 		return singlenode.New(args)
 	case commontypes.SimulatorStrategyMultiNodeSingleSim:
-		return nil, fmt.Errorf("%w: simulation strategy %q not yet implemented", commonerrors.ErrUnimplemented, args.Strategy)
+		return multinode.New(args)
 	default:
 		return nil, fmt.Errorf("%w: unsupported simulation strategy %q", plannerapi.ErrUnsupportedSimulatorStrategy, args.Strategy)
 	}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/common/ioutil"
 
+	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2/ktesting"
@@ -106,7 +107,7 @@ func LoadTestPods() (pods []corev1.Pod, err error) {
 }
 
 // NewTestContext wraps the test context with a deadline, a ktesting.Logger and with signal-cancelling support
-// and returns the same along with a cancellation function for the returned context.
+// and returns the wrapped context.
 // NOTE: Meant to be used specifically for unit-tests.
 func NewTestContext(t *testing.T, timeout time.Duration, logVerbosity int) context.Context {
 	t.Helper()
@@ -117,6 +118,7 @@ func NewTestContext(t *testing.T, timeout time.Duration, logVerbosity int) conte
 	config := ktesting.NewConfig(ktesting.Verbosity(logVerbosity))
 	log := ktesting.NewLogger(t, config)
 	ctx = logr.NewContext(ctx, log)
+	ctx = context.WithValue(ctx, commontypes.VerbosityCtxKey, logVerbosity)
 	return ctx
 }
 

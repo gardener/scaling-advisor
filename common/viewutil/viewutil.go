@@ -74,6 +74,9 @@ func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]*core
 // At higher log verbosity, it also dumps all scheduling relevant objects into <tempDir>/<viewName>/ directory.
 func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
+	if log.GetV() < 3 {
+		return nil
+	}
 	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return err
@@ -82,7 +85,7 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 	if err != nil {
 		return err
 	}
-	log.V(2).Info(prefix+"|count of nodes,pods",
+	log.V(3).Info(prefix+"|count of nodes,pods",
 		"viewName", view.GetName(),
 		"totalNodes", len(allNodes),
 		"totalPods", len(allPods),

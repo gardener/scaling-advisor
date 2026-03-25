@@ -8,7 +8,6 @@ clientConnection:
 enableProfiling: true
 leaderElection:
   leaderElect: false
-percentageOfNodesToScore: 100
 profiles:
   - schedulerName: default-scheduler
   - schedulerName: bin-packing-scheduler

@@ -68,7 +68,7 @@ func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Re
 }
 
 func (s *simulatorMultiSim) doSimulate(ctx context.Context) (err error) {
-	if err = s.state.InitializeRequestView(ctx); err != nil {
+	if err = s.state.InitializeView(ctx); err != nil {
 		return
 	}
 	s.state.SimulationGroups, err = s.createAndGroupSimulations()
@@ -143,7 +143,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if s.state.Request.AdviceGenerationMode.IsIncremental() {
 			log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", s.state.Request.AdviceGenerationMode)
-			if err = scaleout.SendPlanResult(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(),
+			if err = scaleout.SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(),
 				[]plannerapi.ScaleOutSimGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
@@ -161,7 +161,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 	}
 	if s.state.Request.AdviceGenerationMode.IsAllAtOnce() {
 		log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", s.state.Request.AdviceGenerationMode)
-		err = scaleout.SendPlanResult(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(), allSimGroupCycleResults)
+		err = scaleout.SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(), allSimGroupCycleResults)
 	}
 	return
 }

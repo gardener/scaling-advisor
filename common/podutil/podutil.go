@@ -117,7 +117,7 @@ func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodResourceInfo
 func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
 	podInfos := make([]planner.PodInfo, 0, len(pods))
 	for _, p := range pods {
-		podInfos = append(podInfos, AsPodInfo(p))
+		podInfos = append(podInfos, AsPodInfo(&p))
 	}
 	return podInfos
 }
@@ -156,10 +156,10 @@ func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string
 }
 
 // AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
-func AsPodInfo(pod corev1.Pod) planner.PodInfo {
+func AsPodInfo(pod *corev1.Pod) planner.PodInfo {
 	return planner.PodInfo{
 		ObjectMeta:                pod.ObjectMeta,
-		AggregatedRequests:        AggregatePodRequests(&pod),
+		AggregatedRequests:        AggregatePodRequests(pod),
 		Volumes:                   pod.Spec.Volumes,
 		NodeSelector:              pod.Spec.NodeSelector,
 		NodeName:                  pod.Spec.NodeName,

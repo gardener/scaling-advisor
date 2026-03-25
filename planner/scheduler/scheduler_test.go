@@ -14,12 +14,17 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	svcapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/testutil"
+	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+)
+
+const (
+	defaultConfig          = "testdata/default-config.yaml"
+	preferLargeNodesConfig = "testdata/prefer-large-nodes-config.yaml"
 )
 
 type suiteState struct {
@@ -34,10 +39,10 @@ type suiteState struct {
 	schedulerHandle svcapi.SchedulerHandle
 }
 
-var log = klog.NewKlogr()
+//var log = klog.NewKlogr()
 
 func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
-	suite, err := initSuite(context.Background())
+	suite, err := initSuite(t, defaultConfig)
 	if err != nil {
 		t.Fatalf("failed to init suit: %v", err)
 		return
@@ -66,7 +71,7 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 		return
 	}
 	t.Logf("Created podA with name %q", createdPod.Name)
-	<-time.After(6 * time.Second) // TODO: replace with better approach.
+	<-time.After(5 * time.Second) // TODO: replace with better approach.
 	evList := suite.app.Server.GetBaseView().GetEventSink().List()
 	if len(evList) == 0 {
 		t.Fatalf("got no evList, want at least one")
@@ -92,34 +97,74 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 	}
 }
 
-func initSuite(ctx context.Context) (suite suiteState, err error) {
-	ctx = logr.NewContext(ctx, log)
-	ctx = context.WithValue(ctx, commontypes.VerbosityCtxKey, 1)
+func TestPreferLargeNode(t *testing.T) {
+	suite, err := initSuite(t, preferLargeNodesConfig)
+	if err != nil {
+		t.Fatalf("failed to init suit: %v", err)
+		return
+	}
+	defer shutdownSuite(&suite)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	clientFacades, err := suite.baseView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
+	if err != nil {
+		t.Fatalf("failed to get client facades: %v", err)
+		return
+	}
+	client := clientFacades.Client
+
+	createdNode, err := client.CoreV1().Nodes().Create(ctx, &suite.nodeA, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create nodeA: %v", err)
+		return
+	}
+	t.Logf("Created nodeA with name %q", createdNode.Name)
+
+	createdPod, err := client.CoreV1().Pods("").Create(ctx, &suite.podA, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create podA: %v", err)
+		return
+	}
+	t.Logf("Created podA with name %q", createdPod.Name)
+	<-time.After(4 * time.Second) // TODO: replace with better approach.
+	evList := suite.app.Server.GetBaseView().GetEventSink().List()
+	if len(evList) == 0 {
+		t.Fatalf("got no evList, want at least one")
+		return
+	}
+	t.Logf("got numEvents: %d", len(evList))
+	for _, ev := range evList {
+		t.Logf("got event| Type: %q, ReprotingController: %q, ReportingInstance: %q, Action: %q, Reason: %q, Regarding: %q, Note: %q",
+			ev.Type, ev.ReportingController, ev.ReportingInstance, ev.Action, ev.Reason, ev.Regarding, ev.Note)
+	}
+	foundBinding := false
+	for _, ev := range evList {
+		if ev.Action == "Binding" {
+			foundBinding = true
+			if ev.Reason != "Scheduled" {
+				t.Errorf("got event reason %v, want %v", ev.Reason, "Scheduled")
+				return
+			}
+		}
+	}
+	if !foundBinding {
+		t.Errorf("got no Binding event, want at least one")
+	}
+}
+
+func initSuite(t *testing.T, configPath string) (suite suiteState, err error) {
+	ctx := commontestutil.NewTestContext(t, 2*time.Minute, 1)
 	app, _, err := cli.LaunchApp(ctx)
 	if err != nil {
 		return
 	}
-
-	// Wait for the MinKAPI server to fully initialize and create the config file
-	configPath := "/tmp/minkapi-bin-packing-scheduler-config.yaml"
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
-
-	deadline := time.Now().Add(maxWait)
-	for time.Now().Before(deadline) {
-		if _, err = os.Stat(configPath); err == nil {
-			// Config file exists, proceed
-			break
-		}
-		time.Sleep(checkInterval)
-	}
-
-	// Final check that the config file exists
+	log := logr.FromContextOrDiscard(ctx)
 	if _, err = os.Stat(configPath); err != nil {
-		err = fmt.Errorf("scheduler config file not found after waiting %v: %w", maxWait, err)
+		err = fmt.Errorf("scheduler config file not found at %q: %w", configPath, err)
 		return
 	}
-
+	log.V(1).Info("using scheduler config", "configPath", configPath)
 	suite.app = &app
 	suite.ctx, suite.cancel = app.Ctx, app.Cancel
 	suite.baseView = app.Server.GetBaseView()
@@ -147,13 +192,13 @@ func initSuite(ctx context.Context) (suite suiteState, err error) {
 	if err != nil {
 		return
 	}
-	nodes, err := testutil.LoadTestNodes()
+	nodes, err := commontestutil.LoadTestNodes()
 	if err != nil {
 		return
 	}
 	suite.nodeA = nodes[0]
 
-	pods, err := testutil.LoadTestPods()
+	pods, err := commontestutil.LoadTestPods()
 	if err != nil {
 		return
 	}
