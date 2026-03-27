@@ -6,7 +6,6 @@ package genscenario
 
 import (
 	"context"
-	"encoding/base64"
 	stdjson "encoding/json"
 	"fmt"
 	"maps"
@@ -18,6 +17,10 @@ import (
 	"strings"
 	"time"
 
+	gardenerauthv1alpha1 "github.com/gardener/gardener/pkg/apis/authentication/v1alpha1"
+	gardenercorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	gardenerconstantsv1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	gardenerextensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -31,12 +34,12 @@ import (
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
+	k8sscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -49,17 +52,11 @@ type ShootCoordinate struct {
 }
 
 var (
-	shootCoords           ShootCoordinate
-	scenarioDir           string
-	excludeKubeSystemPods bool
+	shootCoords             ShootCoordinate
+	scenarioDir             string
+	excludeSystemComponents bool
+	obfuscateData           bool
 )
-
-// shootGVR is the GroupVersionResource of a gardener shoot
-var shootGVR = schema.GroupVersionResource{
-	Group:    "core.gardener.cloud",
-	Version:  "v1beta1",
-	Resource: "shoots",
-}
 
 // ShootAccess defines methods used to fetch and access resources needed
 // for creating ClusterSnapshot and ClusterScalingConstraints.
@@ -76,17 +73,16 @@ type ShootAccess interface {
 	GetCSINodeSpecs(ctx context.Context) (map[string]storagev1.CSINodeSpec, error)
 	// GetShootWorker fetches the extension worker objects present in the shoot
 	// namespace of the control (seed) cluster.
-	GetShootWorker(ctx context.Context) (map[string]any, error)
+	GetShootWorker(ctx context.Context) (*gardenerextensionsv1alpha1.Worker, error)
 }
 
 var _ ShootAccess = (*access)(nil)
 
 type access struct {
-	seedClient      client.Client
-	shootClient     client.Client
-	scheme          *runtime.Scheme
-	landscapeClient *dynamic.DynamicClient
-	shootCoord      ShootCoordinate
+	seedClient  client.Client
+	shootClient client.Client
+	scheme      *runtime.Scheme
+	shootCoord  ShootCoordinate
 }
 
 func init() {
@@ -115,11 +111,19 @@ func init() {
 		"gardener shoot name (required)",
 	)
 	_ = gardenerCmd.MarkFlagRequired("shoot")
+
 	gardenerCmd.Flags().BoolVar(
-		&excludeKubeSystemPods,
-		"exclude-kube-system-pods",
+		&excludeSystemComponents,
+		"exclude-system-components",
 		false,
-		"exclude kube-system pods from the snapshot",
+		"exclude system components (pods and priority classes) from the snapshot",
+	)
+
+	gardenerCmd.Flags().BoolVar(
+		&obfuscateData,
+		"obfuscate-data",
+		false,
+		"sanitize and obfuscate cluster sensitive data",
 	)
 }
 
@@ -201,7 +205,19 @@ func (sc *ShootCoordinate) getFullyQualifiedName() string {
 
 func createShootAccess(ctx context.Context) (*access, error) {
 	clientScheme := objutil.ScalingAdvisorScheme
-	landscapeClient, err := createLandscapeDynamicClient(shootCoords)
+	if err := k8sscheme.AddToScheme(clientScheme); err != nil {
+		return nil, fmt.Errorf("failed to add kubernetes scheme: %w", err)
+	}
+	if err := gardenercorev1beta1.AddToScheme(clientScheme); err != nil {
+		return nil, fmt.Errorf("failed to add gardener core scheme: %w", err)
+	}
+	if err := gardenerauthv1alpha1.AddToScheme(clientScheme); err != nil {
+		return nil, fmt.Errorf("failed to add gardener auth scheme: %w", err)
+	}
+	if err := gardenerextensionsv1alpha1.AddToScheme(clientScheme); err != nil {
+		return nil, fmt.Errorf("failed to add gardener extensions scheme: %w", err)
+	}
+	landscapeClient, err := createLandscapeClient(shootCoords, clientScheme)
 	if err != nil {
 		return nil, err
 	}
@@ -236,15 +252,14 @@ func createShootAccess(ctx context.Context) (*access, error) {
 		return nil, err
 	}
 	return &access{
-		shootCoord:      shootCoords,
-		scheme:          clientScheme,
-		landscapeClient: landscapeClient,
-		seedClient:      seedClient,
-		shootClient:     shootClient,
+		shootCoord:  shootCoords,
+		scheme:      clientScheme,
+		seedClient:  seedClient,
+		shootClient: shootClient,
 	}, nil
 }
 
-func createLandscapeDynamicClient(shootCoord ShootCoordinate) (*dynamic.DynamicClient, error) {
+func createLandscapeClient(shootCoord ShootCoordinate, scheme *runtime.Scheme) (client.Client, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -257,65 +272,56 @@ func createLandscapeDynamicClient(shootCoord ShootCoordinate) (*dynamic.DynamicC
 		return nil, fmt.Errorf("failed to create rest.Config from kubeconfig %q: %w", landscapeKubeconfigPath, err)
 	}
 
-	return dynamic.NewForConfig(restCfg)
+	return client.New(restCfg, client.Options{Scheme: scheme})
 }
 
-func getViewerKubeconfig(ctx context.Context, landscapeClient *dynamic.DynamicClient, shootCoords ShootCoordinate) (string, error) {
-	expirationSecs := 600
-	viewerKubeconfigObject := unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "authentication.gardener.cloud/v1alpha1",
-			"metadata": map[string]any{
-				"name": shootCoords.Shoot,
-			},
-			"kind": "ViewerKubeconfigRequest",
-			"spec": map[string]any{
-				"expirationSeconds": expirationSecs,
-			},
+func getViewerKubeconfig(ctx context.Context, landscapeClient client.Client, shootCoords ShootCoordinate) (string, error) {
+	shoot := &gardenercorev1beta1.Shoot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      shootCoords.Shoot,
+			Namespace: shootCoords.Project,
+		},
+	}
+	viewerKcfgReq := &gardenerauthv1alpha1.ViewerKubeconfigRequest{
+		Spec: gardenerauthv1alpha1.ViewerKubeconfigRequestSpec{
+			ExpirationSeconds: ptr.To[int64](600),
 		},
 	}
 
-	result, err := landscapeClient.Resource(shootGVR).
-		Namespace(shootCoords.Project).
-		Create(ctx, &viewerKubeconfigObject, metav1.CreateOptions{}, "viewerkubeconfig")
-	if err != nil {
+	if err := landscapeClient.SubResource("viewerkubeconfig").Create(ctx, shoot, viewerKcfgReq); err != nil {
 		return "", fmt.Errorf("could not create viewerkubeconfig request: %w", err)
 	}
 
-	status, found, err := unstructured.NestedStringMap(result.Object, "status")
-	if found {
-		kubeconfigBytes, err := base64.StdEncoding.DecodeString(status["kubeconfig"])
-		if err != nil {
-			return "", fmt.Errorf("error decoding kubeconfig: %w", err)
-		}
-
-		kubeConfigFileName := fmt.Sprintf("%s_%s_%s_viewer-kubeconfig.yaml",
-			shootCoords.Landscape, shootCoords.Project, shootCoords.Shoot,
-		)
-		kubeConfigPath := path.Join("/tmp/" + kubeConfigFileName)
-		err = os.WriteFile(kubeConfigPath, kubeconfigBytes, 0600)
-		if err != nil {
-			return "", err
-		}
-		fmt.Printf("Saving shoot %q viewerkubeconfig at %q\n", shootCoords.Shoot, kubeConfigPath)
-		return kubeConfigPath, nil
+	kubeconfigBytes := viewerKcfgReq.Status.Kubeconfig
+	if len(kubeconfigBytes) == 0 {
+		return "", fmt.Errorf("kubeconfig not found in ViewerKubeconfigRequest status")
 	}
-	return "", fmt.Errorf("kubeconfig not found: %w", err)
+
+	kubeConfigFileName := fmt.Sprintf("%s_%s_%s_viewer-kubeconfig.yaml",
+		shootCoords.Landscape, shootCoords.Project, shootCoords.Shoot,
+	)
+	kubeConfigPath := path.Join("/tmp/" + kubeConfigFileName)
+	if err := os.WriteFile(kubeConfigPath, kubeconfigBytes, 0600); err != nil {
+		return "", err
+	}
+	fmt.Printf("Saving shoot %q viewerkubeconfig at %q\n", shootCoords.Shoot, kubeConfigPath)
+	return kubeConfigPath, nil
 }
 
-func getSeedName(ctx context.Context, landscapeClient *dynamic.DynamicClient, shootCoord ShootCoordinate) (string, error) {
-	shoot, err := landscapeClient.Resource(shootGVR).
-		Namespace("garden-"+shootCoord.Project).
-		Get(ctx, shootCoord.Shoot, metav1.GetOptions{})
-	if err != nil {
+func getSeedName(ctx context.Context, landscapeClient client.Client, shootCoord ShootCoordinate) (string, error) {
+	shoot := &gardenercorev1beta1.Shoot{}
+	key := client.ObjectKey{
+		Namespace: "garden-" + shootCoord.Project,
+		Name:      shootCoord.Shoot,
+	}
+	if err := landscapeClient.Get(ctx, key, shoot); err != nil {
 		return "", fmt.Errorf("error fetching the shoot object: %w", err)
 	}
 
-	shootSpec, found, err := unstructured.NestedMap(shoot.Object, "spec")
-	if found {
-		return shootSpec["seedName"].(string), nil
+	if shoot.Spec.SeedName == nil {
+		return "", fmt.Errorf("seedName not found for shoot %q", shootCoord.Shoot)
 	}
-	return "", fmt.Errorf("seedName not found: %w", err)
+	return *shoot.Spec.SeedName, nil
 }
 
 func getClient(kubeConfigPath string, scheme *runtime.Scheme) (client.Client, error) {
@@ -435,7 +441,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	if err != nil {
 		return snap, fmt.Errorf("failed to obtain csiNodeSpecs: %w", err)
 	}
-	pods, err := a.ListPods(ctx, minkapi.MatchCriteria{}, excludeKubeSystemPods)
+	pods, err := a.ListPods(ctx, minkapi.MatchCriteria{}, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -446,7 +452,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	}
 
 	for _, node := range nodes {
-		poolName := node.Labels["worker.gardener.cloud/pool"]
+		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]
 		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
 		var matchingNodeTemplateName string
 		for _, p := range sc.Spec.NodePools {
@@ -475,7 +481,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		snap.Nodes = append(snap.Nodes, ni)
 	}
 
-	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeKubeSystemPods)
+	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list priority classes: %w", err)
 	}
@@ -488,9 +494,12 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		return snap, fmt.Errorf("failed to list runtime classes: %w", err)
 	}
 
-	err = obfuscateNodeNames(&snap)
-	if err != nil {
-		return snap, fmt.Errorf("failed to obfuscate node names: %w", err)
+	if obfuscateData {
+		fmt.Println("Obfuscating snapshot data!!")
+		err = obfuscateMetadata(&snap)
+		if err != nil {
+			return snap, fmt.Errorf("failed to obfuscate metadata: %w", err)
+		}
 	}
 	return snap, nil
 }
@@ -547,11 +556,8 @@ func removeNodesFromSnapshot(snap planner.ClusterSnapshot, count int) planner.Cl
 // ---------------------------------------------------------------------------------
 
 // GetShootWorker retrieves the shoot worker extension objects from control plane
-func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
-	var worker unstructured.Unstructured
-	worker.SetAPIVersion("extensions.gardener.cloud/v1alpha1")
-	worker.SetKind("Worker")
-
+func (a *access) GetShootWorker(ctx context.Context) (*gardenerextensionsv1alpha1.Worker, error) {
+	var worker gardenerextensionsv1alpha1.Worker
 	key := client.ObjectKey{
 		Name:      a.shootCoord.Shoot,
 		Namespace: fmt.Sprintf("shoot--%s--%s", a.shootCoord.Project, a.shootCoord.Shoot),
@@ -561,11 +567,11 @@ func (a *access) GetShootWorker(ctx context.Context) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to get required Worker: %w", err)
 	}
 
-	return worker.Object, nil
+	return &worker, nil
 }
 
-func createScalingConstraint(extensionWorker map[string]any) (csc *sacorev1alpha1.ScalingConstraint, err error) {
-	nodePools, err := createNodePools(extensionWorker)
+func createScalingConstraint(worker *gardenerextensionsv1alpha1.Worker) (csc *sacorev1alpha1.ScalingConstraint, err error) {
+	nodePools, err := createNodePools(worker)
 	if err != nil {
 		err = fmt.Errorf("error creating node pools: %v", err)
 		return
@@ -577,64 +583,35 @@ func createScalingConstraint(extensionWorker map[string]any) (csc *sacorev1alpha
 	return
 }
 
-func createNodePools(worker map[string]any) ([]sacorev1alpha1.NodePool, error) {
+func createNodePools(worker *gardenerextensionsv1alpha1.Worker) ([]sacorev1alpha1.NodePool, error) {
 	var nodePools []sacorev1alpha1.NodePool
-	region, _, err := unstructured.NestedString(worker, "spec", "region")
-	if err != nil {
-		return nil, fmt.Errorf("worker is missing region: %v", err)
-	}
+	region := worker.Spec.Region
 
-	pools, _, err := unstructured.NestedSlice(worker, "spec", "pools")
-	if err != nil {
-		return nil, fmt.Errorf("worker is missing pools: %v", err)
-	}
-
-	for _, pool := range pools {
+	for _, pool := range worker.Spec.Pools {
 		var nodePool sacorev1alpha1.NodePool
-		poolObj, ok := pool.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("error getting pool object from the worker: %v", err)
-		}
 
-		nodePool.Name = poolObj["name"].(string)
+		nodePool.Name = pool.Name
 		nodePool.Region = region
-		if priority, _, err := unstructured.NestedInt64(poolObj, "priority"); err != nil {
-			return nil, fmt.Errorf("error getting node pool priority: %v", err)
-		} else {
-			nodePool.Priority = int32(priority) // #nosec G115 -- priority cannot be greater than max int32.
+		if pool.Priority != nil {
+			nodePool.Priority = *pool.Priority
 		}
-		if labels, found, err := unstructured.NestedStringMap(poolObj, "labels"); err != nil {
-			return nil, fmt.Errorf("error getting node pool labels: %v", err)
-		} else if found {
-			nodePool.Labels = labels
+		if len(pool.Labels) > 0 {
+			nodePool.Labels = maps.Clone(pool.Labels)
 			maps.DeleteFunc(nodePool.Labels, sanitizeDeleteFunc)
 		}
-		if annotations, found, err := unstructured.NestedStringMap(poolObj, "annotations"); err != nil {
-			return nil, fmt.Errorf("error getting node pool annotations: %v", err)
-		} else if found {
-			nodePool.Annotations = annotations
+		if len(pool.Annotations) > 0 {
+			nodePool.Annotations = maps.Clone(pool.Annotations)
 		}
-		if taints, found, err := unstructured.NestedSlice(poolObj, "taints"); err != nil {
-			return nil, fmt.Errorf("error getting node pool taints")
-		} else if found {
-			taintsJSON, err := stdjson.Marshal(taints)
-			if err != nil {
-				return nil, fmt.Errorf("error getting the JSON encoding of taints slice: %v", err)
-			}
-			if err = stdjson.Unmarshal(taintsJSON, &nodePool.Taints); err != nil {
-				return nil, fmt.Errorf("error converting taints JSON to Taints object: %v", err)
-			}
+		if len(pool.Taints) > 0 {
+			nodePool.Taints = pool.Taints
 		}
-		if availZones, _, err := unstructured.NestedStringSlice(poolObj, "zones"); err != nil {
-			return nil, fmt.Errorf("error getting node pool availability zones: %v", err)
-		} else {
-			nodePool.AvailabilityZones = availZones
+		nodePool.AvailabilityZones = pool.Zones
+
+		nodeTemplate, err := constructNodeTemplate(pool)
+		if err != nil {
+			return nil, fmt.Errorf("error constructing the node template for %s: %v", pool.Name, err)
 		}
-		if nodeTemplate, err := constructNodeTemplate(poolObj, nodePool.Name, nodePool.Priority); err != nil {
-			return nil, fmt.Errorf("error constructing the node template for %s: %v", nodePool.Name, err)
-		} else {
-			nodePool.NodeTemplates = append(nodePool.NodeTemplates, *nodeTemplate)
-		}
+		nodePool.NodeTemplates = append(nodePool.NodeTemplates, *nodeTemplate)
 		// TODO nP.Quota, nP.ScaleInPolicy, nP.BackoffPolicy
 
 		nodePools = append(nodePools, nodePool)
@@ -643,37 +620,46 @@ func createNodePools(worker map[string]any) ([]sacorev1alpha1.NodePool, error) {
 	return nodePools, nil
 }
 
-func constructNodeTemplate(pool map[string]any, name string, priority int32) (*sacorev1alpha1.NodeTemplate, error) {
-	var (
-		capacity, kubeReserved map[string]any
-		ok                     bool
-	)
-	if capacityObj, _, err := unstructured.NestedFieldCopy(pool, "nodeTemplate", "capacity"); err != nil {
-		return nil, fmt.Errorf("error getting node template capacity: %v", err)
-	} else {
-		if capacity, ok = capacityObj.(map[string]any); !ok {
-			return nil, fmt.Errorf("could not get capacity")
-		}
+func constructNodeTemplate(pool gardenerextensionsv1alpha1.WorkerPool) (*sacorev1alpha1.NodeTemplate, error) {
+	if pool.NodeTemplate == nil {
+		return nil, fmt.Errorf("pool %q has no nodeTemplate", pool.Name)
 	}
-	if kubeReservedObj, found, err := unstructured.NestedFieldCopy(pool, "kubeletConfig", "kubeReserved"); err != nil {
-		return nil, fmt.Errorf("error getting kubeletConfig kubeReserved: %v", err)
-	} else if found {
-		if kubeReserved, ok = kubeReservedObj.(map[string]any); !ok {
-			return nil, fmt.Errorf("could not get kubeReserved")
-		}
-	}
+
 	nodeTemplate := sacorev1alpha1.NodeTemplate{
-		Name:         name,
-		Architecture: pool["architecture"].(string),
-		InstanceType: pool["machineType"].(string),
-		Priority:     priority,
-		Capacity:     objutil.StringKeyValueMapToResourceList(capacity),
-		KubeReserved: objutil.StringKeyValueMapToResourceList(kubeReserved),
+		Name:         pool.Name,
+		Architecture: ptr.Deref(pool.Architecture, ""),
+		InstanceType: pool.MachineType,
+		Priority:     ptr.Deref(pool.Priority, 0),
+		// TODO: add pool.NodeTemplate.VirtualCapacity
+		Capacity:     pool.NodeTemplate.Capacity,
+		KubeReserved: kubeletConfigReservedToResourceList(pool.KubeletConfig),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
 		// TODO:
 		// MaxVolumes:     0,
 	}
 	return &nodeTemplate, nil
+}
+
+// kubeletConfigReservedToResourceList converts KubeletConfig.KubeReserved into a corev1.ResourceList.
+func kubeletConfigReservedToResourceList(kubeletConfig *gardenercorev1beta1.KubeletConfig) corev1.ResourceList {
+	if kubeletConfig == nil || kubeletConfig.KubeReserved == nil {
+		return nil
+	}
+	reserved := kubeletConfig.KubeReserved
+
+	result := make(corev1.ResourceList)
+	if reserved.CPU != nil {
+		result[corev1.ResourceCPU] = *reserved.CPU
+	}
+	if reserved.Memory != nil {
+		result[corev1.ResourceMemory] = *reserved.Memory
+	}
+	if kubeletConfig.MaxPods != nil {
+		result[corev1.ResourcePods] = *resource.NewQuantity(
+			int64(*kubeletConfig.MaxPods), resource.DecimalSI,
+		)
+	}
+	return result
 }
 
 // ---------------------------------------------------------------------------------
@@ -692,40 +678,15 @@ func saveDataToFile(data any, path string) error {
 	return encoder.Encode(data)
 }
 
-func obfuscateNodeNames(snap *planner.ClusterSnapshot) error {
-	snapData, err := stdjson.Marshal(snap)
-	if err != nil {
-		return fmt.Errorf("could not marshal snapshot: %w", err)
-	}
-	snapStr := string(snapData)
-
-	for i, node := range snap.Nodes {
-		originalName := node.Name
-		newName := "node-" + strconv.Itoa(i)
-		snapStr = strings.ReplaceAll(snapStr, originalName, newName)
-	}
-	err = stdjson.Unmarshal([]byte(snapStr), snap)
-	if err != nil {
-		return fmt.Errorf("could not unmarshal snapshot string to snapshot object: %w", err)
-	}
-
-	return nil
-}
-
 func sanitizePod(pod *corev1.Pod) {
-	maps.DeleteFunc(pod.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(pod.Annotations, sanitizeDeleteFunc)
 	pod.ManagedFields = nil
 	for i := range pod.Spec.Volumes {
 		pod.Spec.Volumes[i].Projected = nil
 	}
-	pod.OwnerReferences = nil
 }
 
 func sanitizeNode(node *corev1.Node) {
 	node.Namespace = ""
-	maps.DeleteFunc(node.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(node.Annotations, sanitizeDeleteFunc)
 	node.ManagedFields = nil
 	requiredConditions := []corev1.NodeConditionType{
 		corev1.NodeReady, // only preserve ready conditions, memory-pressure/disk-pressure/etc are now in taints
@@ -738,29 +699,4 @@ func sanitizeNode(node *corev1.Node) {
 
 func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
 	pc.ManagedFields = nil
-	maps.DeleteFunc(pc.Labels, sanitizeDeleteFunc)
-	maps.DeleteFunc(pc.Annotations, sanitizeDeleteFunc)
 }
-
-// TODO Can this removal cause issues with selectors?
-func sanitizeDeleteFunc(k, _ string) bool {
-	for _, prefix := range removePrefixes {
-		if strings.HasPrefix(k, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-var (
-	removePrefixes = []string{
-		"beta.", "failure-domain.beta.", "node.alpha.kubernetes.io", "checksum/",
-		"node-agent.gardener.cloud", "worker.gardener.cloud/gardener-node-agent-secret-name",
-		"resources.gardener.cloud", "shoot.gardener.cloud", "node.gardener.cloud/machine-name",
-		"node.machine.sapcloud.io/last-applied-anno-labels-taints", "cni.",
-		"controller-revision-hash", "gardener.cloud/role", "networking.gardener.cloud/", "node.gardener.cloud/critical-component",
-		"pod-template-generation", "reference.resources.gardener.cloud/", "csi.volume.kubernetes.io",
-		"volumes.kubernetes.io/controller-managed-attach-detach", "volumes.kubernetes.io/controller-managed-attach-detach",
-		"topology.ebs", "worker.gardener", "worker.garden", "topology.k8s.aws",
-	}
-)
