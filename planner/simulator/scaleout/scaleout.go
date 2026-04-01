@@ -61,10 +61,10 @@ func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.Simulat
 	}
 }
 
-// InitializeRequestView performs common initialization on this simulator state. This currently includes:
+// InitializeView performs common initialization on this simulator state. This currently includes:
 //   - populating the request view
 //   - Binding volume claims for immediate volume binding mode
-func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
+func (s *SimulatorState) InitializeView(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
 	requestView, err := s.createRequestView(ctx, s.viewAccess)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *SimulatorState) CreateSandboxView(ctx context.Context, name string, del
 }
 
 // RequestView gets the request minkapi view within this state. request Views are views that only have the request
-// cluster snapshot populated within them along with any initialization done by InitializeRequestView.
+// cluster snapshot populated within them along with any initialization done by InitializeView.
 func (s *SimulatorState) RequestView() minkapi.View {
 	if len(s.views) == 0 {
 		return nil
@@ -139,31 +139,23 @@ func SendPlanError(planResultCh chan<- plannerapi.ScaleOutPlanResult, requestRef
 	}
 }
 
-// SendPlanResult creates a plannerapi.ScaleOutPlanResult from the given plannerapi.Request and plannerapi.SimulationGroupCycleResults
+// SendPlanResultUsingGroupCycleResults creates a plannerapi.ScaleOutPlanResult from the given plannerapi.Request and plannerapi.SimulationGroupCycleResults
 // and sends this result to the resultCh.
-func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlanResult,
+func SendPlanResultUsingGroupCycleResults(ctx context.Context,
+	resultCh chan<- plannerapi.ScaleOutPlanResult,
 	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
 	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
-	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
-	if err != nil {
-		return err
-	}
-	planGenerateDuration := time.Since(req.CreationTime)
-	numUnscheduledPods := len(req.Snapshot.GetUnscheduledPods())
-	labels := map[string]string{
-		commonconstants.LabelRequestID:                  req.ID,
-		commonconstants.LabelCorrelationID:              req.CorrelationID,
-		commonconstants.LabelTotalSimulationRuns:        fmt.Sprintf("%d", simulationRunCount),
-		commonconstants.LabelPlanGenerateDuration:       planGenerateDuration.String(),
-		commonconstants.LabelSnapshotNumUnscheduledPods: strconv.Itoa(numUnscheduledPods),
-		commonconstants.LabelConstraintNumPools:         strconv.Itoa(len(req.Constraint.Spec.NodePools)),
-	}
+	labels := createPlanLabels(req, simulationRunCount)
 	var allWinnerNodeScores []plannerapi.NodeScore
 	var leftOverUnscheduledPods []commontypes.NamespacedName
 	for _, gcr := range groupCycleResults {
 		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
+	}
+	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
+	if err != nil {
+		return err
 	}
 	scaleOutPlan := createScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
 	planResult := plannerapi.ScaleOutPlanResult{
@@ -173,6 +165,50 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	log.V(2).Info("Sent Planner Success Response", "response", planResult)
 	resultCh <- planResult
 	return nil
+}
+
+// SendPlanResultUsingSimResults constraints a [plannerapi.ScaleOutPlanResult] from the given slice of
+// [plannerapi.ScaleOutSimResult] and referring the given [plannerapi.Request] and sends the same on the given result
+// channel.
+func SendPlanResultUsingSimResults(ctx context.Context,
+	resultCh chan<- plannerapi.ScaleOutPlanResult,
+	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
+	simResults []plannerapi.ScaleOutSimResult) error {
+	log := logr.FromContextOrDiscard(ctx)
+	labels := createPlanLabels(req, simulationRunCount)
+	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
+	if err != nil {
+		return err
+	}
+	var scaleOutPlan sacorev1alpha1.ScaleOutPlan
+	for _, sr := range simResults {
+		for _, item := range sr.Items {
+			existingCount := existingNodeCountByPlacement[item.NodePlacement]
+			item.CurrentReplicas = existingCount
+			scaleOutPlan.Items = append(scaleOutPlan.Items, item)
+		}
+		scaleOutPlan.UnsatisfiedPodNames = objutil.GetFullNames(sr.LeftoverUnscheduledPods)
+	}
+	planResult := plannerapi.ScaleOutPlanResult{
+		Labels:       labels,
+		ScaleOutPlan: &scaleOutPlan,
+	}
+	log.V(2).Info("Sent Planner Success Response", "response", planResult)
+	resultCh <- planResult
+	return nil
+}
+
+func createPlanLabels(req *plannerapi.Request, simulationRunCount uint32) map[string]string {
+	planGenerateDuration := time.Since(req.CreationTime)
+	numUnscheduledPods := len(req.Snapshot.GetUnscheduledPods())
+	return map[string]string{
+		commonconstants.LabelRequestID:                  req.ID,
+		commonconstants.LabelCorrelationID:              req.CorrelationID,
+		commonconstants.LabelTotalSimulationRuns:        fmt.Sprintf("%d", simulationRunCount),
+		commonconstants.LabelPlanGenerateDuration:       planGenerateDuration.String(),
+		commonconstants.LabelSnapshotNumUnscheduledPods: strconv.Itoa(numUnscheduledPods),
+		commonconstants.LabelConstraintNumPools:         strconv.Itoa(len(req.Constraint.Spec.NodePools)),
+	}
 }
 
 // CreateAllNodeTemplates creates a slice of all possible [plannerapi.ScaleOutNodeTemplate] for the given slice of
@@ -198,8 +234,9 @@ func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTem
 		group, ok := templatesByPriority[pk]
 		if !ok {
 			group = []plannerapi.ScaleOutNodeTemplate{t}
+		} else {
+			group = append(group, t)
 		}
-		group = append(group, t)
 		templatesByPriority[pk] = group
 	}
 	return templatesByPriority

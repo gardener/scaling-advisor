@@ -12,12 +12,12 @@ import (
 
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/viewutil"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"

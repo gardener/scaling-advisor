@@ -82,6 +82,10 @@ func GetCleanLogFileName(fileName string) string {
 	return fileNameCleanRe.ReplaceAllString(fileName, "")
 }
 
+//func LogResourceList(log logr.Logger, resources corev1.ResourceList) {
+//	humanReadable := make(map[corev1.ResourceName]string)
+//}
+
 // WrapContextWithFileLogger wraps the logr logger obtained from the given context with a multi-sink logr logger that
 // logs to the original sink as well as a sink to the given filePath.
 // It returns a new context containing this new multi-sink logr logger, a closer for the log file at path or any error encountered during setup.

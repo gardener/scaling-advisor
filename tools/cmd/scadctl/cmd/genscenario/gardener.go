@@ -442,7 +442,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	snap.Pods = make([]planner.PodInfo, 0, len(pods))
 	for _, pod := range pods {
 		sanitizePod(&pod)
-		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
+		snap.Pods = append(snap.Pods, podutil.AsPodInfo(&pod))
 	}
 
 	for _, node := range nodes {
