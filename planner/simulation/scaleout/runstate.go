@@ -318,6 +318,7 @@ func (r *RunState) getScaleOutNodeAssignments() (scaleOutAssignments []plannerap
 
 // getOtherPodNodeAssignments gets the slice of [plannerapi.NodePodAssignment] to nodes that were not scale-out nodes
 // of this simulation run.
+// TODO: Cosider changing this name to getNonScaledOutNodeAssignments or something similar
 func (r *RunState) getOtherPodNodeAssignments() ([]plannerapi.NodePodAssignment, error) {
 	assignedNodeNames := slices.Collect(maps.Keys(r.scheduledPodNamesByNodeName))
 	assignedNodes, err := r.view.ListNodes(r.ctx, assignedNodeNames...)

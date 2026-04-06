@@ -43,7 +43,7 @@ func FreshRunState() RunState {
 // [plannerapi.ActivityStatusRunning] and returns the child run context or an error. The view is also interrogated for
 // initializing unscheduledPods. This method must be invoked before calling other
 // methods of [RunState]
-func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string) (context.Context, error) {
+func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View) (context.Context, error) {
 	//TODO implement me
 	panic("implement me")
 }
