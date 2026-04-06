@@ -64,6 +64,8 @@ type ScaleInSimArgs struct {
 	Name string
 	// Config is the simulation configuration.
 	Config SimulatorConfig
+	//NodeName is the name of the node to be simulated for scale in.
+	NodeName string
 }
 
 // ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node
@@ -79,10 +81,10 @@ type ScaleInSimulation interface {
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and [ScaleInSimRunResult] consumption.
 	Run(ctx context.Context, view minkapi.View) error
-	// Result returns the latest [ScaleInSimRunResult] if the simulation is in ActivityStatusSuccess,
+	// Result returns the latest [ScaleInPlanResult] if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
-	Result() (ScaleInSimRunResult, error)
+	Result() (ScaleInPlanResult, error)
 }
 
 // ScaleInSimRunResult encapsulated the result of a completed [ScaleInSimulation]
