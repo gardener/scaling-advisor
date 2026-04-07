@@ -38,7 +38,7 @@ func sanitizeDeleteFunc(k, _ string) bool {
 	return false
 }
 
-func obfuscateMetadata(snap *planner.ClusterSnapshot) error {
+func obfuscateMetadata(snap *planner.ClusterSnapshot) {
 	// Collect all label keys referenced by scheduling constraints
 	// (NodeSelector, Affinity, TopologySpreadConstraints, Tolerations).
 	schedulingKeys := collectSchedulingRelevantKeys(snap)
@@ -108,8 +108,6 @@ func obfuscateMetadata(snap *planner.ClusterSnapshot) error {
 		obfuscateStringMap(snap.PriorityClasses[i].Labels, keyMap)
 		maps.DeleteFunc(snap.PriorityClasses[i].Annotations, sanitizeDeleteFunc)
 	}
-
-	return nil
 }
 
 // ---------------------------------------------------------------------------------
