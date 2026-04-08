@@ -14,6 +14,7 @@ import (
 	"path"
 
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	karpenterkwokapis "sigs.k8s.io/karpenter/kwok/apis"
@@ -23,7 +24,7 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 )
 
-var _ ExecScaler = (*karpenterExec)(nil)
+var _ execScaler = (*karpenterExec)(nil)
 
 type karpenterExec struct{}
 

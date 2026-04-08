@@ -6,6 +6,7 @@ package main
 
 import (
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
 	_ "github.com/gardener/scaling-advisor/bench/cmd/exec"
 	_ "github.com/gardener/scaling-advisor/bench/cmd/setup"
 )

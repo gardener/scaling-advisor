@@ -16,8 +16,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	sigyaml "sigs.k8s.io/yaml"
 	"strings"
+
+	sigyaml "sigs.k8s.io/yaml"
 )
 
 var (
@@ -32,15 +33,17 @@ const (
 	karpenterReleaseAssetsPrefix = "https://github.com/kubernetes-sigs/karpenter/"
 )
 
+// SaveYamlToFile to saves the given yaml data to the file specified by the path
 func SaveYamlToFile(data any, path string) error {
 	yamlData, err := sigyaml.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal to yaml: %w", err)
 	}
 
-	return os.WriteFile(filepath.Clean(path), yamlData, 0644)
+	return os.WriteFile(filepath.Clean(path), yamlData, 0600)
 }
 
+// SaveJsonToFile to saves the given json data to the file specified by the path
 func SaveJsonToFile(data any, path string) error {
 	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
@@ -51,6 +54,16 @@ func SaveJsonToFile(data any, path string) error {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
+}
+
+// CheckIfImageExists runs "docker image inspect" to find if specified image is already present
+func CheckIfImageExists(imageName string) (skipBuild bool) {
+	check := exec.Command("docker", "image", "inspect", imageName)
+	if err := check.Run(); err == nil {
+		fmt.Printf("Docker image %q exists\n", imageName)
+		return true
+	}
+	return false
 }
 
 func GetAssets(ctx context.Context, version, scaler, dataDir string) (unzippedPath string, err error) {
@@ -125,8 +138,8 @@ func unzipSource(source, destination string) (string, error) {
 		}
 	}
 
-	if reader.Reader.File[0] != nil {
-		return reader.Reader.File[0].Name, nil
+	if reader.File[0] != nil {
+		return reader.File[0].Name, nil
 	} else {
 		return "", nil
 	}
@@ -139,10 +152,10 @@ func unzipFile(f *zip.File, destination string) error {
 	}
 
 	if f.FileInfo().IsDir() {
-		return os.MkdirAll(filePath, os.ModePerm)
+		return os.MkdirAll(filePath, 0750)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filePath), 0750); err != nil {
 		return err
 	}
 
@@ -162,15 +175,6 @@ func unzipFile(f *zip.File, destination string) error {
 		return err
 	}
 	return nil
-}
-
-func CheckIfImageExists(imageName string) (skipBuild bool) {
-	check := exec.Command("docker", "image", "inspect", imageName)
-	if err := check.Run(); err == nil {
-		fmt.Printf("Docker image %q exists\n", imageName)
-		return true
-	}
-	return false
 }
 
 func getCAAssetsURL(version string) (string, error) {

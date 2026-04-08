@@ -18,8 +18,9 @@ import (
 	"syscall"
 	"text/template"
 
-	"github.com/gardener/scaling-advisor/api/planner"
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/spf13/cobra"
@@ -42,7 +43,7 @@ var (
 	scalerVersion string
 )
 
-type ExecScaler interface {
+type execScaler interface {
 	DeployScalerData(ctx context.Context, cfg *envconf.Config) error
 	GetScalerKWOKTemplatePath() string
 	CheckRequiredDataPresent(scenarioDir, version string) error
@@ -90,7 +91,7 @@ var execCmd = &cobra.Command{
 	Use:   "exec <scaler> <options>", // data/scenario/report directories
 	Short: "Run the scaler by utilizing the data and produce the report",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
+	RunE: func(_ *cobra.Command, args []string) (err error) {
 		scalerName := args[0]
 		s, err := getScaler(scalerName)
 		if err != nil {
@@ -130,7 +131,7 @@ var execCmd = &cobra.Command{
 		defer func() {
 			logsDir := path.Join(scenarioDir, "logs")
 
-			if err := os.MkdirAll(logsDir, 0755); err != nil {
+			if err := os.MkdirAll(logsDir, 0750); err != nil {
 				fmt.Printf("Warning: Failed to create logs directory %q: %v\n", logsDir, err)
 			} else {
 				exportLogsFunc := envfuncs.ExportClusterLogs(kwokClusterName, logsDir)
@@ -157,6 +158,7 @@ var execCmd = &cobra.Command{
 	},
 }
 
+// KwokCfgTmplParams stores all the parameters needed for the Kwokctlconfiguration template
 type KwokCfgTmplParams struct {
 	HomeDir                 string
 	ClusterName             string
@@ -166,7 +168,7 @@ type KwokCfgTmplParams struct {
 	ImageTag                string
 }
 
-func setupClusterForScaling(ctx context.Context, s ExecScaler, kwokClusterName string) (context.Context, *envconf.Config, error) {
+func setupClusterForScaling(ctx context.Context, s execScaler, kwokClusterName string) (context.Context, *envconf.Config, error) {
 	testenv := env.New()
 	scenarioDir := path.Dir(snapshotFile)
 	outputFile := path.Join(scenarioDir, "kwok-config.yaml")
@@ -303,7 +305,7 @@ func createNamespaces(ctx context.Context, clusterSnapshot planner.ClusterSnapsh
 	log.Println("Creating missing namespaces...")
 	for _, p := range clusterSnapshot.Pods {
 		ns := &corev1.Namespace{}
-		ns.Name = p.ObjectMeta.Namespace
+		ns.Name = p.Namespace
 		if err := cfg.Client().Resources().Create(ctx, ns); err != nil && !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create namespace: %w", err)
 			// log.Printf("Namespace %s already exists, skipping\n", p.Namespace)
@@ -396,14 +398,14 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 	defer tempFile.Close()
 
 	if _, err := tempFile.Write(kubeSchedulerConfigData); err != nil {
-		os.Remove(tempFile.Name())
+		_ = os.Remove(tempFile.Name())
 		return "", fmt.Errorf("cannot write to temporary file: %w", err)
 	}
 
 	return tempFile.Name(), nil
 }
 
-func getScaler(scalerName string) (ExecScaler, error) {
+func getScaler(scalerName string) (execScaler, error) {
 	switch scalerName {
 	case bench.ScalerKarpenter:
 		return &karpenterExec{}, nil

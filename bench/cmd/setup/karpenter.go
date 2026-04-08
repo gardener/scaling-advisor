@@ -17,23 +17,23 @@ import (
 	"path/filepath"
 	"slices"
 
+	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
-	bench "github.com/gardener/scaling-advisor/bench/cmd"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/pricing"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	karpenterkwokapis "sigs.k8s.io/karpenter/kwok/apis"
 	karpenterkwokv1alpha1 "sigs.k8s.io/karpenter/kwok/apis/v1alpha1"
 	karpenterkwok "sigs.k8s.io/karpenter/kwok/cloudprovider"
 	karpenterapis "sigs.k8s.io/karpenter/pkg/apis"
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	karpenter "sigs.k8s.io/karpenter/pkg/cloudprovider"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 )
 
 var pricingData pricingapi.InstancePricingAccess
@@ -93,7 +93,7 @@ func (ks *karpenterSetup) BuildScaler(ctx context.Context) error {
 	// Write tar.gz stream into the pipe
 	tarErr := writeTarGz(pw, binPath)
 	// Always close the pipe so docker import sees EOF, even on error
-	pw.Close()
+	_ = pw.Close()
 
 	if tarErr != nil {
 		// Wait for docker import to finish to avoid zombies, but return the tar error
@@ -314,7 +314,6 @@ func constructNewOffering(availabilityZones []string, instanceHourlyPrice float6
 			},
 		},
 	}
-
 }
 
 // writeTarGz writes a gzip-compressed tar archive containing the file at

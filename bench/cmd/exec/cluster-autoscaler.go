@@ -14,12 +14,13 @@ import (
 	"path"
 
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	sigyaml "sigs.k8s.io/yaml"
 )
 
-var _ ExecScaler = (*caExec)(nil)
+var _ execScaler = (*caExec)(nil)
 
 type caExec struct{}
 

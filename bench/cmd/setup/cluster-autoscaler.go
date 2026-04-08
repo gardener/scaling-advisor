@@ -15,14 +15,14 @@ import (
 	"path"
 	"strings"
 
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
-	cakwok "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/kwok"
-	sigyaml "sigs.k8s.io/yaml"
 
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	cakwok "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/kwok"
+	sigyaml "sigs.k8s.io/yaml"
 )
 
 // func init() {
@@ -109,7 +109,6 @@ func constructKwokProviderConfig(nodegroupsConfig cakwok.NodegroupsConfig) error
 	kwokProviderConfig.Nodes = &cakwok.NodeConfig{
 		SkipTaint: true,
 	}
-	// kwokProviderConfig.Nodes.SkipTaint = true // TODO check if fixes
 
 	providerConfigYaml, err := sigyaml.Marshal(kwokProviderConfig)
 	if err != nil {
@@ -132,7 +131,6 @@ func constructKwokProviderConfig(nodegroupsConfig cakwok.NodegroupsConfig) error
 	}
 	fmt.Printf("Saved kwok provider config to %s\n", path.Join(outputDir, bench.FileNameCAKwokProviderConfig))
 	return nil
-
 }
 
 func constructKwokProviderTemplate(csc sacorev1alpha1.ScalingConstraint) error {
@@ -160,13 +158,6 @@ func constructKwokProviderTemplate(csc sacorev1alpha1.ScalingConstraint) error {
 				node.Annotations = make(map[string]string)
 				node.Annotations["kwok.x-k8s.io/node"] = "fake"
 			}
-			// Fixes `NodeResourcesFit` "Too Many Pods" scheduling failure
-			// if node.Status.Allocatable.Pods().Cmp(*resource.NewQuantity(0, resource.DecimalSI)) == 0 {
-			// 	node.Status.Allocatable["pods"] = *resource.NewQuantity(110, resource.DecimalSI)
-			// }
-			// if node.Status.Capacity.Pods().Cmp(*resource.NewQuantity(0, resource.DecimalSI)) == 0 {
-			// 	node.Status.Capacity["pods"] = *resource.NewQuantity(110, resource.DecimalSI)
-			// }
 			node.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Node"))
 			kwokTemplates.Items = append(kwokTemplates.Items, node)
 		}
