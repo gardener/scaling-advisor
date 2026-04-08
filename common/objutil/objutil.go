@@ -150,6 +150,27 @@ func IsResourceListEqual(r1, r2 corev1.ResourceList) bool {
 	return true
 }
 
+// MinResourceListQuantity sets the resource quantity to minimum value of the two specified resources
+// and returns a new resourcelist.
+func MinResourceListQuantity(r1, r2 corev1.ResourceList) (minRes corev1.ResourceList) {
+	minRes = r1.DeepCopy()
+	for n, q1 := range r1 {
+		q2, ok := r2[n]
+		if ok && q1.Cmp(q2) == 1 {
+			minRes[n] = q2
+		}
+	}
+	for n, q2 := range r2 {
+		q1, ok := r1[n]
+		if ok && q1.Cmp(q2) == 1 {
+			minRes[n] = q2
+		} else if !ok {
+			minRes[n] = q2
+		}
+	}
+	return
+}
+
 // SubtractResources subtracts the quantities in b from a. If a resource in b is not found in a, it is ignored.
 func SubtractResources(a, b corev1.ResourceList) {
 	for res, qty := range b {

@@ -73,8 +73,8 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 			Tolerations:               info.Tolerations,
 			PriorityClassName:         info.PriorityClassName,
 			Priority:                  ptr.To(info.Priority),
-			RuntimeClassName:          ptr.To(info.RuntimeClassName),
-			PreemptionPolicy:          ptr.To(info.PreemptionPolicy),
+			RuntimeClassName:          ptrOrNil(info.RuntimeClassName),
+			PreemptionPolicy:          ptrOrNil(info.PreemptionPolicy),
 			Overhead:                  info.Overhead,
 			TopologySpreadConstraints: info.TopologySpreadConstraints,
 			ResourceClaims:            info.ResourceClaims,
@@ -88,6 +88,18 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 			},
 		},
 	}
+}
+
+// ptrOrNil returns a pointer to v if v is non-zero, or nil otherwise.
+// This avoids sending empty-string pointers (e.g. RuntimeClassName: ptr.To(""))
+// which Kubernetes admission controllers interpret as "look up a resource named
+// empty-string", causing "resource name may not be empty" errors.
+func ptrOrNil[T comparable](v T) *T {
+	var zero T
+	if v == zero {
+		return nil
+	}
+	return &v
 }
 
 // PodResourceInfosFromPodInfo converts the given slice of PodInfo to a slice of leaner PodResourceInfo
