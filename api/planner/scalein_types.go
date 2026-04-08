@@ -2,14 +2,15 @@ package planner
 
 import (
 	"context"
+	"io"
+	"sync/atomic"
+	"time"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"io"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"sync/atomic"
-	"time"
 )
 
 // ScaleInCandidateArgs encapsulates the arguments needed to select a candidate for scale in.
@@ -22,7 +23,7 @@ type ScaleInCandidateArgs struct {
 
 // ScaleInCandidateSelector is the interface meant to select the next viable candidate for scale in by interrogating the nodes from the [minkapi.View]
 type ScaleInCandidateSelector interface {
-	NextCandidate(ctx context.Context, args ScaleInCandidateArgs) (corev1.Node, error)
+	NextCandidate(ctx context.Context, args ScaleInCandidateArgs) (*corev1.Node, error)
 }
 
 // NodeUtilizationCalculator is the interface meant to calculate the utilization of a node having the given node name in the [minkapi.View]
@@ -63,7 +64,7 @@ type ScaleInSimArgs struct {
 	// Name is the name of the simulation instance
 	Name string
 	// Config is the simulation configuration.
-	Config SimulatorConfig
+	Config ScaleInSimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
 }
