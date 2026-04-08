@@ -5,13 +5,20 @@
 package bench
 
 const (
+	// ScalerClusterAutoscaler specifies that the scaler being invoked is CA
 	ScalerClusterAutoscaler = "cluster-autoscaler"
-	ScalerKarpenter         = "karpenter"
+	// ScalerKarpenter specifies that the scaler being invoked is karpenter
+	ScalerKarpenter = "karpenter"
 
-	FileNameCAKwokProviderConfig   = "ca-kwok-provider-config.yaml"
+	// FileNameCAKwokProviderConfig is the filename used for storing CA kwok provider configuration
+	FileNameCAKwokProviderConfig = "ca-kwok-provider-config.yaml"
+	// FileNameCAKwokProviderTemplate is the filename used for storing CA kwok provider node templates
 	FileNameCAKwokProviderTemplate = "ca-kwok-provider-template.yaml"
 
+	// FileNameKarpenterInstanceTypes is the filename used for storing all instance types
 	FileNameKarpenterInstanceTypes = "instance_types.json"
-	FileNameKarpenterNodePools     = "node_pools.yaml"
-	FileNameKarpenterNodeClasses   = "node_classes.yaml"
+	// FileNameKarpenterNodePools is used for storing the NodePools deployed during harness execution
+	FileNameKarpenterNodePools = "node_pools.yaml"
+	// FileNameKarpenterNodeClasses is used for storing the KWOKNodeClasses
+	FileNameKarpenterNodeClasses = "node_classes.yaml"
 )

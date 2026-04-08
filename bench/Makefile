@@ -59,3 +59,11 @@ check: $(GOLANGCI_LINT) format
 .PHONY: run
 run: build
 	bin/${service_binary_name}
+
+.PHONY: sast
+sast: $(GOSEC)
+	@$(REPO_HACK_DIR)/sast.sh
+
+.PHONY: sast-report
+sast-report: $(GOSEC)
+	@$(REPO_HACK_DIR)/sast.sh --gosec-report true

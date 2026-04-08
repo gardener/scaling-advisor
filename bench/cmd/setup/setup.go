@@ -10,6 +10,7 @@ import (
 	"path"
 
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
+
 	"github.com/spf13/cobra"
 )
 
