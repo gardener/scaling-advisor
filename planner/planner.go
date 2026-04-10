@@ -62,6 +62,12 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
+	scaleInSimulator, err := p.args.SimulatorFactory.GetScaleInSimulator(plannerapi.SimulatorArgs{})
+	if err != nil {
+		return err
+	}
+	defer ioutil.CloseQuietly(scaleInSimulator)
+	scaleInPlanResultCh := scaleInSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
 	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 	if err != nil {
 		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
@@ -79,23 +85,31 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	planResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
+	scaleOutPlanResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
+	response := plannerapi.Response{}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case planResult, ok := <-planResultCh:
+		case scaleInPlanResult, ok := <-scaleInPlanResultCh:
+			if !ok {
+				return nil // planResultCh closed by ScaleInSimulator.Simulate
+			}
+			response.RequestRef = req.RequestRef
+			response.Error = scaleInPlanResult.Error
+			response.Labels = scaleInPlanResult.Labels
+			response.ScaleInPlan = scaleInPlanResult.ScaleInPlan
+			response.ID = objutil.GenerateName("scaling-plan-")
+			responseCh <- response
+		case scaleOutPlanResult, ok := <-scaleOutPlanResultCh:
 			if !ok {
 				return nil // planResultCh closed by ScaleOutSimulator.Simulate
 			}
-			response := plannerapi.Response{
-				RequestRef:   req.RequestRef,
-				Error:        planResult.Error,
-				Labels:       planResult.Labels,
-				ScaleOutPlan: planResult.ScaleOutPlan,
-				ScaleInPlan:  nil,
-				ID:           objutil.GenerateName("scaling-plan-"),
-			}
+			response.RequestRef = req.RequestRef
+			response.Error = scaleOutPlanResult.Error
+			response.Labels = scaleOutPlanResult.Labels
+			response.ScaleOutPlan = scaleOutPlanResult.ScaleOutPlan
+			response.ID = objutil.GenerateName("scaling-plan-")
 			responseCh <- response
 		}
 	}
