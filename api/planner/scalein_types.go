@@ -107,7 +107,7 @@ type ScaleInSimRunResult struct {
 type ScaleInSimulator interface {
 	io.Closer
 
-	Simulate(ctx context.Context, requestRef RequestRef, state *ScaleInMemento, requestView minkapi.View, factory SimulationFactory) <-chan ScaleInPlanResult
+	Simulate(ctx context.Context, request *Request, simulationFactory SimulationFactory) <-chan ScaleInPlanResult
 }
 
 // ScaleInMemento is an encapsulation of partial details of a completed scale-in simulation that can be used by subsequent scale-in simulations

@@ -104,6 +104,10 @@ type NodePool struct {
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 	// Priority is the priority of the node pool.
 	Priority int32 `json:"priority"`
+	// Min is the minimum number of nodes that must be maintained in this node pool.
+	// Scale-in will not reduce the node count below this value.
+	// +optional
+	Min int32 `json:"min,omitempty"`
 }
 
 // GetNodePlacements computes and returns all the possible `NodePlacement`s for this NodePool.
