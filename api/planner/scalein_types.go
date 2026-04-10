@@ -85,7 +85,7 @@ type ScaleInSimulation interface {
 	// Result returns the latest [ScaleInPlanResult] if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
-	Result() (ScaleInPlanResult, error)
+	Result() (ScaleInSimRunResult, error)
 }
 
 // ScaleInSimRunResult encapsulated the result of a completed [ScaleInSimulation]
@@ -144,4 +144,7 @@ type ScaleInSimulatorConfig struct {
 	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
 	// considered a candidate for scale in.
 	UnderutilizedDuration time.Duration
+	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
+	// considered as stabilized.
+	MaxUnchangedTrackAttempts int
 }

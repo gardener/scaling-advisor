@@ -3,10 +3,14 @@ package scalein
 import (
 	"context"
 	"fmt"
+
+	"time"
+
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
 )
 
@@ -15,7 +19,7 @@ var _ plannerapi.ScaleInSimulation = (*defaultSimulation)(nil)
 // defaultSimulation is the default implementation of a ScaleInSimulation.
 type defaultSimulation struct {
 	args   *plannerapi.ScaleInSimArgs
-	result plannerapi.ScaleInPlanResult
+	result plannerapi.ScaleInSimRunResult
 	state  RunState
 }
 
@@ -63,8 +67,8 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 		return
 	}
 
-	//TODO: implement RemoveNodeAndUnbindPods
-	if err = d.state.RemoveNodeAndUnbindPods(d.args.NodeName); err != nil {
+	unboundPods, err := d.state.RemoveNodeAndUnbindPods(d.args.NodeName)
+	if err != nil {
 		return
 	}
 
@@ -79,7 +83,7 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 		return
 	}
 
-	nodePodAssignments, err := d.state.NodePodAssignments()
+	nodePodAssignments, err := d.state.NodePodAssignments(unboundPods)
 	if err != nil {
 		return
 	}
@@ -87,40 +91,96 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 	d.result = plannerapi.ScaleInSimRunResult{
 		Name:               d.args.Name,
 		View:               view,
-		Items:              d.state.GetScaleOutItems(),
-		NodePodAssignments: d.state.getScaleOutNodeAssignments(),
-		PodEvictionReasons: d.state.GetPodEvictionReasons(),
-		//OtherNodePodAssignments: nodePodAssignments,
-		//LeftoverUnscheduledPods: d.state.leftoverUnscheduledPodNames.UnsortedList(),
+		Items:              d.state.GetScaleInItems(),
+		NodePodAssignments: nodePodAssignments,
+		PodsToReschedule:   d.state.GetPodsToReschedule(),
 	}
 	d.state.status = plannerapi.ActivityStatusSuccess
 	log := logr.FromContextOrDiscard(ctx)
-	if len(d.result.LeftoverUnscheduledPods) > 0 {
-		log.V(3).Info("LeftoverUnscheduledPods after run", "leftoverUnscheduledPodCount", len(s.result.LeftoverUnscheduledPods))
+	if len(d.result.PodsToReschedule) > 0 {
+		log.V(3).Info("LeftoverUnscheduledPods after scale-in run", "PodsToReschedule", len(d.result.PodsToReschedule))
 	}
 	return
 }
 
+func (d *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, simView minkapi.View) (plannerapi.SchedulerHandle, error) {
+	clientFacades, err := simView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
+	if err != nil {
+		return nil, err
+	}
+	schedLaunchParams := &plannerapi.SchedulerLaunchParams{
+		ClientFacades: clientFacades,
+		EventSink:     simView.GetEventSink(),
+	}
+	return d.args.SchedulerLauncher.Launch(ctx, schedLaunchParams)
+}
+
+// workAndTrackUntilStabilized starts a loop which performs work and tracks the state of the simulation until one of the following conditions is met:
+//  1. All the pods are scheduled.
+//  2. Events have stabilized. i.e., no more scheduling events within maxUnchangedTrackAttempts
+//  3. Context timeout.
+//  4. Any error
+func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
+	log := logr.FromContextOrDiscard(ctx)
+	var stabilized bool
+	for {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		default:
+			if err = d.doWork(ctx, view); err != nil {
+				return
+			}
+			<-time.After(d.args.Config.TrackPollInterval)
+			if stabilized, err = d.state.Track(d.args.Config.MaxUnchangedTrackAttempts); err != nil || stabilized {
+				return
+			}
+			if len(d.state.leftoverUnscheduledPodNames) == 0 {
+				log.V(2).Info("ending simulation run since leftoverUnscheduledPodNames is zero", "numTrackAttempts", d.state.numTrackAttempts)
+				return
+			}
+		}
+	}
+}
+
+// doWork does miscellaneous simulation work to ensure that the kube-scheduler can
+// continue pod-node bindings. Currently, it delegates to BindClaimsAndVolumesWithNonNilClaimRefs and if the parent
+// SimulatorStrategy supports multiple node scaling, a call is issued to CreateSimulationNodes
+func (d *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
+	log := logr.FromContextOrDiscard(ctx)
+	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
+	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaims(ctx, view)
+	if err != nil {
+		return err
+	}
+	if numBound > 0 {
+		log.V(3).Info("Reset RunState.numUnchangedTrackAttempts since BindClaimsAndVolumesWithNonNilClaimRefs performed work", "numBound", numBound)
+		d.state.numUnchangedTrackAttempts = 0
+	}
+	return err
+}
+
 func (d *defaultSimulation) runNum() uint32 {
-	return s.args.RunCounter.Load()
+	return d.args.RunCounter.Load()
 }
 
 func (d *defaultSimulation) incRunNum() uint32 {
 	return d.args.RunCounter.Add(1)
 }
 
-func (d *defaultSimulation) Result() (plannerapi.ScaleInPlanResult, error) {
+func (d *defaultSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	var err error
 	switch d.state.status {
 	case plannerapi.ActivityStatusPending:
 		err = fmt.Errorf("simulation %q is still pending", d.args.Name)
-		return plannerapi.ScaleInPlanResult{}, err
+		return plannerapi.ScaleInSimRunResult{}, err
 	case plannerapi.ActivityStatusRunning:
 		err = fmt.Errorf("simulation %q is still running", d.args.Name)
-		return plannerapi.ScaleInPlanResult{}, err
+		return plannerapi.ScaleInSimRunResult{}, err
 	case plannerapi.ActivityStatusFailure:
 		err = d.state.err
-		return plannerapi.ScaleInPlanResult{}, err
+		return plannerapi.ScaleInSimRunResult{}, err
 	}
 	result := d.result
 	return result, nil
@@ -129,9 +189,6 @@ func (d *defaultSimulation) Result() (plannerapi.ScaleInPlanResult, error) {
 func validateSimArgs(args *plannerapi.ScaleInSimArgs) error {
 	if args.Name == "" {
 		return fmt.Errorf("simulation name must not be empty")
-	}
-	if args.Config.MaxParallelSimulations <= 0 {
-		return fmt.Errorf("max parallel simulations: %d must be positive value for simulation %q", args.Config.MaxParallelSimulations, args.Name)
 	}
 	if args.Config.TrackPollInterval <= 0 {
 		return fmt.Errorf("track poll interval %v must be positive duration for simulation %q", args.Config.TrackPollInterval, args.Name)
