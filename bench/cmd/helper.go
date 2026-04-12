@@ -33,7 +33,39 @@ const (
 	karpenterReleaseAssetsPrefix = "https://github.com/kubernetes-sigs/karpenter/"
 )
 
-// SaveYamlToFile to saves the given yaml data to the file specified by the path
+// LoadJSONFromFile reads the file at filePath and unmarshals its contents as JSON
+// into a value of type T. This eliminates the repeated open→ReadAll→Unmarshal
+// boilerplate that otherwise appears at every call site.
+func LoadJSONFromFile[T any](filePath string) (T, error) {
+	var zero T
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return zero, fmt.Errorf("cannot read file %q: %w", filePath, err)
+	}
+	var result T
+	if err := json.Unmarshal(data, &result); err != nil {
+		return zero, fmt.Errorf("cannot unmarshal JSON from %q: %w", filePath, err)
+	}
+	return result, nil
+}
+
+// LoadYAMLFromFile reads the file at filePath and unmarshals its contents as YAML
+// into a value of type T. This eliminates the repeated open→ReadAll→Unmarshal
+// boilerplate that otherwise appears at every call site.
+func LoadYAMLFromFile[T any](filePath string) (T, error) {
+	var zero T
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return zero, fmt.Errorf("cannot read file %q: %w", filePath, err)
+	}
+	var result T
+	if err := sigyaml.Unmarshal(data, &result); err != nil {
+		return zero, fmt.Errorf("cannot unmarshal YAML from %q: %w", filePath, err)
+	}
+	return result, nil
+}
+
+// SaveYamlToFile saves the given yaml data to the file specified by the path.
 func SaveYamlToFile(data any, path string) error {
 	yamlData, err := sigyaml.Marshal(data)
 	if err != nil {
@@ -66,6 +98,7 @@ func CheckIfImageExists(imageName string) (skipBuild bool) {
 	return false
 }
 
+// GetAssets fetches the specified scaler version archive into the dataDir and then unzips it
 func GetAssets(ctx context.Context, version, scaler, dataDir string) (unzippedPath string, err error) {
 	var url string
 	switch scaler {
@@ -80,7 +113,7 @@ func GetAssets(ctx context.Context, version, scaler, dataDir string) (unzippedPa
 		return
 	}
 	assetsZipFileName := path.Join(dataDir, scaler+"-"+version+".zip")
-	err = downloadAssets(assetsZipFileName, url, version)
+	err = downloadAssets(ctx, assetsZipFileName, url, version)
 	if err != nil {
 		return
 	}
@@ -91,7 +124,7 @@ func GetAssets(ctx context.Context, version, scaler, dataDir string) (unzippedPa
 	return
 }
 
-func downloadAssets(filepath, url, version string) error {
+func downloadAssets(ctx context.Context, filepath, url, version string) error {
 	if version != "master" && version != "main" {
 		if _, err := os.Stat(filepath); err == nil {
 			fmt.Printf("File %q already exists\n", filepath)
@@ -104,7 +137,11 @@ func downloadAssets(filepath, url, version string) error {
 	}
 	defer out.Close()
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}

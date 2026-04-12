@@ -8,9 +8,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -37,21 +35,88 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
+// Flag variables — bound by cobra, read once in execCmd.RunE, then passed
+// explicitly to all callees so that no other function touches these globals.
 var (
 	skipCleanup   bool
 	snapshotFile  string
 	scalerVersion string
 )
 
+// execScaler is the interface that every scaler backend must implement to
+// participate in a benchmark run.
 type execScaler interface {
-	DeployScalerData(ctx context.Context, cfg *envconf.Config) error
+	// DeployScalerData creates the scaler-specific Kubernetes objects (CRDs,
+	// ConfigMaps, NodePools, etc.) in the KWOK cluster.
+	DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) error
+
+	// GetScalerKWOKTemplatePath returns the embedded-FS path to the
+	// kwokctl configuration template for this scaler.
 	GetScalerKWOKTemplatePath() string
+
+	// CheckRequiredDataPresent verifies that everything produced by
+	// "setup" (files + Docker images) is available before the cluster
+	// is created.
 	CheckRequiredDataPresent(scenarioDir, version string) error
 }
 
+// execCmd runs a scaler inside a KWOK cluster populated with data from the
+// cluster snapshot. It is the counterpart to "setup", which prepares the
+// resources and deploys the scaler image that this command consumes.
+var execCmd = &cobra.Command{
+	Use:   "exec <scaler> <options>",
+	Short: "Run the scaler by utilizing the data and produce the report",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(_ *cobra.Command, args []string) (err error) {
+		scalerName := args[0]
+		var scaler execScaler
+		scaler, err = getScaler(scalerName)
+		if err != nil {
+			return
+		}
+
+		scenarioDir := path.Dir(snapshotFile)
+
+		err = scaler.CheckRequiredDataPresent(scenarioDir, scalerVersion)
+		if err != nil {
+			return fmt.Errorf("please run 'setup' before running 'exec': %v", err)
+		}
+
+		ctx := setupSignalHandler()
+		kwokClusterName := envconf.RandomName("kwok-cluster", 17)
+
+		ctx, cfg, err := setupClusterForScaling(ctx, scaler, kwokClusterName, scenarioDir, scalerVersion)
+		if err != nil {
+			return err
+		}
+		defer cleanupCluster(ctx, cfg, kwokClusterName, scenarioDir)
+
+		clusterSnapshot, err := bench.LoadJSONFromFile[planner.ClusterSnapshot](snapshotFile)
+		if err != nil {
+			return fmt.Errorf("cannot load cluster snapshot: %v", err)
+		}
+
+		if err := deployObjects(ctx, cfg, clusterSnapshot); err != nil {
+			return fmt.Errorf("error running KWOK cluster: %v", err)
+		}
+		if err := scaler.DeployScalerData(ctx, cfg, scenarioDir); err != nil {
+			return fmt.Errorf("error deploying the scaler data: %v", err)
+		}
+		if err := deployPods(ctx, clusterSnapshot, cfg); err != nil {
+			return fmt.Errorf("error deploying pods: %v", err)
+		}
+
+		log.Println("Successfully completed!")
+		<-ctx.Done()
+
+		return
+	},
+}
+
 func init() {
-	// Register apiextensionsv1 types (CustomResourceDefinition) with the global
-	// client-go scheme so that the e2e-framework client can create CRD objects.
+	// Register apiextensionsv1 types (CustomResourceDefinition) with the
+	// global client-go scheme so that the e2e-framework client can create
+	// CRD objects.
 	_ = apiextensionsv1.AddToScheme(scheme.Scheme)
 
 	bench.RootCmd.AddCommand(execCmd)
@@ -77,88 +142,21 @@ func init() {
 		"main",
 		"version of the scaler to fetch",
 	)
-	// TODO: report stuff
-	// TODO: might need this for the compare data
-	// execCmd.PersistentFlags().StringVarP(
-	// 	&pricingFile,
-	// 	"pricing-data", "p",
-	// 	"",
-	// 	"pricing data file",
-	// )
 }
 
-var execCmd = &cobra.Command{
-	Use:   "exec <scaler> <options>", // data/scenario/report directories
-	Short: "Run the scaler by utilizing the data and produce the report",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) (err error) {
-		scalerName := args[0]
-		s, err := getScaler(scalerName)
-		if err != nil {
-			return
-		}
-
-		scenarioDir := path.Dir(snapshotFile)
-		err = s.CheckRequiredDataPresent(scenarioDir, scalerVersion)
-		if err != nil {
-			return fmt.Errorf("please run 'setup' before running 'exec': %v", err)
-		}
-
-		ctx := setupSignalHandler()
-		kwokClusterName := envconf.RandomName("kwok-cluster", 17)
-		// e2e-framework updates the context information, hence we need to update the
-		// context with the one that gets returned
-		ctx, cfg, err := setupClusterForScaling(ctx, s, kwokClusterName)
-		if err != nil {
-			return err
-		}
-
-		clusterSnapshot, err := getClusterSnapshot(snapshotFile)
-		if err != nil {
-			return
-		}
-
-		if err := deployObjects(ctx, cfg, clusterSnapshot); err != nil {
-			return fmt.Errorf("error running KWOK cluster: %v", err)
-		}
-		if err := s.DeployScalerData(ctx, cfg); err != nil {
-			return fmt.Errorf("error deploying the scaler data: %v", err)
-		}
-		if err := deployPods(ctx, clusterSnapshot, cfg); err != nil {
-			return fmt.Errorf("error deploying pods: %v", err)
-		}
-
-		defer func() {
-			logsDir := path.Join(scenarioDir, "logs")
-
-			if err := os.MkdirAll(logsDir, 0750); err != nil {
-				fmt.Printf("Warning: Failed to create logs directory %q: %v\n", logsDir, err)
-			} else {
-				exportLogsFunc := envfuncs.ExportClusterLogs(kwokClusterName, logsDir)
-				if _, err = exportLogsFunc(ctx, cfg); err != nil {
-					fmt.Printf("Warning: Failed to export logs: %v\n", err)
-				} else {
-					log.Printf("Exported logs to %q\n", logsDir)
-				}
-			}
-
-			if !skipCleanup {
-				log.Println("Cleaning up...")
-				destroyClusterFunc := envfuncs.DestroyCluster(kwokClusterName)
-				if _, err := destroyClusterFunc(ctx, cfg); err != nil {
-					fmt.Printf("Warning: Failed to destroy cluster: %v\n", err)
-				}
-			}
-		}()
-
-		log.Println("Successfully completed!")
-		<-ctx.Done()
-
-		return
-	},
+func getScaler(scalerName string) (execScaler, error) {
+	switch scalerName {
+	case bench.ScalerKarpenter:
+		return &karpenterExec{}, nil
+	case bench.ScalerClusterAutoscaler:
+		return &caExec{}, nil
+	default:
+		return nil, fmt.Errorf("unknown scaler %q", scalerName)
+	}
 }
 
-// KwokCfgTmplParams stores all the parameters needed for the Kwokctlconfiguration template
+// KwokCfgTmplParams stores all the parameters needed for the
+// kwokctl configuration template.
 type KwokCfgTmplParams struct {
 	HomeDir                 string
 	ClusterName             string
@@ -168,36 +166,46 @@ type KwokCfgTmplParams struct {
 	ImageTag                string
 }
 
-func setupClusterForScaling(ctx context.Context, s execScaler, kwokClusterName string) (context.Context, *envconf.Config, error) {
-	testenv := env.New()
-	scenarioDir := path.Dir(snapshotFile)
+// setupClusterForScaling creates a fresh KWOK cluster configured for the
+// given scaler.
+func setupClusterForScaling(
+	ctx context.Context,
+	scaler execScaler,
+	clusterName string,
+	scenarioDir string,
+	imageTag string,
+) (context.Context, *envconf.Config, error) {
 	outputFile := path.Join(scenarioDir, "kwok-config.yaml")
 
-	log.Printf("Setting up KWOK cluster %q...\n", kwokClusterName)
-	// This is needed to provide an absolute path to kwokctlConfiguration
+	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
+
+	// Write the embedded kube-scheduler config to a temp file because
+	// kwokctl needs an absolute filesystem path.
 	kubeSchedulerConfigPath, err := writeEmbeddedKubeSchedulerConfig()
 	if err != nil {
 		return ctx, nil, fmt.Errorf("cannot write kube-scheduler config: %w", err)
 	}
 	defer os.Remove(kubeSchedulerConfigPath)
 
-	kwokCfgTmplParams := KwokCfgTmplParams{
+	tmplParams := KwokCfgTmplParams{
 		HomeDir:                 os.Getenv("HOME"),
-		ClusterName:             kwokClusterName,
+		ClusterName:             clusterName,
 		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
 		OutputPath:              outputFile,
 		ScenarioDirectory:       scenarioDir,
-		ImageTag:                scalerVersion,
+		ImageTag:                imageTag,
 	}
 
-	err = generateKwokConfig(kwokCfgTmplParams, s.GetScalerKWOKTemplatePath())
+	err = generateKwokConfig(tmplParams, scaler.GetScalerKWOKTemplatePath())
 	if err != nil {
 		return ctx, nil, fmt.Errorf("cannot create kwok config: %w", err)
 	}
-	log.Printf("Wrote kwok config template to %q\n", kwokCfgTmplParams.OutputPath)
+	log.Printf("Wrote kwok config template to %q\n", tmplParams.OutputPath)
 
-	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), kwokClusterName, outputFile)
+	testenv := env.New()
+	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), clusterName, outputFile)
 	cfg := testenv.EnvConf()
+
 	ctx, err = createClusterFunc(ctx, cfg)
 	if err != nil {
 		return ctx, nil, fmt.Errorf("failed to create cluster: %w", err)
@@ -206,125 +214,59 @@ func setupClusterForScaling(ctx context.Context, s execScaler, kwokClusterName s
 	return ctx, cfg, nil
 }
 
-func getClusterSnapshot(snapshotFile string) (snapshot planner.ClusterSnapshot, err error) {
-	file, err := os.Open(snapshotFile)
-	if err != nil {
-		err = fmt.Errorf("cannot open the clusterSnapshot file %q: %v", snapshotFile, err)
-		return
-	}
-	defer file.Close()
+// cleanupCluster exports pod/container logs and (unless --skip-cleanup is set)
+// it destroys the KWOK cluster.
+func cleanupCluster(ctx context.Context, cfg *envconf.Config, kwokClusterName, scenarioDir string) {
+	logsDir := path.Join(scenarioDir, "logs")
 
-	clusterSnapshotData, err := io.ReadAll(file)
-	if err != nil {
-		err = fmt.Errorf("cannot read the clusterSnapshot file %q: %v", file.Name(), err)
-		return
-	}
-
-	if err = json.Unmarshal(clusterSnapshotData, &snapshot); err != nil {
-		err = fmt.Errorf("cannot unmarshal the clusterSnapshot data for %q: %v", file.Name(), err)
-		return
+	if err := os.MkdirAll(logsDir, 0750); err != nil {
+		fmt.Printf("Warning: Failed to create logs directory %q: %v\n", logsDir, err)
+	} else {
+		exportLogsFunc := envfuncs.ExportClusterLogs(kwokClusterName, logsDir)
+		if _, err := exportLogsFunc(ctx, cfg); err != nil {
+			fmt.Printf("Warning: Failed to export logs: %v\n", err)
+		} else {
+			fmt.Printf("\nExported logs to %q\n", logsDir)
+		}
 	}
 
-	return
+	if !skipCleanup {
+		log.Println("Cleaning up...")
+		destroyClusterFunc := envfuncs.DestroyCluster(kwokClusterName)
+		if _, err := destroyClusterFunc(ctx, cfg); err != nil {
+			fmt.Printf("Warning: Failed to destroy cluster: %v\n", err)
+		}
+	}
 }
 
+// ---------------------------------------------------------------------------
+// Object deployment
+// ---------------------------------------------------------------------------
+
+// deployObjects creates the non-pod Kubernetes objects that form the cluster
+// state: priority classes, nodes and defaultNamespaces' service account
 func deployObjects(ctx context.Context, cfg *envconf.Config, clusterSnapshot planner.ClusterSnapshot) (err error) {
 	err = deployPriorityClasses(ctx, clusterSnapshot, cfg)
 	if err != nil {
 		return
 	}
-
 	err = deployNodes(ctx, clusterSnapshot, cfg)
 	if err != nil {
 		return
 	}
-
-	err = createNamespaces(ctx, clusterSnapshot, cfg)
-	if err != nil {
-		return
+	defaultNamespaces := []string{
+		corev1.NamespaceDefault,
+		"kube-system",
+		"kube-public",
+		corev1.NamespaceNodeLease,
 	}
-
-	// "runtime: kind" doesn't need this
-	err = createDefaultServiceAccount(ctx, cfg)
-	if err != nil {
-		return
+	for _, ns := range defaultNamespaces {
+		err = createDefaultServiceAccount(ctx, cfg, ns)
+		if err != nil {
+			return err
+		}
 	}
-
 	return
-}
-
-func deployPods(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
-	scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
-	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
-	for _, pInfo := range scheduled {
-		p := podutil.AsPod(pInfo)
-		if p.Spec.Containers[0].Image == "" {
-			p.Spec.Containers[0].Image = p.Name + "-dummy-image"
-		}
-		p.Spec.Containers[0].Name = "abcdefgh"
-		p.ResourceVersion = ""
-		p.UID = ""
-		if err := cfg.Client().Resources().Create(ctx, p); err != nil {
-			return fmt.Errorf("failed to create pod %q: %w", p.Name, err)
-		}
-	}
-	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
-	for _, pInfo := range unscheduled {
-		p := podutil.AsPod(pInfo)
-		if p.Spec.Containers[0].Image == "" {
-			p.Spec.Containers[0].Image = p.Name + "-dummy-image"
-		}
-		p.ResourceVersion = ""
-		p.UID = ""
-		log.Printf("Deploying unscheduled pod %q\n", p.Name)
-		if err := cfg.Client().Resources().Create(ctx, p); err != nil {
-			return fmt.Errorf("failed to create pod %q: %w", p.Name, err)
-		}
-	}
-	return nil
-}
-
-func createDefaultServiceAccount(ctx context.Context, cfg *envconf.Config) error {
-	log.Println("Creating default serviceaccounts...")
-	nsList := &corev1.NamespaceList{}
-	if err := cfg.Client().Resources().List(ctx, nsList); err != nil {
-		return fmt.Errorf("failed to list namespaces: %w", err)
-	}
-	for _, ns := range nsList.Items {
-		sa := corev1.ServiceAccount{}
-		sa.Name = "default"
-		sa.Namespace = ns.Name
-		if err := cfg.Client().Resources().Create(ctx, &sa); err != nil {
-			return fmt.Errorf("failed to create sa: %w", err)
-		}
-	}
-	return nil
-}
-
-func createNamespaces(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
-	log.Println("Creating missing namespaces...")
-	for _, p := range clusterSnapshot.Pods {
-		ns := &corev1.Namespace{}
-		ns.Name = p.Namespace
-		if err := cfg.Client().Resources().Create(ctx, ns); err != nil && !errors.IsAlreadyExists(err) {
-			return fmt.Errorf("failed to create namespace: %w", err)
-			// log.Printf("Namespace %s already exists, skipping\n", p.Namespace)
-		}
-	}
-	return nil
-}
-
-func deployNodes(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
-	log.Printf("Deploying nodes, count %d...\n", len(clusterSnapshot.Nodes))
-	for _, nInfo := range clusterSnapshot.Nodes {
-		n := nodeutil.AsNode(nInfo)
-		n.Spec.ProviderID = "kwok://" + n.Name // fixes not managed by kwok
-		n.ResourceVersion = ""
-		if err := cfg.Client().Resources().Create(ctx, n); err != nil {
-			return fmt.Errorf("failed to create node: %w", err)
-		}
-	}
-	return nil
 }
 
 func deployPriorityClasses(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
@@ -338,29 +280,111 @@ func deployPriorityClasses(ctx context.Context, clusterSnapshot planner.ClusterS
 	return nil
 }
 
+func deployNodes(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
+	log.Printf("Deploying nodes, count %d...\n", len(clusterSnapshot.Nodes))
+	for _, nodeInfo := range clusterSnapshot.Nodes {
+		node := nodeutil.AsNode(nodeInfo)
+		node.Spec.ProviderID = "kwok://" + node.Name // required so KWOK recognises node
+		node.ResourceVersion = ""
+		if err := cfg.Client().Resources().Create(ctx, node); err != nil {
+			return fmt.Errorf("failed to create node: %w", err)
+		}
+	}
+	return nil
+}
+
+// deployPods partitions the snapshot pods into scheduled and unscheduled sets
+// and creates them in that order. It also creates the namespace used by the
+// pod and the 'default' ServiceAccount for that namespace. Scheduled pods are
+// deployed first so that the scheduler does not attempt to place unscheduled
+// pods on existing nodes.
+func deployPods(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
+	scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
+
+	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
+	for _, podInfo := range scheduled {
+		if err := createNamespaceAndDefaultSA(ctx, cfg, podInfo.Namespace); err != nil {
+			return err
+		}
+		if err := createPod(ctx, cfg, podInfo); err != nil {
+			return err
+		}
+	}
+
+	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
+	for _, podInfo := range unscheduled {
+		log.Printf("Deploying unscheduled pod %q\n", podInfo.Name)
+		if err := createNamespaceAndDefaultSA(ctx, cfg, podInfo.Namespace); err != nil {
+			return err
+		}
+		if err := createPod(ctx, cfg, podInfo); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func createNamespaceAndDefaultSA(ctx context.Context, cfg *envconf.Config, name string) error {
+	ns := &corev1.Namespace{}
+	ns.Name = name
+	err := cfg.Client().Resources().Create(ctx, ns)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create namespace: %w", err)
+	} else if errors.IsAlreadyExists(err) {
+		// Do not attempt to create another service account below
+		return nil
+	}
+	err = createDefaultServiceAccount(ctx, cfg, name)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// KWOK does not auto-create service accounts, so we must
+// create a "default" SA in every namespace ourselves.
+func createDefaultServiceAccount(ctx context.Context, cfg *envconf.Config, name string) error {
+	sa := corev1.ServiceAccount{}
+	sa.Name = "default"
+	sa.Namespace = name
+	if err := cfg.Client().Resources().Create(ctx, &sa); err != nil {
+		return fmt.Errorf("failed to create default serviceAccount in namespace %q: %w", name, err)
+	}
+	return nil
+}
+
+// createPod converts a PodInfo to a corev1.Pod, applies the fixups needed
+// for KWOK (dummy image, cleared identity fields) and creates it.
+func createPod(ctx context.Context, cfg *envconf.Config, podInfo planner.PodInfo) error {
+	p := podutil.AsPod(podInfo)
+	if p.Spec.Containers[0].Image == "" {
+		p.Spec.Containers[0].Image = "dummy-image"
+	}
+	// This is done to prevent containers name that can have more than 63 chars
+	p.Spec.Containers[0].Name = "dummy-container"
+	p.ResourceVersion = ""
+	p.UID = ""
+	if err := cfg.Client().Resources().Create(ctx, p); err != nil {
+		return fmt.Errorf("failed to create pod %q: %w", p.Name, err)
+	}
+	return nil
+}
+
 func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo) {
-	for _, p := range pods {
-		if p.NodeName == "" {
-			unscheduled = append(unscheduled, p)
+	for _, podInfo := range pods {
+		if podInfo.NodeName == "" {
+			unscheduled = append(unscheduled, podInfo)
 		} else {
-			scheduled = append(scheduled, p)
+			scheduled = append(scheduled, podInfo)
 		}
 	}
 	return
 }
 
-func setupSignalHandler() context.Context {
-	quit := make(chan os.Signal, 2)
-	ctx, cancel := context.WithCancel(context.Background())
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-quit
-		cancel()
-		<-quit
-		os.Exit(1)
-	}()
-	return ctx
-}
+// ---------------------------------------------------------------------------
+// Template & config helpers
+// ---------------------------------------------------------------------------
 
 func generateKwokConfig(params KwokCfgTmplParams, templateConfigPath string) error {
 	data, err := content.ReadFile(templateConfigPath)
@@ -373,12 +397,10 @@ func generateKwokConfig(params KwokCfgTmplParams, templateConfigPath string) err
 	}
 
 	var buf bytes.Buffer
-	err = templateConfig.Execute(&buf, params)
-	if err != nil {
+	if err := templateConfig.Execute(&buf, params); err != nil {
 		return fmt.Errorf("cannot render %q template with params %q: %w", templateConfig.Name(), params, err)
 	}
-	err = os.WriteFile(params.OutputPath, buf.Bytes(), 0600)
-	if err != nil {
+	if err := os.WriteFile(params.OutputPath, buf.Bytes(), 0600); err != nil {
 		return fmt.Errorf("cannot write kwok config to %q: %w", params.OutputPath, err)
 	}
 	return nil
@@ -390,7 +412,6 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 		return "", fmt.Errorf("cannot read kube-scheduler-config.yaml from embedded FS: %w", err)
 	}
 
-	// Create a temporary file
 	tempFile, err := os.CreateTemp("", "kube-scheduler-config.yaml")
 	if err != nil {
 		return "", fmt.Errorf("cannot create temporary file: %w", err)
@@ -405,13 +426,15 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 	return tempFile.Name(), nil
 }
 
-func getScaler(scalerName string) (execScaler, error) {
-	switch scalerName {
-	case bench.ScalerKarpenter:
-		return &karpenterExec{}, nil
-	case bench.ScalerClusterAutoscaler:
-		return &caExec{}, nil
-	default:
-		return nil, fmt.Errorf("unknown scaler %q", scalerName)
-	}
+func setupSignalHandler() context.Context {
+	quit := make(chan os.Signal, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-quit
+		cancel()
+		<-quit
+		os.Exit(1)
+	}()
+	return ctx
 }

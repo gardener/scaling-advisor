@@ -7,9 +7,7 @@ package setup
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -25,41 +23,57 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 )
 
-// func init() {
-// 	setupCmd.AddCommand(caSetupCmd)
-// }
-
 var _ SetupScaler = (*caSetup)(nil)
 
-type caSetup struct {
-	// version     string
-	// dataDir     string
-	// constraintsFile string
-}
+type caSetup struct{}
 
-func (cas *caSetup) BuildScaler(ctx context.Context) error {
+func (cas *caSetup) BuildScaler(ctx context.Context, version string) error {
 	imageName := fmt.Sprintf("gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:%s", version)
 	if exists := bench.CheckIfImageExists(imageName); exists {
 		return nil
 	}
 
-	dataDir := os.TempDir()
-	unzippedPath, err := bench.GetAssets(ctx, version, bench.ScalerClusterAutoscaler, dataDir)
+	unzippedPath, err := bench.GetAssets(ctx, version, bench.ScalerClusterAutoscaler, os.TempDir())
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Unzipped to %q\n", path.Join(dataDir, unzippedPath))
+	sourceDir := path.Join(os.TempDir(), unzippedPath)
+	fmt.Printf("Unzipped to %q\n", sourceDir)
 
-	cmd := exec.Command("make", "make-image", fmt.Sprintf("TAG=%s", version))
-	cmd.Dir = path.Join(dataDir, unzippedPath, bench.ScalerClusterAutoscaler)
+	return buildCAImage(ctx, sourceDir, version)
+}
+
+func (cas *caSetup) GenerateKwokData(_ context.Context, constraintsFile, outputDir string) error {
+	if err := constructKwokProviderConfig(outputDir); err != nil {
+		return fmt.Errorf("cannot construct the kwok provider config: %v", err)
+	}
+
+	constraint, err := bench.LoadJSONFromFile[sacorev1alpha1.ScalingConstraint](constraintsFile)
+	if err != nil {
+		return fmt.Errorf("cannot load scaling constraint: %v", err)
+	}
+
+	if err := constructKwokProviderTemplate(constraint, outputDir); err != nil {
+		return fmt.Errorf("cannot construct the kwok provider template: %v", err)
+	}
+
+	return nil
+}
+
+// buildCAImage runs `make make-image` inside the CA source tree to produce the
+// Docker image used by the KWOK cluster.
+func buildCAImage(ctx context.Context, sourceDir, version string) error {
+	cmd := exec.CommandContext(ctx, "make", "make-image", fmt.Sprintf("TAG=%s", version))
+	cmd.Dir = path.Join(sourceDir, bench.ScalerClusterAutoscaler)
+
 	var stderr, stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	fmt.Printf("Building %s\n", unzippedPath)
+	fmt.Printf("Building %s\n", sourceDir)
 	fmt.Printf("Running %q in %q\n", cmd.String(), cmd.Dir)
-	err = cmd.Run()
-	if err != nil {
+
+	if err := cmd.Run(); err != nil {
 		capturedError := strings.TrimSpace(stderr.String())
 		if capturedError != "" {
 			return fmt.Errorf("command failed: %s (stderr: %s)", err, capturedError)
@@ -70,37 +84,14 @@ func (cas *caSetup) BuildScaler(ctx context.Context) error {
 	return nil
 }
 
-func (cas *caSetup) GenerateKwokData(ctx context.Context, constraintsFile, outputDir string) error {
-	err := constructKwokProviderConfig(cakwok.NodegroupsConfig{
+// constructKwokProviderConfig builds the kwok-provider-config ConfigMap that
+// tells the CA KWOK cloud-provider where to find node templates and how
+// nodegroups are identified.
+func constructKwokProviderConfig(outputDir string) error {
+	nodegroupsConfig := cakwok.NodegroupsConfig{
 		FromNodeLabelKey: "worker.gardener.cloud/pool",
-	})
-	if err != nil {
-		return fmt.Errorf("cannot construct the kwok provider template: %v", err)
 	}
 
-	file, err := os.Open(constraintsFile)
-	if err != nil {
-		return fmt.Errorf("cannot open the scalingConstraint file %q: %v", file.Name(), err)
-	}
-	defer file.Close()
-
-	scalingConstraintData, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("cannot read the scalingConstraint file %q: %v", file.Name(), err)
-	}
-	clusterScalingConstraint := sacorev1alpha1.ScalingConstraint{}
-	if err := json.Unmarshal(scalingConstraintData, &clusterScalingConstraint); err != nil {
-		return fmt.Errorf("cannot unmarshal the scalingConstraint data for %q: %v", file.Name(), err)
-	}
-	err = constructKwokProviderTemplate(clusterScalingConstraint)
-	if err != nil {
-		return fmt.Errorf("cannot construct the kwok provider template: %v", err)
-	}
-
-	return nil
-}
-
-func constructKwokProviderConfig(nodegroupsConfig cakwok.NodegroupsConfig) error {
 	var kwokProviderConfig cakwok.KwokProviderConfig
 	kwokProviderConfig.APIVersion = "v1alpha"
 	kwokProviderConfig.ReadNodesFrom = "configmap"
@@ -112,7 +103,7 @@ func constructKwokProviderConfig(nodegroupsConfig cakwok.NodegroupsConfig) error
 
 	providerConfigYaml, err := sigyaml.Marshal(kwokProviderConfig)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("cannot marshal kwok provider config to YAML: %w", err)
 	}
 
 	providerConfig := &corev1.ConfigMap{
@@ -125,47 +116,34 @@ func constructKwokProviderConfig(nodegroupsConfig cakwok.NodegroupsConfig) error
 		},
 	}
 	providerConfig.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
-	err = bench.SaveYamlToFile(providerConfig, path.Join(outputDir, bench.FileNameCAKwokProviderConfig))
-	if err != nil {
-		return fmt.Errorf("cannot save the kwok provider template configmap: %v", err)
+
+	outFilePath := path.Join(outputDir, bench.FileNameCAKwokProviderConfig)
+	if err := bench.SaveYamlToFile(providerConfig, outFilePath); err != nil {
+		return fmt.Errorf("cannot save the kwok provider config configmap: %v", err)
 	}
-	fmt.Printf("Saved kwok provider config to %s\n", path.Join(outputDir, bench.FileNameCAKwokProviderConfig))
+	fmt.Printf("Saved kwok provider config to %s\n", outFilePath)
 	return nil
 }
 
-func constructKwokProviderTemplate(csc sacorev1alpha1.ScalingConstraint) error {
+// constructKwokProviderTemplate builds the kwok-provider-templates ConfigMap
+// that contains one Node object per machine type so the CA KWOK cloud-provider
+// knows what capacity each nodegroup offers.
+func constructKwokProviderTemplate(constraint sacorev1alpha1.ScalingConstraint, outputDir string) error {
 	var kwokTemplates corev1.NodeList
 	kwokTemplates.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("List"))
-	for _, nodePool := range csc.Spec.NodePools {
+
+	for _, nodePool := range constraint.Spec.NodePools {
 		for _, nodeTemplate := range nodePool.NodeTemplates {
-			node := corev1.Node{
-				ObjectMeta: v1.ObjectMeta{
-					Name:        nodeTemplate.Name,
-					Labels:      nodePool.Labels,
-					Annotations: nodePool.Annotations,
-				},
-				Spec: corev1.NodeSpec{
-					Taints: nodePool.Taints,
-				},
-				Status: corev1.NodeStatus{
-					Capacity:    nodeTemplate.Capacity,
-					Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.SystemReserved),
-					Phase:       corev1.NodeRunning,
-				},
-			}
-			if node.Annotations == nil {
-				// Needed to fix null annotations panic in CA kwok
-				node.Annotations = make(map[string]string)
-				node.Annotations["kwok.x-k8s.io/node"] = "fake"
-			}
-			node.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Node"))
+			node := buildTemplateNode(nodePool, nodeTemplate)
 			kwokTemplates.Items = append(kwokTemplates.Items, node)
 		}
 	}
+
 	templateYaml, err := sigyaml.Marshal(kwokTemplates)
 	if err != nil {
-		return fmt.Errorf("cannot construct the kwok provider template: %v", err)
+		return fmt.Errorf("cannot marshal kwok provider templates: %v", err)
 	}
+
 	providerTemplate := &corev1.ConfigMap{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      "kwok-provider-templates",
@@ -177,11 +155,39 @@ func constructKwokProviderTemplate(csc sacorev1alpha1.ScalingConstraint) error {
 	}
 	providerTemplate.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
 
-	outFileName := path.Join(outputDir, bench.FileNameCAKwokProviderTemplate)
-	err = bench.SaveYamlToFile(providerTemplate, outFileName)
-	if err != nil {
+	outPath := path.Join(outputDir, bench.FileNameCAKwokProviderTemplate)
+	if err := bench.SaveYamlToFile(providerTemplate, outPath); err != nil {
 		return fmt.Errorf("cannot save the kwok provider template configmap: %v", err)
 	}
-	fmt.Printf("Saved kwok provider templates to %s\n", outFileName)
+	fmt.Printf("Saved kwok provider templates to %s\n", outPath)
 	return nil
+}
+
+// buildTemplateNode creates a single corev1.Node from a nodepool/template pair,
+// suitable for inclusion in the kwok-provider-templates ConfigMap.
+func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1alpha1.NodeTemplate) corev1.Node {
+	annotations := nodePool.Annotations
+	if annotations == nil {
+		// Needed to fix null annotations panic in CA kwok
+		annotations = make(map[string]string)
+	}
+	annotations["kwok.x-k8s.io/node"] = "fake"
+
+	node := corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name:        nodeTemplate.Name,
+			Labels:      nodePool.Labels,
+			Annotations: annotations,
+		},
+		Spec: corev1.NodeSpec{
+			Taints: nodePool.Taints,
+		},
+		Status: corev1.NodeStatus{
+			Capacity:    nodeTemplate.Capacity,
+			Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.SystemReserved),
+			Phase:       corev1.NodeRunning,
+		},
+	}
+	node.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Node"))
+	return node
 }
