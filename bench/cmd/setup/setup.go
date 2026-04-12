@@ -14,43 +14,49 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Flag variables — bound by cobra, read once in setupCmd.RunE, then passed
+// explicitly to all callees so that no other function touches these globals.
 var (
 	constraintsFile string
-	outputDir       string
 	pricingFile     string
 	version         string
 )
 
-// SetupScaler defines methods needed to setup the scaler service with the
-// necessary requirements needed to execute and run the benchmarking tool
+// SetupScaler defines methods needed to set up a scaler with the artefacts
+// required by the benchmarking harness.
 type SetupScaler interface {
-	// BuildScaler downloads the specified version of the scaler into
-	// a temporary data directory and then builds the scaler image and
-	// pushes it to docker
-	BuildScaler(ctx context.Context) error
-	// GenerateKwokData uses the scaling constraints file to construct
-	// the relevant data required by the kwok provider of the scaler
+	// BuildScaler downloads the specified version of the scaler into a
+	// temporary data directory, builds the scaler image and loads it into
+	// the local Docker daemon.
+	BuildScaler(ctx context.Context, version string) error
+
+	// GenerateKwokData uses the scaling constraints file to construct the
+	// data files required by the scaler's KWOK cloud-provider.
 	GenerateKwokData(ctx context.Context, constraintsFile, outputDir string) error
 }
 
+// setupCmd is the entry point for the "setup" subcommand. It fetches, builds,
+// and prepares all artefacts that the "exec" subcommand later consumes.
 var setupCmd = &cobra.Command{
 	Use:   "setup <scaler> <options>",
 	Short: "Setup the scaler by fetching the required version",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		scalerName := args[0]
-		s, err := getScaler(scalerName)
+		scaler, err := getScaler(scalerName)
 		if err != nil {
-			return
+			return err
 		}
+
+		// Derive the output directory from the constraints file location so
+		// that all generated artefacts live next to the input data.
+		outputDir := path.Dir(constraintsFile)
 
 		ctx := cmd.Context()
-		outputDir = path.Dir(constraintsFile)
-		if err = s.GenerateKwokData(ctx, constraintsFile, outputDir); err != nil {
+		if err := scaler.GenerateKwokData(ctx, constraintsFile, outputDir); err != nil {
 			return fmt.Errorf("error generating kwok data for %s: %v", scalerName, err)
 		}
-
-		if err = s.BuildScaler(ctx); err != nil {
+		if err := scaler.BuildScaler(ctx, version); err != nil {
 			return fmt.Errorf("error building %s source: %v", scalerName, err)
 		}
 
@@ -90,7 +96,7 @@ func getScaler(scalerName string) (SetupScaler, error) {
 		if pricingFile == "" {
 			return nil, fmt.Errorf("pricing data needed for karpenter: run `scadctl genprice` to get the data")
 		}
-		return &karpenterSetup{}, nil
+		return &karpenterSetup{pricingFile: pricingFile}, nil
 	case bench.ScalerClusterAutoscaler:
 		return &caSetup{}, nil
 	default:

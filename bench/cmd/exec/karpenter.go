@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path"
@@ -21,7 +20,6 @@ import (
 	karpenterkwokv1alpha1 "sigs.k8s.io/karpenter/kwok/apis/v1alpha1"
 	karpenterapis "sigs.k8s.io/karpenter/pkg/apis"
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
-	sigyaml "sigs.k8s.io/yaml"
 )
 
 var _ execScaler = (*karpenterExec)(nil)
@@ -30,23 +28,24 @@ type karpenterExec struct{}
 
 const karpKwokTemplatePath = "templates/kwok-karp-tmpl.yaml"
 
-func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Config) (err error) {
-	snapshotDir := path.Dir(snapshotFile)
+func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) (err error) {
 	err = deployKarpenterCRDs(ctx, cfg)
 	if err != nil {
 		return
 	}
 
-	classesFilePath := path.Join(snapshotDir, bench.FileNameKarpenterNodeClasses)
-	poolsFilePath := path.Join(snapshotDir, bench.FileNameKarpenterNodePools)
-	err = deployKarpenterPools(ctx, poolsFilePath, cfg)
+	poolsFilePath := path.Join(scenarioDir, bench.FileNameKarpenterNodePools)
+	err = deployKarpenterPools(ctx, cfg, poolsFilePath)
 	if err != nil {
 		return
 	}
-	err = deployKarpenterClasses(ctx, classesFilePath, cfg)
+
+	classesFilePath := path.Join(scenarioDir, bench.FileNameKarpenterNodeClasses)
+	err = deployKarpenterClasses(ctx, cfg, classesFilePath)
 	if err != nil {
 		return
 	}
+
 	return
 }
 
@@ -55,26 +54,28 @@ func (ke *karpenterExec) GetScalerKWOKTemplatePath() string {
 }
 
 func (ke *karpenterExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
-	// Check files and image with tag present in docker
 	imageName := fmt.Sprintf("karpenter.local/kwok:%s", scalerVersion)
 	if exists := bench.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
 	}
 
-	instanceTypesFile := path.Join(scenarioDir, bench.FileNameKarpenterInstanceTypes)
-	nodePoolsFile := path.Join(scenarioDir, bench.FileNameKarpenterNodePools)
-	nodeClassesFile := path.Join(scenarioDir, bench.FileNameKarpenterNodeClasses)
-
-	for _, filePath := range []string{instanceTypesFile, nodePoolsFile, nodeClassesFile} {
+	requiredFiles := []string{
+		path.Join(scenarioDir, bench.FileNameKarpenterInstanceTypes),
+		path.Join(scenarioDir, bench.FileNameKarpenterNodePools),
+		path.Join(scenarioDir, bench.FileNameKarpenterNodeClasses),
+	}
+	for _, filePath := range requiredFiles {
 		if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("required file %q not found", filePath)
 		}
 	}
+
 	return nil
 }
 
-// deployKarpenterCRDs installs the Karpenter and KWOK CRDs into the cluster so that the
-// API server recognises NodePool, NodeClaim, and KWOKNodeClass resources.
+// deployKarpenterCRDs installs the Karpenter and KWOK CRDs into the cluster
+// so that the API server recognises NodePool, NodeClaim, and KWOKNodeClass
+// resources.
 func deployKarpenterCRDs(ctx context.Context, cfg *envconf.Config) error {
 	log.Println("Deploying Karpenter CRDs...")
 
@@ -91,53 +92,45 @@ func deployKarpenterCRDs(ctx context.Context, cfg *envconf.Config) error {
 			log.Printf("Created CRD %q\n", crd.Name)
 		}
 	}
+
 	return nil
 }
 
-func deployKarpenterPools(ctx context.Context, poolsFilePath string, cfg *envconf.Config) error {
+// deployKarpenterPools loads a NodePoolList from a YAML file and creates each
+// NodePool in the cluster.
+// TODO: clean up the kubernetes.io related labels
+func deployKarpenterPools(ctx context.Context, cfg *envconf.Config, poolsFilePath string) error {
 	log.Printf("Deploying karpenter nodePools %q...\n", poolsFilePath)
-	file, err := os.Open(poolsFilePath)
-	if err != nil {
-		return fmt.Errorf("cannot open the node pools file %q: %v", poolsFilePath, err)
-	}
-	defer file.Close()
 
-	karpPoolData, err := io.ReadAll(file)
+	nodePools, err := bench.LoadYAMLFromFile[karpenterv1.NodePoolList](poolsFilePath)
 	if err != nil {
-		return fmt.Errorf("cannot read the node pools file %q: %v", file.Name(), err)
+		return fmt.Errorf("cannot load node pools from %q: %w", poolsFilePath, err)
 	}
-	nodePools := karpenterv1.NodePoolList{}
-	if err := sigyaml.Unmarshal(karpPoolData, &nodePools); err != nil {
-		return fmt.Errorf("cannot unmarshal the pool data for %q: %v", file.Name(), err)
-	}
+
 	for _, pool := range nodePools.Items {
 		if err := cfg.Client().Resources().Create(ctx, &pool); err != nil {
-			return fmt.Errorf("failed to create node pool: %w", err)
+			return fmt.Errorf("failed to create node pool %q: %w", pool.Name, err)
 		}
 	}
+
 	return nil
 }
 
-func deployKarpenterClasses(ctx context.Context, classesFilePath string, cfg *envconf.Config) error {
+// deployKarpenterClasses loads a KWOKNodeClassList from a YAML file and
+// creates each KWOKNodeClass in the cluster.
+func deployKarpenterClasses(ctx context.Context, cfg *envconf.Config, classesFilePath string) error {
 	log.Printf("Deploying karpenter nodeClasses %q...\n", classesFilePath)
-	file, err := os.Open(classesFilePath)
-	if err != nil {
-		return fmt.Errorf("cannot open the node classes file %q: %v", classesFilePath, err)
-	}
-	defer file.Close()
 
-	karpClassData, err := io.ReadAll(file)
+	nodeClasses, err := bench.LoadYAMLFromFile[karpenterkwokv1alpha1.KWOKNodeClassList](classesFilePath)
 	if err != nil {
-		return fmt.Errorf("cannot read the node classes file %q: %v", file.Name(), err)
+		return fmt.Errorf("cannot load node classes from %q: %w", classesFilePath, err)
 	}
-	nodeClasses := karpenterkwokv1alpha1.KWOKNodeClassList{}
-	if err := sigyaml.Unmarshal(karpClassData, &nodeClasses); err != nil {
-		return fmt.Errorf("cannot unmarshal the class data for %q: %v", file.Name(), err)
-	}
+
 	for _, class := range nodeClasses.Items {
 		if err := cfg.Client().Resources().Create(ctx, &class); err != nil {
-			return fmt.Errorf("failed to create node class: %w", err)
+			return fmt.Errorf("failed to create node class %q: %w", class.Name, err)
 		}
 	}
+
 	return nil
 }

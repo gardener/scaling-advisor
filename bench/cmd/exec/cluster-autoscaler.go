@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path"
@@ -17,7 +16,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
-	sigyaml "sigs.k8s.io/yaml"
 )
 
 var _ execScaler = (*caExec)(nil)
@@ -26,19 +24,17 @@ type caExec struct{}
 
 const caKwokTemplatePath = "templates/kwok-ca-tmpl.yaml"
 
-func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config) (err error) {
-	snapshotDir := path.Dir(snapshotFile)
-	caKwokCfgFile := path.Join(snapshotDir, bench.FileNameCAKwokProviderConfig)
-	err = deployCAKwokConfig(ctx, caKwokCfgFile, cfg)
-	if err != nil {
+func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) (err error) {
+	caKwokCfgFile := path.Join(scenarioDir, bench.FileNameCAKwokProviderConfig)
+	if err = deployConfigMap(ctx, cfg, caKwokCfgFile); err != nil {
 		return
 	}
 
-	templateFilePath := path.Join(snapshotDir, bench.FileNameCAKwokProviderTemplate)
-	err = deployCAKwokTemplate(ctx, templateFilePath, cfg)
-	if err != nil {
+	templateFilePath := path.Join(scenarioDir, bench.FileNameCAKwokProviderTemplate)
+	if err = deployConfigMap(ctx, cfg, templateFilePath); err != nil {
 		return
 	}
+
 	return
 }
 
@@ -47,7 +43,6 @@ func (cae *caExec) GetScalerKWOKTemplatePath() string {
 }
 
 func (cae *caExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
-	// Check files and image with tag present in docker
 	imageName := fmt.Sprintf("gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:%s", scalerVersion)
 	if exists := bench.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
@@ -64,48 +59,20 @@ func (cae *caExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) e
 	return nil
 }
 
-func deployCAKwokTemplate(ctx context.Context, templateFilePath string, cfg *envconf.Config) error {
-	log.Printf("Deploying CA kwok-provider-templates %q...\n", templateFilePath)
-	file, err := os.Open(templateFilePath)
-	if err != nil {
-		return fmt.Errorf("cannot open the kwok cr file %q: %v", templateFilePath, err)
-	}
-	defer file.Close()
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-	kwokTemplateData, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("cannot read the kwok cr file %q: %v", file.Name(), err)
-	}
-	kwokProviderTemplate := corev1.ConfigMap{}
-	if err := sigyaml.Unmarshal(kwokTemplateData, &kwokProviderTemplate); err != nil {
-		return fmt.Errorf("cannot unmarshal the kwokTemplate data for %q: %v", file.Name(), err)
-	}
-	if err := cfg.Client().Resources().Create(ctx, &kwokProviderTemplate); err != nil {
-		return fmt.Errorf("failed to create kwok provider template: %w", err)
-	}
-	return nil
-}
+func deployConfigMap(ctx context.Context, cfg *envconf.Config, filePath string) error {
+	log.Printf("Deploying %q...\n", filePath)
 
-func deployCAKwokConfig(ctx context.Context, caKwokCfgFile string, cfg *envconf.Config) error {
-	log.Printf("Deploying CA kwok-provider-config %q...\n", caKwokCfgFile)
-	file, err := os.Open(caKwokCfgFile)
+	configMap, err := bench.LoadYAMLFromFile[corev1.ConfigMap](filePath)
 	if err != nil {
-		return fmt.Errorf("cannot open the kwok provider config file %q: %v", caKwokCfgFile, err)
+		return fmt.Errorf("cannot load %q: %w", filePath, err)
 	}
-	defer file.Close()
 
-	kwokConfigData, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("cannot read the kwok provider config file %q: %v", file.Name(), err)
-	}
-	kwokProviderConfig := corev1.ConfigMap{}
-	if err := sigyaml.Unmarshal(kwokConfigData, &kwokProviderConfig); err != nil {
-		return fmt.Errorf("cannot unmarshal the kwokConfig data for %q: %v", file.Name(), err)
-	}
-	// fmt.Printf("Kwok provider cfg data is:\n%#v\n", kwokProviderConfig)
-
-	if err := cfg.Client().Resources().Create(ctx, &kwokProviderConfig); err != nil {
-		return fmt.Errorf("failed to create kwok provider config: %w", err)
+	if err := cfg.Client().Resources().Create(ctx, &configMap); err != nil {
+		return fmt.Errorf("failed to create %s: %w", configMap.Name, err)
 	}
 	return nil
 }
