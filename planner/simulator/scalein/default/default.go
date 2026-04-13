@@ -57,6 +57,8 @@ func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Req
 	return d.state.ResultCh
 }
 
+// doSimulate contains the main simulation loop for the default scale-in simulator. It is responsible for selecting candidates,
+// running simulations, and accumulating results to produce the final scale-in plan.
 func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 
@@ -97,6 +99,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if err != nil {
 				return fmt.Errorf("failed to select scale-in candidate: %w", err)
 			}
+			// If no candidate is returned, we have exhausted all options and can exit the loop to compute the final plan.
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
@@ -116,6 +119,8 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				return fmt.Errorf("%w: failed to get result for node %q: %w", plannerapi.ErrRunSimulation, candidateName, err)
 			}
 
+			// If the simulation result contains zero pods to reschedule, we consider the scale-in successful for this candidate
+			// and add it to the set of scaled-in nodes.
 			if len(result.PodsToReschedule) == 0 {
 				// Case A: All pods from scaled-in node were successfully rescheduled.
 				log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
@@ -134,6 +139,15 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	}
 }
 
+// getNextCandidate selects the next scale-in candidate node from the view based on the selection criteria:
+// - Not in skipNodes
+// - NodePool min count not reached
+// - Not annotated with scale-in disabled
+// - Does not have any pods with SafeToEvict=false
+// - (TODO) Does not have pods that would violate PDBs
+// - (TODO) Meets utilization threshold requirements
+// Among the candidates that meet the criteria, those with the lowest priority (based on pool and template priority)
+// are selected, and one is randomly returned from that set.
 func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
@@ -283,7 +297,7 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSucc
 				NodeName: nodeName,
 				// TODO: not sure how to populate nodePlacement
 			})
-			// can there be any failure cases where we would want to keep this node in the memento for consideration in the next plan generation loop?
+			// can there be any failure case where we would want to keep this node in the memento for consideration in the next plan generation loop?
 			delete(d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes, nodeName)
 		} else {
 			log.V(3).Info("Node identified as unneeded but duration not yet exceeded",
