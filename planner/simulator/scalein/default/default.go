@@ -88,8 +88,8 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			return ctx.Err()
 		default:
 			// Select the next scale-in candidate.
-			nextCandidate, err := nextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
-				Constraint: sacorev1alpha1.ScalingConstraintSpec{}, // FIXME: pass actual constraint
+			nextCandidate, err := getNextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
+				Constraint: d.state.Request.Constraint.Spec, // FIXME: pass actual constraint
 				View:       simView,
 				RequestRef: d.state.Request.GetRef(),
 				SkipNodes:  skipNodes,
@@ -134,57 +134,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	}
 }
 
-// computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
-// A node is only included in the plan if it has been continuously identified as unneeded across invocations
-// for at least the configured UnderutilizedDuration.
-func (d *defaultSimulator) computeScaleInItems(log logr.Logger, scaledInSuccessNodes sets.Set[string]) (scaleInItems []sacorev1alpha1.ScaleInItem) {
-	now := time.Now()
-	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
-
-	// Ensure memento is initialized.
-	if d.state.Request == nil {
-		d.state.Request = &plannerapi.Request{}
-	}
-	if d.state.Request.Memento == nil {
-		d.state.Request.Memento = &plannerapi.Memento{}
-	}
-	if d.state.Request.Memento.ScaleIn == nil {
-		d.state.Request.Memento.ScaleIn = &plannerapi.ScaleInMemento{}
-	}
-	if d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes == nil {
-		d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes = make(map[string]time.Time)
-	}
-
-	// Update the memento with the currently identified unneeded nodes and determine which
-	// nodes have exceeded the unneeded duration.
-	for nodeName := range scaledInSuccessNodes {
-		firstSeen, exists := d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes[nodeName]
-		if !exists {
-			// First time this node was identified as unneeded; record the timestamp but do not include in plan yet.
-			log.V(3).Info("Node newly identified as unneeded, recording timestamp", "node", nodeName)
-			d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes[nodeName] = now
-			continue
-		}
-		// The node was previously identified as unneeded. Check if the unneeded duration has been exceeded.
-		if now.Sub(firstSeen) >= unneededDuration {
-			log.V(2).Info("Node has exceeded unneeded duration, including in scale-in plan",
-				"node", nodeName, "firstSeen", firstSeen, "unneededDuration", unneededDuration)
-			scaleInItems = append(scaleInItems, sacorev1alpha1.ScaleInItem{
-				NodeName: nodeName,
-				// TODO: not sure how to populate nodePlacement
-			})
-			// can there be any failure cases where we would want to keep this node in the memento for consideration in the next plan generation loop?
-			delete(d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes, nodeName)
-		} else {
-			log.V(3).Info("Node identified as unneeded but duration not yet exceeded",
-				"node", nodeName, "firstSeen", firstSeen, "elapsed", now.Sub(firstSeen), "required", unneededDuration)
-		}
-	}
-
-	return
-}
-
-func nextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*corev1.Node, error) {
+func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// Get all nodes from the view.
@@ -225,8 +175,7 @@ func nextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*
 
 	// Filter candidates.
 	var candidates []corev1.Node
-	for i := range nodes {
-		node := &nodes[i]
+	for i, node := range nodes {
 		nodeName := node.Name
 		poolName := node.Labels[commonconstants.LabelNodePoolName]
 
@@ -292,6 +241,56 @@ func nextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*
 	})
 
 	return &lowestPriorityCandidates[0], nil
+}
+
+// computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
+// A node is only included in the plan if it has been continuously identified as unneeded across invocations
+// for at least the configured UnderutilizedDuration.
+func (d *defaultSimulator) computeScaleInItems(log logr.Logger, scaledInSuccessNodes sets.Set[string]) (scaleInItems []sacorev1alpha1.ScaleInItem) {
+	now := time.Now()
+	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
+
+	// Ensure memento is initialized.
+	if d.state.Request == nil {
+		d.state.Request = &plannerapi.Request{}
+	}
+	if d.state.Request.Memento == nil {
+		d.state.Request.Memento = &plannerapi.Memento{}
+	}
+	if d.state.Request.Memento.ScaleIn == nil {
+		d.state.Request.Memento.ScaleIn = &plannerapi.ScaleInMemento{}
+	}
+	if d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes == nil {
+		d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes = make(map[string]time.Time)
+	}
+
+	// Update the memento with the currently identified unneeded nodes and determine which
+	// nodes have exceeded the unneeded duration.
+	for nodeName := range scaledInSuccessNodes {
+		firstSeen, exists := d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes[nodeName]
+		if !exists {
+			// First time this node was identified as unneeded; record the timestamp but do not include in plan yet.
+			log.V(3).Info("Node newly identified as unneeded, recording timestamp", "node", nodeName)
+			d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes[nodeName] = now
+			continue
+		}
+		// The node was previously identified as unneeded. Check if the unneeded duration has been exceeded.
+		if now.Sub(firstSeen) >= unneededDuration {
+			log.V(2).Info("Node has exceeded unneeded duration, including in scale-in plan",
+				"node", nodeName, "firstSeen", firstSeen, "unneededDuration", unneededDuration)
+			scaleInItems = append(scaleInItems, sacorev1alpha1.ScaleInItem{
+				NodeName: nodeName,
+				// TODO: not sure how to populate nodePlacement
+			})
+			// can there be any failure cases where we would want to keep this node in the memento for consideration in the next plan generation loop?
+			delete(d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes, nodeName)
+		} else {
+			log.V(3).Info("Node identified as unneeded but duration not yet exceeded",
+				"node", nodeName, "firstSeen", firstSeen, "elapsed", now.Sub(firstSeen), "required", unneededDuration)
+		}
+	}
+
+	return
 }
 
 // hasNonEvictablePod returns true if any pod in the slice has the SafeToEvict annotation set to "false".
