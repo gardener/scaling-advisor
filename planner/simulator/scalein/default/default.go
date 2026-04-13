@@ -142,8 +142,8 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 // getNextCandidate selects the next scale-in candidate node from the view based on the selection criteria:
 // - Not in skipNodes
 // - NodePool min count not reached
-// - Not annotated with scale-in disabled
-// - Does not have any pods with SafeToEvict=false
+// - Not annotated with `sa.gardener.cloud/scale-in-disabled`
+// - Does not have any pods with `sa.gardener.cloud/safe-to-evict=false`
 // - (TODO) Does not have pods that would violate PDBs
 // - (TODO) Meets utilization threshold requirements
 // Among the candidates that meet the criteria, those with the lowest priority (based on pool and template priority)
