@@ -78,7 +78,6 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 
 	// Initialize views and loop state.
 	simView := d.state.RequestView()
-	lastScaleInSuccessView := d.state.RequestView()
 	scaledInSuccessNodes := sets.New[string]()
 	skipNodes := sets.New[string]()
 
@@ -100,7 +99,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			}
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
-				// Compute ScaleInPlanResult.
+				// Compute ScaleInItems.
 				scaleInItems := d.computeScaleInItems(log, scaledInSuccessNodes)
 				scalein.SendPlanResult(d.state.Request, d.state.ResultCh, scaleInItems)
 			}
@@ -122,7 +121,6 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
 				scaledInSuccessNodes.Insert(candidateName)
 				simView = result.View
-				lastScaleInSuccessView = result.View
 			} else {
 				// There are pods that could not be rescheduled. Check if all of them have PDB disruptions allowed.
 				// Case B: PodsToReschedule all have PodDisruptionBudget.Status.DisruptionsAllowed > 0
@@ -131,12 +129,6 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				log.V(3).Info("Scale-in simulation failed for candidate (pods remain unscheduled)",
 					"node", candidateName, "podsToReschedule", len(result.PodsToReschedule))
 				skipNodes.Insert(candidateName)
-				simView = lastScaleInSuccessView
-			}
-
-			// Reset the simulation for the next candidate.
-			if err = scaleInSim.Reset(); err != nil {
-				return fmt.Errorf("failed to reset scale-in simulation: %w", err)
 			}
 		}
 	}
@@ -181,6 +173,7 @@ func (d *defaultSimulator) computeScaleInItems(log logr.Logger, scaledInSuccessN
 				NodeName: nodeName,
 				// TODO: not sure how to populate nodePlacement
 			})
+			// can there be any failure cases where we would want to keep this node in the memento for consideration in the next plan generation loop?
 			delete(d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes, nodeName)
 		} else {
 			log.V(3).Info("Node identified as unneeded but duration not yet exceeded",
