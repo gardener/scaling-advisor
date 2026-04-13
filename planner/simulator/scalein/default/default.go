@@ -100,7 +100,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
-				scaleInItems := d.computeScaleInItems(log, scaledInSuccessNodes)
+				scaleInItems := d.computeScaleInItems(ctx, scaledInSuccessNodes)
 				scalein.SendPlanResult(d.state.Request, d.state.ResultCh, scaleInItems)
 			}
 
@@ -246,7 +246,8 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 // computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
 // A node is only included in the plan if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration.
-func (d *defaultSimulator) computeScaleInItems(log logr.Logger, scaledInSuccessNodes sets.Set[string]) (scaleInItems []sacorev1alpha1.ScaleInItem) {
+func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSuccessNodes sets.Set[string]) (scaleInItems []sacorev1alpha1.ScaleInItem) {
+	log := logr.FromContextOrDiscard(ctx)
 	now := time.Now()
 	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
 
