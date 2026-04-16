@@ -16,6 +16,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/pricing"
+	"github.com/go-logr/logr"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -289,7 +290,7 @@ type NodeScorer interface {
 	Compute(args NodeScorerArgs) (NodeScore, error)
 	// Select selects the winning NodeScore amongst the NodeScores of a given simulation pass and returns the pointer to the same.
 	// If there is no winning node score amongst the group, then it returns nil.
-	Select(groupNodeScores []NodeScore) (winningNodeScore *NodeScore, err error)
+	Select(log logr.Logger, groupNodeScores []NodeScore) (winningNodeScore *NodeScore, err error)
 }
 
 // NodeScorerArgs contains arguments for node scoring computation.

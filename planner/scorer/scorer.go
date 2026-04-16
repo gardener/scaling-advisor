@@ -13,6 +13,7 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -73,20 +74,37 @@ func (l LeastCost) Compute(args plannerapi.NodeScorerArgs) (score plannerapi.Nod
 	return
 }
 
-// Select returns the index of the node score for the node with the highest allocatable resources.
+// Select returns the index of the winning node score. If there are multiple node scores with the same value,
+// the index of the node score with the largest allocatable resources among them is returned.
 // This has been done to bias the scorer to pick larger instance types when all other parameters are the same.
 // Larger instance types --> less fragmentation
 // if multiple node scores have instance types with the same allocatable, an index is picked at random from them
-func (l LeastCost) Select(nodeScores []plannerapi.NodeScore) (*plannerapi.NodeScore, error) {
+func (l LeastCost) Select(log logr.Logger, nodeScores []plannerapi.NodeScore) (*plannerapi.NodeScore, error) {
 	if len(nodeScores) == 0 {
 		return nil, plannerapi.ErrNoWinningNodeScore
 	}
 	if len(nodeScores) == 1 {
+		log.V(4).Info("Single node score, selected directly", "templateName", nodeScores[0].Placement.TemplateName, "instanceType", nodeScores[0].Placement.InstanceType)
 		return &nodeScores[0], nil
 	}
+
+	// first pass: collect indices of node scores with the highest value
+	var topValueIndices []int
+	maxValue := math.MinInt
+	for index, candidate := range nodeScores {
+		if maxValue == candidate.Value {
+			topValueIndices = append(topValueIndices, index)
+		} else if maxValue < candidate.Value {
+			topValueIndices = topValueIndices[:0]
+			topValueIndices = append(topValueIndices, index)
+			maxValue = candidate.Value
+		}
+	}
+	// second pass: among tied top-value scores, pick the one with the largest allocatable resources
 	var winnerIndices []int
 	maxNormalizedAlloc := 0.0
-	for index, candidate := range nodeScores {
+	for _, index := range topValueIndices {
+		candidate := nodeScores[index]
 		weights, err := l.resourceWeigher.GetWeights(candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
@@ -100,8 +118,11 @@ func (l LeastCost) Select(nodeScores []plannerapi.NodeScore) (*plannerapi.NodeSc
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
+	log.V(5).Info("First pass: top value scores", "numNodeScores", len(nodeScores), "numTopValueScores", len(topValueIndices), "maxValue", maxValue)
+	log.V(5).Info("Tie-break by allocatable", "numMaxAllocScores", len(winnerIndices), "maxNormalizedAlloc", maxNormalizedAlloc)
 	//pick one winner at random from winnerIndices
 	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
+	log.V(4).Info("Winner node score", "scoreValue", nodeScores[winnerIndices[randIndex]].Value, "templateName", nodeScores[winnerIndices[randIndex]].Placement.TemplateName, "instanceType", nodeScores[winnerIndices[randIndex]].Placement.InstanceType)
 	return &nodeScores[winnerIndices[randIndex]], nil
 }
 
@@ -174,34 +195,51 @@ func (l LeastWaste) Compute(args plannerapi.NodeScorerArgs) (nodeScore plannerap
 	return
 }
 
-// Select returns the index of the node score for the node with the lowest price.
-// If multiple node scores have instance types with the same price, an index is picked at random from them
-func (l LeastWaste) Select(nodeScores []plannerapi.NodeScore) (*plannerapi.NodeScore, error) {
+// Select returns the winning node score with the lowest wastage value. If there are multiple node scores with the same value,
+// the index of the node score with the cheapest instance type is returned.
+func (l LeastWaste) Select(log logr.Logger, nodeScores []plannerapi.NodeScore) (*plannerapi.NodeScore, error) {
 	if len(nodeScores) == 0 {
 		return nil, plannerapi.ErrNoWinningNodeScore
 	}
 	if len(nodeScores) == 1 {
+		log.V(4).Info("Single node score, selected directly", "templateName", nodeScores[0].Placement.TemplateName, "instanceType", nodeScores[0].Placement.InstanceType)
 		return &nodeScores[0], nil
 	}
+	// first pass: collect indices of node scores with the lowest value
+	var leastValueIndices []int
+	minValue := math.MaxInt
+	for index, candidate := range nodeScores {
+		if minValue == candidate.Value {
+			leastValueIndices = append(leastValueIndices, index)
+		} else if minValue > candidate.Value {
+			leastValueIndices = leastValueIndices[:0]
+			leastValueIndices = append(leastValueIndices, index)
+			minValue = candidate.Value
+		}
+	}
+	log.V(5).Info("First pass: least waste scores", "numNodeScores", len(nodeScores), "numLeastWasteScores", len(leastValueIndices), "minWaste", minValue)
+	// second pass: among tied top-value scores, pick the one with the cheapest instance type
 	var winnerIndices []int
 	leastPrice := math.MaxFloat64
-	for index, candidate := range nodeScores {
-		info, err := l.pricingAccess.GetInfo(candidate.Placement.Region, candidate.Placement.InstanceType)
+	for _, candidate := range leastValueIndices {
+		info, err := l.pricingAccess.GetInfo(nodeScores[candidate].Placement.Region, nodeScores[candidate].Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
 		price := info.HourlyPrice
 		if leastPrice == price {
-			winnerIndices = append(winnerIndices, index)
+			winnerIndices = append(winnerIndices, candidate)
 		} else if leastPrice > price {
 			winnerIndices = winnerIndices[:0]
-			winnerIndices = append(winnerIndices, index)
+			winnerIndices = append(winnerIndices, candidate)
 			leastPrice = price
 		}
 	}
+	log.V(5).Info("Tie-break by price", "numMinPriceScores", len(winnerIndices), "leastPrice", leastPrice)
 	//pick one winner at random from winnerIndices
 	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
-	return &nodeScores[randIndex], nil
+	log.V(4).Info("Winner node score", "scoreValue", nodeScores[winnerIndices[randIndex]].Value, "templateName", nodeScores[winnerIndices[randIndex]].Placement.TemplateName, "instanceType", nodeScores[winnerIndices[randIndex]].Placement.InstanceType, "price", leastPrice)
+	return &nodeScores[winnerIndices[randIndex]], nil
 }
 
 // getNormalizedResourceUnits returns the aggregated sum of the resources in terms of normalized resource units
