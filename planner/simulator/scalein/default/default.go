@@ -1,4 +1,4 @@
-package scaleinSimulator
+package defaultSimulator
 
 import (
 	"context"
@@ -11,30 +11,37 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/drainutil"
+	"github.com/gardener/scaling-advisor/planner/pdb"
+	defaultpdb "github.com/gardener/scaling-advisor/planner/pdb/default"
 	"github.com/gardener/scaling-advisor/planner/simulator/scalein"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 var _ plannerapi.ScaleInSimulator = (*defaultSimulator)(nil)
 
 type defaultSimulator struct {
-	viewAccess             minkapi.ViewAccess
-	schedulerLauncher      plannerapi.SchedulerLauncher
-	traceDir               string
-	state                  scalein.RequestState
-	scaleInSimulatorConfig plannerapi.ScaleInSimulatorConfig
+	viewAccess               minkapi.ViewAccess
+	schedulerLauncher        plannerapi.SchedulerLauncher
+	traceDir                 string
+	state                    scalein.RequestState
+	scaleInCandidateSelector plannerapi.ScaleInCandidateSelector
+	scaleInSimulatorConfig   plannerapi.ScaleInSimulatorConfig
 }
 
 // New creates a new [plannerapi.ScaleInSimulator] that runs simulations for scale-in nodes.
-func New(args plannerapi.SimulatorArgs, scaleInConfig plannerapi.ScaleInSimulatorConfig, candidateSelector plannerapi.ScaleInCandidateSelector) (plannerapi.ScaleInSimulator, error) {
+func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleInSimulator, error) {
 	return &defaultSimulator{
-		scaleInSimulatorConfig: scaleInConfig,
-		viewAccess:             args.ViewAccess,
-		schedulerLauncher:      args.SchedulerLauncher,
-		traceDir:               args.TraceDir,
+		scaleInSimulatorConfig:   args.ScaleInSimulatorConfig,
+		scaleInCandidateSelector: args.ScaleInCandidateSelector,
+		viewAccess:               args.ViewAccess,
+		schedulerLauncher:        args.SchedulerLauncher,
+		traceDir:                 args.TraceDir,
 	}, nil
 }
 
@@ -72,6 +79,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 		RunCounter:        d.state.SimRunCounter,
 		Name:              "scalein-sim",
 		Config:            d.scaleInSimulatorConfig,
+		CandidateSelector: d.scaleInCandidateSelector,
 	}
 	scaleInSim, err := d.state.SimulationFactory.NewScaleIn(simArgs)
 	if err != nil {
@@ -80,8 +88,14 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 
 	// Initialize views and loop state.
 	simView := d.state.RequestView()
-	scaledInSuccessNodes := sets.New[string]()
+	scaledInSuccessNodes := map[string]sacorev1alpha1.ScaleInItem{}
 	skipNodes := sets.New[string]()
+
+	// Initialize PDB tracker.
+	pdbTracker, err := initPdbTracker(ctx, simView)
+	if err != nil {
+		return err
+	}
 
 	// Begin candidate selection loop.
 	for {
@@ -90,12 +104,18 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			return ctx.Err()
 		default:
 			// Select the next scale-in candidate.
-			nextCandidate, err := getNextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
+			nextCandidate, err := scaleInSim.NextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
 				Constraint: d.state.Request.Constraint.Spec, // FIXME: pass actual constraint
 				View:       simView,
 				RequestRef: d.state.Request.GetRef(),
-				SkipNodes:  skipNodes,
-			})
+				PDBTracker: pdbTracker,
+			}, &skipNodes)
+			// nextCandidate, err := getNextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
+			// 	Constraint: d.state.Request.Constraint.Spec, // FIXME: pass actual constraint
+			// 	View:       simView,
+			// 	RequestRef: d.state.Request.GetRef(),
+			// 	PDBTracker: pdbTracker,
+			// }, &skipNodes)
 			if err != nil {
 				return fmt.Errorf("failed to select scale-in candidate: %w", err)
 			}
@@ -103,7 +123,10 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
-				scaleInItems := d.computeScaleInItems(ctx, scaledInSuccessNodes)
+				scaleInItems, err := d.computeScaleInItems(ctx, scaledInSuccessNodes)
+				if err != nil {
+					return fmt.Errorf("failed to compute scale-in items: %w", err)
+				}
 				scalein.SendPlanResult(d.state.Request, d.state.ResultCh, scaleInItems)
 			}
 
@@ -119,22 +142,24 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				return fmt.Errorf("%w: failed to get result for node %q: %w", plannerapi.ErrRunSimulation, candidateName, err)
 			}
 
-			// If the simulation result contains zero pods to reschedule, we consider the scale-in successful for this candidate
-			// and add it to the set of scaled-in nodes.
-			if len(result.PodsToReschedule) == 0 {
-				// Case A: All pods from scaled-in node were successfully rescheduled.
-				log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
-				scaledInSuccessNodes.Insert(candidateName)
-				simView = result.View
-			} else {
-				// There are pods that could not be rescheduled. Check if all of them have PDB disruptions allowed.
-				// Case B: PodsToReschedule all have PodDisruptionBudget.Status.DisruptionsAllowed > 0
-				// This is a placeholder — PDB checking logic is deferred until PDB tracking infra is available.
-				// For now, treat any remaining pods as a scale-in failure for this candidate.
-				log.V(3).Info("Scale-in simulation failed for candidate (pods remain unscheduled)",
-					"node", candidateName, "podsToReschedule", len(result.PodsToReschedule))
-				skipNodes.Insert(candidateName)
-			}
+			// // If the simulation result contains zero pods to reschedule, we consider the scale-in successful for this candidate
+			// // and add it to the set of scaled-in nodes.
+			// if len(result.PodsToReschedule) == 0 {
+			// 	// Case A: All pods from scaled-in node were successfully rescheduled.
+			// 	log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
+			// 	scaledInSuccessNodes.Insert(candidateName)
+			// 	simView = result.View
+			// } else {
+			// 	// There are pods that could not be rescheduled. Check if all of them have PDB disruptions allowed.
+			// 	// Case B: PodsToReschedule all have PodDisruptionBudget.Status.DisruptionsAllowed > 0
+			// 	// This is a placeholder — PDB checking logic is deferred until PDB tracking infra is available.
+			// 	// For now, treat any remaining pods as a scale-in failure for this candidate.
+			// 	log.V(3).Info("Scale-in simulation failed for candidate (pods remain unscheduled)",
+			// 		"node", candidateName, "podsToReschedule", len(result.PodsToReschedule))
+			// 	skipNodes.Insert(candidateName)
+			// }
+			// result.Items is expected to contain exactly one item for the candidate node if the simulation was successful for that node, and be empty if the simulation failed to scale in that node.
+			scaledInSuccessNodes[candidateName] = result.Items[0]
 		}
 	}
 }
@@ -144,11 +169,11 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 // - NodePool min count not reached
 // - Not annotated with `sa.gardener.cloud/scale-in-disabled`
 // - Does not have any pods with `sa.gardener.cloud/safe-to-evict=false`
-// - (TODO) Does not have pods that would violate PDBs
+// - Does not have pods that would violate PodDisruptionBudgets
 // - (TODO) Meets utilization threshold requirements
 // Among the candidates that meet the criteria, those with the lowest priority (based on pool and template priority)
 // are selected, and one is randomly returned from that set.
-func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs) (*corev1.Node, error) {
+func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// Get all nodes from the view.
@@ -161,9 +186,9 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 	}
 
 	// Build a pool name -> NodePool lookup from the constraint.
-	poolByName := make(map[string]sacorev1alpha1.NodePool, len(args.Constraint.NodePools))
+	poolByName := make(map[string]*sacorev1alpha1.NodePool, len(args.Constraint.NodePools))
 	for _, pool := range args.Constraint.NodePools {
-		poolByName[pool.Name] = pool
+		poolByName[pool.Name] = &pool
 	}
 
 	// Count nodes per pool (before any filtering) for the Min check.
@@ -179,22 +204,22 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 	// Build a map of node name -> pods assigned to that node.
-	podsByNode := make(map[string][]corev1.Pod)
+	podsByNode := make(map[string][]*corev1.Pod)
 	for i := range allPods {
 		nodeName := allPods[i].Spec.NodeName
 		if nodeName != "" {
-			podsByNode[nodeName] = append(podsByNode[nodeName], allPods[i])
+			podsByNode[nodeName] = append(podsByNode[nodeName], &allPods[i])
 		}
 	}
 
 	// Filter candidates.
 	var candidates []corev1.Node
-	for i, node := range nodes {
+	for _, node := range nodes {
 		nodeName := node.Name
 		poolName := node.Labels[commonconstants.LabelNodePoolName]
 
 		// Skip if in skipNodes.
-		if args.SkipNodes.Has(nodeName) {
+		if skipNodes.Has(nodeName) {
 			continue
 		}
 
@@ -203,6 +228,7 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 			if nodesPerPool[poolName] <= pool.Min {
 				log.V(5).Info("Skipping node: pool has reached minimum node count",
 					"node", nodeName, "pool", poolName, "min", pool.Min, "current", nodesPerPool[poolName])
+				skipNodes.Insert(nodeName)
 				continue
 			}
 		}
@@ -210,20 +236,33 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 		// Skip if node is marked with ScaleInDisabledKey.
 		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabledKey]; disabled {
 			log.V(5).Info("Skipping node: scale-in disabled via annotation", "node", nodeName)
+			skipNodes.Insert(nodeName)
 			continue
 		}
 
-		// Skip if node has pods with SafeToEvict = "false".
-		if hasNonEvictablePod(podsByNode[nodeName]) {
-			log.V(5).Info("Skipping node: has pods with safe-to-evict=false", "node", nodeName)
+		// Skip if node has pods with `sa.gardener.cloud/safe-to-evict` = "false".
+		if drainutil.HasNonEvictablePod(podsByNode[nodeName]) {
+			log.V(5).Info("Skipping node: has pods with `sa.gardener.cloud/safe-to-evict=false`", "node", nodeName)
+			skipNodes.Insert(nodeName)
 			continue
 		}
 
-		// TODO: Skip nodes with pods that have disrupted PodDisruptionBudgets (requires PDBTracker implementation).
+		// Skip if node has pods with disrupted PodDisruptionBudgets.
+		if args.PDBTracker != nil {
+			nodePods := podsByNode[nodeName]
+			if len(nodePods) > 0 {
+				if canRemove, blockingPod := args.PDBTracker.CanRemovePods(nodePods); !canRemove {
+					log.V(5).Info("Skipping node: has pods with disrupted PodDisruptionBudgets",
+						"node", nodeName, "blockingPod", blockingPod.Pod.Name)
+					skipNodes.Insert(nodeName)
+					continue
+				}
+			}
+		}
 
 		// TODO: Check node utilization against UtilizationThresholds via NodeUtilizationCalculator.
 
-		candidates = append(candidates, nodes[i])
+		candidates = append(candidates, node)
 	}
 
 	if len(candidates) == 0 {
@@ -260,7 +299,7 @@ func getNextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs)
 // computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
 // A node is only included in the plan if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration.
-func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSuccessNodes sets.Set[string]) (scaleInItems []sacorev1alpha1.ScaleInItem) {
+func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSuccessNodes map[string]sacorev1alpha1.ScaleInItem) ([]sacorev1alpha1.ScaleInItem, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	now := time.Now()
 	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
@@ -281,7 +320,8 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSucc
 
 	// Update the memento with the currently identified unneeded nodes and determine which
 	// nodes have exceeded the unneeded duration.
-	for nodeName := range scaledInSuccessNodes {
+	var scaleInItems []sacorev1alpha1.ScaleInItem
+	for nodeName, scaleInItem := range scaledInSuccessNodes {
 		firstSeen, exists := d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes[nodeName]
 		if !exists {
 			// First time this node was identified as unneeded; record the timestamp but do not include in plan yet.
@@ -293,10 +333,7 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSucc
 		if now.Sub(firstSeen) >= unneededDuration {
 			log.V(2).Info("Node has exceeded unneeded duration, including in scale-in plan",
 				"node", nodeName, "firstSeen", firstSeen, "unneededDuration", unneededDuration)
-			scaleInItems = append(scaleInItems, sacorev1alpha1.ScaleInItem{
-				NodeName: nodeName,
-				// TODO: not sure how to populate nodePlacement
-			})
+			scaleInItems = append(scaleInItems, scaleInItem)
 			// can there be any failure case where we would want to keep this node in the memento for consideration in the next plan generation loop?
 			delete(d.state.Request.Memento.ScaleIn.LastIdentifiedUnneededNodes, nodeName)
 		} else {
@@ -305,21 +342,11 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, scaledInSucc
 		}
 	}
 
-	return
-}
-
-// hasNonEvictablePod returns true if any pod in the slice has the SafeToEvict annotation set to "false".
-func hasNonEvictablePod(pods []corev1.Pod) bool {
-	for i := range pods {
-		if val, ok := pods[i].Annotations[commonconstants.AnnotationSafeToEvict]; ok && val == "false" {
-			return true
-		}
-	}
-	return false
+	return scaleInItems, nil
 }
 
 // getNodePriorityKey returns the PriorityKey for a node by looking up its pool and template in the constraint.
-func getNodePriorityKey(node corev1.Node, poolByName map[string]sacorev1alpha1.NodePool) commontypes.PriorityKey {
+func getNodePriorityKey(node corev1.Node, poolByName map[string]*sacorev1alpha1.NodePool) commontypes.PriorityKey {
 	poolName := node.Labels[commonconstants.LabelNodePoolName]
 	pool, ok := poolByName[poolName]
 	if !ok {
@@ -332,4 +359,25 @@ func getNodePriorityKey(node corev1.Node, poolByName map[string]sacorev1alpha1.N
 		}
 	}
 	return commontypes.PriorityKey{First: pool.Priority}
+}
+
+// initPdbTracker creates a RemainingPdbTracker and populates it with PDBs from the given view.
+func initPdbTracker(ctx context.Context, view minkapi.View) (pdb.RemainingPdbTracker, error) {
+	pdbListObj, err := view.ListObjects(ctx, typeinfo.PodDisruptionBudgetDescriptor.GVK, minkapi.MatchAllCriteria)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PodDisruptionBudgets: %w", err)
+	}
+	pdbList, ok := pdbListObj.(*policyv1.PodDisruptionBudgetList)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for PodDisruptionBudget list: %T", pdbListObj)
+	}
+	pdbPtrs := make([]*policyv1.PodDisruptionBudget, len(pdbList.Items))
+	for i := range pdbList.Items {
+		pdbPtrs[i] = &pdbList.Items[i]
+	}
+	tracker := defaultpdb.NewDefaultRemainingPdbTracker()
+	if err = tracker.SetPdbs(pdbPtrs); err != nil {
+		return nil, fmt.Errorf("failed to set PDBs on tracker: %w", err)
+	}
+	return tracker, nil
 }
