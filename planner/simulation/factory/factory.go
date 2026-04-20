@@ -6,6 +6,7 @@
 package factory
 
 import (
+	"github.com/gardener/scaling-advisor/planner/simulation/scalein"
 	"github.com/gardener/scaling-advisor/planner/simulation/scaleout"
 
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -21,8 +22,7 @@ func New() plannerapi.SimulationFactory {
 type defaultFactory struct{}
 
 func (s *defaultFactory) NewScaleIn(args plannerapi.ScaleInSimArgs) (plannerapi.ScaleInSimulation, error) {
-	//TODO implement me
-	panic("implement me")
+	return scalein.NewDefault(args)
 }
 
 func (s *defaultFactory) NewScaleOut(args plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation, error) {

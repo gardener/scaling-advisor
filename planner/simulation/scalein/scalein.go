@@ -12,6 +12,8 @@ import (
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 var _ plannerapi.ScaleInSimulation = (*defaultSimulation)(nil)
@@ -184,6 +186,10 @@ func (d *defaultSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	}
 	result := d.result
 	return result, nil
+}
+
+func (d *defaultSimulation) NextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error) {
+	return d.args.CandidateSelector.NextCandidate(ctx, args, skipNodes)
 }
 
 func validateSimArgs(args *plannerapi.ScaleInSimArgs) error {

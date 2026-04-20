@@ -49,6 +49,7 @@ type RequestRef struct {
 
 // Request represents a request to the scaling planner to generate a scaling plan.
 type Request struct {
+	// TODO: add planner strategy - scale-in before scale-out, scale-out before scale-in, or independent scale-in/scale-out planning
 	// CreationTime is the time at which request was created
 	CreationTime time.Time `json:"creationTime,omitzero"`
 	// Constraint represents the constraints using which the scaling advice is generated.
@@ -465,6 +466,9 @@ type ScalingPlannerArgs struct {
 	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
 	SimulatorConfig SimulatorConfig
+	// ScaleInSimulatorConfig holds the configuration for the scale-in simulator.
+	ScaleInSimulatorConfig   ScaleInSimulatorConfig
+	ScaleInCandidateSelector ScaleInCandidateSelector
 }
 
 // ScalingPlanResult encapsulates the result of a scaling plan generation.
@@ -532,6 +536,10 @@ type SimulationFactory interface {
 	NewScaleIn(args ScaleInSimArgs) (ScaleInSimulation, error)
 }
 
+type ScaleInCandidateSelectorFactory interface {
+	NewScaleInCandidateSelector(args ScaleInCandidateSelectorArgs) (ScaleInCandidateSelector, error)
+}
+
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
 // Not all the fields may be necessary for constructing a specific simulator implementation.
 type SimulatorArgs struct {
@@ -549,6 +557,10 @@ type SimulatorArgs struct {
 	TraceDir string
 	// Config holds the static simulator config parameters
 	Config SimulatorConfig
+	// ScaleInSimulatorConfig holds the static scale-in simulator config parameters. This is needed as an argument for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
+	ScaleInSimulatorConfig ScaleInSimulatorConfig
+	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
+	ScaleInCandidateSelector ScaleInCandidateSelector
 }
 
 // ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
@@ -576,10 +588,11 @@ type ScalingPlannerServiceConfig struct {
 
 // Factories is a struct that holds all planner factories.
 type Factories struct {
-	Planner         ScalingPlannerFactory
-	Simulator       SimulatorFactory
-	Simulation      SimulationFactory
-	ResourceWeigher ResourceWeigher
+	Planner                  ScalingPlannerFactory
+	Simulator                SimulatorFactory
+	Simulation               SimulationFactory
+	ScaleInCandidateSelector ScaleInCandidateSelectorFactory
+	ResourceWeigher          ResourceWeigher
 }
 
 // Memento is an encapsulation of partial details of a completed simulation that can be used by subsequent simulations to optimize their execution.

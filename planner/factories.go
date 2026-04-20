@@ -15,9 +15,11 @@ var (
 // NewFactories returns an instance of plannerapi.Factories populated with implementation of factory facades.
 func NewFactories() plannerapi.Factories {
 	return plannerapi.Factories{
-		Planner:         &defaultFactory{},
-		Simulator:       simulatorfactory.New(),
-		Simulation:      simulationfactory.New(),
+		Planner:                  &defaultFactory{},
+		Simulator:                simulatorfactory.New(),
+		Simulation:               simulationfactory.New(),
+		ScaleInCandidateSelector: scaleInCandidateSelectorFactory.New(),
+		// TODO: add ScaleInCandidateSelector and NodeUtilizationCalculator. ScaleInCandidateSelector will have NodeUtilizationCalculator embedded in it.
 		ResourceWeigher: weigher.New(),
 	}
 }

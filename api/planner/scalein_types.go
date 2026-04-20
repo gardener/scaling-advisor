@@ -9,21 +9,23 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/planner/pdb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // ScaleInCandidateArgs encapsulates the arguments needed to select a candidate for scale in.
 type ScaleInCandidateArgs struct {
-	Constraint sacorev1alpha1.ScalingConstraintSpec
-	View       minkapi.View
-	RequestRef RequestRef
-	SkipNodes  sets.Set[string]
+	Constraint        sacorev1alpha1.ScalingConstraintSpec
+	View              minkapi.View
+	RequestRef        RequestRef
+	PDBTracker        pdb.RemainingPdbTracker
+	CandidateSelector ScaleInCandidateSelector
 }
 
 // ScaleInCandidateSelector is the interface meant to select the next viable candidate for scale in by interrogating the nodes from the [minkapi.View]
 type ScaleInCandidateSelector interface {
-	NextCandidate(ctx context.Context, args ScaleInCandidateArgs) (*corev1.Node, error)
+	NextCandidate(ctx context.Context, args ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error)
 }
 
 // NodeUtilizationCalculator is the interface meant to calculate the utilization of a node having the given node name in the [minkapi.View]
@@ -57,6 +59,7 @@ func (nu NodeUtilization) BelowUtilizationThreshold(watermark NodeUtilization) b
 
 // ScaleInSimArgs represents the arguments necessary for creating a [ScaleInSimulation] instance.
 type ScaleInSimArgs struct {
+	// TODO: add nodeutilizationcalculator.
 	// SchedulerLauncher is used to launch scheduler instances for the simulation.
 	SchedulerLauncher SchedulerLauncher
 	// RunCounter is an atomic counter for tracking simulation runs.
@@ -67,6 +70,8 @@ type ScaleInSimArgs struct {
 	Config ScaleInSimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
+	// CandidateSelector is used to select scale-in candidate nodes for the simulation.
+	CandidateSelector ScaleInCandidateSelector
 }
 
 // ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node
@@ -86,7 +91,11 @@ type ScaleInSimulation interface {
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
 	Result() (ScaleInSimRunResult, error)
+	// Selects the next Candidate for processing
+	NextCandidate(ctx context.Context, args ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error)
 }
+
+type ScaleInCandidateSelectorArgs struct{}
 
 // ScaleInSimRunResult encapsulated the result of a completed [ScaleInSimulation]
 type ScaleInSimRunResult struct {
@@ -121,6 +130,7 @@ type ScaleInMemento struct {
 
 // ScaleInPlanResult represents a result from the ScaleInSimulator.Simulate
 type ScaleInPlanResult struct {
+	// TODO: have the view returned here to be used in the next simulation
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
 	// No further responses will be sent for the associated request.
 	Error error `json:"error,omitempty"`
