@@ -8,31 +8,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 
-	bench "github.com/gardener/scaling-advisor/bench/cmd"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	sigyaml "sigs.k8s.io/yaml"
 )
 
-var _ execScaler = (*caExec)(nil)
+var _ ExecScaler = (*caExec)(nil)
 
 type caExec struct{}
 
-const caKwokTemplatePath = "templates/kwok-ca-tmpl.yaml"
+const (
+	caKwokTemplatePath       = "templates/kwok-ca-tmpl.yaml"
+	caKwokProviderConfigPath = "templates/ca-kwok-provider-config.yaml"
+)
 
 func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) (err error) {
-	caKwokCfgFile := path.Join(scenarioDir, bench.FileNameCAKwokProviderConfig)
-	if err = deployConfigMap(ctx, cfg, caKwokCfgFile); err != nil {
+	caKwokCfgData, err := content.ReadFile(caKwokProviderConfigPath)
+	if err != nil {
 		return
 	}
-
-	templateFilePath := path.Join(scenarioDir, bench.FileNameCAKwokProviderTemplate)
-	if err = deployConfigMap(ctx, cfg, templateFilePath); err != nil {
+	var cfgMap corev1.ConfigMap
+	if err = sigyaml.Unmarshal(caKwokCfgData, &cfgMap); err != nil {
 		return
+	}
+	if err := cfg.Client().Resources().Create(ctx, &cfgMap); err != nil {
+		return fmt.Errorf("failed to create %s: %w", cfgMap.Name, err)
+	}
+
+	templateFilePath := path.Join(scenarioDir, benchutil.FileNameCAKwokProviderTemplate)
+	configMap, err := benchutil.LoadYAMLFromFile[corev1.ConfigMap](templateFilePath)
+	if err != nil {
+		return fmt.Errorf("cannot load %q: %w", templateFilePath, err)
+	}
+	if err := cfg.Client().Resources().Create(ctx, &configMap); err != nil {
+		return fmt.Errorf("failed to create %s: %w", configMap.Name, err)
 	}
 
 	return
@@ -48,35 +62,13 @@ func (cae *caExec) GetScalerKWOKTemplatePath() string {
 
 func (cae *caExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:%s", scalerVersion)
-	if exists := bench.CheckIfImageExists(imageName); !exists {
+	if exists := benchutil.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
 	}
 
-	caKwokCfgFile := path.Join(scenarioDir, bench.FileNameCAKwokProviderConfig)
-	templateFilePath := path.Join(scenarioDir, bench.FileNameCAKwokProviderTemplate)
-
-	for _, filePath := range []string{caKwokCfgFile, templateFilePath} {
-		if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("required file %q not found", filePath)
-		}
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-func deployConfigMap(ctx context.Context, cfg *envconf.Config, filePath string) error {
-	log.Printf("Deploying %q...\n", filePath)
-
-	configMap, err := bench.LoadYAMLFromFile[corev1.ConfigMap](filePath)
-	if err != nil {
-		return fmt.Errorf("cannot load %q: %w", filePath, err)
-	}
-
-	if err := cfg.Client().Resources().Create(ctx, &configMap); err != nil {
-		return fmt.Errorf("failed to create %s: %w", configMap.Name, err)
+	templateFilePath := path.Join(scenarioDir, benchutil.FileNameCAKwokProviderTemplate)
+	if _, err := os.Stat(templateFilePath); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("required file %q not found", templateFilePath)
 	}
 	return nil
 }

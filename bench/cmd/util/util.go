@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package bench
+package benchutil
 
 import (
 	"archive/zip"
@@ -13,12 +13,34 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	sigyaml "sigs.k8s.io/yaml"
+)
+
+const (
+	// ScalerClusterAutoscaler specifies that the scaler being invoked is CA
+	ScalerClusterAutoscaler = "cluster-autoscaler"
+	// ScalerKarpenter specifies that the scaler being invoked is karpenter
+	ScalerKarpenter = "karpenter"
+
+	// FileNameCAKwokProviderTemplate is the filename used for storing CA kwok provider node templates
+	FileNameCAKwokProviderTemplate = "ca-kwok-provider-template.yaml"
+
+	// FileNameKarpenterInstanceTypes is the filename used for storing all instance types
+	FileNameKarpenterInstanceTypes = "instance_types.json"
+	// FileNameKarpenterNodePools is used for storing the NodePools deployed during harness execution
+	FileNameKarpenterNodePools = "node_pools.yaml"
+	// FileNameKarpenterNodeClasses is used for storing the KWOKNodeClasses
+	FileNameKarpenterNodeClasses = "node_classes.yaml"
+
+	caReleaseAssetsPrefix        = "https://github.com/kubernetes/autoscaler/"
+	karpenterReleaseAssetsPrefix = "https://github.com/kubernetes-sigs/karpenter/"
 )
 
 var (
@@ -26,11 +48,6 @@ var (
 	versionPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$`)
 	// Matches Git commit SHA (40 character hex string)
 	commitPattern = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
-)
-
-const (
-	caReleaseAssetsPrefix        = "https://github.com/kubernetes/autoscaler/"
-	karpenterReleaseAssetsPrefix = "https://github.com/kubernetes-sigs/karpenter/"
 )
 
 // LoadJSONFromFile reads the file at filePath and unmarshals its contents as JSON
@@ -124,14 +141,30 @@ func GetAssets(ctx context.Context, version, scaler, dataDir string) (unzippedPa
 	return
 }
 
+// SetupSignalHandler returns a context that can be cancelled on demand
+func SetupSignalHandler() context.Context {
+	quit := make(chan os.Signal, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-quit
+		cancel()
+		<-quit
+		os.Exit(1)
+	}()
+	return ctx
+}
+
 func downloadAssets(ctx context.Context, filepath, url, version string) error {
+	// Unless the version is "master/main", try to check if the required
+	// version assets are already present. If so, no need of fetching them again.
 	if version != "master" && version != "main" {
 		if _, err := os.Stat(filepath); err == nil {
 			fmt.Printf("File %q already exists\n", filepath)
 			return nil
 		}
 	}
-	out, err := os.Create(filepath) // Check if existing
+	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
@@ -156,30 +189,31 @@ func downloadAssets(ctx context.Context, filepath, url, version string) error {
 	return err
 }
 
-func unzipSource(source, destination string) (string, error) {
+func unzipSource(source, destination string) (path string, err error) {
 	reader, err := zip.OpenReader(source)
 	if err != nil {
-		return "", err
+		return
 	}
 	defer reader.Close()
 
 	destination, err = filepath.Abs(destination)
 	if err != nil {
-		return "", err
+		return
 	}
 
 	for _, f := range reader.File {
 		err = unzipFile(f, destination)
 		if err != nil {
-			return "", err
+			return
 		}
 	}
 
 	if reader.File[0] != nil {
-		return reader.File[0].Name, nil
-	} else {
-		return "", nil
+		path = reader.File[0].Name
+		return
 	}
+
+	return
 }
 
 func unzipFile(f *zip.File, destination string) error {

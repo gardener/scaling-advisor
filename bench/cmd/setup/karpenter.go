@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	bench "github.com/gardener/scaling-advisor/bench/cmd"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
@@ -38,19 +38,19 @@ import (
 var _ SetupScaler = (*karpenterSetup)(nil)
 
 // karpenterSetup holds the karpenter-specific configuration that is not shared
-// with other scalers. The pricingFile field is set by getScaler in setup.go so
-// that GenerateKwokData never has to reach for a package-level variable.
+// with other scalers. Currently it only needs the path to the pricing data.
 type karpenterSetup struct {
 	pricingFile string
 }
 
+// BuildScaler downloads the specified karpenter version, builds it and loads the image into docker.
 func (ks *karpenterSetup) BuildScaler(ctx context.Context, version string) error {
 	imageName := fmt.Sprintf("karpenter.local/kwok:%s", version)
-	if exists := bench.CheckIfImageExists(imageName); exists {
+	if exists := benchutil.CheckIfImageExists(imageName); exists {
 		return nil
 	}
 
-	unzippedPath, err := bench.GetAssets(ctx, version, bench.ScalerKarpenter, os.TempDir())
+	unzippedPath, err := benchutil.GetAssets(ctx, version, benchutil.ScalerKarpenter, os.TempDir())
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (ks *karpenterSetup) BuildScaler(ctx context.Context, version string) error
 		return err
 	}
 
-	return importKarpenterImage(binPath, imageName)
+	return importKarpenterImage(ctx, binPath, imageName)
 }
 
 // GenerateKwokData reads the scaling constraints and pricing information to
@@ -78,12 +78,12 @@ func (ks *karpenterSetup) GenerateKwokData(_ context.Context, constraintsFile, o
 		return fmt.Errorf("error parsing pricing data for karpenter: %v", err)
 	}
 
-	constraint, err := bench.LoadJSONFromFile[sacorev1alpha1.ScalingConstraint](constraintsFile)
+	constraint, err := benchutil.LoadJSONFromFile[sacorev1alpha1.ScalingConstraint](constraintsFile)
 	if err != nil {
 		return fmt.Errorf("cannot load scaling constraint: %v", err)
 	}
 
-	if err := constructKwokNodePools(constraint.Spec.NodePools, outputDir); err != nil {
+	if err := constructNodePoolsAndClasses(constraint.Spec.NodePools, outputDir); err != nil {
 		return fmt.Errorf("cannot construct karpenter node pools: %v", err)
 	}
 	if err := constructKwokInstanceTypes(constraint, pricingData, outputDir); err != nil {
@@ -112,12 +112,12 @@ func buildKarpenterBinary(ctx context.Context, sourceDir string) (string, error)
 
 // importKarpenterImage creates a minimal Docker image from the compiled binary
 // by piping a tar.gz archive into `docker import`.
-func importKarpenterImage(binPath, imageName string) error {
-	dockerImport := exec.Command("docker", "import", "--change", `ENTRYPOINT ["/kwok-bin"]`, "-", imageName)
+func importKarpenterImage(ctx context.Context, binPath, imageName string) error {
+	dockerImport := exec.CommandContext(ctx, "docker", "import", "--change", `ENTRYPOINT ["/kwok-bin"]`, "-", imageName)
 	dockerImport.Stdout = os.Stdout
 	dockerImport.Stderr = os.Stderr
 
-	pw, err := dockerImport.StdinPipe()
+	pipeWriter, err := dockerImport.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdin pipe for docker import: %w", err)
 	}
@@ -127,9 +127,9 @@ func importKarpenterImage(binPath, imageName string) error {
 	}
 
 	// Write tar.gz stream into the pipe.
-	tarErr := writeTarGz(pw, binPath)
+	tarErr := writeTarGz(pipeWriter, binPath)
 	// Always close the pipe so docker import sees EOF, even on error.
-	_ = pw.Close()
+	_ = pipeWriter.Close()
 
 	if tarErr != nil {
 		// Wait for docker import to finish to avoid zombies, but return the
@@ -143,9 +143,9 @@ func importKarpenterImage(binPath, imageName string) error {
 	return nil
 }
 
-// constructKwokNodePools builds the Karpenter NodePool and KWOKNodeClass lists
+// constructNodePoolsAndNodeClasses builds the Karpenter NodePool and KWOKNodeClass lists
 // from the scaling-advisor node pool definitions and writes them to outputDir.
-func constructKwokNodePools(nodePools []sacorev1alpha1.NodePool, outputDir string) error {
+func constructNodePoolsAndClasses(nodePools []sacorev1alpha1.NodePool, outputDir string) error {
 	var karpenterNodePools karpenterv1.NodePoolList
 	karpenterNodePools.SetGroupVersionKind(schema.GroupVersion{
 		Group: karpenterapis.Group, Version: "v1",
@@ -162,14 +162,14 @@ func constructKwokNodePools(nodePools []sacorev1alpha1.NodePool, outputDir strin
 		kwokNodeClasses.Items = append(kwokNodeClasses.Items, class)
 	}
 
-	poolsPath := path.Join(outputDir, bench.FileNameKarpenterNodePools)
-	if err := bench.SaveYamlToFile(&karpenterNodePools, poolsPath); err != nil {
+	poolsPath := path.Join(outputDir, benchutil.FileNameKarpenterNodePools)
+	if err := benchutil.SaveYamlToFile(&karpenterNodePools, poolsPath); err != nil {
 		return fmt.Errorf("cannot save karpenter node pools: %v", err)
 	}
 	fmt.Printf("Saved karpenter node pools to %q\n", poolsPath)
 
-	classesPath := path.Join(outputDir, bench.FileNameKarpenterNodeClasses)
-	if err := bench.SaveYamlToFile(&kwokNodeClasses, classesPath); err != nil {
+	classesPath := path.Join(outputDir, benchutil.FileNameKarpenterNodeClasses)
+	if err := benchutil.SaveYamlToFile(&kwokNodeClasses, classesPath); err != nil {
 		return fmt.Errorf("cannot save karpenter node classes: %v", err)
 	}
 	fmt.Printf("Saved karpenter node classes to %q\n", classesPath)
@@ -179,10 +179,12 @@ func constructKwokNodePools(nodePools []sacorev1alpha1.NodePool, outputDir strin
 
 // buildNodePoolAndClass translates a single scaling-advisor NodePool into the
 // corresponding Karpenter NodePool and KWOKNodeClass pair.
-func buildNodePoolAndClass(nodePool sacorev1alpha1.NodePool) (karpenterv1.NodePool, karpenterkwokv1alpha1.KWOKNodeClass) {
-	instanceTypes := make([]string, len(nodePool.NodeTemplates))
+func buildNodePoolAndClass(
+	nodePool sacorev1alpha1.NodePool,
+) (karpenterv1.NodePool, karpenterkwokv1alpha1.KWOKNodeClass) {
+	instancesList := make([]string, len(nodePool.NodeTemplates))
 	for i, nodeTemplate := range nodePool.NodeTemplates {
-		instanceTypes[i] = nodeTemplate.InstanceType
+		instancesList[i] = nodeTemplate.InstanceType
 	}
 
 	pool := karpenterv1.NodePool{
@@ -195,7 +197,7 @@ func buildNodePoolAndClass(nodePool sacorev1alpha1.NodePool) (karpenterv1.NodePo
 					Labels:      nodePool.Labels,
 					Annotations: nodePool.Annotations,
 				},
-				Spec: constructNodePoolTemplateSpec(&nodePool, instanceTypes),
+				Spec: constructNodePoolTemplateSpec(&nodePool, instancesList),
 			},
 			Disruption: karpenterv1.Disruption{
 				ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
@@ -214,6 +216,8 @@ func buildNodePoolAndClass(nodePool sacorev1alpha1.NodePool) (karpenterv1.NodePo
 		Group: karpenterapis.Group, Version: "v1",
 	}.WithKind("NodePool"))
 
+	// KWOKNodeClass is created to ensure that there's
+	// a classRef for the corresponding NodePool
 	class := karpenterkwokv1alpha1.KWOKNodeClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nodePool.Name,
@@ -229,7 +233,10 @@ func buildNodePoolAndClass(nodePool sacorev1alpha1.NodePool) (karpenterv1.NodePo
 // constructNodePoolTemplateSpec builds the NodeClaimTemplateSpec that sits
 // inside a Karpenter NodePool, selecting the allowed instance types and
 // availability zones.
-func constructNodePoolTemplateSpec(nodePool *sacorev1alpha1.NodePool, instanceTypes []string) karpenterv1.NodeClaimTemplateSpec {
+func constructNodePoolTemplateSpec(
+	nodePool *sacorev1alpha1.NodePool,
+	instanceTypes []string,
+) karpenterv1.NodeClaimTemplateSpec {
 	return karpenterv1.NodeClaimTemplateSpec{
 		Taints: nodePool.Taints,
 		Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
@@ -267,8 +274,8 @@ func constructKwokInstanceTypes(
 ) error {
 	instanceTypes := collectInstanceTypes(constraint, pricingData)
 
-	outPath := path.Join(outputDir, bench.FileNameKarpenterInstanceTypes)
-	if err := bench.SaveJsonToFile(instanceTypes, outPath); err != nil {
+	outPath := path.Join(outputDir, benchutil.FileNameKarpenterInstanceTypes)
+	if err := benchutil.SaveJsonToFile(instanceTypes, outPath); err != nil {
 		return fmt.Errorf("cannot save the kwok provider instance types: %v", err)
 	}
 	fmt.Printf("Saved instances json to %q\n", outPath)
@@ -290,9 +297,12 @@ func collectInstanceTypes(
 			candidate := karpenterkwok.InstanceTypeOptions{
 				Name:         nodeTemplate.InstanceType,
 				Architecture: nodePool.Labels[corev1.LabelArchStable],
-				Resources:    nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved),
+				Resources: nodeutil.BuildAllocatable(
+					nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved,
+				),
 			}
 
+			// If there's an existing instance matching the candidate, merge the candidate into it
 			if idx := findInstanceIndex(instanceTypes, candidate); idx != -1 {
 				mergeInstanceType(&instanceTypes[idx], candidate, nodePool.AvailabilityZones)
 				continue
@@ -301,7 +311,8 @@ func collectInstanceTypes(
 			instancePricing, err := pricingData.GetInfo(nodePool.Region, candidate.Name)
 			if err != nil {
 				fmt.Printf("cannot find pricing data for instance %s in region %s: %v\n",
-					candidate.Name, nodePool.Region, err)
+					candidate.Name, nodePool.Region, err,
+				)
 				continue
 			}
 
@@ -332,13 +343,13 @@ func mergeInstanceType(
 		)
 	}
 
-	// Add any availability zones that are not yet present in
-	// the first offering of the given instance type.
 	for i, req := range existing.Offerings[0].Requirements {
 		if req.Key != corev1.LabelTopologyZone {
 			continue
 		}
 		for _, zone := range availabilityZones {
+			// Add any availability zones that are not yet present in
+			// the first offering of the given instance type.
 			if !slices.Contains(req.Values, zone) {
 				existing.Offerings[0].Requirements[i].Values = append(
 					existing.Offerings[0].Requirements[i].Values, zone,
@@ -362,7 +373,10 @@ func mergeInstanceType(
 // If only the AZ differs, that can be also added as to existing kwokOffering.
 // When there's support for non on-demand instances, then that also would append the
 // new requirement to the existing instance offering.
-func findInstanceIndex(instances []karpenterkwok.InstanceTypeOptions, candidate karpenterkwok.InstanceTypeOptions) int {
+func findInstanceIndex(
+	instances []karpenterkwok.InstanceTypeOptions,
+	candidate karpenterkwok.InstanceTypeOptions,
+) int {
 	return slices.IndexFunc(instances, func(existing karpenterkwok.InstanceTypeOptions) bool {
 		return existing.Name == candidate.Name && existing.Architecture == candidate.Architecture
 	})
@@ -370,7 +384,10 @@ func findInstanceIndex(instances []karpenterkwok.InstanceTypeOptions, candidate 
 
 // constructNewOffering builds a KWOKOffering for an on-demand instance in the
 // given availability zones at the specified hourly price.
-func constructNewOffering(availabilityZones []string, instanceHourlyPrice float64) karpenterkwok.KWOKOffering {
+func constructNewOffering(
+	availabilityZones []string,
+	instanceHourlyPrice float64,
+) karpenterkwok.KWOKOffering {
 	return karpenterkwok.KWOKOffering{
 		Offering: karpenter.Offering{
 			Price:     instanceHourlyPrice,

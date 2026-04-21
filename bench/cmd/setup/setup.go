@@ -11,18 +11,9 @@ import (
 	"os/exec"
 	"path"
 
-	bench "github.com/gardener/scaling-advisor/bench/cmd"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
 	"github.com/spf13/cobra"
-)
-
-// Flag variables — bound by cobra, read once in setupCmd.RunE, then passed
-// explicitly to all callees so that no other function touches these globals.
-var (
-	constraintsFile   string
-	pricingFile       string
-	version           string
-	prometheusVersion string
 )
 
 // SetupScaler defines methods needed to set up a scaler with the artefacts
@@ -38,79 +29,95 @@ type SetupScaler interface {
 	GenerateKwokData(ctx context.Context, constraintsFile, outputDir string) error
 }
 
-// setupCmd is the entry point for the "setup" subcommand. It fetches, builds,
-// and prepares all artefacts that the "exec" subcommand later consumes.
-var setupCmd = &cobra.Command{
-	Use:   "setup <scaler> <options>",
-	Short: "Setup the scaler by fetching the required version",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		scalerName := args[0]
-		scaler, err := getScaler(scalerName)
-		if err != nil {
-			return err
-		}
-
-		// Derive the output directory from the constraints file location so
-		// that all generated artefacts live next to the input data.
-		outputDir := path.Dir(constraintsFile)
-
-		ctx := cmd.Context()
-		if err := scaler.GenerateKwokData(ctx, constraintsFile, outputDir); err != nil {
-			return fmt.Errorf("error generating kwok data for %s: %v", scalerName, err)
-		}
-		if err := scaler.BuildScaler(ctx, version); err != nil {
-			return fmt.Errorf("error building %s source: %v", scalerName, err)
-		}
-		if err := pullPrometheusImage(prometheusVersion); err != nil {
-			return fmt.Errorf("error pulling prometheus image: %v", err)
-		}
-
-		return nil
-	},
+// SetupArgs contains the flag variables — passed explicitly to all callees
+// so that no other function touches these globals.
+type SetupArgs struct {
+	Scaler            string
+	ConstraintsFile   string
+	PricingFile       string
+	Version           string
+	PrometheusVersion string
 }
 
-func init() {
-	bench.RootCmd.AddCommand(setupCmd)
+// NewSetupCommand is the entry point for getting the scaler for the "setup" subcommand.
+func NewSetupCommand(ctx context.Context) *cobra.Command {
+	var setupArgs SetupArgs
+	var setupCmd = &cobra.Command{
+		Use:   "setup <scaler> <options>",
+		Short: "Setup the scaler by fetching the required version",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, cmdArgs []string) (err error) {
+			// Only the scaler is passed as an argument to the command, rest are all flags
+			setupArgs.Scaler = cmdArgs[0]
+			return Run(ctx, setupArgs)
+		},
+	}
 
+	// Initialise the setup args with the passed flag values,
+	// falling back to default if nothing specified
 	setupCmd.PersistentFlags().StringVarP(
-		&constraintsFile,
-		"constraints", "c",
-		"",
+		&setupArgs.ConstraintsFile,
+		"constraints", "c", "",
 		"constraints file path (required)",
 	)
 	_ = setupCmd.MarkFlagRequired("constraints")
+	_ = setupCmd.MarkFlagFilename("constraints", "json")
 
 	setupCmd.PersistentFlags().StringVarP(
-		&pricingFile,
-		"pricing-data", "p",
-		"",
+		&setupArgs.PricingFile,
+		"pricing-data", "p", "",
 		"pricing data file (required for karpenter)",
 	)
+	_ = setupCmd.MarkFlagFilename("pricing-data", "json")
 
 	setupCmd.PersistentFlags().StringVarP(
-		&version,
-		"scaler-version", "v",
-		"main",
+		&setupArgs.Version,
+		"scaler-version", "v", "main",
 		"version of the scaler to fetch",
 	)
 
 	setupCmd.PersistentFlags().StringVar(
-		&prometheusVersion,
+		&setupArgs.PrometheusVersion,
 		"prometheus-version",
 		"latest",
 		"prometheus image tag to pull",
 	)
+
+	return setupCmd
 }
 
-func getScaler(scalerName string) (SetupScaler, error) {
+// Run fetches and builds the scaler and prepares all artefacts that the "exec" subcommand later consumes.
+func Run(ctx context.Context, args SetupArgs) (err error) {
+	scaler, err := getScaler(args.Scaler, args.PricingFile)
+	if err != nil {
+		return err
+	}
+
+	// Derive the output directory from the constraints file location so
+	// that all generated artefacts live next to the input data.
+	outputDir := path.Dir(args.ConstraintsFile)
+
+	if err := scaler.GenerateKwokData(ctx, args.ConstraintsFile, outputDir); err != nil {
+		return fmt.Errorf("error generating kwok data for %s: %v", args.Scaler, err)
+	}
+	if err := scaler.BuildScaler(ctx, args.Version); err != nil {
+		return fmt.Errorf("error building %s source: %v", args.Scaler, err)
+	}
+	if err := pullPrometheusImage(args.PrometheusVersion); err != nil {
+		return fmt.Errorf("error pulling prometheus image: %v", err)
+	}
+
+	return nil
+}
+
+func getScaler(scalerName, pricingFile string) (SetupScaler, error) {
 	switch scalerName {
-	case bench.ScalerKarpenter:
+	case benchutil.ScalerKarpenter:
 		if pricingFile == "" {
 			return nil, fmt.Errorf("pricing data needed for karpenter: run `scadctl genprice` to get the data")
 		}
 		return &karpenterSetup{pricingFile: pricingFile}, nil
-	case bench.ScalerClusterAutoscaler:
+	case benchutil.ScalerClusterAutoscaler:
 		return &caSetup{}, nil
 	default:
 		return nil, fmt.Errorf("unknown scaler %q", scalerName)

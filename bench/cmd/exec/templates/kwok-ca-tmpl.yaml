@@ -25,6 +25,7 @@ components:
       - --leader-elect=false
       - --cloud-provider=kwok
       - --kubeconfig=/etc/kubeconfig/kubeconfig
+      - --scale-down-unneeded-time=1m0s # FIXME: setup CA flags
     envs:
       - name: KUBERNETES_SERVICE_HOST
         value: "127.0.0.1"

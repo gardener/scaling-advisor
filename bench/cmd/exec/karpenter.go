@@ -12,7 +12,7 @@ import (
 	"os"
 	"path"
 
-	bench "github.com/gardener/scaling-advisor/bench/cmd"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
@@ -22,7 +22,7 @@ import (
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 )
 
-var _ execScaler = (*karpenterExec)(nil)
+var _ ExecScaler = (*karpenterExec)(nil)
 
 type karpenterExec struct{}
 
@@ -34,13 +34,13 @@ func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Conf
 		return
 	}
 
-	poolsFilePath := path.Join(scenarioDir, bench.FileNameKarpenterNodePools)
+	poolsFilePath := path.Join(scenarioDir, benchutil.FileNameKarpenterNodePools)
 	err = deployKarpenterPools(ctx, cfg, poolsFilePath)
 	if err != nil {
 		return
 	}
 
-	classesFilePath := path.Join(scenarioDir, bench.FileNameKarpenterNodeClasses)
+	classesFilePath := path.Join(scenarioDir, benchutil.FileNameKarpenterNodeClasses)
 	err = deployKarpenterClasses(ctx, cfg, classesFilePath)
 	if err != nil {
 		return
@@ -59,14 +59,14 @@ func (ke *karpenterExec) GetScalerKWOKTemplatePath() string {
 
 func (ke *karpenterExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("karpenter.local/kwok:%s", scalerVersion)
-	if exists := bench.CheckIfImageExists(imageName); !exists {
+	if exists := benchutil.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
 	}
 
 	requiredFiles := []string{
-		path.Join(scenarioDir, bench.FileNameKarpenterInstanceTypes),
-		path.Join(scenarioDir, bench.FileNameKarpenterNodePools),
-		path.Join(scenarioDir, bench.FileNameKarpenterNodeClasses),
+		path.Join(scenarioDir, benchutil.FileNameKarpenterInstanceTypes),
+		path.Join(scenarioDir, benchutil.FileNameKarpenterNodePools),
+		path.Join(scenarioDir, benchutil.FileNameKarpenterNodeClasses),
 	}
 	for _, filePath := range requiredFiles {
 		if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
@@ -106,7 +106,7 @@ func deployKarpenterCRDs(ctx context.Context, cfg *envconf.Config) error {
 func deployKarpenterPools(ctx context.Context, cfg *envconf.Config, poolsFilePath string) error {
 	log.Printf("Deploying karpenter nodePools %q...\n", poolsFilePath)
 
-	nodePools, err := bench.LoadYAMLFromFile[karpenterv1.NodePoolList](poolsFilePath)
+	nodePools, err := benchutil.LoadYAMLFromFile[karpenterv1.NodePoolList](poolsFilePath)
 	if err != nil {
 		return fmt.Errorf("cannot load node pools from %q: %w", poolsFilePath, err)
 	}
@@ -125,7 +125,7 @@ func deployKarpenterPools(ctx context.Context, cfg *envconf.Config, poolsFilePat
 func deployKarpenterClasses(ctx context.Context, cfg *envconf.Config, classesFilePath string) error {
 	log.Printf("Deploying karpenter nodeClasses %q...\n", classesFilePath)
 
-	nodeClasses, err := bench.LoadYAMLFromFile[karpenterkwokv1alpha1.KWOKNodeClassList](classesFilePath)
+	nodeClasses, err := benchutil.LoadYAMLFromFile[karpenterkwokv1alpha1.KWOKNodeClassList](classesFilePath)
 	if err != nil {
 		return fmt.Errorf("cannot load node classes from %q: %w", classesFilePath, err)
 	}
