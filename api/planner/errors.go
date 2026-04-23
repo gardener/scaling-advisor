@@ -24,7 +24,8 @@ var (
 	ErrCreateSimulation = errors.New("cannot create simulation")
 	// ErrRunSimulation is a sentinel error indicating that planner could not successfully run a specific scaling simulation
 	ErrRunSimulation = errors.New("cannot run simulation")
-
+	// ErrCreateSimNodes is a sentinel error indicating that the simulator failed to create simulation node(s).
+	ErrCreateSimNodes = errors.New("cannot create simulation node(s)")
 	// ErrRunSimulationGroup is a sentinel error indicating that the planner could not run a scaling simulation group.
 	ErrRunSimulationGroup = errors.New("cannot run simulation group")
 
