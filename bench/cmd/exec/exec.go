@@ -13,8 +13,10 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"sync"
 	"syscall"
 	"text/template"
+	"time"
 
 	bench "github.com/gardener/scaling-advisor/bench/cmd"
 
@@ -35,12 +37,17 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
+var PrometheusPort = 2112
+
 // Flag variables — bound by cobra, read once in execCmd.RunE, then passed
 // explicitly to all callees so that no other function touches these globals.
 var (
-	skipCleanup   bool
-	snapshotFile  string
-	scalerVersion string
+	skipCleanup       bool
+	snapshotFile      string
+	scalerVersion     string
+	monitorInterval   time.Duration
+	scalerPodName     string
+	prometheusVersion string
 )
 
 // execScaler is the interface that every scaler backend must implement to
@@ -49,6 +56,10 @@ type execScaler interface {
 	// DeployScalerData creates the scaler-specific Kubernetes objects (CRDs,
 	// ConfigMaps, NodePools, etc.) in the KWOK cluster.
 	DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) error
+
+	// GetScalerContainerName returns the name of the container in which the scaler is running.
+	// This is used for monitoring the resource usage of the scaler container during the benchmark run.
+	GetScalerContainerName() string
 
 	// GetScalerKWOKTemplatePath returns the embedded-FS path to the
 	// kwokctl configuration template for this scaler.
@@ -85,10 +96,11 @@ var execCmd = &cobra.Command{
 		ctx := setupSignalHandler()
 		kwokClusterName := envconf.RandomName("kwok-cluster", 17)
 
-		ctx, cfg, err := setupClusterForScaling(ctx, scaler, kwokClusterName, scenarioDir, scalerVersion)
+		ctx, cfg, promConfigPath, err := setupClusterForScaling(ctx, scaler, kwokClusterName, scenarioDir, scalerVersion)
 		if err != nil {
 			return err
 		}
+		defer os.Remove(promConfigPath)
 		defer cleanupCluster(ctx, cfg, kwokClusterName, scenarioDir)
 
 		clusterSnapshot, err := bench.LoadJSONFromFile[planner.ClusterSnapshot](snapshotFile)
@@ -104,6 +116,23 @@ var execCmd = &cobra.Command{
 		}
 		if err := deployPods(ctx, clusterSnapshot, cfg); err != nil {
 			return fmt.Errorf("error deploying pods: %v", err)
+		}
+
+		scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
+		meta := RunMetadata{
+			StartTime:     time.Now(),
+			ScalerName:    scalerName,
+			ScalerVersion: scalerVersion,
+			SnapshotFile:  snapshotFile,
+			Before: ClusterState{
+				NodeCount:       len(clusterSnapshot.Nodes),
+				ScheduledPods:   len(scheduled),
+				UnscheduledPods: len(unscheduled),
+			},
+		}
+
+		if err := monitorScaler(ctx, cfg, kwokClusterName, scenarioDir, meta); err != nil {
+			log.Printf("Warning: Monitoring failed: %v", err)
 		}
 
 		log.Println("Successfully completed!")
@@ -142,6 +171,27 @@ func init() {
 		"main",
 		"version of the scaler to fetch",
 	)
+
+	execCmd.PersistentFlags().DurationVar(
+		&monitorInterval,
+		"monitor-interval",
+		100*time.Millisecond,
+		"interval for collecting metrics",
+	)
+
+	execCmd.PersistentFlags().StringVar(
+		&scalerPodName,
+		"scaler-pod",
+		"cluster-autoscaler",
+		"name of the scaler pod to monitor",
+	)
+
+	execCmd.PersistentFlags().StringVar(
+		&prometheusVersion,
+		"prometheus-version",
+		"latest",
+		"prometheus image tag to use",
+	)
 }
 
 func getScaler(scalerName string) (execScaler, error) {
@@ -164,6 +214,9 @@ type KwokCfgTmplParams struct {
 	OutputPath              string
 	ScenarioDirectory       string
 	ImageTag                string
+	ContainerName           string
+	PrometheusConfigPath    string
+	PrometheusImage         string
 }
 
 // setupClusterForScaling creates a fresh KWOK cluster configured for the
@@ -174,18 +227,21 @@ func setupClusterForScaling(
 	clusterName string,
 	scenarioDir string,
 	imageTag string,
-) (context.Context, *envconf.Config, error) {
+) (context.Context, *envconf.Config, string, error) {
 	outputFile := path.Join(scenarioDir, "kwok-config.yaml")
 
 	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
 
-	// Write the embedded kube-scheduler config to a temp file because
-	// kwokctl needs an absolute filesystem path.
 	kubeSchedulerConfigPath, err := writeEmbeddedKubeSchedulerConfig()
 	if err != nil {
-		return ctx, nil, fmt.Errorf("cannot write kube-scheduler config: %w", err)
+		return ctx, nil, "", fmt.Errorf("cannot write kube-scheduler config: %w", err)
 	}
 	defer os.Remove(kubeSchedulerConfigPath)
+
+	promConfigPath, err := writePrometheusConfig(PrometheusPort)
+	if err != nil {
+		return ctx, nil, "", fmt.Errorf("cannot write prometheus config: %w", err)
+	}
 
 	tmplParams := KwokCfgTmplParams{
 		HomeDir:                 os.Getenv("HOME"),
@@ -194,11 +250,14 @@ func setupClusterForScaling(
 		OutputPath:              outputFile,
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
+		ContainerName:           scaler.GetScalerContainerName(),
+		PrometheusConfigPath:    promConfigPath,
+		PrometheusImage:         "prom/prometheus:" + prometheusVersion,
 	}
 
 	err = generateKwokConfig(tmplParams, scaler.GetScalerKWOKTemplatePath())
 	if err != nil {
-		return ctx, nil, fmt.Errorf("cannot create kwok config: %w", err)
+		return ctx, nil, "", fmt.Errorf("cannot create kwok config: %w", err)
 	}
 	log.Printf("Wrote kwok config template to %q\n", tmplParams.OutputPath)
 
@@ -208,10 +267,10 @@ func setupClusterForScaling(
 
 	ctx, err = createClusterFunc(ctx, cfg)
 	if err != nil {
-		return ctx, nil, fmt.Errorf("failed to create cluster: %w", err)
+		return ctx, nil, "", fmt.Errorf("failed to create cluster: %w", err)
 	}
 
-	return ctx, cfg, nil
+	return ctx, cfg, promConfigPath, nil
 }
 
 // cleanupCluster exports pod/container logs and (unless --skip-cleanup is set)
@@ -437,4 +496,123 @@ func setupSignalHandler() context.Context {
 		os.Exit(1)
 	}()
 	return ctx
+}
+
+// monitorScaler starts a Prometheus metrics server, waits for the scaler
+// container to be ready, then streams resource-usage metrics to a JSON file
+// and to the Prometheus gauges. It also measures the time until all pods are
+// scheduled (recommendation time).
+func monitorScaler(ctx context.Context, cfg *envconf.Config, clusterName, scenarioDir string, meta RunMetadata) error {
+	log.Printf("Starting monitoring for scaler docker container %s...\n", scalerPodName)
+
+	mon := NewDockerMonitor(scalerPodName, monitorInterval)
+
+	log.Println("Waiting for scaler container to be ready...")
+	if err := mon.WaitForReady(ctx); err != nil {
+		return fmt.Errorf("scaler container %q did not become ready: %w", scalerPodName, err)
+	}
+	log.Println("Scaler container is ready")
+
+	go func() {
+		if err := ServeMetrics(PrometheusPort); err != nil {
+			log.Printf("Failed to serve metrics: %v", err)
+		}
+	}()
+
+	metricsChan := make(chan PodMetrics, 100)
+
+	var wg sync.WaitGroup
+	var collectedMetrics []PodMetrics
+	wg.Add(2)
+
+	// consumer: collect metrics and update Prometheus gauges
+	go func() {
+		defer wg.Done()
+		for m := range metricsChan {
+			collectedMetrics = append(collectedMetrics, m)
+			for _, container := range m.Containers {
+				cpu := container.Usage[corev1.ResourceCPU]
+				mem := container.Usage[corev1.ResourceMemory]
+				ScalerCPUUsage.WithLabelValues(container.Name).Set(float64(cpu.MilliValue()))
+				ScalerMemoryUsage.WithLabelValues(container.Name).Set(float64(mem.Value()) / (1024 * 1024))
+			}
+		}
+	}()
+
+	// producer: stream metrics from Docker
+	go func() {
+		defer wg.Done()
+		defer close(metricsChan)
+		if err := mon.StreamMetrics(ctx, metricsChan); err != nil {
+			log.Printf("Error collecting metrics: %v", err)
+		}
+	}()
+
+	log.Println("Measuring time to produce recommendation...")
+
+	recommendationCondition := func() (bool, error) {
+		pods := &corev1.PodList{}
+		if err := cfg.Client().Resources().List(ctx, pods); err != nil {
+			return false, err
+		}
+		for _, pod := range pods.Items {
+			if pod.Spec.NodeName == "" {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
+	duration, err := MeasureRecommendationTime(ctx, meta.StartTime, recommendationCondition)
+	if err != nil {
+		log.Printf("Failed to measure recommendation time: %v", err)
+	} else {
+		log.Printf("Recommendation produced in: %v\n", duration)
+	}
+
+	after := clusterStateAfter(ctx, cfg)
+
+	wg.Wait()
+
+	meta.After = after
+	meta.RecommendationDuration = duration.String()
+
+	reportPath := path.Join(scenarioDir, "logs", "kwok-"+clusterName, "scaler-report.json")
+	if err := os.MkdirAll(path.Dir(reportPath), 0755); err != nil {
+		log.Printf("Failed to create logs directory: %v\n", err)
+	} else {
+		report := RunReport{
+			Metadata: meta,
+			Metrics:  collectedMetrics,
+		}
+		if err := writeReport(reportPath, report); err != nil {
+			log.Printf("Failed to write report: %v\n", err)
+		} else {
+			log.Printf("Wrote report to %s\n", reportPath)
+		}
+	}
+
+	return nil
+}
+
+func clusterStateAfter(ctx context.Context, cfg *envconf.Config) ClusterState {
+	var state ClusterState
+
+	nodes := &corev1.NodeList{}
+	if err := cfg.Client().Resources().List(ctx, nodes); err == nil {
+		state.NodeCount = len(nodes.Items)
+	}
+
+	pods := &corev1.PodList{}
+	if err := cfg.Client().Resources().List(ctx, pods); err == nil {
+		for _, pod := range pods.Items {
+			if pod.Spec.NodeName == "" {
+				state.UnscheduledPods++
+			} else {
+				state.ScheduledPods++
+			}
+		}
+	}
+
+	return state
 }

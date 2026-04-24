@@ -16,7 +16,7 @@ componentsPatches:
     - key: v
       value: "6"
 components:
-  - name: cluster-autoscaler
+  - name: {{.ContainerName}}
     image: gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:{{.ImageTag}}
     command:
       - /cluster-autoscaler
@@ -37,11 +37,22 @@ components:
       - name: KUBECONFIG
         value: "/etc/kubeconfig/kubeconfig"
     volumes:
-      - hostPath: {{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/kubeconfig
+      - hostPath: "{{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/kubeconfig"
         mountPath: /etc/kubeconfig/kubeconfig
         readOnly: true
-      - hostPath: {{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/pki
+      - hostPath: "{{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/pki"
         mountPath: /etc/kubernetes/pki
+        readOnly: true
+    networks:
+      - kwok-{{.ClusterName}}
+  - name: prometheus
+    image: {{.PrometheusImage}}
+    ports:
+      - port: 9090
+        hostPort: 9090
+    volumes:
+      - hostPath: "{{.PrometheusConfigPath}}"
+        mountPath: /etc/prometheus/prometheus.yml
         readOnly: true
     networks:
       - kwok-{{.ClusterName}}

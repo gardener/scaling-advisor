@@ -38,6 +38,10 @@ func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, sc
 	return
 }
 
+func (cae *caExec) GetScalerContainerName() string {
+	return bench.ScalerClusterAutoscaler
+}
+
 func (cae *caExec) GetScalerKWOKTemplatePath() string {
 	return caKwokTemplatePath
 }
