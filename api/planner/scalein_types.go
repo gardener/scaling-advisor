@@ -70,8 +70,6 @@ type ScaleInSimArgs struct {
 	Config ScaleInSimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
-	// CandidateSelector is used to select scale-in candidate nodes for the simulation.
-	CandidateSelector ScaleInCandidateSelector
 }
 
 // ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node
@@ -91,8 +89,6 @@ type ScaleInSimulation interface {
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
 	Result() (ScaleInSimRunResult, error)
-	// Selects the next Candidate for processing
-	NextCandidate(ctx context.Context, args ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error)
 }
 
 type ScaleInCandidateSelectorArgs struct{}
@@ -142,6 +138,7 @@ type ScaleInPlanResult struct {
 	Memento *ScaleInMemento `json:"scaleInMemento,omitempty"`
 }
 
+// Note: Check with SimulatorConfig. SimulatorConfig will be changed to ScaleOutSimulatorConfig and the common fields between ScaleOutSimulatorConfig and ScaleInSimulatorConfig need to be looked at.
 // ScaleInSimulatorConfig is static config params used to construct an instance of ScaleInSimulator
 type ScaleInSimulatorConfig struct {
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.

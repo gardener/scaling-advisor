@@ -458,10 +458,6 @@ type SimulationFactory interface {
 	NewScaleIn(args ScaleInSimArgs) (ScaleInSimulation, error)
 }
 
-type ScaleInCandidateSelectorFactory interface {
-	NewScaleInCandidateSelector(args ScaleInCandidateSelectorArgs) (ScaleInCandidateSelector, error)
-}
-
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
 // Not all the fields may be necessary for constructing a specific simulator implementation.
 type SimulatorArgs struct {
@@ -510,11 +506,12 @@ type ScalingPlannerServiceConfig struct {
 
 // Factories is a struct that holds all planner factories.
 type Factories struct {
-	Planner                  ScalingPlannerFactory
-	Simulator                SimulatorFactory
-	Simulation               SimulationFactory
-	ScaleInCandidateSelector ScaleInCandidateSelectorFactory
-	ResourceWeigher          ResourceWeigher
+	Planner                   ScalingPlannerFactory
+	Simulator                 SimulatorFactory
+	Simulation                SimulationFactory
+	ResourceWeigher           ResourceWeigher
+	NodeUtilizationCalculator NodeUtilizationCalculator
+	ScaleInCandidateSelector  ScaleInCandidateSelector
 }
 
 // Memento is an encapsulation of partial details of a completed simulation that can be used by subsequent simulations to optimize their execution.
