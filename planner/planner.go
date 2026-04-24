@@ -104,7 +104,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 			receivedCount++
 		}
 	}
-	// TODO: what do I send in response.Labels?
+	// TODO: what do I send in response.Labels? -> union of scalein and scaleout plan maybe extract the common part
 	response := plannerapi.Response{
 		RequestRef:   req.RequestRef,
 		ID:           objutil.GenerateName("scaling-plan-"),

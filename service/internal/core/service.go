@@ -63,11 +63,12 @@ func NewService(ctx context.Context,
 		return
 	}
 	p, err := factories.Planner.NewPlanner(plannerapi.ScalingPlannerArgs{
-		ViewAccess:        minKAPIServer,
-		ResourceWeigher:   factories.ResourceWeigher,
-		PricingAccess:     pricingAccess,
-		SchedulerLauncher: schedulerLauncher,
-		TraceDir:          config.TraceDir,
+		ScaleInCandidateSelector: factories.ScaleInCandidateSelector,
+		ViewAccess:               minKAPIServer,
+		ResourceWeigher:          factories.ResourceWeigher,
+		PricingAccess:            pricingAccess,
+		SchedulerLauncher:        schedulerLauncher,
+		TraceDir:                 config.TraceDir,
 	})
 	if err != nil {
 		return
