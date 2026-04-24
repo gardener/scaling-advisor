@@ -16,7 +16,7 @@ componentsPatches:
     - key: v
       value: "6"
 components:
-  - name: karpenter
+  - name: {{.ContainerName}}
     image: karpenter.local/kwok:{{.ImageTag}}
     command:
       - /kwok-bin
@@ -32,14 +32,25 @@ components:
       - name: DISABLE_LEADER_ELECTION
         value: "true"
     volumes:
-      - hostPath: {{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/kubeconfig
+      - hostPath: "{{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/kubeconfig"
         mountPath: /etc/kubeconfig/kubeconfig
         readOnly: true
-      - hostPath: {{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/pki
+      - hostPath: "{{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/pki"
         mountPath: /etc/kubernetes/pki
         readOnly: true
-      - hostPath: {{.ScenarioDirectory}}/instance_types.json
+      - hostPath: "{{.ScenarioDirectory}}/instance_types.json"
         mountPath: /etc/instance_types.json
+        readOnly: true
+    networks:
+      - kwok-{{.ClusterName}}
+  - name: prometheus
+    image: {{.PrometheusImage}}
+    ports:
+      - port: 9090
+        hostPort: 9090
+    volumes:
+      - hostPath: "{{.PrometheusConfigPath}}"
+        mountPath: /etc/prometheus/prometheus.yml
         readOnly: true
     networks:
       - kwok-{{.ClusterName}}
