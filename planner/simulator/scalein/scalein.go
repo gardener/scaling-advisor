@@ -88,34 +88,38 @@ func (s *RequestState) RequestView() minkapi.View {
 func (r *RequestState) Reset() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.view.Close(); err != nil {
-		// best-effort close
-		_ = err
+	if r.view != nil {
+		if err := r.view.Close(); err != nil {
+			// best-effort close
+			_ = err
+		}
 	}
-	r.SimRunCounter.Store(0)
+	if r.SimRunCounter != nil {
+		r.SimRunCounter.Store(0)
+	}
 	r.Request = nil
 	return nil
 }
 
-func SendPlanResult(req *plannerapi.Request, planResultCh chan<- plannerapi.ScaleInPlanResult, scaleInItems []sacorev1alpha1.ScaleInItem) {
+func SendPlanResult(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento *plannerapi.ScaleInMemento, scaleInItems []sacorev1alpha1.ScaleInItem) {
 	planResult := plannerapi.ScaleInPlanResult{
-		Memento: req.Memento.ScaleIn,
+		Memento: memento,
 		Labels: map[string]string{
-			commonconstants.LabelRequestID: req.GetRef().ID,
+			commonconstants.LabelRequestID: requestRef.ID,
+		},
+		ScaleInPlan: &sacorev1alpha1.ScaleInPlan{
+			Items: scaleInItems,
 		},
 	}
-	if len(scaleInItems) > 0 {
-		planResult.ScaleInPlan = &sacorev1alpha1.ScaleInPlan{
-			Items: scaleInItems,
-		}
-	}
+
 	planResultCh <- planResult
 }
 
 // SendPlanError wraps the given error with the sentinel ErrGenScalingPlan and returns it as a ScaleInPlanResult.
-func SendPlanError(planResultCh chan<- plannerapi.ScaleInPlanResult, requestRef plannerapi.RequestRef, err error) {
+func SendPlanError(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento *plannerapi.ScaleInMemento, err error) {
 	err = plannerapi.AsGenError(requestRef.ID, requestRef.CorrelationID, err)
 	planResultCh <- plannerapi.ScaleInPlanResult{
-		Error: err,
+		Error:   err,
+		Memento: memento,
 	}
 }

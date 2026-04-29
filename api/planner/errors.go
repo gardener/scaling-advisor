@@ -58,6 +58,8 @@ var (
 	ErrServiceInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ServiceName)
 	// ErrStartFailed is a sentinel error indicating that the  ScalingPlannerService cannot start.
 	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ServiceName)
+	// ErrNoScaleInPlan is a sentinel error indicating that no ScaleInPlan was generated.
+	ErrNoScaleInPlan = errors.New("no scale-in plan")
 )
 
 // AsPlanError wraps an error with scaling advice request context information.
