@@ -59,7 +59,6 @@ func (nu NodeUtilization) BelowUtilizationThreshold(watermark NodeUtilization) b
 
 // ScaleInSimArgs represents the arguments necessary for creating a [ScaleInSimulation] instance.
 type ScaleInSimArgs struct {
-	// TODO: add nodeutilizationcalculator.
 	// SchedulerLauncher is used to launch scheduler instances for the simulation.
 	SchedulerLauncher SchedulerLauncher
 	// RunCounter is an atomic counter for tracking simulation runs.
@@ -70,6 +69,8 @@ type ScaleInSimArgs struct {
 	Config ScaleInSimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
+	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
+	TraceDir string
 }
 
 // ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node
@@ -84,7 +85,7 @@ type ScaleInSimulation interface {
 	PriorityKey() commontypes.PriorityKey
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and [ScaleInSimRunResult] consumption.
-	Run(ctx context.Context, view minkapi.View) error
+	Run(ctx context.Context, view minkapi.View, nodeName string) error
 	// Result returns the latest [ScaleInPlanResult] if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
@@ -126,7 +127,6 @@ type ScaleInMemento struct {
 
 // ScaleInPlanResult represents a result from the ScaleInSimulator.Simulate
 type ScaleInPlanResult struct {
-	// TODO: have the view returned here to be used in the next simulation
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
 	// No further responses will be sent for the associated request.
 	Error error `json:"error,omitempty"`

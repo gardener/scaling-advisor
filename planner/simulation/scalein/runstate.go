@@ -57,9 +57,20 @@ func FreshRunState() RunState {
 // [plannerapi.ActivityStatusRunning] and returns the child run context or an error. The view is also interrogated for
 // initializing unscheduledPods. This method must be invoked before calling other
 // methods of [RunState]
-func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View) (context.Context, error) {
-	//TODO implement me
-	panic("implement me")
+func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string) (context.Context, error) {
+	r.name, r.runNum, r.status, r.view, r.traceDir = name, runNum, plannerapi.ActivityStatusRunning, view, traceDir
+	log := logr.FromContextOrDiscard(parentCtx).WithValues("simulationName", name, "runNum", runNum)
+	r.ctx = logr.NewContext(parentCtx, log)
+	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view)
+	if err != nil {
+		return r.ctx, fmt.Errorf("unable to get unscheduled pods from view %q: %w", view.GetName(), err)
+	}
+	if len(unscheduledPods) == 0 {
+		return r.ctx, fmt.Errorf("no unscheduled pods in the view %q", view.GetName())
+	}
+	r.unscheduledPods = unscheduledPods
+	r.leftoverUnscheduledPodNames = sets.New(slices.Collect(maps.Keys(unscheduledPods))...)
+	return r.ctx, nil
 }
 
 func (r *RunState) GetPodsToReschedule() sets.Set[commontypes.NamespacedName] {
@@ -288,4 +299,20 @@ func (r *RunState) GetScaleInItems() []sacorev1alpha1.ScaleInItem {
 		})
 	}
 	return scaleInItems
+}
+
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
+	log := logr.FromContextOrDiscard(ctx)
+	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
+	if err != nil {
+		return
+	}
+	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodResourceInfo, len(pods))
+	for _, p := range pods {
+		if podutil.IsUnscheduledPod(&p) {
+			log.V(5).Info("found unscheduled pod", "pod", p)
+			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
+		}
+	}
+	return
 }

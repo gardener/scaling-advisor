@@ -6,6 +6,7 @@ package planner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -102,10 +103,18 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case scaleInPlanResult = <-scaleInPlanResultCh:
-			receivedCount++
-		case scaleOutPlanResult = <-scaleOutPlanResultCh:
-			receivedCount++
+		case r, ok := <-scaleInPlanResultCh:
+			if ok {
+				scaleInPlanResult = r
+				scaleInPlanResultCh = nil
+				receivedCount++
+			}
+		case r, ok := <-scaleOutPlanResultCh:
+			if ok {
+				scaleOutPlanResult = r
+				scaleOutPlanResultCh = nil
+				receivedCount++
+			}
 		}
 	}
 	// TODO: what do I send in response.Labels? -> union of scalein and scaleout plan maybe extract the common part
@@ -115,11 +124,11 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		ScaleInPlan:  scaleInPlanResult.ScaleInPlan,
 		ScaleOutPlan: scaleOutPlanResult.ScaleOutPlan,
 	}
-	if scaleInPlanResult.Error != nil {
+	if scaleInPlanResult.Error != nil && !errors.Is(scaleInPlanResult.Error, plannerapi.ErrNoScaleInPlan) {
 		response.Error = scaleInPlanResult.Error
 		responseCh <- response
 		return nil
-	} else if scaleOutPlanResult.Error != nil {
+	} else if scaleOutPlanResult.Error != nil && !errors.Is(scaleOutPlanResult.Error, plannerapi.ErrNoScaleOutPlan) {
 		response.Error = scaleOutPlanResult.Error
 		responseCh <- response
 		return nil

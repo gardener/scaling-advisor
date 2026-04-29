@@ -10,7 +10,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/planner/pdb"
-	defaultpdb "github.com/gardener/scaling-advisor/planner/pdb/default"
+	defaultpdb "github.com/gardener/scaling-advisor/planner/pdb/defaultpdb"
 	"github.com/gardener/scaling-advisor/planner/simulator/scalein"
 	"github.com/go-logr/logr"
 	policyv1 "k8s.io/api/policy/v1"
@@ -52,7 +52,7 @@ func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Req
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
-			scalein.SendPlanError(d.state.ResultCh, request.GetRef(), err)
+			scalein.SendPlanError(request.GetRef(), d.state.ResultCh, d.state.Request.Memento.ScaleIn, err)
 		}
 	}()
 	return d.state.ResultCh
@@ -72,6 +72,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 		SchedulerLauncher: d.schedulerLauncher,
 		RunCounter:        d.state.SimRunCounter,
 		Name:              "scalein-sim",
+		TraceDir:          d.traceDir,
 		Config:            d.scaleInSimulatorConfig,
 	}
 	scaleInSim, err := d.state.SimulationFactory.NewScaleIn(simArgs)
@@ -116,14 +117,19 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to compute scale-in items: %w", err)
 				}
-				scalein.SendPlanResult(d.state.Request, d.state.ResultCh, scaleInItems)
+				if len(scaleInItems) == 0 {
+					scalein.SendPlanError(d.state.Request.GetRef(), d.state.ResultCh, memento, plannerapi.ErrNoScaleInPlan)
+				} else {
+					scalein.SendPlanResult(d.state.Request.GetRef(), d.state.ResultCh, memento, scaleInItems)
+				}
+				return nil
 			}
 
 			candidateName := nextCandidate.Name
 			log.V(3).Info("Running scale-in simulation for candidate", "node", candidateName)
 
 			// Run the simulation for this candidate against the current simView.
-			if err = scaleInSim.Run(ctx, simView); err != nil {
+			if err = scaleInSim.Run(ctx, simView, candidateName); err != nil {
 				return fmt.Errorf("%w: failed for node %q: %w", plannerapi.ErrRunSimulation, candidateName, err)
 			}
 			result, err := scaleInSim.Result()

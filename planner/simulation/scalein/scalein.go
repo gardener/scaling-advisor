@@ -54,7 +54,7 @@ func (d *defaultSimulation) PriorityKey() commontypes.PriorityKey {
 	panic("implement me")
 }
 
-func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err error) {
+func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, nodeName string) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot run %q, runNum %d: %w", plannerapi.ErrRunSimulation, d.args.Name, d.runNum(), err)
@@ -63,11 +63,11 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View) (err err
 		}
 	}()
 
-	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view); err != nil {
+	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir); err != nil {
 		return
 	}
 
-	unboundPods, err := d.state.RemoveNodeAndUnbindPods(d.args.NodeName)
+	unboundPods, err := d.state.RemoveNodeAndUnbindPods(nodeName)
 	if err != nil {
 		return
 	}

@@ -115,13 +115,14 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 			}
 		}
 
-		// TODO: Check node utilization against UtilizationThresholds via NodeUtilizationCalculator.
+		// Skip if node utilization is more than the threshold
 		nodeUtilization, err := s.NodeUtilizationCalculator.GetUtilization(ctx, args.View, node.Name)
 		if err != nil {
 			log.Error(err, "Failed to get node utilization, skipping node", "node", nodeName)
 			skipNodes.Insert(nodeName)
 			continue
 		}
+
 		// TODO: what is watermark and where does it come from?
 		watermark := planner.NodeUtilization{
 			ResourceRatios: map[corev1.ResourceName]float64{
