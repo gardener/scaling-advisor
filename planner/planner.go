@@ -68,10 +68,8 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	scaleInSimulator, err := p.args.SimulatorFactory.GetScaleInSimulator(plannerapi.SimulatorArgs{
 		ScaleInCandidateSelector: p.args.ScaleInCandidateSelector,
 		ScaleInSimulatorConfig:   p.args.ScaleInSimulatorConfig,
-		Strategy:                 req.SimulatorStrategy,
 		ViewAccess:               p.args.ViewAccess,
 		SchedulerLauncher:        p.args.SchedulerLauncher,
-		StorageMetaAccess:        p.args.StorageMetaAccess,
 		TraceDir:                 p.args.TraceDir,
 	})
 	if err != nil {
