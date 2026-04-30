@@ -5,10 +5,12 @@
 package scorer
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"math"
 	"math/rand/v2"
+	"slices"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -87,39 +89,31 @@ func (l LeastCost) Select(log logr.Logger, nodeScores []plannerapi.NodeScore) (*
 		log.V(4).Info("Single node score, selected directly", "templateName", nodeScores[0].Placement.TemplateName, "instanceType", nodeScores[0].Placement.InstanceType)
 		return &nodeScores[0], nil
 	}
-
-	// first pass: collect indices of node scores with the highest value
-	var topValueIndices []int
-	maxValue := math.MinInt
-	for index, candidate := range nodeScores {
-		if maxValue == candidate.Value {
-			topValueIndices = append(topValueIndices, index)
-		} else if maxValue < candidate.Value {
-			topValueIndices = topValueIndices[:0]
-			topValueIndices = append(topValueIndices, index)
-			maxValue = candidate.Value
-		}
-	}
-	// second pass: among tied top-value scores, pick the one with the largest allocatable resources
+	slices.SortStableFunc(nodeScores, func(a, b plannerapi.NodeScore) int {
+		return cmp.Compare(a.Value, b.Value)
+	})
+	var maxNormalizedAlloc float64
+	var i int
 	var winnerIndices []int
-	maxNormalizedAlloc := 0.0
-	for _, index := range topValueIndices {
-		candidate := nodeScores[index]
+	for i = len(nodeScores) - 1; i >= 0; i-- {
+		if nodeScores[i].Value != nodeScores[len(nodeScores)-1].Value {
+			break
+		}
+		candidate := nodeScores[i]
 		weights, err := l.resourceWeigher.GetWeights(candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
 		normalizedAlloc := getNormalizedResourceUnits(candidate.ScaledNodeResource.Allocatable, weights)
 		if maxNormalizedAlloc == normalizedAlloc {
-			winnerIndices = append(winnerIndices, index)
+			winnerIndices = append(winnerIndices, i)
 		} else if maxNormalizedAlloc < normalizedAlloc {
 			winnerIndices = winnerIndices[:0]
-			winnerIndices = append(winnerIndices, index)
+			winnerIndices = append(winnerIndices, i)
 			maxNormalizedAlloc = normalizedAlloc
 		}
 	}
-	log.V(5).Info("First pass: top value scores", "numNodeScores", len(nodeScores), "numTopValueScores", len(topValueIndices), "maxValue", maxValue)
-	log.V(5).Info("Tie-break by allocatable", "numMaxAllocScores", len(winnerIndices), "maxNormalizedAlloc", maxNormalizedAlloc)
+	log.V(5).Info("Tie-break by allocatable resources", "numTopValueScores", len(nodeScores)-i-1, "numMaxAllocScores", len(winnerIndices), "maxNormalizedAlloc", maxNormalizedAlloc)
 	//pick one winner at random from winnerIndices
 	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
 	log.V(4).Info("Winner node score", "scoreValue", nodeScores[winnerIndices[randIndex]].Value, "templateName", nodeScores[winnerIndices[randIndex]].Placement.TemplateName, "instanceType", nodeScores[winnerIndices[randIndex]].Placement.InstanceType)
@@ -205,40 +199,35 @@ func (l LeastWaste) Select(log logr.Logger, nodeScores []plannerapi.NodeScore) (
 		log.V(4).Info("Single node score, selected directly", "templateName", nodeScores[0].Placement.TemplateName, "instanceType", nodeScores[0].Placement.InstanceType)
 		return &nodeScores[0], nil
 	}
-	// first pass: collect indices of node scores with the lowest value
-	var leastValueIndices []int
-	minValue := math.MaxInt
-	for index, candidate := range nodeScores {
-		if minValue == candidate.Value {
-			leastValueIndices = append(leastValueIndices, index)
-		} else if minValue > candidate.Value {
-			leastValueIndices = leastValueIndices[:0]
-			leastValueIndices = append(leastValueIndices, index)
-			minValue = candidate.Value
-		}
-	}
-	log.V(5).Info("First pass: least waste scores", "numNodeScores", len(nodeScores), "numLeastWasteScores", len(leastValueIndices), "minWaste", minValue)
-	// second pass: among tied top-value scores, pick the one with the cheapest instance type
+	slices.SortStableFunc(nodeScores, func(a, b plannerapi.NodeScore) int {
+		return cmp.Compare(a.Value, b.Value)
+	})
+	var i int
+	leastCost := math.MaxFloat64
 	var winnerIndices []int
-	leastPrice := math.MaxFloat64
-	for _, candidate := range leastValueIndices {
-		info, err := l.pricingAccess.GetInfo(nodeScores[candidate].Placement.Region, nodeScores[candidate].Placement.InstanceType)
+	for i = 0; i < len(nodeScores); i++ {
+		if nodeScores[i].Value != nodeScores[0].Value {
+			break
+		}
+		candidate := nodeScores[i]
+		info, err := l.pricingAccess.GetInfo(candidate.Placement.Region, candidate.Placement.InstanceType)
 		if err != nil {
 			return nil, err
 		}
 		price := info.HourlyPrice
-		if leastPrice == price {
-			winnerIndices = append(winnerIndices, candidate)
-		} else if leastPrice > price {
+		if leastCost == price {
+			winnerIndices = append(winnerIndices, i)
+		} else if leastCost > price {
 			winnerIndices = winnerIndices[:0]
-			winnerIndices = append(winnerIndices, candidate)
-			leastPrice = price
+			winnerIndices = append(winnerIndices, i)
+			leastCost = price
 		}
 	}
-	log.V(5).Info("Tie-break by price", "numMinPriceScores", len(winnerIndices), "leastPrice", leastPrice)
+
+	log.V(5).Info("Tie-break by cost", "numMinValueScores", i, "numLowestCostScores", len(winnerIndices), "lowestCost", leastCost)
 	//pick one winner at random from winnerIndices
 	randIndex := rand.IntN(len(winnerIndices)) // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the node scores with the same least price.
-	log.V(4).Info("Winner node score", "scoreValue", nodeScores[winnerIndices[randIndex]].Value, "templateName", nodeScores[winnerIndices[randIndex]].Placement.TemplateName, "instanceType", nodeScores[winnerIndices[randIndex]].Placement.InstanceType, "price", leastPrice)
+	log.V(4).Info("Winner node score", "scoreValue", nodeScores[winnerIndices[randIndex]].Value, "templateName", nodeScores[winnerIndices[randIndex]].Placement.TemplateName, "instanceType", nodeScores[winnerIndices[randIndex]].Placement.InstanceType)
 	return &nodeScores[winnerIndices[randIndex]], nil
 }
 
