@@ -262,7 +262,7 @@ func (s *simulatorMultiSim) processScaleOutSimResults(log logr.Logger, simulatio
 		simGroupPassScores.AllScores = append(simGroupPassScores.AllScores, nodeScore)
 	}
 	if len(simGroupPassScores.AllScores) > 0 {
-		simGroupPassScores.WinnerScore, err = s.nodeScorer.Select(simGroupPassScores.AllScores)
+		simGroupPassScores.WinnerScore, err = s.nodeScorer.Select(log, simGroupPassScores.AllScores)
 		if err != nil {
 			err = fmt.Errorf("%w: node score selection failed for group %q: %w", plannerapi.ErrSelectNodeScore, simulationGroupName, err)
 			return
