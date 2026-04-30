@@ -60,6 +60,9 @@ func (s *simulatorSingleSim) Simulate(ctx context.Context, request *plannerapi.R
 }
 
 func (s *simulatorSingleSim) doSimulate(ctx context.Context) (err error) {
+	if len(s.state.Request.Snapshot.GetUnscheduledPods()) == 0 {
+		return plannerapi.ErrNoScaleOutPlan
+	}
 	if err = s.state.InitializeRequestView(ctx); err != nil {
 		return
 	}

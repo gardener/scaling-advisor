@@ -202,8 +202,5 @@ func validateSimArgs(args *plannerapi.ScaleInSimArgs) error {
 	if args.RunCounter == nil {
 		return fmt.Errorf("run counter must not be nil for simulation %q", args.Name)
 	}
-	if args.RunCounter.Load() == 0 {
-		return fmt.Errorf("run counter must have a non-zero initial value for simulation %q", args.Name)
-	}
 	return nil
 }
