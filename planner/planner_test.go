@@ -7,10 +7,12 @@ package planner
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/gardener/scaling-advisor/planner/testutil"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/samples"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -317,4 +319,134 @@ func TestTwoPoolFullFitPodScaleOut(t *testing.T) {
 		},
 	}
 	testutil.ObtainAndAssertScaleOutPlan(t, planner, &testData, wantPlan)
+}
+
+// ---- Scale-In tests ---------------------------------------------------------
+
+func TestOnePoolScaleIn_SingleUnderutilizedNode(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	// Two nodes: node-a has low utilization, node-b has high utilization.
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+	// node-a: tiny pod (~5% CPU, ~2% memory) → well below 50% threshold
+	// node-b: large pod (~90% CPU, ~90% memory) → above threshold, won't be candidate
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		testutil.MakeScheduledPodInfo("pod-small", "node-a", "100m", "128Mi"),
+		testutil.MakeScheduledPodInfo("pod-big", "node-b", "1700m", "6Gi"),
+	}
+
+	// Memento: node-a was seen as underutilized 10 minutes ago (exceeds the 5-min UnderutilizedDuration)
+	testData.Request.Memento = &plannerapi.Memento{
+		ScaleIn: &plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	wantPlan := &sacorev1alpha1.ScaleInPlan{
+		Items: []sacorev1alpha1.ScaleInItem{
+			{
+				NodePlacement: testData.NodePlacements[0],
+				NodeName:      "node-a",
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, wantPlan)
+}
+
+func TestOnePoolScaleIn_NoScaleIn_AllHighUtilization(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	// Both nodes highly utilized → no scale-in candidates
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		testutil.MakeScheduledPodInfo("pod-a", "node-a", "1700m", "6Gi"),
+		testutil.MakeScheduledPodInfo("pod-b", "node-b", "1700m", "6Gi"),
+	}
+	testData.Request.Memento = &plannerapi.Memento{
+		ScaleIn: &plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{},
+		},
+	}
+
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, nil)
+}
+
+func TestOnePoolScaleIn_NoScaleIn_UnderutilizedDurationNotMet(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	// node-a is underutilized but first seen only 1 minute ago (below the 5-min threshold)
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		testutil.MakeScheduledPodInfo("pod-small", "node-a", "100m", "128Mi"),
+		testutil.MakeScheduledPodInfo("pod-big", "node-b", "1700m", "6Gi"),
+	}
+	testData.Request.Memento = &plannerapi.Memento{
+		ScaleIn: &plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-1 * time.Minute),
+			},
+		},
+	}
+
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, nil)
+}
+
+func TestOnePoolScaleIn_NoScaleIn_FirstTimeSeen(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	// node-a is underutilized but never seen before (no memento entry)
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		testutil.MakeScheduledPodInfo("pod-small", "node-a", "100m", "128Mi"),
+		testutil.MakeScheduledPodInfo("pod-big", "node-b", "1700m", "6Gi"),
+	}
+	testData.Request.Memento = &plannerapi.Memento{
+		ScaleIn: &plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{},
+		},
+	}
+
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, nil)
 }

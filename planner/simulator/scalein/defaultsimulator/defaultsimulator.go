@@ -43,6 +43,16 @@ func (d *defaultSimulator) Close() error {
 	return d.state.Reset()
 }
 
+func (d *defaultSimulator) getScaleInMemento() *plannerapi.ScaleInMemento {
+	if d.state.Request.Memento == nil {
+		d.state.Request.Memento = &plannerapi.Memento{}
+	}
+	if d.state.Request.Memento.ScaleIn == nil {
+		d.state.Request.Memento.ScaleIn = &plannerapi.ScaleInMemento{}
+	}
+	return d.state.Request.Memento.ScaleIn
+}
+
 // Simulate implements [plannerapi.ScaleInSimulator.Simulate]. It iteratively selects scale-in candidates,
 // runs a simulation for each candidate, and accumulates successfully scaled-in nodes. A node is only included
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
@@ -52,7 +62,7 @@ func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Req
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
-			scalein.SendPlanError(request.GetRef(), d.state.ResultCh, d.state.Request.Memento.ScaleIn, err)
+			scalein.SendPlanError(request.GetRef(), d.state.ResultCh, d.getScaleInMemento(), err)
 		}
 	}()
 	return d.state.ResultCh
@@ -84,8 +94,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	simView := d.state.RequestView()
 	scaledInSuccessNodes := map[string]sacorev1alpha1.ScaleInItem{}
 	skipNodes := sets.New[string]()
-	// Can d.state.Request.Memento be nil here? Should we initialize it to an empty memento struct to avoid nil checks later?
-	memento := d.state.Request.Memento.ScaleIn
+	memento := d.getScaleInMemento()
 
 	// Initialize PDB tracker.
 	pdbTracker, err := initPdbTracker(ctx, simView)

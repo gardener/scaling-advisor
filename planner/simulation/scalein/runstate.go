@@ -9,6 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -64,9 +65,6 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view)
 	if err != nil {
 		return r.ctx, fmt.Errorf("unable to get unscheduled pods from view %q: %w", view.GetName(), err)
-	}
-	if len(unscheduledPods) == 0 {
-		return r.ctx, fmt.Errorf("no unscheduled pods in the view %q", view.GetName())
 	}
 	r.unscheduledPods = unscheduledPods
 	r.leftoverUnscheduledPodNames = sets.New(slices.Collect(maps.Keys(unscheduledPods))...)
@@ -156,6 +154,13 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.Names
 	}
 
 	// Delete node from view
+	nodes, err := r.view.ListNodes(r.ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) > 0 {
+		r.scaleInNodes[nodeName] = &nodes[0]
+	}
 	err = r.view.DeleteObject(r.ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nodeName))
 	if err != nil {
 		return nil, err
@@ -293,8 +298,13 @@ func (r *RunState) GetScaleInItems() []sacorev1alpha1.ScaleInItem {
 	scaleInItems := make([]sacorev1alpha1.ScaleInItem, 0, len(r.scaleInNodes))
 	for _, node := range r.scaleInNodes {
 		scaleInItems = append(scaleInItems, sacorev1alpha1.ScaleInItem{
-			//TODO: add nodeplacement
-			//NodePlacement: np,
+			NodePlacement: sacorev1alpha1.NodePlacement{
+				PoolName:         node.Labels[commonconstants.LabelNodePoolName],
+				TemplateName:     node.Labels[commonconstants.LabelNodeTemplateName],
+				InstanceType:     node.Labels[corev1.LabelInstanceTypeStable],
+				Region:           node.Labels[corev1.LabelTopologyRegion],
+				AvailabilityZone: node.Labels[corev1.LabelTopologyZone],
+			},
 			NodeName: node.Name,
 		})
 	}
