@@ -1,5 +1,5 @@
 global:
-  scrape_interval: 100ms
+  scrape_interval: {{.ScrapeInterval}}
 
 scrape_configs:
   - job_name: 'scalebench'

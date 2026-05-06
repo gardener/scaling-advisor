@@ -10,24 +10,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 // DockerMonitor per docker container
 type DockerMonitor struct {
 	containerNamePrefix string
 	containerID         string
-	interval            time.Duration
 	httpClient          *http.Client
 }
 
@@ -38,6 +33,11 @@ type dockerStats struct {
 		} `json:"cpu_usage"`
 		SystemCPUUsage uint64 `json:"system_cpu_usage"`
 		OnlineCPUs     uint32 `json:"online_cpus"`
+		ThrottlingData struct {
+			Periods          uint64 `json:"periods"`
+			ThrottledPeriods uint64 `json:"throttled_periods"`
+			ThrottledTime    uint64 `json:"throttled_time"`
+		} `json:"throttling_data"`
 	} `json:"cpu_stats"`
 	PreCPUStats struct {
 		CPUUsage struct {
@@ -46,19 +46,24 @@ type dockerStats struct {
 		SystemCPUUsage uint64 `json:"system_cpu_usage"`
 	} `json:"precpu_stats"`
 	MemoryStats struct {
-		Usage uint64 `json:"usage"`
+		Usage    uint64 `json:"usage"`
+		MaxUsage uint64 `json:"max_usage"`
+		Limit    uint64 `json:"limit"`
+		Stats    struct {
+			RSS uint64 `json:"rss"`
+		} `json:"stats"`
 	} `json:"memory_stats"`
+	PidsStats struct {
+		Current uint32 `json:"current"`
+	} `json:"pids_stats"`
 }
 
-var (
-	defaultDockerSocket = "/var/run/docker.sock"
-)
+const defaultDockerSocket = "/var/run/docker.sock"
 
 // NewDockerMonitor creates a new DockerMonitor
-func NewDockerMonitor(containerNamePrefix string, interval time.Duration) *DockerMonitor {
+func NewDockerMonitor(containerNamePrefix string) *DockerMonitor {
 	return &DockerMonitor{
 		containerNamePrefix: containerNamePrefix,
-		interval:            interval,
 		httpClient:          newDialHTTPClient(defaultDockerSocket),
 	}
 }
@@ -69,17 +74,27 @@ func newDialHTTPClient(socketPath string) *http.Client {
 			return net.Dial("unix", socketPath)
 		},
 	}
-	return &http.Client{Transport: transport, Timeout: 10 * time.Second}
+	return &http.Client{Transport: transport}
 }
 
-// WaitForReady waits for the container to be ready
+// WaitForReady waits for the container to be running, polling every 500ms with a 20s timeout.
 func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
-	ticker := time.NewTicker(1 * time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	if id, err := m.findContainerIDByPrefix(ctx, m.containerNamePrefix); err == nil && id != "" {
+		m.containerID = id
+		fmt.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+		return nil
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("timed out waiting for container %q", m.containerNamePrefix)
 		case <-ticker.C:
 			id, err := m.findContainerIDByPrefix(ctx, m.containerNamePrefix)
 			if err != nil {
@@ -94,58 +109,60 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 	}
 }
 
-// StreamMetrics collects metrics for the monitored container and sends them to the channel
+// StreamMetrics opens a streaming connection to Docker stats and sends metrics to the channel.
 func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics) error {
-	fmt.Printf("Collecting metrics for container prefix %s (id: %s)\n", m.containerNamePrefix, m.containerID)
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-
-	// Take an immediate sample so short runs still capture data
-	if first, err := m.getDockerMetrics(ctx); err == nil {
-		select {
-		case ch <- *first:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	} else {
-		fmt.Printf("Error getting initial metrics for container %s: %v\n", m.containerID, err)
+	if m.containerID == "" {
+		return fmt.Errorf("container ID not set")
 	}
 
+	fmt.Printf("Streaming metrics for container %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://unix/containers/%s/stats?stream=true", m.containerID), nil)
+	if err != nil {
+		return fmt.Errorf("cannot create stats request: %w", err)
+	}
+
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("docker stats stream failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("docker stats error: %s", strings.TrimSpace(string(body)))
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	first := true
 	for {
+		var stats dockerStats
+		if err := dec.Decode(&stats); err != nil {
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil || errors.Is(err, io.EOF) {
+				return nil
+			}
+			return fmt.Errorf("error reading stats stream: %w", err)
+		}
+
+		// Skip the first stats update since it may contain zeroed values.
+		if first {
+			first = false
+			continue
+		}
+
+		metric := m.parseStats(&stats)
 		select {
+		case ch <- *metric:
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
-			if ctx.Err() != nil {
-				return nil
-			}
-			metric, err := m.getDockerMetrics(ctx)
-			if err != nil {
-				if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-					return nil
-				}
-				fmt.Printf("Error getting metrics for container %s: %v\n", m.containerID, err)
-				continue
-			}
-			select {
-			case ch <- *metric:
-			case <-ctx.Done():
-				return nil
-			}
 		}
 	}
 }
 
-func (m *DockerMonitor) getDockerMetrics(ctx context.Context) (*PodMetrics, error) {
-	if m.containerID == "" {
-		return nil, fmt.Errorf("container ID not set")
-	}
-
-	stats, err := m.fetchContainerStats(ctx, m.containerID)
-	if err != nil {
-		return nil, err
-	}
-
+func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
 	var cpuMilli int64
 	if stats.PreCPUStats.SystemCPUUsage > 0 && stats.CPUStats.SystemCPUUsage > 0 {
 		cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
@@ -156,25 +173,26 @@ func (m *DockerMonitor) getDockerMetrics(ctx context.Context) (*PodMetrics, erro
 			cpuMilli = int64(percent * 10.0)
 		}
 	}
-	cpuQuantity := resource.NewMilliQuantity(cpuMilli, resource.DecimalSI)
 
-	memUsage := int64(stats.MemoryStats.Usage)
-	memQuantity := resource.NewQuantity(memUsage, resource.BinarySI)
-
-	metric := &PodMetrics{
+	return &PodMetrics{
 		Timestamp: metav1.NewTime(time.Now()),
-		Window:    metav1.Duration{Duration: m.interval},
 		Containers: []ContainerMetrics{
 			{
 				Name: m.containerNamePrefix,
-				Usage: corev1.ResourceList{
-					corev1.ResourceCPU:    *cpuQuantity,
-					corev1.ResourceMemory: *memQuantity,
+				Stats: ContainerStats{
+					CPUMillicores:       cpuMilli,
+					MemoryMi:            int64(stats.MemoryStats.Usage) / (1024 * 1024),
+					MemoryRSSMi:         int64(stats.MemoryStats.Stats.RSS) / (1024 * 1024),
+					MemoryMaxUsageMi:    int64(stats.MemoryStats.MaxUsage) / (1024 * 1024),
+					MemoryLimitMi:       int64(stats.MemoryStats.Limit) / (1024 * 1024),
+					CPUThrottledPeriods: stats.CPUStats.ThrottlingData.ThrottledPeriods,
+					CPUTotalPeriods:     stats.CPUStats.ThrottlingData.Periods,
+					CPUThrottledTimeNs:  stats.CPUStats.ThrottlingData.ThrottledTime,
+					PIDs:                stats.PidsStats.Current,
 				},
 			},
 		},
 	}
-	return metric, nil
 }
 
 func (m *DockerMonitor) findContainerIDByPrefix(ctx context.Context, prefix string) (string, error) {
@@ -198,89 +216,14 @@ func (m *DockerMonitor) findContainerIDByPrefix(ctx context.Context, prefix stri
 		return "", fmt.Errorf("docker API error: %s", strings.TrimSpace(string(body)))
 	}
 
-	type Container struct {
-		ID    string   `json:"Id"`
-		Names []string `json:"Names"`
+	var list []struct {
+		ID string `json:"Id"`
 	}
-	var list []Container
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return "", err
 	}
-	for _, c := range list {
-		for _, n := range c.Names {
-			if strings.Contains(n, prefix) {
-				return c.ID, nil
-			}
-		}
+	if len(list) > 0 {
+		return list[0].ID, nil
 	}
 	return "", nil
-}
-
-func (m *DockerMonitor) fetchContainerStats(ctx context.Context, id string) (*dockerStats, error) {
-	// stats endpoint may stream; with stream=false returns a single JSON and conn closes
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://unix/containers/%s/stats?stream=false", id), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("docker stats error: %s", strings.TrimSpace(string(body)))
-	}
-	var stats dockerStats
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&stats); err != nil {
-		return nil, err
-	}
-	return &stats, nil
-}
-
-// MeasureRecommendationTime measures the time until a recommendation is produced.
-// The condition function should return true when the recommendation is ready.
-func MeasureRecommendationTime(ctx context.Context, start time.Time, condition func() (bool, error)) (time.Duration, error) {
-	ticker := time.NewTicker(1 * time.Second) // Check every second
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		case <-ticker.C:
-			ready, err := condition()
-			if err != nil {
-				return 0, err
-			}
-			if ready {
-				return time.Since(start), nil
-			}
-		}
-	}
-}
-
-// Wait for FailedScheduling event to appear
-func getFailedSchedulingEventTime(ctx context.Context, cfg *envconf.Config) (time.Time, error) {
-	for i := 0; i < 30; i++ {
-		eventList := &corev1.EventList{}
-		if err := cfg.Client().Resources().List(ctx, eventList); err != nil {
-			return time.Time{}, err
-		}
-
-		for _, event := range eventList.Items {
-			if event.Reason == "FailedScheduling" {
-				eventTime := event.CreationTimestamp.Time
-				log.Printf("Found FailedScheduling event at %v\n", eventTime)
-				return eventTime, nil
-			}
-		}
-
-		if i < 29 {
-			time.Sleep(1 * time.Second)
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("no FailedScheduling event found after 30 attempts")
 }

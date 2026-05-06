@@ -10,45 +10,62 @@ import (
 	"os"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // PodMetrics represents the metrics of a pod at a point in time.
 type PodMetrics struct {
 	Timestamp  metav1.Time        `json:"timestamp"`
-	Window     metav1.Duration    `json:"window"`
 	Containers []ContainerMetrics `json:"containers"`
+}
+
+// ContainerStats holds all resource metrics for a container.
+type ContainerStats struct {
+	CPUMillicores       int64  `json:"cpuMillicores"`
+	MemoryMi            int64  `json:"memoryMi"`
+	MemoryRSSMi         int64  `json:"memoryRSSMi"`
+	MemoryMaxUsageMi    int64  `json:"memoryMaxUsageMi"`
+	MemoryLimitMi       int64  `json:"memoryLimitMi"`
+	CPUThrottledPeriods uint64 `json:"cpuThrottledPeriods"`
+	CPUTotalPeriods     uint64 `json:"cpuTotalPeriods"`
+	CPUThrottledTimeNs  uint64 `json:"cpuThrottledTimeNs"`
+	PIDs                uint32 `json:"pids"`
 }
 
 // ContainerMetrics represents the resource usage of a single container.
 type ContainerMetrics struct {
-	Name  string              `json:"name"`
-	Usage corev1.ResourceList `json:"usage"`
+	Name  string         `json:"name"`
+	Stats ContainerStats `json:"stats"`
 }
 
-// ClusterState captures a point-in-time snapshot of cluster size.
-type ClusterState struct {
+// ClusterPodStats captures a point-in-time snapshot of cluster size.
+type ClusterPodStats struct {
 	NodeCount       int `json:"nodeCount"`
 	ScheduledPods   int `json:"scheduledPods"`
 	UnscheduledPods int `json:"unscheduledPods"`
 }
 
+// ClusterState holds the cluster state before and after scaling.
+type ClusterState struct {
+	Before ClusterPodStats `json:"before"`
+	After  ClusterPodStats `json:"after"`
+}
+
 // RunMetadata holds static information about a benchmark run known before execution.
 type RunMetadata struct {
-	StartTime              time.Time    `json:"startTime"`
-	ScalerName             string       `json:"scalerName"`
-	ScalerVersion          string       `json:"scalerVersion"`
-	SnapshotFile           string       `json:"snapshotFile"`
-	Before                 ClusterState `json:"before"`
-	After                  ClusterState `json:"after"`
-	RecommendationDuration string       `json:"recommendationDuration"`
+	StartTime    time.Time       `json:"startTime"`
+	ScalerName   string          `json:"scalerName"`
+	ScalerVersion string         `json:"scalerVersion"`
+	SnapshotFile string          `json:"snapshotFile"`
+	ClusterState ClusterState    `json:"clusterState"`
+	ScalingTime  TimingBreakdown `json:"scalingTime"`
 }
 
 // RunReport is the top-level structure written to the report file.
 type RunReport struct {
-	Metadata RunMetadata  `json:"metadata"`
-	Metrics  []PodMetrics `json:"metrics"`
+	Metadata RunMetadata    `json:"metadata"`
+	Metrics  []PodMetrics   `json:"metrics"`
+	Events   []ScalingEvent `json:"events"`
 }
 
 // writeReport serializes the report to a JSON file at filePath.
