@@ -8,11 +8,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"

@@ -169,7 +169,6 @@ type VolGenOutput struct {
 
 // PodTemplateData holds all pod template data values for executing the simple pod template.
 type PodTemplateData struct {
-	//Resources map[corev1.ResourceName]string
 	Resources corev1.ResourceList
 	PodGenInput
 }

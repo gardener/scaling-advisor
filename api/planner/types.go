@@ -286,10 +286,10 @@ type GetNodeScorer func(scoringStrategy commontypes.NodeScoringStrategy, pricing
 // NodeScorer defines an interface for computing node scores for scaling decisions.
 type NodeScorer interface {
 	// Compute computes the node score given the NodeScorerArgs. On failure, it must return an error with the sentinel error api.ErrComputeNodeScore
-	Compute(args NodeScorerArgs) (NodeScore, error)
+	Compute(ctx context.Context, args NodeScorerArgs) (NodeScore, error)
 	// Select selects the winning NodeScore amongst the NodeScores of a given simulation pass and returns the pointer to the same.
 	// If there is no winning node score amongst the group, then it returns nil.
-	Select(groupNodeScores []NodeScore) (winningNodeScore *NodeScore, err error)
+	Select(ctx context.Context, groupNodeScores []NodeScore) (winningNodeScore *NodeScore, err error)
 }
 
 // NodeScorerArgs contains arguments for node scoring computation.

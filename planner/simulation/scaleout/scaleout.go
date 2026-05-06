@@ -242,4 +242,3 @@ func (s *defaultSimulation) runNum() uint32 {
 func (s *defaultSimulation) incRunNum() uint32 {
 	return s.args.RunCounter.Add(1)
 }
-

@@ -18,41 +18,49 @@
   {
     "instanceType": "instance-a-1",
     "region": "s",
-    "memory": 12,
-    "vcpu": 1,
+    "vcpu": 2,
+    "memory": 4,
     "hourlyPrice": 1.0,
     "os": "linux"
   },
   {
     "instanceType": "instance-a-2",
     "region": "s",
-    "memory": 12,
-    "vcpu": 1,
+    "vcpu": 4,
+    "memory": 8,
     "hourlyPrice": 2.0,
     "os": "linux"
   },
   {
     "instanceType": "instance-b-1",
     "region": "s",
-    "memory": 12,
-    "vcpu": 1,
+    "vcpu": 8,
+    "memory": 16,
     "hourlyPrice": 4.0,
     "os": "linux"
   },
   {
     "instanceType": "instance-b-2",
     "region": "s",
-    "memory": 12,
-    "vcpu": 1,
+    "vcpu": 16,
+    "memory": 32,
     "hourlyPrice": 8.0,
     "os": "linux"
   },
   {
     "instanceType": "instance-c-1",
     "region": "s",
-    "memory": 12,
-    "vcpu": 1,
+    "vcpu": 2,
+    "memory": 4,
     "hourlyPrice": 1.0,
+    "os": "linux"
+  },
+  {
+    "instanceType": "instance-c-2",
+    "region": "s",
+    "vcpu": 4,
+    "memory": 8,
+    "hourlyPrice": 2.0,
     "os": "linux"
   }
 ]

@@ -228,7 +228,7 @@ func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView m
 	if err != nil {
 		return
 	}
-	groupScores, winnerView, err = s.processScaleOutSimResults(log, group.Name(), scaleOutSimResults)
+	groupScores, winnerView, err = s.processScaleOutSimResults(ctx, group.Name(), scaleOutSimResults)
 	if err != nil {
 		return
 	}
@@ -246,15 +246,15 @@ func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView m
 	return
 }
 
-func (s *simulatorMultiSim) processScaleOutSimResults(log logr.Logger, simulationGroupName string, scaleOutSimResults []plannerapi.ScaleOutSimResult) (simGroupPassScores plannerapi.ScaleOutSimGroupPassScores, winningView minkapi.View, err error) {
+func (s *simulatorMultiSim) processScaleOutSimResults(ctx context.Context, simulationGroupName string, scaleOutSimResults []plannerapi.ScaleOutSimResult) (simGroupPassScores plannerapi.ScaleOutSimGroupPassScores, winningView minkapi.View, err error) {
 	var nodeScore plannerapi.NodeScore
-
+	log := logr.FromContextOrDiscard(ctx)
 	for _, sr := range scaleOutSimResults {
 		if len(sr.NodePodAssignments) == 0 {
 			log.V(2).Info("No NodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name)
 			continue
 		}
-		nodeScore, err = s.nodeScorer.Compute(mapSimulationResultToNodeScoreArgs(sr))
+		nodeScore, err = s.nodeScorer.Compute(ctx, mapSimulationResultToNodeScoreArgs(sr))
 		if err != nil {
 			err = fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", plannerapi.ErrComputeNodeScore, sr.Name, simulationGroupName, err)
 			return
@@ -262,7 +262,7 @@ func (s *simulatorMultiSim) processScaleOutSimResults(log logr.Logger, simulatio
 		simGroupPassScores.AllScores = append(simGroupPassScores.AllScores, nodeScore)
 	}
 	if len(simGroupPassScores.AllScores) > 0 {
-		simGroupPassScores.WinnerScore, err = s.nodeScorer.Select(simGroupPassScores.AllScores)
+		simGroupPassScores.WinnerScore, err = s.nodeScorer.Select(ctx, simGroupPassScores.AllScores)
 		if err != nil {
 			err = fmt.Errorf("%w: node score selection failed for group %q: %w", plannerapi.ErrSelectNodeScore, simulationGroupName, err)
 			return
