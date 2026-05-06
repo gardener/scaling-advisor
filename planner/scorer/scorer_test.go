@@ -5,6 +5,7 @@
 package scorer
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
-	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -146,6 +146,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 			expectedScore: plannerapi.NodeScore{},
 		},
 	}
+	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastWaste, tc.access, tc.weigher)
@@ -153,7 +154,7 @@ func TestLeastWasteScoringStrategy(t *testing.T) {
 				t.Fatal(err)
 				return
 			}
-			got, err := scorer.Compute(tc.input)
+			got, err := scorer.Compute(ctx, tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			if scoreDiff != "" {
@@ -280,13 +281,14 @@ func TestLeastCostScoringStrategy(t *testing.T) {
 			expectedScore: plannerapi.NodeScore{},
 		},
 	}
+	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			scorer, err := GetNodeScorer(commontypes.NodeScoringStrategyLeastCost, tc.access, tc.weigher)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := scorer.Compute(tc.input)
+			got, err := scorer.Compute(ctx, tc.input)
 			scoreDiff := cmp.Diff(tc.expectedScore, got)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			if scoreDiff != "" {
@@ -394,9 +396,10 @@ func TestSelectMaxAllocatable(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := scorer.Select(logr.Discard(), tc.input)
+			winningNodeScore, err := scorer.Select(ctx, tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
@@ -497,9 +500,10 @@ func TestSelectMinPrice(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			winningNodeScore, err := scorer.Select(logr.Discard(), tc.input)
+			winningNodeScore, err := scorer.Select(ctx, tc.input)
 			errDiff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors())
 			found := false
 			if winningNodeScore == nil && len(tc.expectedIn) == 0 {
