@@ -20,7 +20,6 @@ import (
 	gardenerauthv1alpha1 "github.com/gardener/gardener/pkg/apis/authentication/v1alpha1"
 	gardenercorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	gardenerconstantsv1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	gardenerextensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -36,8 +35,9 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	k8sscheme "k8s.io/client-go/kubernetes/scheme"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,12 +75,14 @@ type ShootAccess interface {
 
 var _ ShootAccess = (*access)(nil)
 
+type instanceCapacities map[string]corev1.ResourceList
+
 type access struct {
-	shoot       gardenercorev1beta1.Shoot
-	shootClient client.Client
-	scheme      *runtime.Scheme
-	instances   map[string]corev1.ResourceList
-	shootCoord  ShootCoordinate
+	shoot                  gardenercorev1beta1.Shoot
+	shootClient            client.Client
+	scheme                 *runtime.Scheme
+	instanceTypeToCapacity instanceCapacities
+	shootCoord             ShootCoordinate
 }
 
 func init() {
@@ -229,16 +231,16 @@ func createShootAccess(ctx context.Context) (*access, error) {
 		return nil, err
 	}
 	return &access{
-		shootCoord:  shootCoords,
-		scheme:      clientScheme,
-		shootClient: shootClient,
-		shoot:       shoot,
-		instances:   instancesMap,
+		shootCoord:             shootCoords,
+		scheme:                 clientScheme,
+		shootClient:            shootClient,
+		shoot:                  shoot,
+		instanceTypeToCapacity: instancesMap,
 	}, nil
 }
 
 func registerSchemes(clientScheme *runtime.Scheme) error {
-	if err := k8sscheme.AddToScheme(clientScheme); err != nil {
+	if err := clientgoscheme.AddToScheme(clientScheme); err != nil {
 		return fmt.Errorf("failed to add kubernetes scheme: %w", err)
 	}
 	if err := gardenercorev1beta1.AddToScheme(clientScheme); err != nil {
@@ -246,9 +248,6 @@ func registerSchemes(clientScheme *runtime.Scheme) error {
 	}
 	if err := gardenerauthv1alpha1.AddToScheme(clientScheme); err != nil {
 		return fmt.Errorf("failed to add gardener auth scheme: %w", err)
-	}
-	if err := gardenerextensionsv1alpha1.AddToScheme(clientScheme); err != nil {
-		return fmt.Errorf("failed to add gardener extensions scheme: %w", err)
 	}
 	return nil
 }
@@ -312,7 +311,7 @@ func getShootObject(ctx context.Context, landscapeClient client.Client, shootCoo
 		return
 	}
 
-	return shoot, nil
+	return
 }
 
 func getClient(kubeConfigPath string, scheme *runtime.Scheme) (client.Client, error) {
@@ -334,17 +333,18 @@ func (a *access) ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) 
 		LabelSelector: criteria.LabelSelector,
 	})
 	if err != nil {
-		return nil, err
+		return
 	}
 	if criteria.Names.Len() <= 0 {
-		return nodeList.Items, nil
+		nodes = nodeList.Items
+		return
 	}
 	for _, n := range nodeList.Items {
 		if criteria.Names.Has(n.Name) {
 			nodes = append(nodes, n)
 		}
 	}
-	return nodes, err
+	return
 }
 
 func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeKubeSystemPods bool) (pods []corev1.Pod, err error) {
@@ -354,7 +354,7 @@ func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, e
 		LabelSelector: criteria.LabelSelector,
 	})
 	if err != nil {
-		return nil, err
+		return
 	}
 	checkPodName := criteria.Names.Len() > 0
 	for _, p := range podList.Items {
@@ -373,7 +373,7 @@ func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, e
 
 		pods = append(pods, p)
 	}
-	return pods, err
+	return
 }
 
 func (a *access) ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error) {
@@ -619,12 +619,44 @@ func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacore
 		InstanceType: worker.Machine.Type,
 		Priority:     ptr.Deref(worker.Priority, 0),
 		// TODO: add pool.NodeTemplate.VirtualCapacity
-		Capacity:     a.instances[worker.Machine.Type],
+		Capacity:     a.constructNodeTemplateCapacity(worker.ProviderConfig, worker.Machine.Type),
 		KubeReserved: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
 		// TODO:
 		// MaxVolumes:     0,
 	}
+}
+
+func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtension, machineType string) (capacity corev1.ResourceList) {
+	capacity = a.instanceTypeToCapacity[machineType]
+	var (
+		providerConfigData map[string]any
+		virtualCapacity    corev1.ResourceList
+	)
+	if err := stdjson.Unmarshal(providerConfig.Raw, &providerConfigData); err != nil {
+		// Fallback to instanceCapacity if providerConfig can't be decoded
+		return
+	}
+	nodeTemplate, _, err := unstructured.NestedMap(providerConfigData, "nodeTemplate")
+	if err != nil {
+		return
+	}
+
+	virtualCapacityData, _, err := unstructured.NestedMap(nodeTemplate, "virtualCapacity")
+	if err != nil {
+		return
+	}
+
+	virtualCapacityBytes, err := stdjson.Marshal(virtualCapacityData)
+	if err != nil {
+		return
+	}
+	if err = stdjson.Unmarshal(virtualCapacityBytes, &virtualCapacity); err != nil {
+		return
+	}
+
+	maps.Copy(capacity, virtualCapacity)
+	return
 }
 
 func kubernetesConfigToResourceList(kubernetesConfig gardenercorev1beta1.Kubernetes) corev1.ResourceList {
@@ -679,7 +711,8 @@ func sanitizeNode(node *corev1.Node) {
 	node.ManagedFields = nil
 	node.ResourceVersion = ""
 	requiredConditions := []corev1.NodeConditionType{
-		corev1.NodeReady, // only preserve ready conditions, memory-pressure/disk-pressure/etc are now in taints
+		// only preserve ready conditions, memory-pressure/disk-pressure/etc are now in taints
+		corev1.NodeReady,
 	}
 	node.Status.Conditions = slices.DeleteFunc(node.Status.Conditions,
 		func(cond corev1.NodeCondition) bool {
