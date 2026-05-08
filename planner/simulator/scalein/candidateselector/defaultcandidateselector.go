@@ -33,6 +33,7 @@ func New(nodeUtilizationCalculator planner.NodeUtilizationCalculator) planner.Sc
 func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, args planner.ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
+	//TODO: instead to listing all nodes again and again, pass it from the caller.
 	// Get all nodes from the view.
 	nodes, err := args.View.ListNodes(ctx)
 	if err != nil {
@@ -42,12 +43,14 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 		return nil, nil
 	}
 
+	//TODO: Take this out from here and initialize it once in the caller.
 	// Build a pool name -> NodePool lookup from the constraint.
 	poolByName := make(map[string]*sacorev1alpha1.NodePool, len(args.Constraint.NodePools))
 	for _, pool := range args.Constraint.NodePools {
 		poolByName[pool.Name] = &pool
 	}
 
+	//TODO: Take this out from here and initialize it once in the caller.
 	// Count nodes per pool (before any filtering) for the Min check.
 	nodesPerPool := make(map[string]int32)
 	for i := range nodes {
@@ -92,6 +95,7 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 
 		// Skip if node is marked with ScaleInDisabledKey.
 		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabledKey]; disabled {
+			//TODO: use the annotation constant rather than hardcoding it.
 			log.V(5).Info("Skipping node: scale-in disabled via annotation", "node", nodeName)
 			skipNodes.Insert(nodeName)
 			continue
@@ -99,6 +103,7 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 
 		// Skip if node has pods with `sa.gardener.cloud/safe-to-evict` = "false".
 		if drainutil.HasNonEvictablePod(podsByNode[nodeName]) {
+			//TODO: use the annotation constant rather than hardcoding it.
 			log.V(5).Info("Skipping node: has pods with `sa.gardener.cloud/safe-to-evict=false`", "node", nodeName)
 			skipNodes.Insert(nodeName)
 			continue
@@ -123,7 +128,7 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 			continue
 		}
 
-		// TODO: what is watermark and where does it come from?
+		// TODO: what is watermark and where does it come from? Need to change the name from `watermark`.
 		watermark := planner.NodeUtilization{
 			ResourceRatios: map[corev1.ResourceName]float64{
 				corev1.ResourceCPU:    0.5,
