@@ -7,6 +7,7 @@ import (
 )
 
 // RemainingPdbTracker is responsible for tracking the remaining PDBs
+// TODO: Change the name from `RemainingPdbTracker` to `PdbTracker`
 type RemainingPdbTracker interface {
 	// SetPdbs sets PDBs of the remaining PDB tracker.
 	SetPdbs(pdbs []*policyv1.PodDisruptionBudget) error
@@ -16,8 +17,6 @@ type RemainingPdbTracker interface {
 	MatchingPdbs(pod *corev1.Pod) []*policyv1.PodDisruptionBudget
 
 	// CanRemovePods checks if the set of pods can be removed.
-	// inParallel indicates if the pods can be removed in parallel. If it is false
-	// then evicting pods could fail due to drain timeout.
 	CanRemovePods(pods []*corev1.Pod) (canRemove bool, drainBlockingPod *drainutil.DrainBlockingPod)
 	// RemovePods updates the remaining PDBs after pod removal.
 	RemovePods(pods []*corev1.Pod)

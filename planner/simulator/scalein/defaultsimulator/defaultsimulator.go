@@ -81,9 +81,10 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	simArgs := plannerapi.ScaleInSimArgs{
 		SchedulerLauncher: d.schedulerLauncher,
 		RunCounter:        d.state.SimRunCounter,
-		Name:              "scalein-sim",
-		TraceDir:          d.traceDir,
-		Config:            d.scaleInSimulatorConfig,
+		//TODO: Name might not be required
+		Name:     "scalein-sim",
+		TraceDir: d.traceDir,
+		Config:   d.scaleInSimulatorConfig,
 	}
 	scaleInSim, err := d.state.SimulationFactory.NewScaleIn(simArgs)
 	if err != nil {
@@ -92,8 +93,10 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 
 	// Initialize views and loop state.
 	simView := d.state.RequestView()
+	//TODO: Take a look at scaleInSuccessNodes name. Find a better name. -> scaleInNomineeNodes
 	scaledInSuccessNodes := map[string]sacorev1alpha1.ScaleInItem{}
 	skipNodes := sets.New[string]()
+	//TODO: memento should not be pointer
 	memento := d.getScaleInMemento()
 
 	// Initialize PDB tracker.
@@ -114,6 +117,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 				View:       simView,
 				RequestRef: d.state.Request.GetRef(),
 				PDBTracker: pdbTracker,
+				//TODO: No need to pass pointer to set. Just set should be fine.
 			}, &skipNodes)
 			if err != nil {
 				return fmt.Errorf("failed to select scale-in candidate: %w", err)

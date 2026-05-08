@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// TODO: No need for the object.
 type DrainBlockingPod struct {
 	Pod *corev1.Pod
 	// Reason is the reason why the pod is blocking the drain.

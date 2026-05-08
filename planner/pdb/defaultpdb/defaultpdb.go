@@ -64,6 +64,7 @@ func (t *defaultRemainingPdbTracker) CanRemovePods(pods []*corev1.Pod) (canRemov
 			if pod.Namespace == pdbInfo.pdb.Namespace && pdbInfo.selector.Matches(labels.Set(pod.Labels)) {
 				count += 1
 				if pdbInfo.pdb.Status.DisruptionsAllowed < count {
+					//TODO: Just log the podname rather than returning here.
 					return false, &drainutil.DrainBlockingPod{Pod: pod, Reason: drainutil.NotEnoughPdb}
 				}
 			}
