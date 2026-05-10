@@ -11,10 +11,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"path"
 	"sync"
-	"syscall"
 	"text/template"
 	"time"
 
@@ -37,28 +35,14 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
-var PrometheusPort = 2112
+const PrometheusPort = 2112
 
-// Flag variables — bound by cobra, read once in execCmd.RunE, then passed
-// explicitly to all callees so that no other function touches these globals.
-var (
-	skipCleanup       bool
-	snapshotFile      string
-	scalerVersion     string
-	scalerPodName     string
-	prometheusVersion string
-)
-
-// execScaler is the interface that every scaler backend must implement to
+// ExecScaler is the interface that every scaler backend must implement to
 // participate in a benchmark run.
 type ExecScaler interface {
 	// DeployScalerData creates the scaler-specific Kubernetes objects (CRDs,
 	// ConfigMaps, NodePools, etc.) in the KWOK cluster.
 	DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) error
-
-	// GetScalerContainerName returns the name of the container in which the scaler is running.
-	// This is used for monitoring the resource usage of the scaler container during the benchmark run.
-	GetScalerContainerName() string
 
 	// GetScalerKWOKTemplatePath returns the embedded-FS path to the
 	// kwokctl configuration template for this scaler.
@@ -73,10 +57,11 @@ type ExecScaler interface {
 // ExecArgs has the flag variables — bound by cobra, read once in execCmd.RunE, then
 // passed explicitly to all callees so that no other function touches these globals.
 type ExecArgs struct {
-	Scaler        string
-	SnapshotFile  string
-	ScalerVersion string
-	SkipCleanup   bool
+	Scaler            string
+	SnapshotFile      string
+	ScalerVersion     string
+	SkipCleanup       bool
+	PrometheusVersion string
 }
 
 // NewExecCommand runs a scaler inside a KWOK cluster populated with data
@@ -126,17 +111,10 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 		"version of the scaler to fetch",
 	)
 
+	// TODO: check if this is really required, the less flags the better
 	execCmd.PersistentFlags().StringVar(
-		&scalerPodName,
-		"scaler-pod",
-		"cluster-autoscaler",
-		"name of the scaler pod to monitor",
-	)
-
-	execCmd.PersistentFlags().StringVar(
-		&prometheusVersion,
-		"prometheus-version",
-		"latest",
+		&execArgs.PrometheusVersion,
+		"prometheus-version", "latest",
 		"prometheus image tag to use",
 	)
 
@@ -162,9 +140,10 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 
 	kwokClusterName := envconf.RandomName("kwok-cluster", 17)
 
-	ctx, cfg, promConfigPath, err := setupClusterForScaling(ctx, scaler, kwokClusterName, scenarioDir, args.scalerVersion)
+	// FIXME: what is with this arguments blow-up
+	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.Scaler, args.PrometheusVersion, args.ScalerVersion)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// FIXME: aaaaaaaaaaaaaargggggggggggghhhhhhh
 	defer cleanupCluster(execCtx, cfg, kwokClusterName, scenarioDir, promConfigPath, args.SkipCleanup)
@@ -183,16 +162,16 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
 
 	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
-	if err := deployPods(ctx, cfg, scheduled); err != nil {
-		return fmt.Errorf("error deploying scheduled pods: %v", err)
+	if err := deployPods(execCtx, cfg, scheduled); err != nil {
+		return nil, fmt.Errorf("error deploying scheduled pods: %v", err)
 	}
 	log.Printf("Deployed all %d scheduled pods", len(scheduled))
 
 	meta := RunMetadata{
 		StartTime:     time.Now(),
-		ScalerName:    scalerName,
-		ScalerVersion: scalerVersion,
-		SnapshotFile:  snapshotFile,
+		ScalerName:    args.Scaler,
+		ScalerVersion: args.ScalerVersion,
+		SnapshotFile:  args.SnapshotFile,
 		ClusterState: ClusterState{
 			Before: ClusterPodStats{
 				NodeCount:       len(clusterSnapshot.Nodes),
@@ -202,19 +181,19 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 		},
 	}
 
-	ec, collectedMetrics, wg, err := startMonitor(ctx, cfg, meta)
+	ec, collectedMetrics, wg, err := startMonitor(execCtx, cfg, meta)
 	if err != nil {
-		return fmt.Errorf("monitoring setup failed: %v", err)
+		return nil, fmt.Errorf("monitoring setup failed: %v", err)
 	}
 	defer ec.Stop()
 
 	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
-	if err := deployPods(ctx, cfg, unscheduled); err != nil {
-		return fmt.Errorf("error deploying unscheduled pods: %v", err)
+	if err := deployPods(execCtx, cfg, unscheduled); err != nil {
+		return nil, fmt.Errorf("error deploying unscheduled pods: %v", err)
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
-	stopMonitor(ctx, cfg, ec, collectedMetrics, wg, &meta, kwokClusterName, scenarioDir)
+	stopMonitor(execCtx, cfg, ec, collectedMetrics, wg, &meta, kwokClusterName, scenarioDir)
 
 	log.Println("Successfully completed!")
 	// TODO: revert and fix this
@@ -260,8 +239,10 @@ type KwokctlConfigTemplateParams struct {
 func setupClusterForScaling(
 	ctx context.Context,
 	scaler ExecScaler,
+	scalerName string,
 	clusterName string,
 	scenarioDir string,
+	prometheusVersion string,
 	imageTag string,
 ) (context.Context, *envconf.Config, string, error) {
 	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
@@ -286,7 +267,7 @@ func setupClusterForScaling(
 		OutputPath:              kwokctlCfgFile,
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
-		ContainerName:           scaler.GetScalerContainerName(),
+		ContainerName:           scalerName,
 		PrometheusConfigPath:    promConfigPath,
 		PrometheusImage:         "prom/prometheus:" + prometheusVersion,
 	}
@@ -319,6 +300,8 @@ func cleanupCluster(
 	promConfigPath string,
 	skipCleanup bool,
 ) {
+	os.Remove(promConfigPath)
+
 	logsDir := path.Join(scenarioDir, "logs")
 
 	if err := os.MkdirAll(logsDir, 0750); err != nil {
@@ -514,29 +497,16 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 	return tempFile.Name(), nil
 }
 
-func setupSignalHandler() context.Context {
-	quit := make(chan os.Signal, 2)
-	ctx, cancel := context.WithCancel(context.Background())
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-quit
-		cancel()
-		<-quit
-		os.Exit(1)
-	}()
-	return ctx
-}
-
 // startMonitor sets up Docker stats streaming, Prometheus metrics server,
 // and the EventCollector.
 func startMonitor(ctx context.Context, cfg *envconf.Config, meta RunMetadata) (*EventCollector, *[]PodMetrics, *sync.WaitGroup, error) {
-	log.Printf("Starting monitoring for scaler docker container %s...\n", scalerPodName)
+	log.Printf("Starting monitoring for scaler docker container %s...\n", meta.ScalerName)
 
-	mon := NewDockerMonitor(scalerPodName)
+	mon := NewDockerMonitor(meta.ScalerName)
 
 	log.Println("Waiting for scaler container to be ready...")
 	if err := mon.WaitForReady(ctx); err != nil {
-		return nil, nil, nil, fmt.Errorf("scaler container %q did not become ready: %w", scalerPodName, err)
+		return nil, nil, nil, fmt.Errorf("scaler container %q did not become ready: %w", meta.ScalerName, err)
 	}
 	log.Println("Scaler container is ready")
 

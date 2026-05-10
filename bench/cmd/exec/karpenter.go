@@ -49,10 +49,6 @@ func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Conf
 	return
 }
 
-func (ke *karpenterExec) GetScalerContainerName() string {
-	return bench.ScalerKarpenter
-}
-
 func (ke *karpenterExec) GetScalerKWOKTemplatePath() string {
 	return karpKwokTemplatePath
 }

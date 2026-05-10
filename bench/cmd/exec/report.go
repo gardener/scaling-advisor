@@ -53,12 +53,12 @@ type ClusterState struct {
 
 // RunMetadata holds static information about a benchmark run known before execution.
 type RunMetadata struct {
-	StartTime    time.Time       `json:"startTime"`
-	ScalerName   string          `json:"scalerName"`
-	ScalerVersion string         `json:"scalerVersion"`
-	SnapshotFile string          `json:"snapshotFile"`
-	ClusterState ClusterState    `json:"clusterState"`
-	ScalingTime  TimingBreakdown `json:"scalingTime"`
+	StartTime     time.Time       `json:"startTime"`
+	ScalerName    string          `json:"scalerName"`
+	ScalerVersion string          `json:"scalerVersion"`
+	SnapshotFile  string          `json:"snapshotFile"`
+	ClusterState  ClusterState    `json:"clusterState"`
+	ScalingTime   TimingBreakdown `json:"scalingTime"`
 }
 
 // RunReport is the top-level structure written to the report file.

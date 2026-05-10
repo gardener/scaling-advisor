@@ -76,6 +76,7 @@ func NewSetupCommand(ctx context.Context) *cobra.Command {
 		"version of the scaler to fetch",
 	)
 
+	// TODO: check if this is really required, the less flags the better
 	setupCmd.PersistentFlags().StringVar(
 		&setupArgs.PrometheusVersion,
 		"prometheus-version",

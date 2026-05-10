@@ -7,8 +7,8 @@ require (
 	github.com/gardener/scaling-advisor/common v0.0.0
 	github.com/gardener/scaling-advisor/planner v0.0.0
 	github.com/gardener/scaling-advisor/pricing v0.0.0
-	github.com/prometheus/client_golang v1.23.2
 	github.com/gardener/scaling-advisor/samples v0.0.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.34.3
