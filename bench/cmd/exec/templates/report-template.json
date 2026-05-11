@@ -1,6 +1,8 @@
 {
   "metadata": {
     "startTime": "2025-05-01T10:00:00.000000+00:00",
+    "endTime": "2025-05-01T10:01:15.000000+00:00",
+    "totalRunDuration": "1m15s",
     "scalerName": "cluster-autoscaler | karpenter",
     "scalerVersion": "main",
     "snapshotFile": "cmd/scenarios/cluster-snapshot.json",
@@ -23,6 +25,23 @@
       "reactionTime": "3.6s",
       "schedulingTime": "4.434s",
       "totalDuration": "8.034s"
+    },
+    "eventsSummary": {
+      "firstEventTime": "2025-05-01T10:00:01.200000+00:00",
+      "lastEventTime": "2025-05-01T10:00:15.000000+00:00",
+      "totalCount": 162,
+      "countByType": {
+        "FailedScheduling": 1,
+        "TriggeredScaleUp": 50,
+        "ScaledUpGroup": 2,
+        "NodeCreated": 5,
+        "PodScheduled": 50
+      },
+      "instanceTypes": {
+        "m5.xlarge": 3,
+        "m5.2xlarge": 2
+      },
+      "unschedulablePods": 0
     }
   },
   "metrics": [

@@ -16,7 +16,7 @@ componentsPatches:
     - key: v
       value: "6"
 components:
-  - name: {{.ContainerName}}
+  - name: karpenter
     image: karpenter.local/kwok:{{.ImageTag}}
     command:
       - /kwok-bin

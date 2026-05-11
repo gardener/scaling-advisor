@@ -131,10 +131,16 @@ func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1al
 	}
 	annotations["kwok.x-k8s.io/node"] = "fake"
 
+	labels := make(map[string]string, len(nodePool.Labels)+1)
+	for k, v := range nodePool.Labels {
+		labels[k] = v
+	}
+	labels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
+
 	node := corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name:        nodeTemplate.Name,
-			Labels:      nodePool.Labels,
+			Labels:      labels,
 			Annotations: annotations,
 		},
 		Spec: corev1.NodeSpec{

@@ -51,14 +51,27 @@ type ClusterState struct {
 	After  ClusterPodStats `json:"after"`
 }
 
+// EventsSummary summarises the collected events timeline.
+type EventsSummary struct {
+	FirstEventTime    time.Time      `json:"firstEventTime,omitzero"`
+	LastEventTime     time.Time      `json:"lastEventTime,omitzero"`
+	TotalCount        int            `json:"totalCount"`
+	CountByType       map[string]int `json:"countByType"`
+	InstanceTypes     map[string]int `json:"instanceTypes"`
+	UnschedulablePods int            `json:"unschedulablePods"`
+}
+
 // RunMetadata holds static information about a benchmark run known before execution.
 type RunMetadata struct {
-	StartTime     time.Time       `json:"startTime"`
-	ScalerName    string          `json:"scalerName"`
-	ScalerVersion string          `json:"scalerVersion"`
-	SnapshotFile  string          `json:"snapshotFile"`
-	ClusterState  ClusterState    `json:"clusterState"`
-	ScalingTime   TimingBreakdown `json:"scalingTime"`
+	StartTime        time.Time       `json:"startTime"`
+	EndTime          time.Time       `json:"endTime"`
+	TotalRunDuration string          `json:"totalRunDuration"`
+	ScalerName       string          `json:"scalerName"`
+	ScalerVersion    string          `json:"scalerVersion"`
+	SnapshotFile     string          `json:"snapshotFile"`
+	ClusterState     ClusterState    `json:"clusterState"`
+	ScalingTime      TimingBreakdown `json:"scalingTime"`
+	EventsSummary    EventsSummary   `json:"eventsSummary"`
 }
 
 // RunReport is the top-level structure written to the report file.

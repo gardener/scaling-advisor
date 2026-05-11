@@ -45,11 +45,12 @@ type EventCollector struct {
 	events []ScalingEvent
 	timing TimingBreakdown
 
-	firstFailedSchedulingSet bool
-	firstNodeCreatedSet      bool
-	scheduledCount           int
-	remaining                int
-	scheduledPods            map[string]bool
+	scheduledCount    int
+	remaining         int
+	scheduledPods     map[string]bool
+	unschedulablePods map[string]bool
+
+	lastEventTime time.Time
 
 	done     chan struct{}
 	doneOnce sync.Once
@@ -73,7 +74,6 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Initial node list to get ResourceVersion and track existing nodes.
 	existingNodes := &corev1.NodeList{}
 	if err := ec.res.List(ctx, existingNodes); err != nil {
 		return err
@@ -83,55 +83,83 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		existingNodeNames[n.Name] = true
 	}
 
-	// Initial pod list to get ResourceVersion for the watch.
 	existingPods := &corev1.PodList{}
 	if err := ec.res.List(ctx, existingPods); err != nil {
 		return err
 	}
 	ec.scheduledPods = make(map[string]bool)
+	ec.unschedulablePods = make(map[string]bool)
 	ec.remaining = ec.unscheduledCount
 
-	// Event watch for FailedScheduling
 	eventList := &corev1.EventList{}
 	if err := ec.res.List(ctx, eventList); err != nil {
 		return err
 	}
-	eventRV := eventList.ResourceVersion
 
+	if err := ec.watchEvents(ctx, eventList.ResourceVersion); err != nil {
+		return err
+	}
+	if err := ec.watchNodes(ctx, existingNodes.ResourceVersion, existingNodeNames); err != nil {
+		return err
+	}
+	if err := ec.watchPods(ctx, existingPods.ResourceVersion); err != nil {
+		return err
+	}
+
+	log.Printf("Watchers started: watching for %d pods to be scheduled\n", ec.remaining)
+	return nil
+}
+
+func (ec *EventCollector) watchEvents(ctx context.Context, resourceVersion string) error {
 	ew := ec.res.Watch(&corev1.EventList{}, func(lo *metav1.ListOptions) {
-		lo.ResourceVersion = eventRV
+		lo.ResourceVersion = resourceVersion
 	})
 	ew.WithAddFunc(func(obj any) {
 		event, ok := obj.(*corev1.Event)
-		if !ok || event.Reason != "FailedScheduling" {
+		if !ok {
 			return
 		}
 		ec.mu.Lock()
 		defer ec.mu.Unlock()
 
-		se := ScalingEvent{
-			Timestamp: event.CreationTimestamp.Time,
-			Type:      "FailedScheduling",
-			Name:      event.InvolvedObject.Name,
-			Namespace: event.InvolvedObject.Namespace,
-			Details:   event.Message,
-		}
-		ec.events = append(ec.events, se)
+		ec.lastEventTime = time.Now()
 
-		if !ec.firstFailedSchedulingSet {
-			ec.timing.FirstFailedScheduling = event.CreationTimestamp.Time
-			ec.firstFailedSchedulingSet = true
+		if event.Reason == "FailedScheduling" {
+			if ec.timing.FirstFailedScheduling.IsZero() {
+				ec.timing.FirstFailedScheduling = event.CreationTimestamp.Time
+				ec.events = append(ec.events, ScalingEvent{
+					Timestamp: event.CreationTimestamp.Time,
+					Type:      event.Reason,
+					Name:      event.InvolvedObject.Name,
+					Namespace: event.InvolvedObject.Namespace,
+					Details:   event.Message,
+				})
+			}
+			EventsFailedSchedulingTotal.Inc()
+		} else if event.Reason != "Scheduled" {
+			ec.events = append(ec.events, ScalingEvent{
+				Timestamp: event.CreationTimestamp.Time,
+				Type:      event.Reason,
+				Name:      event.InvolvedObject.Name,
+				Namespace: event.InvolvedObject.Namespace,
+				Details:   event.Message,
+			})
 		}
-		EventsFailedSchedulingTotal.Inc()
+
+		if event.Reason == "NotTriggerScaleUp" {
+			ec.podUnschedulable(event.InvolvedObject.Name)
+		}
 	})
 	if err := ew.Start(ctx); err != nil {
 		return err
 	}
 	ec.watchers = append(ec.watchers, ew)
+	return nil
+}
 
-	// Node watch for new nodes (scale-out)
+func (ec *EventCollector) watchNodes(ctx context.Context, resourceVersion string, existingNodeNames map[string]bool) error {
 	nw := ec.res.Watch(&corev1.NodeList{}, func(lo *metav1.ListOptions) {
-		lo.ResourceVersion = existingNodes.ResourceVersion
+		lo.ResourceVersion = resourceVersion
 	})
 	nw.WithAddFunc(func(obj any) {
 		node, ok := obj.(*corev1.Node)
@@ -145,17 +173,15 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		defer ec.mu.Unlock()
 
 		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
-		se := ScalingEvent{
+		ec.events = append(ec.events, ScalingEvent{
 			Timestamp: node.CreationTimestamp.Time,
 			Type:      "NodeCreated",
 			Name:      node.Name,
 			Details:   instanceType,
-		}
-		ec.events = append(ec.events, se)
+		})
 
-		if !ec.firstNodeCreatedSet {
+		if ec.timing.FirstNodeCreated.IsZero() {
 			ec.timing.FirstNodeCreated = node.CreationTimestamp.Time
-			ec.firstNodeCreatedSet = true
 			ec.computeReactionTime()
 		}
 		NodesCreatedTotal.Inc()
@@ -164,20 +190,13 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		return err
 	}
 	ec.watchers = append(ec.watchers, nw)
+	return nil
+}
 
-	// Pod watch
+func (ec *EventCollector) watchPods(ctx context.Context, resourceVersion string) error {
 	pw := ec.res.Watch(&corev1.PodList{}, func(lo *metav1.ListOptions) {
-		lo.ResourceVersion = existingPods.ResourceVersion
+		lo.ResourceVersion = resourceVersion
 	})
-	// pw.WithAddFunc(func(obj any) {
-	// 	pod, ok := obj.(*corev1.Pod)
-	// 	if !ok || pod.Spec.NodeName == "" {
-	// 		return
-	// 	}
-	// 	ec.mu.Lock()
-	// 	defer ec.mu.Unlock()
-	// 	ec.podScheduled(pod)
-	// })
 	pw.WithUpdateFunc(func(obj any) {
 		pod, ok := obj.(*corev1.Pod)
 		if !ok || pod.Spec.NodeName == "" {
@@ -191,8 +210,6 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		return err
 	}
 	ec.watchers = append(ec.watchers, pw)
-
-	log.Printf("Event collector started: watching for %d pods to be scheduled\n", ec.remaining)
 	return nil
 }
 
@@ -213,17 +230,79 @@ func (ec *EventCollector) Stop() {
 	}
 }
 
+// WaitForScalerEvents blocks until no new events have been received for the
+// given quiet duration, or the context is cancelled. Call this after Wait()
+// to let late-arriving events (e.g. TriggeredScaleUp) trickle in.
+func (ec *EventCollector) WaitForScalerEvents(ctx context.Context, quiet time.Duration) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ec.mu.Lock()
+			last := ec.lastEventTime
+			ec.mu.Unlock()
+			if !last.IsZero() && time.Since(last) >= quiet {
+				return
+			}
+		}
+	}
+}
+
 // Results returns the collected events and computed timing breakdown.
-func (ec *EventCollector) Results() ([]ScalingEvent, TimingBreakdown) {
+func (ec *EventCollector) Results() ([]ScalingEvent, TimingBreakdown, EventsSummary) {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 	events := make([]ScalingEvent, len(ec.events))
 	copy(events, ec.events)
-	return events, ec.timing
+
+	meta := EventsSummary{
+		TotalCount:        len(events),
+		CountByType:       make(map[string]int),
+		InstanceTypes:     make(map[string]int),
+		UnschedulablePods: len(ec.unschedulablePods),
+	}
+	for _, e := range events {
+		meta.CountByType[e.Type]++
+		if e.Type == "NodeCreated" && e.Details != "" {
+			meta.InstanceTypes[e.Details]++
+		}
+		if meta.FirstEventTime.IsZero() || e.Timestamp.Before(meta.FirstEventTime) {
+			meta.FirstEventTime = e.Timestamp
+		}
+		if e.Timestamp.After(meta.LastEventTime) {
+			meta.LastEventTime = e.Timestamp
+		}
+	}
+
+	return events, ec.timing, meta
 }
 
 func (ec *EventCollector) finish() {
-	ec.doneOnce.Do(func() { close(ec.done) })
+	ec.doneOnce.Do(func() {
+		if ec.lastEventTime.IsZero() {
+			ec.lastEventTime = time.Now()
+		}
+		close(ec.done)
+	})
+}
+
+func (ec *EventCollector) podUnschedulable(podName string) {
+	if ec.unschedulablePods[podName] {
+		return
+	}
+	ec.unschedulablePods[podName] = true
+	ec.remaining--
+	log.Printf("Pod %q marked unschedulable (remaining: %d)\n", podName, ec.remaining)
+
+	if ec.scheduledCount >= ec.remaining {
+		ec.timing.LastPodScheduled = time.Now()
+		ec.computeSchedulingTime()
+		ec.computeTotalDuration()
+		ec.finish()
+	}
 }
 
 func (ec *EventCollector) podScheduled(pod *corev1.Pod) {

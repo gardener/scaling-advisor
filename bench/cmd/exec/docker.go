@@ -70,8 +70,8 @@ func NewDockerMonitor(containerNamePrefix string) *DockerMonitor {
 
 func newDialHTTPClient(socketPath string) *http.Client {
 	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return net.Dial("unix", socketPath)
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 		},
 	}
 	return &http.Client{Transport: transport}
@@ -197,7 +197,10 @@ func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
 
 func (m *DockerMonitor) findContainerIDByPrefix(ctx context.Context, prefix string) (string, error) {
 	filters := map[string][]string{"name": {prefix}}
-	filtJSON, _ := json.Marshal(filters)
+	filtJSON, err := json.Marshal(filters)
+	if err != nil {
+		return "", fmt.Errorf("cannot marshal docker filters: %w", err)
+	}
 	q := url.Values{}
 	q.Set("filters", string(filtJSON))
 

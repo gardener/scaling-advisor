@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"text/template"
 	"time"
@@ -25,7 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
@@ -35,7 +36,7 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
-const PrometheusPort = 2112
+const prometheusPort = 2112
 
 // ExecScaler is the interface that every scaler backend must implement to
 // participate in a benchmark run.
@@ -126,7 +127,10 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 // Then it deploys all the objects present in the snapshot in the cluster alongwith the
 // artefacts produced by the "setup" subcommand.
 func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error) {
-	scenarioDir := path.Dir(args.SnapshotFile)
+	scenarioDir, err := filepath.Abs(path.Dir(args.SnapshotFile))
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve scenario directory: %w", err)
+	}
 
 	scaler, err := getScaler(args.Scaler)
 	if err != nil {
@@ -141,7 +145,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	kwokClusterName := envconf.RandomName("kwok-cluster", 17)
 
 	// FIXME: what is with this arguments blow-up
-	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.Scaler, args.PrometheusVersion, args.ScalerVersion)
+	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.PrometheusVersion, args.ScalerVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +233,6 @@ type KwokctlConfigTemplateParams struct {
 	OutputPath              string
 	ScenarioDirectory       string
 	ImageTag                string
-	ContainerName           string
 	PrometheusConfigPath    string
 	PrometheusImage         string
 }
@@ -239,7 +242,6 @@ type KwokctlConfigTemplateParams struct {
 func setupClusterForScaling(
 	ctx context.Context,
 	scaler ExecScaler,
-	scalerName string,
 	clusterName string,
 	scenarioDir string,
 	prometheusVersion string,
@@ -254,7 +256,7 @@ func setupClusterForScaling(
 	// TODO: Can this cause problems?
 	defer os.Remove(kubeSchedulerConfigPath)
 
-	promConfigPath, err := writePrometheusConfig(PrometheusPort)
+	promConfigPath, err := writePrometheusConfig(prometheusPort)
 	if err != nil {
 		return ctx, nil, "", fmt.Errorf("cannot write prometheus config: %w", err)
 	}
@@ -267,7 +269,6 @@ func setupClusterForScaling(
 		OutputPath:              kwokctlCfgFile,
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
-		ContainerName:           scalerName,
 		PrometheusConfigPath:    promConfigPath,
 		PrometheusImage:         "prom/prometheus:" + prometheusVersion,
 	}
@@ -402,15 +403,8 @@ func createNamespaceAndDefaultSA(ctx context.Context, cfg *envconf.Config, name 
 	err := cfg.Client().Resources().Create(ctx, ns)
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create namespace: %w", err)
-	} else if errors.IsAlreadyExists(err) {
-		// Do not attempt to create another service account below
-		return nil
 	}
-	err = createDefaultServiceAccount(ctx, cfg, name)
-	if err != nil {
-		return err
-	}
-	return nil
+	return createDefaultServiceAccount(ctx, cfg, name)
 }
 
 // KWOK does not auto-create service accounts, so we must
@@ -419,7 +413,7 @@ func createDefaultServiceAccount(ctx context.Context, cfg *envconf.Config, name 
 	sa := corev1.ServiceAccount{}
 	sa.Name = "default"
 	sa.Namespace = name
-	if err := cfg.Client().Resources().Create(ctx, &sa); err != nil {
+	if err := cfg.Client().Resources().Create(ctx, &sa); err != nil && !errors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create default serviceAccount in namespace %q: %w", name, err)
 	}
 	return nil
@@ -511,7 +505,7 @@ func startMonitor(ctx context.Context, cfg *envconf.Config, meta RunMetadata) (*
 	log.Println("Scaler container is ready")
 
 	go func() {
-		if err := ServeMetrics(PrometheusPort); err != nil {
+		if err := ServeMetrics(prometheusPort); err != nil {
 			log.Printf("Failed to serve metrics: %v", err)
 		}
 	}()
@@ -562,11 +556,21 @@ func startMonitor(ctx context.Context, cfg *envconf.Config, meta RunMetadata) (*
 // finishMonitoring waits for scaling to complete, blocks until cancelled by user
 // then writes the final report.
 func stopMonitor(ctx context.Context, cfg *envconf.Config, ec *EventCollector, collectedMetrics *[]PodMetrics, wg *sync.WaitGroup, meta *RunMetadata, clusterName, scenarioDir string) {
-	if err := ec.Wait(ctx); err != nil {
+	err := ec.Wait(ctx)
+	if err != nil {
 		log.Printf("Event collector wait interrupted: %v", err)
 	}
 
-	events, timing := ec.Results()
+	if err == nil {
+		log.Println("Waiting for all scaler events...")
+		eventsCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		ec.WaitForScalerEvents(eventsCtx, 3*time.Second)
+		log.Println("All scaler events collected")
+	}
+
+	events, timing, eventsSummary := ec.Results()
+	ec.Stop()
 	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
 		timing.TotalDuration, timing.ReactionTime, timing.SchedulingTime)
 
@@ -578,6 +582,10 @@ func stopMonitor(ctx context.Context, cfg *envconf.Config, ec *EventCollector, c
 
 	meta.ClusterState.After = after
 	meta.ScalingTime = timing
+	meta.EventsSummary = eventsSummary
+	meta.EndTime = time.Now()
+	meta.TotalRunDuration = meta.EndTime.Sub(meta.StartTime).String()
+	log.Printf("Total benchmarking run time: %s\n", meta.TotalRunDuration)
 
 	reportPath := path.Join(scenarioDir, "logs", "kwok-"+clusterName, "scaler-report.json")
 	if err := os.MkdirAll(path.Dir(reportPath), 0755); err != nil {

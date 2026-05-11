@@ -16,7 +16,7 @@ componentsPatches:
     - key: v
       value: "6"
 components:
-  - name: {{.ContainerName}}
+  - name: cluster-autoscaler
     image: gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:{{.ImageTag}}
     command:
       - /cluster-autoscaler
