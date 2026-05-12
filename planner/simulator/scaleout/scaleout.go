@@ -139,66 +139,8 @@ func SendPlanError(planResultCh chan<- plannerapi.ScaleOutPlanResult, requestRef
 	}
 }
 
-// SendPlanResultUsingGroupCycleResults creates a plannerapi.ScaleOutPlanResult from the given plannerapi.Request and plannerapi.SimulationGroupCycleResults
-// and sends this result to the resultCh.
-func SendPlanResultUsingGroupCycleResults(ctx context.Context,
-	resultCh chan<- plannerapi.ScaleOutPlanResult,
-	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
-	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
-	log := logr.FromContextOrDiscard(ctx)
-	labels := createPlanLabels(req, simulationRunCount)
-	var allWinnerNodeScores []plannerapi.NodeScore
-	var leftOverUnscheduledPods []commontypes.NamespacedName
-	for _, gcr := range groupCycleResults {
-		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
-		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
-	}
-	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
-	if err != nil {
-		return err
-	}
-	scaleOutPlan := createScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
-	planResult := plannerapi.ScaleOutPlanResult{
-		Labels:       labels,
-		ScaleOutPlan: &scaleOutPlan,
-	}
-	log.V(2).Info("Sent Planner Success Response", "response", planResult)
-	resultCh <- planResult
-	return nil
-}
-
-// SendPlanResultUsingSimResults constraints a [plannerapi.ScaleOutPlanResult] from the given slice of
-// [plannerapi.ScaleOutSimResult] and referring the given [plannerapi.Request] and sends the same on the given result
-// channel.
-func SendPlanResultUsingSimResults(ctx context.Context,
-	resultCh chan<- plannerapi.ScaleOutPlanResult,
-	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
-	simResults []plannerapi.ScaleOutSimResult) error {
-	log := logr.FromContextOrDiscard(ctx)
-	labels := createPlanLabels(req, simulationRunCount)
-	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
-	if err != nil {
-		return err
-	}
-	var scaleOutPlan sacorev1alpha1.ScaleOutPlan
-	for _, sr := range simResults {
-		for _, item := range sr.Items {
-			existingCount := existingNodeCountByPlacement[item.NodePlacement]
-			item.CurrentReplicas = existingCount
-			scaleOutPlan.Items = append(scaleOutPlan.Items, item)
-		}
-		scaleOutPlan.UnsatisfiedPodNames = objutil.GetFullNames(sr.LeftoverUnscheduledPods)
-	}
-	planResult := plannerapi.ScaleOutPlanResult{
-		Labels:       labels,
-		ScaleOutPlan: &scaleOutPlan,
-	}
-	log.V(2).Info("Sent Planner Success Response", "response", planResult)
-	resultCh <- planResult
-	return nil
-}
-
-func createPlanLabels(req *plannerapi.Request, simulationRunCount uint32) map[string]string {
+// CreatePlanLabels creates a map of standard labels associated with the given [plannerapi.Request] and parameters.
+func CreatePlanLabels(req *plannerapi.Request, simulationRunCount uint32) map[string]string {
 	planGenerateDuration := time.Since(req.CreationTime)
 	numUnscheduledPods := len(req.Snapshot.GetUnscheduledPods())
 	return map[string]string{
@@ -277,8 +219,8 @@ func (s *SimulatorState) createRequestView(ctx context.Context, viewAccess minka
 	return
 }
 
-// createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []commontypes.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+// CreateScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
+func CreateScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []commontypes.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := groupNodeScoresByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {

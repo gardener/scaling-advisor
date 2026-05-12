@@ -178,10 +178,6 @@ func (s *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error
 		log.V(3).Info("FinalizeStaticBindingsForSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
 		s.state.numUnchangedTrackAttempts = 0
 	}
-	// TODO: needs discussion.
-	//if s.args.Strategy.IsMultiNode() && s.state.numScheduledPods > 0{
-	//	err = s.state.CreateSimulationNodes(s.args.StorageMetaAccess, s.args.Strategy, s.args.NodeTemplates)
-	//}
 	_ = viewutil.LogObjects(ctx, "doWork done", view)
 	return err
 }
@@ -251,7 +247,7 @@ func (s *defaultSimulation) incRunNum() uint32 {
 // It returns a slice of [NodeTemplateCount] which encapsulates the [plannerapi.ScaleOutNodeTemplate] and the scale-out count.
 //
 // At the moment, it uses simplistic logic, where
-//   - for [SimulatorStrategySingleNodeMultiSim], it just returns the a [NodeTemplateCount] using first [plannerapi.ScaleOutNodeTemplate] and count as `1`
+//   - for [SimulatorStrategySingleNodeMultiSim], it just returns a [NodeTemplateCount] using first [plannerapi.ScaleOutNodeTemplate] and count as `1`
 //   - for [SimulatorStrategyMultiNodeSingleSim], it returns a [NodeTemplateCount] with count as the number of unscheduled pod(s) (multiplicative blowup of scale-out nodes)
 func ComputeNodeTemplateCounts(strategy commontypes.SimulatorStrategy, templates []plannerapi.ScaleOutNodeTemplate, podInfos []plannerapi.PodInfo) ([]NodeTemplateCount, error) {
 	if strategy.IsSingleNode() {
@@ -304,7 +300,7 @@ func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 }
 
 // NodeTemplateCount extends the [plannerapi.ScaleOutNodeTemplate] with a count representing the number of nodes to create
-// for this template
+// for this template.
 type NodeTemplateCount struct {
 	plannerapi.ScaleOutNodeTemplate
 	count int

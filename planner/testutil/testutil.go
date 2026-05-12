@@ -258,19 +258,10 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		t.Fatalf("failed to load scheduler config: %v", err)
 		return
 	}
-	var simulatorConfig plannerapi.SimulatorConfig
-	if os.Getenv("DEBUG") == "" {
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
-	} else { // allow comfortable time for debugging
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         2 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
+	simulatorConfig := plannerapi.SimulatorConfig{
+		MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
+		TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
+		MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)

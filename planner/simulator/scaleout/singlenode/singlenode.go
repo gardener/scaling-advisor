@@ -143,7 +143,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 		allWinnerNodeScores = append(allWinnerNodeScores, simGroupCycleResult.WinnerNodeScores...)
 		if s.state.Request.AdviceGenerationMode.IsIncremental() {
 			log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", s.state.Request.AdviceGenerationMode)
-			if err = scaleout.SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(),
+			if err = SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(),
 				[]plannerapi.ScaleOutSimGroupCycleResult{simGroupCycleResult}); err != nil {
 				return
 			}
@@ -161,7 +161,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 	}
 	if s.state.Request.AdviceGenerationMode.IsAllAtOnce() {
 		log.V(4).Info("Sending ScalingPlanResult", "adviceGenerationMode", s.state.Request.AdviceGenerationMode)
-		err = scaleout.SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(), allSimGroupCycleResults)
+		err = SendPlanResultUsingGroupCycleResults(ctx, s.state.ResultCh, s.state.Request, s.state.SimRunCounter.Load(), allSimGroupCycleResults)
 	}
 	return
 }
@@ -244,6 +244,34 @@ func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView m
 		err = fmt.Errorf("cannot reset event sink of view %q and/or simulation group %q: %w", nextGroupPassView.GetName(), group.Name(), err)
 	}
 	return
+}
+
+// SendPlanResultUsingGroupCycleResults creates a plannerapi.ScaleOutPlanResult from the given plannerapi.Request and plannerapi.SimulationGroupCycleResults
+// and sends this result to the resultCh.
+func SendPlanResultUsingGroupCycleResults(ctx context.Context,
+	resultCh chan<- plannerapi.ScaleOutPlanResult,
+	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
+	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
+	log := logr.FromContextOrDiscard(ctx)
+	labels := scaleout.CreatePlanLabels(req, simulationRunCount)
+	var allWinnerNodeScores []plannerapi.NodeScore
+	var leftOverUnscheduledPods []commontypes.NamespacedName
+	for _, gcr := range groupCycleResults {
+		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
+		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
+	}
+	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
+	if err != nil {
+		return err
+	}
+	scaleOutPlan := scaleout.CreateScaleOutPlan(allWinnerNodeScores, existingNodeCountByPlacement, leftOverUnscheduledPods)
+	planResult := plannerapi.ScaleOutPlanResult{
+		Labels:       labels,
+		ScaleOutPlan: &scaleOutPlan,
+	}
+	log.V(2).Info("Sent Planner Success Response", "response", planResult)
+	resultCh <- planResult
+	return nil
 }
 
 func (s *simulatorMultiSim) processScaleOutSimResults(ctx context.Context, simulationGroupName string, scaleOutSimResults []plannerapi.ScaleOutSimResult) (simGroupPassScores plannerapi.ScaleOutSimGroupPassScores, winningView minkapi.View, err error) {

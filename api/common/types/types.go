@@ -248,6 +248,3 @@ func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
 	}
 	return cmp.Compare(b.Second, a.Second)
 }
-
-// ResourceIntValues represents aggregated resource quantities using int64 values.
-type ResourceIntValues map[corev1.ResourceName]int64
