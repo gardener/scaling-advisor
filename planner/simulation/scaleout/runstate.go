@@ -187,7 +187,7 @@ func (r *RunState) GetScaleOutItems() []sacorev1alpha1.ScaleOutItem {
 
 func (r *RunState) createNode(nodeTemplate plannerapi.ScaleOutNodeTemplate) (*corev1.Node, error) {
 	node := r.buildScaleOutSimNode(nodeTemplate)
-	simNodeRuntimeObj, err := r.view.CreateObject(r.ctx, typeinfo.NodesDescriptor.GVK, node)
+	simNodeRuntimeObj, err := r.view.CreateObject(r.ctx, typeinfo.NodesDescriptor.GVK, node, minkapi.ObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (r *RunState) createCSINode(storageMetaAccess plannerapi.StorageMetaAccess,
 		csiNodeSpec.Drivers[i].NodeID = scaleOutSimNode.Name
 	}
 	csiNode := nodeutil.NewCSINode(scaleOutSimNode.Name, scaleOutSimNode.UID, csiNodeSpec)
-	runtimeObj, err := r.view.CreateObject(r.ctx, typeinfo.CSINodeDescriptor.GVK, csiNode)
+	runtimeObj, err := r.view.CreateObject(r.ctx, typeinfo.CSINodeDescriptor.GVK, csiNode, minkapi.ObjectOptions{})
 	if err != nil {
 		return err
 	}
