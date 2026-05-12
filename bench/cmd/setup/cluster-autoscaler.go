@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
@@ -131,11 +132,11 @@ func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1al
 	}
 	annotations["kwok.x-k8s.io/node"] = "fake"
 
-	labels := make(map[string]string, len(nodePool.Labels)+1)
-	for k, v := range nodePool.Labels {
-		labels[k] = v
-	}
+	labels := make(map[string]string, len(nodePool.Labels)+2)
+	maps.Copy(labels, nodePool.Labels)
 	labels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
+	// Region is required to compute the pricing information for the node
+	labels[corev1.LabelTopologyRegion] = nodePool.Region
 
 	node := corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
@@ -148,7 +149,7 @@ func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1al
 		},
 		Status: corev1.NodeStatus{
 			Capacity:    nodeTemplate.Capacity,
-			Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.SystemReserved),
+			Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved),
 			Phase:       corev1.NodeRunning,
 		},
 	}

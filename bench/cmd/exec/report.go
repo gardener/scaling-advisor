@@ -82,10 +82,16 @@ type EventsSummary struct {
 	CountByType map[string]int `json:"countByType"`
 }
 
+type InstanceDetails struct {
+	Price  float64
+	Region string
+	Count  int
+}
+
 // NodesSummary holds node scaling information.
 type NodesSummary struct {
-	TotalCreated  int            `json:"totalCreated"`
-	InstanceTypes map[string]int `json:"instanceTypes"`
+	TotalCreated  int                        `json:"totalCreated"`
+	InstanceTypes map[string]InstanceDetails `json:"instanceTypes"`
 }
 
 // Summary holds the structured summary of the benchmark run.

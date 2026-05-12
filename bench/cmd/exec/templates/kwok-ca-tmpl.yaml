@@ -25,7 +25,8 @@ components:
       - --leader-elect=false
       - --cloud-provider=kwok
       - --kubeconfig=/etc/kubeconfig/kubeconfig
-      - --scale-down-unneeded-time=1m0s # FIXME: setup CA flags
+      - --scale-down-unneeded-time=2s # FIXME: setup CA flags
+      - --scale-down-utilization-threshold=0.95
     envs:
       - name: KUBERNETES_SERVICE_HOST
         value: "127.0.0.1"
@@ -47,7 +48,7 @@ components:
     networks:
       - kwok-{{.ClusterName}}
   - name: prometheus
-    image: {{.PrometheusImage}}
+    image: prom/prometheus:latest
     ports:
       - port: 9090
         hostPort: 9090

@@ -18,7 +18,9 @@ import (
 	"text/template"
 	"time"
 
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
+	"github.com/gardener/scaling-advisor/pricing"
 
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
@@ -73,6 +75,7 @@ type ExecArgs struct {
 	Scaler        string
 	SnapshotFile  string
 	ScalerVersion string
+	PricingFile   string
 	SkipCleanup   bool
 	WaitForCancel bool
 }
@@ -102,7 +105,6 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 
 	// Initialise the exec args with the passed flag values,
 	// falling back to default if nothing specified
-	// TODO: need to add the argument to pass the pricing data for report
 	execCmd.PersistentFlags().StringVar(
 		&execArgs.SnapshotFile,
 		"snap", "",
@@ -129,6 +131,13 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 		"version of the scaler to fetch",
 	)
 
+	execCmd.PersistentFlags().StringVarP(
+		&execArgs.PricingFile,
+		"pricing-data", "p", "",
+		"pricing data file",
+	)
+	_ = execCmd.MarkFlagRequired("pricing-data")
+
 	return execCmd
 }
 
@@ -145,6 +154,11 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	scaler, err := getScaler(args.Scaler)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get scaler: %w", err)
+	}
+
+	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", args.PricingFile)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing pricing data: %v", err)
 	}
 
 	err = scaler.CheckRequiredDataPresent(scenarioDir, args.ScalerVersion)
@@ -211,7 +225,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
-	mon.stop(execCtx)
+	mon.stop(execCtx, pricingData)
 
 	log.Println("Successfully completed!")
 	// TODO: revert and fix this
@@ -248,7 +262,6 @@ type KwokctlConfigTemplateParams struct {
 	ScenarioDirectory       string
 	ImageTag                string
 	PrometheusConfigPath    string
-	PrometheusImage         string
 }
 
 // setupClusterForScaling creates a fresh KWOK cluster configured for the
@@ -283,7 +296,6 @@ func setupClusterForScaling(
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
 		PrometheusConfigPath:    promConfigPath,
-		PrometheusImage:         "prom/prometheus:latest",
 	}
 
 	err = generateKwokctlConfig(templateParams, scaler.GetScalerKWOKTemplatePath())
@@ -366,8 +378,6 @@ func deployObjects(ctx context.Context, cfg *envconf.Config, clusterSnapshot pla
 			return err
 		}
 	}
-	// FIXME:
-	// return createDefaultServiceAccount(ctx, cfg, corev1.NamespaceDefault)
 	return
 }
 
@@ -527,11 +537,11 @@ type monitorState struct {
 // newMonitor creates a monitorState by discovering Docker containers and
 // preparing the metrics infrastructure. Call start() to begin streaming.
 func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clusterName, scenarioDir string) (*monitorState, error) {
-	containers := []string{meta.ScalerName, clusterName + "-kube-apiserver", clusterName + "-etcd", clusterName + "-kube-scheduler"}
+	containers := []string{meta.ScalerName, "kube-apiserver", "etcd", "kube-scheduler", "kwok-controller"}
 
 	var monitors []*DockerMonitor
 	for _, name := range containers {
-		m := NewDockerMonitor(name)
+		m := NewDockerMonitor(clusterName + "-" + name)
 		if err := m.WaitForReady(ctx); err != nil {
 			if name == meta.ScalerName {
 				return nil, fmt.Errorf("scaler container %q did not become ready: %w", name, err)
@@ -601,13 +611,13 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 
 // stop waits for scaling to complete, then writes the final report
 // and shuts down the metrics server.
-func (mon *monitorState) stop(ctx context.Context) {
+func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.InstancePricingAccess) {
 	err := mon.ec.Wait(ctx)
 	if err != nil {
 		log.Printf("Event collector wait interrupted: %v", err)
 	}
 
-	events, timing, eventsSummary := mon.ec.Results()
+	events, timing, eventsSummary := mon.ec.Results(pricingData)
 	mon.ec.Stop()      // stop event watches
 	mon.cancelStream() // stop all metric streams
 	mon.meta.EndTime = time.Now()

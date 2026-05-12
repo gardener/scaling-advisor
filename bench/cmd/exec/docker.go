@@ -14,6 +14,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -59,13 +61,34 @@ type dockerStats struct {
 	} `json:"pids_stats"`
 }
 
-const defaultDockerSocket = "/var/run/docker.sock"
+// dockerSocketPath returns the Docker socket path by checking DOCKER_HOST,
+// then common socket locations.
+func dockerSocketPath() string {
+	if host := os.Getenv("DOCKER_HOST"); host != "" {
+		if strings.HasPrefix(host, "unix://") {
+			return strings.TrimPrefix(host, "unix://")
+		}
+	}
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		"/var/run/docker.sock",
+		filepath.Join(home, ".docker", "run", "docker.sock"),
+		filepath.Join(home, ".colima", "default", "docker.sock"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return "/var/run/docker.sock"
+}
 
 // NewDockerMonitor creates a new DockerMonitor
 func NewDockerMonitor(containerNamePrefix string) *DockerMonitor {
+	sockPath := dockerSocketPath()
 	return &DockerMonitor{
 		containerNamePrefix: containerNamePrefix,
-		httpClient:          newDialHTTPClient(defaultDockerSocket),
+		httpClient:          newDialHTTPClient(sockPath),
 	}
 }
 
@@ -116,7 +139,7 @@ func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics)
 		return fmt.Errorf("container ID not set")
 	}
 
-	log.Printf("Streaming metrics for container %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+	log.Printf("Streaming metrics for container %s\n", m.containerNamePrefix)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://unix/containers/%s/stats?stream=true", m.containerID), nil)
 	if err != nil {

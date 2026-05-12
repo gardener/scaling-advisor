@@ -6,12 +6,14 @@ package exec
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
 	"slices"
 	"sync"
 	"time"
 
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -27,6 +29,7 @@ type ScalingEvent struct {
 	Name      string    `json:"name"`
 	Namespace string    `json:"namespace,omitempty"`
 	Details   string    `json:"details,omitempty"`
+	Region    string    `json:"region,omitempty"`
 }
 
 // TimingBreakdown captures the different durations during scaling.
@@ -39,6 +42,7 @@ type TimingBreakdown struct {
 	TotalDuration         string    `json:"totalDuration"`
 }
 
+// TODO: update this docstring
 // EventCollector watches Kubernetes events, nodes, and pods to build
 // a timeline and compute timing.
 type EventCollector struct {
@@ -55,6 +59,9 @@ type EventCollector struct {
 	scheduledCount     int
 	unschedulablePods  sets.Set[string]
 
+	// Map of to be deleted node name to the pods on the node
+	podsToRecreate map[string]corev1.PodList
+
 	// Collected data
 	events             []ScalingEvent
 	timing             TimingBreakdown
@@ -66,6 +73,7 @@ func NewEventCollector(res *resources.Resources, unscheduledCount int, eventConf
 	return &EventCollector{
 		res:                res,
 		unscheduledCounter: unscheduledCount,
+		podsToRecreate:     make(map[string]corev1.PodList),
 		eventConfig:        eventConfig,
 		done:               make(chan struct{}),
 	}
@@ -104,6 +112,7 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 	return nil
 }
 
+// TODO: update this to look for eviction events and add those pods to the podsToRecreate slice?
 func (ec *EventCollector) watchEvents(ctx context.Context) error {
 	ew := ec.res.Watch(&corev1.EventList{}, func(listOpts *metav1.ListOptions) {
 		listOpts.ResourceVersion = "0"
@@ -171,13 +180,13 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 		ec.mu.Lock()
 		defer ec.mu.Unlock()
 
-		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
 		ec.events = append(ec.events, ScalingEvent{
 			Timestamp: node.CreationTimestamp.Time,
 			Type:      "NodeCreated",
 			Source:    "node-watch",
 			Name:      node.Name,
-			Details:   instanceType,
+			Details:   node.Labels[corev1.LabelInstanceTypeStable],
+			Region:    node.Labels[corev1.LabelTopologyRegion],
 		})
 
 		if ec.timing.FirstNodeCreated.IsZero() {
@@ -186,6 +195,46 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 		}
 		NodesCreatedTotal.Inc()
 	})
+	nw.WithUpdateFunc(func(obj any) {
+		node, ok := obj.(*corev1.Node)
+		if !ok || node.DeletionTimestamp == nil {
+			return
+		}
+		podsOnDeletedNode := corev1.PodList{}
+		if err := ec.res.List(ctx, &podsOnDeletedNode, func(listOpts *metav1.ListOptions) {
+			listOpts.FieldSelector = fmt.Sprintf("spec.nodeName=%s", node.Name)
+		}); err != nil {
+			return
+		}
+		ec.podsToRecreate[node.Name] = podsOnDeletedNode
+	})
+	nw.WithDeleteFunc(func(obj any) {
+		node, ok := obj.(*corev1.Node)
+		if !ok {
+			return
+		}
+		podsToCreate, ok := ec.podsToRecreate[node.Name]
+		if !ok {
+			return
+		}
+		// TODO: update the totalPods slice
+		for _, p := range podsToCreate.Items {
+			owners := p.GetOwnerReferences()
+			if owners == nil {
+				continue
+			}
+			if slices.ContainsFunc(owners, func(owner metav1.OwnerReference) bool {
+				return owner.Kind == "Job"
+			}) {
+				continue
+			}
+			p.Spec.NodeName = ""
+			if err := ec.res.Create(ctx, &p); err != nil {
+				ec.unscheduledCounter++
+			}
+		}
+	})
+
 	if err := nw.Start(ctx); err != nil {
 		return err
 	}
@@ -231,19 +280,27 @@ func (ec *EventCollector) Stop() {
 }
 
 // Results returns the timeline events, timing breakdown, and enriched summary.
-func (ec *EventCollector) Results() ([]ScalingEvent, TimingBreakdown, Summary) {
+func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) ([]ScalingEvent, TimingBreakdown, Summary) {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
 	countByType := make(map[string]int)
-	instanceTypes := make(map[string]int)
+	instanceTypes := make(map[string]InstanceDetails)
 	var failures []ScalingFailure
 
 	var timeline []ScalingEvent
 	for _, e := range ec.events {
 		countByType[e.Type]++
+		// FIXME: clean these 3 nested level ifs
 		if e.Type == "NodeCreated" && e.Details != "" {
-			instanceTypes[e.Details]++
+			instanceDetails := instanceTypes[e.Details]
+			if instanceDetails.Count == 0 {
+				instancePricing, _ := pricingData.GetInfo(e.Region, e.Details)
+				instanceDetails.Price = instancePricing.HourlyPrice
+				instanceDetails.Region = e.Region
+			}
+			instanceDetails.Count++
+			instanceTypes[e.Details] = instanceDetails
 		}
 
 		if e.Source == ec.eventConfig.Source && slices.Contains(ec.eventConfig.MarksPodUnschedulable, e.Type) {

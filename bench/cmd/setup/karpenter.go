@@ -212,6 +212,12 @@ func buildNodePoolAndClass(
 			Weight: ptr.To(nodePool.Priority + 1),
 		},
 	}
+	// Region is required to compute the pricing information for the node
+	if pool.Spec.Template.Labels == nil {
+		pool.Spec.Template.Labels = make(map[string]string)
+	}
+	pool.Spec.Template.Labels[corev1.LabelTopologyRegion] = nodePool.Region
+
 	pool.SetGroupVersionKind(schema.GroupVersion{
 		Group: karpenterapis.Group, Version: "v1",
 	}.WithKind("NodePool"))

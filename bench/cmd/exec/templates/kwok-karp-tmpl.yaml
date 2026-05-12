@@ -44,7 +44,7 @@ components:
     networks:
       - kwok-{{.ClusterName}}
   - name: prometheus
-    image: {{.PrometheusImage}}
+    image: prom/prometheus:latest
     ports:
       - port: 9090
         hostPort: 9090
