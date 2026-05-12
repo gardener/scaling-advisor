@@ -48,8 +48,16 @@ bin/scalebench setup karpenter -c "./cmd/scenarios/basic-cluster-constraints.jso
 ```
 5. Run the scalebench with the basic snapshot. You can set `export KUBECONFIG=~/.kube/config` to target the kwok cluster for inspecting. 
 ```
-bin/scalebench exec --snap "cmd/scenarios/basic-cluster-snapshot.json"
+bin/scalebench exec cluster-autoscaler --snap "cmd/scenarios/basic-cluster-snapshot.json"
 ```
+
+Available flags for `exec`:
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--snap` | | (required) | Path to the cluster snapshot file |
+| `--scaler-version` | `-v` | `main` | Version of the scaler to fetch |
+| `--skip-cleanup` | `-s` | `false` | Skip deleting cluster with all data upon finishing |
+| `--wait-for-cancel` | `-w` | `false` | Wait for cancel signal after scaling completes before writing report |
 
 While the `exec` subcommand cleans up the kwok cluster on `C-c`, if that somehow fails then to manually stop the kwok cluster run:
 ```

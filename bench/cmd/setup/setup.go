@@ -32,11 +32,10 @@ type SetupScaler interface {
 // SetupArgs contains the flag variables — passed explicitly to all callees
 // so that no other function touches these globals.
 type SetupArgs struct {
-	Scaler            string
-	ConstraintsFile   string
-	PricingFile       string
-	Version           string
-	PrometheusVersion string
+	Scaler          string
+	ConstraintsFile string
+	PricingFile     string
+	Version         string
 }
 
 // NewSetupCommand is the entry point for getting the scaler for the "setup" subcommand.
@@ -76,14 +75,6 @@ func NewSetupCommand(ctx context.Context) *cobra.Command {
 		"version of the scaler to fetch",
 	)
 
-	// TODO: check if this is really required, the less flags the better
-	setupCmd.PersistentFlags().StringVar(
-		&setupArgs.PrometheusVersion,
-		"prometheus-version",
-		"latest",
-		"prometheus image tag to pull",
-	)
-
 	return setupCmd
 }
 
@@ -104,7 +95,7 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 	if err := scaler.BuildScaler(ctx, args.Version); err != nil {
 		return fmt.Errorf("error building %s source: %v", args.Scaler, err)
 	}
-	if err := pullPrometheusImage(args.PrometheusVersion); err != nil {
+	if err := pullPrometheusImage(); err != nil {
 		return fmt.Errorf("error pulling prometheus image: %v", err)
 	}
 
@@ -125,10 +116,9 @@ func getScaler(scalerName, pricingFile string) (SetupScaler, error) {
 	}
 }
 
-func pullPrometheusImage(version string) error {
-	image := "prom/prometheus:" + version
-	check := exec.Command("docker", "image", "inspect", image)
-	if check.Run() == nil {
+func pullPrometheusImage() error {
+	image := "prom/prometheus:latest"
+	if exists := benchutil.CheckIfImageExists(image); exists {
 		return nil
 	}
 	fmt.Printf("Pulling %s...\n", image)

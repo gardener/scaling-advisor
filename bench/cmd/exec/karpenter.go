@@ -53,6 +53,14 @@ func (ke *karpenterExec) GetScalerKWOKTemplatePath() string {
 	return karpKwokTemplatePath
 }
 
+func (ke *karpenterExec) EventConfig() ScalerEventConfig {
+	return ScalerEventConfig{
+		Source:                 "karpenter",
+		EventNames:             []string{"Nominated", "Launched", "NoCompatibleInstanceTypes", "FailedScheduling"},
+		MarksPodUnschedulable: []string{"FailedScheduling"},
+	}
+}
+
 func (ke *karpenterExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("karpenter.local/kwok:%s", scalerVersion)
 	if exists := benchutil.CheckIfImageExists(imageName); !exists {

@@ -1,11 +1,19 @@
 {
-  "metadata": {
-    "startTime": "2025-05-01T10:00:00.000000+00:00",
-    "endTime": "2025-05-01T10:01:15.000000+00:00",
-    "totalRunDuration": "1m15s",
-    "scalerName": "cluster-autoscaler | karpenter",
-    "scalerVersion": "main",
-    "snapshotFile": "cmd/scenarios/cluster-snapshot.json",
+  "startTime": "2025-05-01T10:00:00.000000+00:00",
+  "endTime": "2025-05-01T10:01:15.000000+00:00",
+  "totalRunDuration": "1m15s",
+  "scalerName": "cluster-autoscaler",
+  "scalerVersion": "main",
+  "snapshotFile": "cmd/scenarios/cluster-snapshot.json",
+  "summary": {
+    "scalingTimeline": {
+      "firstFailedScheduling": "2025-05-01T10:00:01.200000+00:00",
+      "firstNodeCreated": "2025-05-01T10:00:04.800000+00:00",
+      "lastPodResolved": "2025-05-01T10:00:09.234000+00:00",
+      "reactionTime": "3.6s",
+      "schedulingTime": "4.434s",
+      "totalDuration": "8.034s"
+    },
     "clusterState": {
       "before": {
         "nodeCount": 5,
@@ -18,17 +26,7 @@
         "unscheduledPods": 0
       }
     },
-    "scalingTime": {
-      "firstFailedScheduling": "2025-05-01T10:00:01.200000+00:00",
-      "firstNodeCreated": "2025-05-01T10:00:04.800000+00:00",
-      "lastPodScheduled": "2025-05-01T10:00:09.234000+00:00",
-      "reactionTime": "3.6s",
-      "schedulingTime": "4.434s",
-      "totalDuration": "8.034s"
-    },
-    "eventsSummary": {
-      "firstEventTime": "2025-05-01T10:00:01.200000+00:00",
-      "lastEventTime": "2025-05-01T10:00:15.000000+00:00",
+    "events": {
       "totalCount": 162,
       "countByType": {
         "FailedScheduling": 1,
@@ -36,94 +34,35 @@
         "ScaledUpGroup": 2,
         "NodeCreated": 5,
         "PodScheduled": 50
-      },
+      }
+    },
+    "nodes": {
+      "totalCreated": 5,
       "instanceTypes": {
         "m5.xlarge": 3,
         "m5.2xlarge": 2
+      }
+    },
+    "pods": {
+      "unschedulablePods": 0,
+      "schedulingLatency": {
+        "p50": "4.2s",
+        "p90": "6.8s",
+        "p99": "8.0s",
+        "max": "8.034s"
       },
-      "unschedulablePods": 0
-    }
-  },
-  "metrics": [
-    {
-      "timestamp": "2025-05-01T10:00:02.000000Z",
-      "containers": [
+      "schedulingDurations": {
+        "default/nginx-pod-1": "3.8s",
+        "default/nginx-pod-2": "4.2s",
+        "default/nginx-pod-3": "6.8s"
+      },
+      "failures": [
         {
-          "name": "cluster-autoscaler",
-          "stats": {
-            "cpuMillicores": 120,
-            "memoryMi": 64,
-            "memoryRSSMi": 58,
-            "memoryMaxUsageMi": 72,
-            "memoryLimitMi": 512,
-            "cpuThrottledPeriods": 0,
-            "cpuTotalPeriods": 15,
-            "cpuThrottledTimeNs": 0,
-            "pids": 12
-          }
-        }
-      ]
-    },
-    {
-      "timestamp": "2025-05-01T10:00:04.000000Z",
-      "containers": [
-        {
-          "name": "cluster-autoscaler",
-          "stats": {
-            "cpuMillicores": 350,
-            "memoryMi": 98,
-            "memoryRSSMi": 90,
-            "memoryMaxUsageMi": 98,
-            "memoryLimitMi": 512,
-            "cpuThrottledPeriods": 2,
-            "cpuTotalPeriods": 30,
-            "cpuThrottledTimeNs": 5000000,
-            "pids": 14
-          }
+          "podName": "oversized-pod-abc123",
+          "reason": "NotTriggerScaleUp",
+          "details": "pod didn't trigger scale-up: no node group can fit this pod"
         }
       ]
     }
-  ],
-  "events": [
-    {
-      "timestamp": "2025-05-01T10:00:01.200000+00:00",
-      "type": "FailedScheduling",
-      "name": "nginx-deployment-abc123",
-      "namespace": "default",
-      "details": "0/5 nodes are available: 5 Insufficient cpu."
-    },
-    {
-      "timestamp": "2025-05-01T10:00:01.250000+00:00",
-      "type": "FailedScheduling",
-      "name": "nginx-deployment-def456",
-      "namespace": "default",
-      "details": "0/5 nodes are available: 5 Insufficient cpu."
-    },
-    {
-      "timestamp": "2025-05-01T10:00:04.800000+00:00",
-      "type": "NodeCreated",
-      "name": "kwok-node-abcdef",
-      "details": "m5.xlarge"
-    },
-    {
-      "timestamp": "2025-05-01T10:00:05.100000+00:00",
-      "type": "NodeCreated",
-      "name": "kwok-node-ghijkl",
-      "details": "m5.2xlarge"
-    },
-    {
-      "timestamp": "2025-05-01T10:00:06.000000+00:00",
-      "type": "PodScheduled",
-      "name": "nginx-deployment-abc123",
-      "namespace": "default",
-      "details": "kwok-node-abcdef"
-    },
-    {
-      "timestamp": "2025-05-01T10:00:09.234000+00:00",
-      "type": "PodScheduled",
-      "name": "nginx-deployment-def456",
-      "namespace": "default",
-      "details": "kwok-node-ghijkl"
-    }
-  ]
+  }
 }

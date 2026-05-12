@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -84,7 +85,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 
 	if id, err := m.findContainerIDByPrefix(ctx, m.containerNamePrefix); err == nil && id != "" {
 		m.containerID = id
-		fmt.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+		log.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
 		return nil
 	}
 
@@ -102,7 +103,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 			}
 			if id != "" {
 				m.containerID = id
-				fmt.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+				log.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
 				return nil
 			}
 		}
@@ -115,7 +116,7 @@ func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics)
 		return fmt.Errorf("container ID not set")
 	}
 
-	fmt.Printf("Streaming metrics for container %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+	log.Printf("Streaming metrics for container %s (id: %s)\n", m.containerNamePrefix, m.containerID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://unix/containers/%s/stats?stream=true", m.containerID), nil)
 	if err != nil {

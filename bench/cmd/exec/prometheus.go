@@ -7,6 +7,7 @@ package exec
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"text/template"
@@ -16,87 +17,88 @@ import (
 )
 
 var (
-	// ScalerCPUUsage registers the CPU usage of the scaler
-	ScalerCPUUsage = prometheus.NewGaugeVec(
+	// ContainerCPUUsage tracks current CPU usage in millicores per container.
+	ContainerCPUUsage = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_cpu_usage_millicores",
-			Help: "Current CPU usage of the scaler in millicores",
+			Name: "container_cpu_usage_millicores",
+			Help: "Current CPU usage in millicores",
 		},
 		[]string{"container_name"},
 	)
 
-	// ScalerMemoryUsage registers the Memory usage of the scaler
-	ScalerMemoryUsage = prometheus.NewGaugeVec(
+	// ContainerMemoryUsage tracks current memory usage in megabytes per container.
+	ContainerMemoryUsage = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_memory_usage_megabytes",
-			Help: "Current memory usage of the scaler in megabytes",
+			Name: "container_memory_usage_megabytes",
+			Help: "Current memory usage in megabytes",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerMemoryRSS = prometheus.NewGaugeVec(
+	// ContainerMemoryRSS tracks current RSS memory in megabytes per container.
+	ContainerMemoryRSS = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_memory_rss_megabytes",
-			Help: "Current RSS memory of the scaler in megabytes",
+			Name: "container_memory_rss_megabytes",
+			Help: "Current RSS memory in megabytes",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerMemoryMaxUsage = prometheus.NewGaugeVec(
+	// ContainerMemoryMaxUsage tracks peak memory usage in megabytes per container.
+	ContainerMemoryMaxUsage = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_memory_max_usage_megabytes",
-			Help: "Peak memory usage of the scaler in megabytes",
+			Name: "container_memory_max_usage_megabytes",
+			Help: "Peak memory usage in megabytes",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerMemoryLimit = prometheus.NewGaugeVec(
+	// ContainerMemoryLimit tracks memory limit in megabytes per container.
+	ContainerMemoryLimit = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_memory_limit_megabytes",
-			Help: "Memory limit of the scaler container in megabytes",
+			Name: "container_memory_limit_megabytes",
+			Help: "Memory limit in megabytes",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerCPUThrottledPeriods = prometheus.NewGaugeVec(
+	// ContainerCPUThrottledPeriods tracks the number of throttled CPU periods per container.
+	ContainerCPUThrottledPeriods = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_cpu_throttled_periods",
-			Help: "Number of CPU periods where the scaler was throttled",
+			Name: "container_cpu_throttled_periods",
+			Help: "Number of CPU periods where the container was throttled",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerCPUTotalPeriods = prometheus.NewGaugeVec(
+	// ContainerCPUTotalPeriods tracks the total number of CPU scheduling periods per container.
+	ContainerCPUTotalPeriods = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_cpu_total_periods",
+			Name: "container_cpu_total_periods",
 			Help: "Total number of CPU scheduling periods",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerCPUThrottledTime = prometheus.NewGaugeVec(
+	// ContainerCPUThrottledTime tracks total CPU throttled time in nanoseconds per container.
+	ContainerCPUThrottledTime = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_cpu_throttled_time_ns",
+			Name: "container_cpu_throttled_time_ns",
 			Help: "Total CPU throttled time in nanoseconds",
 		},
 		[]string{"container_name"},
 	)
 
-	ScalerPIDs = prometheus.NewGaugeVec(
+	// ContainerPIDs tracks the current number of PIDs per container.
+	ContainerPIDs = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "scaler_pids_current",
-			Help: "Current number of PIDs in the scaler container",
+			Name: "container_pids_current",
+			Help: "Current number of PIDs in the container",
 		},
 		[]string{"container_name"},
 	)
 
-	EventsFailedSchedulingTotal = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "scaling_events_failed_scheduling_total",
-			Help: "Total number of FailedScheduling events observed",
-		},
-	)
-
+	// NodesCreatedTotal counts new nodes created by the scaler during the benchmark.
 	NodesCreatedTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "scaling_nodes_created_total",
@@ -104,55 +106,29 @@ var (
 		},
 	)
 
+	// PodsScheduledTotal counts previously-unscheduled pods that got scheduled during the benchmark.
 	PodsScheduledTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "scaling_pods_scheduled_total",
 			Help: "Total number of previously-unscheduled pods that got scheduled",
 		},
 	)
-
-	ScalingDecisionLatencySeconds = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "scaling_decision_latency_seconds",
-			Help: "Time from first FailedScheduling event to first node creation",
-		},
-	)
-
-	ScalingSchedulingLatencySeconds = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "scaling_scheduling_latency_seconds",
-			Help: "Time from first node creation to last pod scheduled",
-		},
-	)
-
-	ScalingTotalLatencySeconds = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "scaling_total_latency_seconds",
-			Help: "Time from first FailedScheduling to last pod scheduled",
-		},
-	)
-
-	PodsScheduledProgress = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "scaling_pods_scheduled_progress",
-			Help: "Current count of unscheduled pods that have been scheduled",
-		},
-	)
 )
 
-var PrometheusScrapeInterval = "1s"
+var prometheusScrapeInterval = "1s"
 
-type PrometheusConfigParams struct {
+// PrometheusConfigParams holds the parameters for the prometheus configuration template.
+type prometheusConfigParams struct {
 	HostIP         string
 	Port           int
 	ScrapeInterval string
 }
 
 func writePrometheusConfig(port int) (string, error) {
-	params := PrometheusConfigParams{
+	params := prometheusConfigParams{
 		HostIP:         "host.docker.internal",
 		Port:           port,
-		ScrapeInterval: PrometheusScrapeInterval,
+		ScrapeInterval: prometheusScrapeInterval,
 	}
 
 	data, err := content.ReadFile("templates/prometheus-config.yaml")
@@ -185,28 +161,61 @@ func writePrometheusConfig(port int) (string, error) {
 }
 
 func init() {
-	prometheus.MustRegister(ScalerCPUUsage)
-	prometheus.MustRegister(ScalerMemoryUsage)
-	prometheus.MustRegister(ScalerMemoryRSS)
-	prometheus.MustRegister(ScalerMemoryMaxUsage)
-	prometheus.MustRegister(ScalerMemoryLimit)
-	prometheus.MustRegister(ScalerCPUThrottledPeriods)
-	prometheus.MustRegister(ScalerCPUTotalPeriods)
-	prometheus.MustRegister(ScalerCPUThrottledTime)
-	prometheus.MustRegister(ScalerPIDs)
-	prometheus.MustRegister(EventsFailedSchedulingTotal)
+	prometheus.MustRegister(ContainerCPUUsage)
+	prometheus.MustRegister(ContainerMemoryUsage)
+	prometheus.MustRegister(ContainerMemoryRSS)
+	prometheus.MustRegister(ContainerMemoryMaxUsage)
+	prometheus.MustRegister(ContainerMemoryLimit)
+	prometheus.MustRegister(ContainerCPUThrottledPeriods)
+	prometheus.MustRegister(ContainerCPUTotalPeriods)
+	prometheus.MustRegister(ContainerCPUThrottledTime)
+	prometheus.MustRegister(ContainerPIDs)
 	prometheus.MustRegister(NodesCreatedTotal)
 	prometheus.MustRegister(PodsScheduledTotal)
-	prometheus.MustRegister(ScalingDecisionLatencySeconds)
-	prometheus.MustRegister(ScalingSchedulingLatencySeconds)
-	prometheus.MustRegister(ScalingTotalLatencySeconds)
-	prometheus.MustRegister(PodsScheduledProgress)
 }
 
-// ServeMetrics starts a prometheus metrics server
-func ServeMetrics(port int) error {
-	http.Handle("/metrics", promhttp.Handler())
+// ServeMetrics starts a prometheus metrics server and returns the server
+// so it can be shut down gracefully.
+func ServeMetrics(port int) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	addr := fmt.Sprintf(":%d", port)
-	fmt.Printf("Serving metrics on %s\n", addr)
-	return http.ListenAndServe(addr, nil)
+	srv := &http.Server{Addr: addr, Handler: mux}
+	log.Printf("Serving metrics on %s\n", addr)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Metrics server error: %v", err)
+		}
+	}()
+	return srv
+}
+
+// ---------------------------------------------------------------------------
+// Utils
+// ---------------------------------------------------------------------------
+
+// SetContainerMetrics updates all prometheus gauges for the given container.
+func SetContainerMetrics(containerName string, s ContainerStats) {
+	ContainerCPUUsage.WithLabelValues(containerName).Set(float64(s.CPUMillicores))
+	ContainerMemoryUsage.WithLabelValues(containerName).Set(float64(s.MemoryMi))
+	ContainerMemoryRSS.WithLabelValues(containerName).Set(float64(s.MemoryRSSMi))
+	ContainerMemoryMaxUsage.WithLabelValues(containerName).Set(float64(s.MemoryMaxUsageMi))
+	ContainerMemoryLimit.WithLabelValues(containerName).Set(float64(s.MemoryLimitMi))
+	ContainerCPUThrottledPeriods.WithLabelValues(containerName).Set(float64(s.CPUThrottledPeriods))
+	ContainerCPUTotalPeriods.WithLabelValues(containerName).Set(float64(s.CPUTotalPeriods))
+	ContainerCPUThrottledTime.WithLabelValues(containerName).Set(float64(s.CPUThrottledTimeNs))
+	ContainerPIDs.WithLabelValues(containerName).Set(float64(s.PIDs))
+}
+
+// ResetContainerMetrics zeroes all prometheus gauges for the given container.
+func ResetContainerMetrics(containerName string) {
+	ContainerCPUUsage.WithLabelValues(containerName).Set(0)
+	ContainerMemoryUsage.WithLabelValues(containerName).Set(0)
+	ContainerMemoryRSS.WithLabelValues(containerName).Set(0)
+	ContainerMemoryMaxUsage.WithLabelValues(containerName).Set(0)
+	ContainerMemoryLimit.WithLabelValues(containerName).Set(0)
+	ContainerCPUThrottledPeriods.WithLabelValues(containerName).Set(0)
+	ContainerCPUTotalPeriods.WithLabelValues(containerName).Set(0)
+	ContainerCPUThrottledTime.WithLabelValues(containerName).Set(0)
+	ContainerPIDs.WithLabelValues(containerName).Set(0)
 }

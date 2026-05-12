@@ -10,6 +10,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -38,6 +39,14 @@ var content embed.FS
 
 const prometheusPort = 2112
 
+// ScalerEventConfig describes the events a scaler emits and which ones
+// indicate a pod has been deemed unschedulable.
+type ScalerEventConfig struct {
+	Source                string   // Event source to match (e.g. "karpenter", "cluster-autoscaler")
+	EventNames            []string // Event names to watch for (e.g. "FailedScheduling", "NodeCreated", "PodScheduled")
+	MarksPodUnschedulable []string // Subset of EventNames that mark a pod as unschedulable
+}
+
 // ExecScaler is the interface that every scaler backend must implement to
 // participate in a benchmark run.
 type ExecScaler interface {
@@ -53,16 +62,19 @@ type ExecScaler interface {
 	// "setup" (files + Docker images) is available before the cluster
 	// is created.
 	CheckRequiredDataPresent(scenarioDir, version string) error
+
+	// EventConfig returns the scaler-specific event configuration.
+	EventConfig() ScalerEventConfig
 }
 
 // ExecArgs has the flag variables — bound by cobra, read once in execCmd.RunE, then
 // passed explicitly to all callees so that no other function touches these globals.
 type ExecArgs struct {
-	Scaler            string
-	SnapshotFile      string
-	ScalerVersion     string
-	SkipCleanup       bool
-	PrometheusVersion string
+	Scaler        string
+	SnapshotFile  string
+	ScalerVersion string
+	SkipCleanup   bool
+	WaitForCancel bool
 }
 
 // NewExecCommand runs a scaler inside a KWOK cluster populated with data
@@ -84,7 +96,6 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 			if err != nil {
 				return
 			}
-			<-execCtx.Done()
 			return
 		},
 	}
@@ -106,17 +117,16 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 		"skip deleting cluster with all data upon finishing",
 	)
 
+	execCmd.PersistentFlags().BoolVarP(
+		&execArgs.WaitForCancel,
+		"wait-for-cancel", "w", false,
+		"wait for cancel signal after scaling completes before writing report",
+	)
+
 	execCmd.PersistentFlags().StringVarP(
 		&execArgs.ScalerVersion,
 		"scaler-version", "v", "main",
 		"version of the scaler to fetch",
-	)
-
-	// TODO: check if this is really required, the less flags the better
-	execCmd.PersistentFlags().StringVar(
-		&execArgs.PrometheusVersion,
-		"prometheus-version", "latest",
-		"prometheus image tag to use",
 	)
 
 	return execCmd
@@ -134,7 +144,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 
 	scaler, err := getScaler(args.Scaler)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("cannot get scaler: %w", err)
 	}
 
 	err = scaler.CheckRequiredDataPresent(scenarioDir, args.ScalerVersion)
@@ -145,7 +155,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	kwokClusterName := envconf.RandomName("kwok-cluster", 17)
 
 	// FIXME: what is with this arguments blow-up
-	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.PrometheusVersion, args.ScalerVersion)
+	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.ScalerVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +173,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	if err := scaler.DeployScalerData(execCtx, cfg, scenarioDir); err != nil {
 		return nil, fmt.Errorf("error deploying the scaler data: %v", err)
 	}
+
 	scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
 
 	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
@@ -176,20 +187,23 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 		ScalerName:    args.Scaler,
 		ScalerVersion: args.ScalerVersion,
 		SnapshotFile:  args.SnapshotFile,
-		ClusterState: ClusterState{
-			Before: ClusterPodStats{
-				NodeCount:       len(clusterSnapshot.Nodes),
-				ScheduledPods:   len(scheduled),
-				UnscheduledPods: len(unscheduled),
-			},
-		},
+	}
+	meta.Summary.ClusterState.Before = ClusterStats{
+		NodeCount:       len(clusterSnapshot.Nodes),
+		ScheduledPods:   len(scheduled),
+		UnscheduledPods: len(unscheduled),
 	}
 
-	ec, collectedMetrics, wg, err := startMonitor(execCtx, cfg, meta)
+	mon, err := newMonitor(execCtx, cfg, &meta, kwokClusterName, scenarioDir)
 	if err != nil {
 		return nil, fmt.Errorf("monitoring setup failed: %v", err)
 	}
-	defer ec.Stop()
+	mon.waitForCancel = args.WaitForCancel
+
+	if err := mon.start(execCtx, scaler.EventConfig()); err != nil {
+		return nil, fmt.Errorf("monitoring start failed: %v", err)
+	}
+	defer mon.ec.Stop()
 
 	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
 	if err := deployPods(execCtx, cfg, unscheduled); err != nil {
@@ -197,7 +211,7 @@ func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
-	stopMonitor(execCtx, cfg, ec, collectedMetrics, wg, &meta, kwokClusterName, scenarioDir)
+	mon.stop(execCtx)
 
 	log.Println("Successfully completed!")
 	// TODO: revert and fix this
@@ -244,7 +258,6 @@ func setupClusterForScaling(
 	scaler ExecScaler,
 	clusterName string,
 	scenarioDir string,
-	prometheusVersion string,
 	imageTag string,
 ) (context.Context, *envconf.Config, string, error) {
 	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
@@ -270,7 +283,7 @@ func setupClusterForScaling(
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
 		PrometheusConfigPath:    promConfigPath,
-		PrometheusImage:         "prom/prometheus:" + prometheusVersion,
+		PrometheusImage:         "prom/prometheus:latest",
 	}
 
 	err = generateKwokctlConfig(templateParams, scaler.GetScalerKWOKTemplatePath())
@@ -491,137 +504,170 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 	return tempFile.Name(), nil
 }
 
-// startMonitor sets up Docker stats streaming, Prometheus metrics server,
-// and the EventCollector.
-func startMonitor(ctx context.Context, cfg *envconf.Config, meta RunMetadata) (*EventCollector, *[]PodMetrics, *sync.WaitGroup, error) {
-	log.Printf("Starting monitoring for scaler docker container %s...\n", meta.ScalerName)
+// ---------------------------------------------------------------------------
+// Monitoring and metrics collection
+// ---------------------------------------------------------------------------
 
-	mon := NewDockerMonitor(meta.ScalerName)
+// monitorState groups the resources needed for metrics collection and
+// event watching during a benchmark run.
+type monitorState struct {
+	monitors      []*DockerMonitor
+	ec            *EventCollector
+	metrics       map[string][]ContainerStats
+	wg            *sync.WaitGroup
+	cancelStream  context.CancelFunc
+	server        *http.Server
+	cfg           *envconf.Config
+	meta          *RunMetadata
+	clusterName   string
+	scenarioDir   string
+	waitForCancel bool
+}
 
-	log.Println("Waiting for scaler container to be ready...")
-	if err := mon.WaitForReady(ctx); err != nil {
-		return nil, nil, nil, fmt.Errorf("scaler container %q did not become ready: %w", meta.ScalerName, err)
-	}
-	log.Println("Scaler container is ready")
+// newMonitor creates a monitorState by discovering Docker containers and
+// preparing the metrics infrastructure. Call start() to begin streaming.
+func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clusterName, scenarioDir string) (*monitorState, error) {
+	containers := []string{meta.ScalerName, clusterName + "-kube-apiserver", clusterName + "-etcd", clusterName + "-kube-scheduler"}
 
-	go func() {
-		if err := ServeMetrics(prometheusPort); err != nil {
-			log.Printf("Failed to serve metrics: %v", err)
+	var monitors []*DockerMonitor
+	for _, name := range containers {
+		m := NewDockerMonitor(name)
+		if err := m.WaitForReady(ctx); err != nil {
+			if name == meta.ScalerName {
+				return nil, fmt.Errorf("scaler container %q did not become ready: %w", name, err)
+			}
+			log.Printf("Warning: component %q not found, skipping metrics collection", name)
+			continue
 		}
-	}()
+		monitors = append(monitors, m)
+	}
+
+	return &monitorState{
+		monitors:    monitors,
+		metrics:     make(map[string][]ContainerStats),
+		cfg:         cfg,
+		meta:        meta,
+		clusterName: clusterName,
+		scenarioDir: scenarioDir,
+	}, nil
+}
+
+// start begins Docker stats streaming, serves Prometheus metrics, and
+// starts the EventCollector. It should be called after newMonitor.
+func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfig) error {
+	mon.server = ServeMetrics(prometheusPort)
+
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	mon.cancelStream = cancelStream
 
 	metricsChan := make(chan PodMetrics, 100)
-	var wg sync.WaitGroup
-	var collectedMetrics []PodMetrics
-	wg.Add(2)
 
-	// consumer: collect metrics and update Prometheus gauges
-	go func() {
-		defer wg.Done()
+	var wg sync.WaitGroup
+	wg.Go(func() {
 		for m := range metricsChan {
-			collectedMetrics = append(collectedMetrics, m)
+			ts := m.Timestamp.Time
 			for _, container := range m.Containers {
-				s := container.Stats
-				ScalerCPUUsage.WithLabelValues(container.Name).Set(float64(s.CPUMillicores))
-				ScalerMemoryUsage.WithLabelValues(container.Name).Set(float64(s.MemoryMi))
-				ScalerMemoryRSS.WithLabelValues(container.Name).Set(float64(s.MemoryRSSMi))
-				ScalerMemoryMaxUsage.WithLabelValues(container.Name).Set(float64(s.MemoryMaxUsageMi))
-				ScalerMemoryLimit.WithLabelValues(container.Name).Set(float64(s.MemoryLimitMi))
-				ScalerCPUThrottledPeriods.WithLabelValues(container.Name).Set(float64(s.CPUThrottledPeriods))
-				ScalerCPUTotalPeriods.WithLabelValues(container.Name).Set(float64(s.CPUTotalPeriods))
-				ScalerCPUThrottledTime.WithLabelValues(container.Name).Set(float64(s.CPUThrottledTimeNs))
-				ScalerPIDs.WithLabelValues(container.Name).Set(float64(s.PIDs))
+				stats := container.Stats
+				stats.Timestamp = ts
+				mon.metrics[container.Name] = append(mon.metrics[container.Name], stats)
+				SetContainerMetrics(container.Name, stats)
 			}
 		}
-	}()
+	})
+	mon.wg = &wg
 
-	// producer: stream metrics from Docker until ctx is cancelled (Ctrl+C)
+	var producerWg sync.WaitGroup
+	producerWg.Add(len(mon.monitors))
+	for _, m := range mon.monitors {
+		go func() {
+			defer producerWg.Done()
+			if err := m.StreamMetrics(streamCtx, metricsChan); err != nil {
+				log.Printf("Error collecting metrics for %s: %v", m.containerNamePrefix, err)
+			}
+		}()
+	}
 	go func() {
-		defer wg.Done()
-		defer close(metricsChan)
-		if err := mon.StreamMetrics(ctx, metricsChan); err != nil {
-			log.Printf("Error collecting metrics: %v", err)
-		}
+		producerWg.Wait()
+		close(metricsChan)
 	}()
 
 	log.Println("Starting event collection and measuring scaling timeline...")
-	ec := NewEventCollector(cfg.Client().Resources(), meta.ClusterState.Before.UnscheduledPods)
-	if err := ec.Start(ctx); err != nil {
-		log.Printf("Failed to start event collector: %v", err)
+	mon.ec = NewEventCollector(mon.cfg.Client().Resources(), mon.meta.Summary.ClusterState.Before.UnscheduledPods, eventConfig)
+	if err := mon.ec.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start event collector: %w", err)
 	}
-
-	return ec, &collectedMetrics, &wg, nil
+	return nil
 }
 
-// finishMonitoring waits for scaling to complete, blocks until cancelled by user
-// then writes the final report.
-func stopMonitor(ctx context.Context, cfg *envconf.Config, ec *EventCollector, collectedMetrics *[]PodMetrics, wg *sync.WaitGroup, meta *RunMetadata, clusterName, scenarioDir string) {
-	err := ec.Wait(ctx)
+// stop waits for scaling to complete, then writes the final report
+// and shuts down the metrics server.
+func (mon *monitorState) stop(ctx context.Context) {
+	err := mon.ec.Wait(ctx)
 	if err != nil {
 		log.Printf("Event collector wait interrupted: %v", err)
 	}
 
-	if err == nil {
-		log.Println("Waiting for all scaler events...")
-		eventsCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
-		ec.WaitForScalerEvents(eventsCtx, 3*time.Second)
-		log.Println("All scaler events collected")
+	events, timing, eventsSummary := mon.ec.Results()
+	mon.ec.Stop()      // stop event watches
+	mon.cancelStream() // stop all metric streams
+	mon.meta.EndTime = time.Now()
+	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
+		valueOrNA(timing.TotalDuration), valueOrNA(timing.ReactionTime), valueOrNA(timing.SchedulingTime))
+
+	if mon.waitForCancel {
+		for _, m := range mon.monitors {
+			ResetContainerMetrics(m.containerNamePrefix)
+		}
+		log.Println("Waiting for Ctrl+C...")
+		<-ctx.Done()
 	}
 
-	events, timing, eventsSummary := ec.Results()
-	ec.Stop()
-	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
-		timing.TotalDuration, timing.ReactionTime, timing.SchedulingTime)
+	mon.clusterStateAfter(context.Background())
 
-	<-ctx.Done()
+	mon.wg.Wait()
 
-	after := clusterStateAfter(context.Background(), cfg)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := mon.server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Metrics server shutdown error: %v", err)
+	}
 
-	wg.Wait()
+	eventsSummary.ScalingTimeline = timing
+	eventsSummary.ClusterState = mon.meta.Summary.ClusterState
+	mon.meta.Summary = eventsSummary
+	mon.meta.TotalRunDuration = mon.meta.EndTime.Sub(mon.meta.StartTime).String()
+	log.Printf("Total benchmarking run time: %s\n", mon.meta.TotalRunDuration)
 
-	meta.ClusterState.After = after
-	meta.ScalingTime = timing
-	meta.EventsSummary = eventsSummary
-	meta.EndTime = time.Now()
-	meta.TotalRunDuration = meta.EndTime.Sub(meta.StartTime).String()
-	log.Printf("Total benchmarking run time: %s\n", meta.TotalRunDuration)
-
-	reportPath := path.Join(scenarioDir, "logs", "kwok-"+clusterName, "scaler-report.json")
-	if err := os.MkdirAll(path.Dir(reportPath), 0755); err != nil {
+	logsDir := path.Join(mon.scenarioDir, "logs", "kwok-"+mon.clusterName)
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		log.Printf("Failed to create logs directory: %v\n", err)
 	} else {
-		report := RunReport{
-			Metadata: *meta,
-			Metrics:  *collectedMetrics,
-			Events:   events,
-		}
-		if err := writeReport(reportPath, report); err != nil {
-			log.Printf("Failed to write report: %v\n", err)
-		} else {
-			log.Printf("Wrote report to %s\n", reportPath)
-		}
+		writeReports(logsDir, *mon.meta, events)
+		writeMetricsCSV(path.Join(logsDir, "metrics"), mon.metrics)
 	}
 }
 
-func clusterStateAfter(ctx context.Context, cfg *envconf.Config) ClusterPodStats {
-	var state ClusterPodStats
+func valueOrNA(s string) string {
+	if s == "" {
+		return "N/A"
+	}
+	return s
+}
 
+func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	nodes := &corev1.NodeList{}
-	if err := cfg.Client().Resources().List(ctx, nodes); err == nil {
-		state.NodeCount = len(nodes.Items)
+	if err := mon.cfg.Client().Resources().List(ctx, nodes); err == nil {
+		mon.meta.Summary.ClusterState.After.NodeCount = len(nodes.Items)
 	}
 
 	pods := &corev1.PodList{}
-	if err := cfg.Client().Resources().List(ctx, pods); err == nil {
+	if err := mon.cfg.Client().Resources().List(ctx, pods); err == nil {
 		for _, pod := range pods.Items {
 			if pod.Spec.NodeName == "" {
-				state.UnscheduledPods++
+				mon.meta.Summary.ClusterState.After.UnscheduledPods++
 			} else {
-				state.ScheduledPods++
+				mon.meta.Summary.ClusterState.After.ScheduledPods++
 			}
 		}
 	}
-
-	return state
 }

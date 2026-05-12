@@ -56,6 +56,14 @@ func (cae *caExec) GetScalerKWOKTemplatePath() string {
 	return caKwokTemplatePath
 }
 
+func (cae *caExec) EventConfig() ScalerEventConfig {
+	return ScalerEventConfig{
+		Source:                 "cluster-autoscaler",
+		EventNames:             []string{"TriggeredScaleUp", "ScaledUpGroup", "NotTriggerScaleUp"},
+		MarksPodUnschedulable: []string{"NotTriggerScaleUp"},
+	}
+}
+
 func (cae *caExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:%s", scalerVersion)
 	if exists := benchutil.CheckIfImageExists(imageName); !exists {

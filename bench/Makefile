@@ -67,3 +67,13 @@ sast: $(GOSEC)
 .PHONY: sast-report
 sast-report: $(GOSEC)
 	@$(REPO_HACK_DIR)/sast.sh --gosec-report true
+
+## clean-logs: remove all scenario log directories
+.PHONY: clean-logs
+clean-logs:
+	@rm -rf cmd/scenarios/logs/*
+
+## kwok-cleanup: delete all kwok clusters
+.PHONY: kwok-cleanup
+kwok-cleanup:
+	@scripts/kwok-cleanup.sh
