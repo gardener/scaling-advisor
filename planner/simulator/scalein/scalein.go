@@ -16,7 +16,7 @@ import (
 )
 
 // RequestState holds the internal Request scoped state of a ScaleInSimulator
-type RequestState struct {
+type SimulatorState struct {
 	viewAccess minkapi.ViewAccess
 	// SimulationFactory is used to create `ScaleInSimulation`s
 	SimulationFactory plannerapi.SimulationFactory
@@ -31,9 +31,9 @@ type RequestState struct {
 }
 
 // RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
-func RequestStateWith(request *plannerapi.Request, simConfig plannerapi.ScaleInSimulatorConfig,
-	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) RequestState {
-	return RequestState{
+func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.ScaleInSimulatorConfig,
+	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) SimulatorState {
+	return SimulatorState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleInPlanResult),
 		SimulationFactory: simulationFactory,
@@ -44,14 +44,14 @@ func RequestStateWith(request *plannerapi.Request, simConfig plannerapi.ScaleInS
 }
 
 // InitializeRequestView performs out common initialization on this simulator state.
-func (r *RequestState) InitializeRequestView(ctx context.Context) error {
+func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
-	requestView, err := r.createRequestView(ctx)
+	requestView, err := s.createRequestView(ctx)
 	if err != nil {
 		return err
 	}
 
-	if err = simulator.PopulateView(ctx, requestView, &r.Request.Snapshot); err != nil {
+	if err = simulator.PopulateView(ctx, requestView, &s.Request.Snapshot); err != nil {
 		err = fmt.Errorf("%w: %w", plannerapi.ErrPopulateRequestView, err)
 		return err
 	}
@@ -69,35 +69,35 @@ func (r *RequestState) InitializeRequestView(ctx context.Context) error {
 	return nil
 }
 
-func (r *RequestState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
-	view, err = r.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+r.Request.ID, r.viewAccess.GetBaseView())
+func (s *SimulatorState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
+	view, err = s.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, s.viewAccess.GetBaseView())
 	if err != nil {
 		return
 	}
-	r.view = view
+	s.view = view
 	return
 }
 
 // RequestView gets the request minkapi view within this state. request Views are views that only have the request
 // cluster snapshot populated within them along with any initialization done by InitializeRequestView.
-func (s *RequestState) RequestView() minkapi.View {
+func (s *SimulatorState) RequestView() minkapi.View {
 	return s.view
 }
 
 // Reset clears and resets this RequestState
-func (r *RequestState) Reset() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.view != nil {
-		if err := r.view.Close(); err != nil {
+func (s *SimulatorState) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.view != nil {
+		if err := s.view.Close(); err != nil {
 			// best-effort close
 			_ = err
 		}
 	}
-	if r.SimRunCounter != nil {
-		r.SimRunCounter.Store(0)
+	if s.SimRunCounter != nil {
+		s.SimRunCounter.Store(0)
 	}
-	r.Request = nil
+	s.Request = nil
 	return nil
 }
 

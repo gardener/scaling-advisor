@@ -150,7 +150,7 @@ func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 func (d *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
-	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaims(ctx, view)
+	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx, view)
 	if err != nil {
 		return err
 	}

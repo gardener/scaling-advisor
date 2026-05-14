@@ -23,7 +23,7 @@ type defaultSimulator struct {
 	viewAccess               minkapi.ViewAccess
 	schedulerLauncher        plannerapi.SchedulerLauncher
 	traceDir                 string
-	state                    scalein.RequestState
+	state                    scalein.SimulatorState
 	scaleInCandidateSelector plannerapi.ScaleInCandidateSelector
 	scaleInSimulatorConfig   plannerapi.ScaleInSimulatorConfig
 }
@@ -58,7 +58,7 @@ func (d *defaultSimulator) getScaleInMemento() *plannerapi.ScaleInMemento {
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration (tracked via the [plannerapi.ScaleInMemento]).
 func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleInPlanResult {
-	d.state = scalein.RequestStateWith(request, d.scaleInSimulatorConfig, simulationFactory, d.viewAccess)
+	d.state = scalein.NewSimulatorState(request, d.scaleInSimulatorConfig, simulationFactory, d.viewAccess)
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {

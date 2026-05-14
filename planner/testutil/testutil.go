@@ -21,7 +21,6 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
@@ -108,7 +107,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			return
 		}
 	}
-	testData.NodePlacements = getAllNodePlacements(testData.Request.Constraint.Spec)
+	testData.NodePlacements = testData.Request.Constraint.Spec.GetAllNodePlacements()
 	data, err := json.Marshal(testData.Request)
 	if err != nil {
 		t.Fatal("failed to marshal request:", err)
