@@ -54,15 +54,6 @@ type ScalingConstraintSpec struct {
 	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
-// GetAllNodePlacements computes all the possible NodePlacements for the ScalingConstraintSpec.
-func (c *ScalingConstraintSpec) GetAllNodePlacements() []NodePlacement {
-	placements := make([]NodePlacement, 0, len(c.NodePools))
-	for _, p := range c.NodePools {
-		placements = append(placements, p.GetNodePlacements()...)
-	}
-	return placements
-}
-
 // GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
 func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
 	zoneSet := sets.NewString()
