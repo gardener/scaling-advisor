@@ -16,7 +16,6 @@ var (
 
 // NewFactories returns an instance of plannerapi.Factories populated with implementation of factory facades.
 func NewFactories() plannerapi.Factories {
-	// TODO: construct NodeUtilizationCalculator and pass to scaleincandidateselector.New()
 	defaultNodeUtilizationCalculator := nodeutilizationcalculator.New()
 	defaultScaleInCandidateSelector := scaleincandidateselector.New(defaultNodeUtilizationCalculator)
 	return plannerapi.Factories{

@@ -55,7 +55,6 @@ func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-cha
 	return responseCh
 }
 
-// Do we need to send back Memento?
 func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, responseCh chan plannerapi.Response) error {
 	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceDir, req)
 	if err != nil {

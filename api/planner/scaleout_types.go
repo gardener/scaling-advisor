@@ -67,7 +67,6 @@ type ScaleOutSimulator interface {
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
 type ScaleOutPlanResult struct {
-	// TODO: have the view returned here to be used in the next simulation
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
 	// No further responses will be sent for the associated request.
 	Error error `json:"error,omitempty"`
