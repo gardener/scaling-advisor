@@ -4,7 +4,7 @@
 
 // Package multinode provides implementation and helper routines of a ScaleOutSimulator that performs simulations that scale
 // multiple nodes for a single scale-out simulation
-package multinode
+package multinodesinglesim
 
 import (
 	"context"
@@ -21,11 +21,10 @@ import (
 )
 
 var (
-	_ plannerapi.ScaleOutSimulator = (*simulatorSingleSim)(nil)
+	_ plannerapi.ScaleOutSimulator = (*defaultSimulator)(nil)
 )
 
-// simulatorSingleSim is a Simulator that implements [plannerapi.ScaleOutSimulator] for the [commontypes.SimulatorStrategyMultiNodeSingleSim].
-type simulatorSingleSim struct {
+type defaultSimulator struct {
 	viewAccess        minkapi.ViewAccess
 	schedulerLauncher plannerapi.SchedulerLauncher
 	storageMetaAccess plannerapi.StorageMetaAccess
@@ -37,7 +36,7 @@ type simulatorSingleSim struct {
 // New creates a new [plannerapi.ScaleOutSimulator] that runs simulations sequentially scaling multiple nodes from
 // different NodeTemplates at the same priority.
 func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
-	return &simulatorSingleSim{
+	return &defaultSimulator{
 		simulatorConfig:   args.Config,
 		viewAccess:        args.ViewAccess,
 		schedulerLauncher: args.SchedulerLauncher,
@@ -46,11 +45,11 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 	}, nil
 }
 
-func (s *simulatorSingleSim) Close() error {
+func (s *defaultSimulator) Close() error {
 	return s.state.Reset()
 }
 
-func (s *simulatorSingleSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) (planResult <-chan plannerapi.ScaleOutPlanResult) {
+func (s *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) (planResult <-chan plannerapi.ScaleOutPlanResult) {
 	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
@@ -61,7 +60,7 @@ func (s *simulatorSingleSim) Simulate(ctx context.Context, request *plannerapi.R
 	return s.state.ResultCh
 }
 
-func (s *simulatorSingleSim) doSimulate(ctx context.Context) (err error) {
+func (s *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	if err = s.state.InitializeView(ctx); err != nil {
 		return
 	}
@@ -73,7 +72,7 @@ func (s *simulatorSingleSim) doSimulate(ctx context.Context) (err error) {
 	return
 }
 
-func (s *simulatorSingleSim) createAndGroupSimulations(ctx context.Context) ([]plannerapi.ScaleOutSimGroup, error) {
+func (s *defaultSimulator) createAndGroupSimulations(ctx context.Context) ([]plannerapi.ScaleOutSimGroup, error) {
 	var (
 		allScaleOutNodeTemplates = scaleout.CreateAllNodeTemplates(s.state.Request.Constraint.Spec.NodePools)
 		templatesByPriority      = scaleout.GroupScaleOutNodeTemplatesByPriority(allScaleOutNodeTemplates)
@@ -103,7 +102,7 @@ func (s *simulatorSingleSim) createAndGroupSimulations(ctx context.Context) ([]p
 	return scaleout.CreateScaleOutSimGroups(s.state.Request.GetRef(), allSimulations)
 }
 
-func (s *simulatorSingleSim) runAllGroups(ctx context.Context) (err error) {
+func (s *defaultSimulator) runAllGroups(ctx context.Context) (err error) {
 	var (
 		log           = logr.FromContextOrDiscard(ctx)
 		groupPassView = s.state.RequestView()
@@ -126,7 +125,7 @@ func (s *simulatorSingleSim) runAllGroups(ctx context.Context) (err error) {
 	return
 }
 
-func (s *simulatorSingleSim) runPassForGroup(ctx context.Context, group plannerapi.ScaleOutSimGroup, groupPassView minkapi.View) (simResults []plannerapi.ScaleOutSimResult, nextGroupPassView minkapi.View, err error) {
+func (s *defaultSimulator) runPassForGroup(ctx context.Context, group plannerapi.ScaleOutSimGroup, groupPassView minkapi.View) (simResults []plannerapi.ScaleOutSimResult, nextGroupPassView minkapi.View, err error) {
 	simResults, err = group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
 		return s.state.CreateSandboxView(ctx, name, groupPassView)
 	})

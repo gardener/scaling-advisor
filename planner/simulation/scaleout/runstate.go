@@ -10,7 +10,6 @@ import (
 	"maps"
 	"slices"
 	"sync/atomic"
-	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -25,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -71,7 +69,7 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 		return r.ctx, fmt.Errorf("unable to get unscheduled pods from view %q: %w", view.GetName(), err)
 	}
 	if len(unscheduledPods) == 0 {
-		return r.ctx, fmt.Errorf("no unscheduled pods in the view %q", view.GetName())
+		return r.ctx, fmt.Errorf("%w: no unscheduled pods in view %q", plannerapi.ErrNoUnscheduledPods, view.GetName())
 	}
 	r.unscheduledPods = unscheduledPods
 	r.leftoverUnscheduledPodNames = sets.New(slices.Collect(maps.Keys(unscheduledPods))...)
@@ -88,6 +86,7 @@ func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMet
 		return err
 	}
 	for _, ntc := range nodeTemplateCounts {
+		log.V(3).Info("CreateSimulationNodes creating ScaleOutSimNode(s)", "nodeTemplateName", ntc.TemplateName, "nodePoolName", ntc.PoolName, "nodeCount", ntc.count)
 		for range ntc.count {
 			scaleOutSimNode, err := r.createNode(ntc.ScaleOutNodeTemplate)
 			if err != nil {
@@ -99,7 +98,7 @@ func (r *RunState) CreateSimulationNodes(storageMetaAccess plannerapi.StorageMet
 			}
 		}
 	}
-	log.V(2).Info("CreateSimulationNodes created ScaleOutSimNode(s)", "numCreated", numCreated)
+	log.V(2).Info("CreateSimulationNodes created ScaleOutSimNode(s)", "numCreated", numCreated, "numUnscheduledPods", len(r.unscheduledPods))
 	return nil
 }
 
@@ -121,7 +120,7 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 	log := logr.FromContextOrDiscard(r.ctx)
 	r.numTrackAttempts++
 	evList := r.view.GetEventSink().List()
-	log.V(4).Info("Track Invoked", "numEvents", len(evList),
+	log.V(6).Info("Track invoked", "numEvents", len(evList),
 		"numTrackAttempts", r.numTrackAttempts,
 		"numUnchangedTrackAttempts", r.numUnchangedTrackAttempts,
 		"maxUnchangedTrackAttempts", maxUnchangedTrackAttempts)
@@ -237,26 +236,9 @@ func (r *RunState) createCSINode(storageMetaAccess plannerapi.StorageMetaAccess,
 func (r *RunState) buildScaleOutSimNode(nodeTemplate plannerapi.ScaleOutNodeTemplate) *corev1.Node {
 	scaleOutNodeName := fmt.Sprintf("ScaleOutSimNode-%d_%d_%s_%s_%s",
 		r.nodeCount.Add(1), r.runNum, nodeTemplate.PoolName, nodeTemplate.TemplateName, nodeTemplate.AvailabilityZone)
-	nodeTaints := slices.Clone(nodeTemplate.Taints)
 	nodeLabels := make(map[string]string)
 	nodeLabels[commonconstants.LabelSimulationRunNum] = fmt.Sprintf("%d", r.runNum)
-	nodeutil.AddNodeLabels(nodeLabels, nodeTemplate.Architecture, scaleOutNodeName, nodeTemplate.NodePlacement)
-	nodeLabels["topology.ebs.csi.aws.com/zone"] = nodeTemplate.AvailabilityZone // TODO: need this for edge cases
-	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   scaleOutNodeName,
-			Labels: nodeLabels,
-		},
-		Spec: corev1.NodeSpec{
-			ProviderID: scaleOutNodeName,
-			Taints:     nodeTaints,
-		},
-		Status: corev1.NodeStatus{
-			Capacity:    nodeTemplate.Capacity,
-			Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved),
-			Conditions:  nodeutil.BuildReadyConditions(time.Now()),
-		},
-	}
+	return nodeutil.NewNode(nodeTemplate, scaleOutNodeName, nodeLabels)
 }
 
 func (r *RunState) scheduledPodResourceInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
@@ -300,8 +282,7 @@ func (r *RunState) addScheduledPod(pod *corev1.Pod) error {
 	if scheduledPodNames == nil {
 		scheduledPodNames = sets.New[commontypes.NamespacedName]()
 	}
-	scheduledPodNames.Insert(podNsName)
-	r.scheduledPodNamesByNodeName[pod.Spec.NodeName] = scheduledPodNames
+	r.scheduledPodNamesByNodeName[pod.Spec.NodeName] = scheduledPodNames.Insert(podNsName)
 	r.numScheduledPods++
 	r.leftoverUnscheduledPodNames.Delete(podNsName)
 	r.numUnchangedTrackAttempts = 0

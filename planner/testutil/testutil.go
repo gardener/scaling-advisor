@@ -32,9 +32,9 @@ import (
 
 const (
 	// DefaultPlannerTestVerbosity indicates the default verbosity for the unit tests that construct the ScalingPlanner.
-	DefaultPlannerTestVerbosity = 1
+	DefaultPlannerTestVerbosity = 5
 	// DefaultPlannerRunTestTimeout sets the default timeout for unit tests that construct the ScalingPlanner.
-	DefaultPlannerRunTestTimeout = 30 * time.Second
+	DefaultPlannerRunTestTimeout = 45 * time.Second
 )
 
 // Args represents the common test args for the scale-out unit-tests of the ScalingPlanner

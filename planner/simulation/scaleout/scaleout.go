@@ -160,7 +160,7 @@ func (s *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 // SimulatorStrategy supports multiple node scaling, a call is issued to CreateSimulationNodes
 func (s *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
-	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
+	log.V(6).Info("Invoked doWork", "viewName", view.GetName())
 	provisionedPvs, err := volutil.ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx, view)
 	if err != nil {
 		return err

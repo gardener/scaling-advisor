@@ -267,6 +267,7 @@ func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_WaitForFirstConsumer(t *testin
 			VolumeBindingMode: storagev1.VolumeBindingWaitForFirstConsumer,
 			GeneratePV:        true,
 		},
+		SimulatorStrategy: commontypes.SimulatorStrategyMultiNodeSingleSim,
 	})
 	if !ok {
 		return

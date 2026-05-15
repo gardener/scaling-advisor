@@ -5,6 +5,8 @@
 package nodeutil
 
 import (
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -103,5 +105,31 @@ func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINod
 			},
 		},
 		Spec: csiNodeSpec,
+	}
+}
+
+// NewNode returns a fresh [corev1.Node] object constructed from the given [plannerapi.ScaleOutNodeTemplate], with the given nodeName and base nodeLabels.
+func NewNode(nodeTemplate plannerapi.ScaleOutNodeTemplate, nodeName string, baseNodeLabels map[string]string) *corev1.Node {
+	nodeTaints := slices.Clone(nodeTemplate.Taints)
+	nodeLabels := maps.Clone(baseNodeLabels)
+	if nodeLabels == nil {
+		nodeLabels = make(map[string]string)
+	}
+	AddNodeLabels(nodeLabels, nodeTemplate.Architecture, nodeName, nodeTemplate.NodePlacement)
+	nodeLabels["topology.ebs.csi.aws.com/zone"] = nodeTemplate.AvailabilityZone // TODO: need this for edge cases
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   nodeName,
+			Labels: nodeLabels,
+		},
+		Spec: corev1.NodeSpec{
+			ProviderID: nodeName,
+			Taints:     nodeTaints,
+		},
+		Status: corev1.NodeStatus{
+			Capacity:    nodeTemplate.Capacity,
+			Allocatable: BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved),
+			Conditions:  BuildReadyConditions(time.Now()),
+		},
 	}
 }
