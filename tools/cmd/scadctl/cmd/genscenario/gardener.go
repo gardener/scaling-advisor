@@ -71,8 +71,8 @@ type ShootAccess interface {
 	ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) ([]corev1.Node, error)
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
 	ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeSystemComponents bool) ([]corev1.Pod, error)
-	// ListPodOwners fetches the pod owners on a shoot cluster for all the pods specified.
-	ListPodOwners(ctx context.Context, pods []corev1.Pod, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error)
+	// ListPodOwners fetches the pod owners on a shoot cluster having more than 0 desired replicas.
+	ListPodOwners(ctx context.Context, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error)
 	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
 	ListPriorityClasses(ctx context.Context, excludeSystemComponents bool) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
@@ -84,15 +84,16 @@ type ShootAccess interface {
 var _ ShootAccess = (*access)(nil)
 
 type instanceCapacities map[string]corev1.ResourceList
+
 type caPrioritiesMap map[int][]*regexp.Regexp
 
 type access struct {
 	shoot                  gardenercorev1beta1.Shoot
 	shootClient            client.Client
 	scheme                 *runtime.Scheme
+	priorityMap            *corev1.ConfigMap
 	instanceTypeToCapacity instanceCapacities
 	shootCoord             ShootCoordinate
-	priorityMap            *corev1.ConfigMap
 }
 
 func init() {
@@ -418,7 +419,7 @@ func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, e
 	return
 }
 
-func (a *access) ListPodOwners(ctx context.Context, pods []corev1.Pod, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error) {
+func (a *access) ListPodOwners(ctx context.Context, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error) {
 	var (
 		replicaSetList  appsv1.ReplicaSetList
 		statefulSetList appsv1.StatefulSetList
@@ -557,7 +558,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
-	snap.PodOwners, err = a.ListPodOwners(ctx, pods, excludeSystemComponents)
+	snap.PodOwners, err = a.ListPodOwners(ctx, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pod owners: %w", err)
 	}
@@ -742,7 +743,7 @@ func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
 		if priorities != nil {
 			priority, found := checkCAPriorityMapForWorker(worker.Name+"-z", priorities)
 			if found {
-				nodePool.Priority = int32(priority)
+				nodePool.Priority = int32(priority) // #nosec G115 -- priority cannot be greater than MaxInt32.
 			}
 		}
 
@@ -782,7 +783,7 @@ func constructPrioritiesFromConfigMap(caPriorityCM corev1.ConfigMap) (caPrioriti
 		for _, re := range reList {
 			regexp, err := regexp.Compile(re)
 			if err != nil {
-				return nil, fmt.Errorf("Can't compile regexp rule for priority %d and rule %s: %v", prio, re, err)
+				return nil, fmt.Errorf("can't compile regexp rule for priority %d and rule %s: %v", prio, re, err)
 			}
 			priorities[prio] = append(priorities[prio], regexp)
 		}

@@ -270,12 +270,12 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 // This data is currently used to allow for the benchmarking harness to reconstruct the
 // pod owners to allow for cluster-autoscaler to function properly for scale-in activities.
 type PodOwnerInfo struct {
+	Selector        *metav1.LabelSelector `json:"selector,omitzero"`
+	TargetReplicas  *int32                `json:"targetReplicas,omitzero"`
 	Name            string                `json:"name"`
 	Namespace       string                `json:"namespace"`
 	Kind            string                `json:"kind"`
-	Selector        *metav1.LabelSelector `json:"selector,omitzero"`
-	TargetReplicas  *int32                `json:targetReplicas,omitzero"`
-	CurrentReplicas int32                 `json:currentReplicas,omitzero"`
+	CurrentReplicas int32                 `json:"currentReplicas,omitzero"`
 }
 
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
