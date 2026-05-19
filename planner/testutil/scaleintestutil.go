@@ -201,8 +201,8 @@ func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 	return &plannerapi.Request{
 		RequestRef: plannerapi.RequestRef{ID: id},
 		Constraint: &sacorev1alpha1.ScalingConstraint{},
-		Memento: &plannerapi.Memento{
-			ScaleIn: &plannerapi.ScaleInMemento{},
+		Memento: plannerapi.Memento{
+			ScaleIn: plannerapi.ScaleInMemento{},
 		},
 		Snapshot: plannerapi.ClusterSnapshot{
 			Pods: o.Pods,

@@ -17,7 +17,7 @@ import (
 
 // ---- helpers -------------------------------------------------
 
-func newSim(t *testing.T, sel plannerapi.ScaleInCandidateSelector, cfg plannerapi.ScaleInSimulatorConfig) plannerapi.ScaleInSimulator {
+func newSimulator(t *testing.T, sel plannerapi.ScaleInCandidateSelector, cfg plannerapi.ScaleInSimulatorConfig) plannerapi.ScaleInSimulator {
 	t.Helper()
 	va := testutil.NewTestViewAccess(t)
 	sim, err := New(plannerapi.SimulatorArgs{
@@ -35,7 +35,7 @@ func newSim(t *testing.T, sel plannerapi.ScaleInCandidateSelector, cfg plannerap
 
 func TestSimulate_NoCandidates_EmptyPlan(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{} // immediately returns nil
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r1"), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}}))
 
@@ -50,7 +50,7 @@ func TestSimulate_NoCandidates_EmptyPlan(t *testing.T) {
 func TestSimulate_CandidateSelectorError_ErrorResult(t *testing.T) {
 	selErr := errors.New("selector exploded")
 	sel := &testutil.ErrCandidateSelector{Err: selErr}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r2"), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}}))
 
@@ -66,7 +66,7 @@ func TestSimulate_SimulationFactoryError_ErrorResult(t *testing.T) {
 	factoryErr := errors.New("factory failed")
 	// Selector returns one node so the factory is actually called.
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r3"), &testutil.StubSimulationFactory{Err: factoryErr}))
 
@@ -81,7 +81,7 @@ func TestSimulate_SimulationFactoryError_ErrorResult(t *testing.T) {
 func TestSimulate_SimulationRunError_ErrorResult(t *testing.T) {
 	runErr := errors.New("run failed")
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r4"), &testutil.StubSimulationFactory{Sim: &testutil.FailingSimulation{Err: runErr}}))
 
@@ -95,7 +95,7 @@ func TestSimulate_SimulationRunError_ErrorResult(t *testing.T) {
 
 func TestSimulate_PendingPods_NodeSkippedNotInPlan(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r5"), &testutil.StubSimulationFactory{Sim: &testutil.PendingPodsSimulation{}}))
 
@@ -109,7 +109,7 @@ func TestSimulate_PendingPods_NodeSkippedNotInPlan(t *testing.T) {
 
 func TestSimulate_SuccessfulCandidate_NodeRecordedInMemento(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(10*time.Minute))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(10*time.Minute))
 
 	req := testutil.MakeRequest("r6")
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}}))
@@ -133,7 +133,7 @@ func TestSimulate_SuccessfulCandidate_EmittedAfterDuration(t *testing.T) {
 	}
 
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(5*time.Minute))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(5*time.Minute))
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}}))
 
@@ -150,7 +150,7 @@ func TestSimulate_SuccessfulCandidate_EmittedAfterDuration(t *testing.T) {
 
 func TestSimulate_ContextCancelled_ErrorResult(t *testing.T) {
 	alwaysReturns := &testutil.AlwaysCandidateSelector{N: testutil.Node("node-x")}
-	sim := newSim(t, alwaysReturns, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, alwaysReturns, testutil.MakeSimulatorConfig(0))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -167,7 +167,7 @@ func TestSimulate_ContextCancelled_ErrorResult(t *testing.T) {
 
 func TestSimulate_ResultChannelClosedAfterResult(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{}
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 
 	ch := sim.Simulate(t.Context(), testutil.MakeRequest("r9"), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}})
 	<-ch // consume the result
@@ -320,7 +320,7 @@ func TestSimulate_PDB_CandidateBlockedByExhaustedBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("pdb-blocked", testutil.RequestOpts{
 		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)},
 	})
@@ -348,7 +348,7 @@ func TestSimulate_PDB_CandidateAllowedBySufficientBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("pdb-allowed", testutil.RequestOpts{
 		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)},
 	})
@@ -388,7 +388,7 @@ func TestSimulate_PDB_OnlyUnblockedNodeSelected(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA, "node-b": podsOnNodeB},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("pdb-selective", testutil.RequestOpts{
 		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)},
 	})
@@ -427,7 +427,7 @@ func TestSimulate_PDB_MultiplePodsSameNodeExceedBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("pdb-exceed", testutil.RequestOpts{
 		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)},
 	})
@@ -455,7 +455,7 @@ func TestSimulate_PDB_NoPDBsInView_AllCandidatesAllowed(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("no-pdbs")
 	req.Memento.ScaleIn.LastIdentifiedUnneededNodes = map[string]time.Time{
 		"node-a": time.Now().Add(-10 * time.Minute),
@@ -484,7 +484,7 @@ func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("pdb-ns-mismatch", testutil.RequestOpts{
 		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "production", map[string]string{"app": "web"}, 0)},
 	})

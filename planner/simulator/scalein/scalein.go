@@ -101,7 +101,7 @@ func (s *SimulatorState) Reset() error {
 	return nil
 }
 
-func SendPlanResult(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento *plannerapi.ScaleInMemento, scaleInItems []sacorev1alpha1.ScaleInItem) {
+func SendPlanResult(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento plannerapi.ScaleInMemento, scaleInItems []sacorev1alpha1.ScaleInItem) {
 	planResult := plannerapi.ScaleInPlanResult{
 		Memento: memento,
 		Labels: map[string]string{
@@ -116,7 +116,7 @@ func SendPlanResult(requestRef plannerapi.RequestRef, planResultCh chan<- planne
 }
 
 // SendPlanError wraps the given error with the sentinel ErrGenScalingPlan and returns it as a ScaleInPlanResult.
-func SendPlanError(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento *plannerapi.ScaleInMemento, err error) {
+func SendPlanError(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, memento plannerapi.ScaleInMemento, err error) {
 	err = plannerapi.AsGenError(requestRef.ID, requestRef.CorrelationID, err)
 	planResultCh <- plannerapi.ScaleInPlanResult{
 		Error:   err,

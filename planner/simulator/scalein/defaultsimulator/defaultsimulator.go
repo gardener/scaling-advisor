@@ -42,16 +42,6 @@ func (d *defaultSimulator) Close() error {
 	return d.state.Reset()
 }
 
-func (d *defaultSimulator) getScaleInMemento() *plannerapi.ScaleInMemento {
-	if d.state.Request.Memento == nil {
-		d.state.Request.Memento = &plannerapi.Memento{}
-	}
-	if d.state.Request.Memento.ScaleIn == nil {
-		d.state.Request.Memento.ScaleIn = &plannerapi.ScaleInMemento{}
-	}
-	return d.state.Request.Memento.ScaleIn
-}
-
 // Simulate implements [plannerapi.ScaleInSimulator.Simulate]. It iteratively selects scale-in candidates,
 // runs a simulation for each candidate, and accumulates successfully scaled-in nodes. A node is only included
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
@@ -61,7 +51,7 @@ func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Req
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
-			scalein.SendPlanError(request.GetRef(), d.state.ResultCh, d.getScaleInMemento(), err)
+			scalein.SendPlanError(request.GetRef(), d.state.ResultCh, d.state.Request.Memento.ScaleIn, err)
 		}
 	}()
 	return d.state.ResultCh
@@ -95,8 +85,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	//TODO: Take a look at scaleInSuccessNodes name. Find a better name. -> scaleInNomineeNodes
 	scaledInSuccessNodes := map[string]sacorev1alpha1.ScaleInItem{}
 	skipNodes := sets.New[string]()
-	//TODO: memento should not be pointer
-	memento := d.getScaleInMemento()
+	memento := d.state.Request.Memento.ScaleIn
 
 	// Initialize PDB tracker.
 	pdbTracker, err := initPdbTracker(d.state.Request.Snapshot.PDBs)
@@ -125,7 +114,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
-				scaleInItems, err := d.computeScaleInItems(ctx, memento, scaledInSuccessNodes)
+				scaleInItems, err := d.computeScaleInItems(ctx, &memento, scaledInSuccessNodes)
 				if err != nil {
 					return fmt.Errorf("failed to compute scale-in items: %w", err)
 				}

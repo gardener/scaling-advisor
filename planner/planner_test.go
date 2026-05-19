@@ -346,8 +346,8 @@ func TestOnePoolScaleIn_SingleUnderutilizedNode(t *testing.T) {
 	}
 
 	// Memento: node-a was seen as underutilized 10 minutes ago (exceeds the 5-min UnderutilizedDuration)
-	testData.Request.Memento = &plannerapi.Memento{
-		ScaleIn: &plannerapi.ScaleInMemento{
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
 			LastIdentifiedUnneededNodes: map[string]time.Time{
 				"node-a": time.Now().Add(-10 * time.Minute),
 			},
@@ -384,8 +384,8 @@ func TestOnePoolScaleIn_NoScaleIn_AllHighUtilization(t *testing.T) {
 		testutil.MakeScheduledPodInfo("pod-a", "node-a", "1700m", "6Gi"),
 		testutil.MakeScheduledPodInfo("pod-b", "node-b", "1700m", "6Gi"),
 	}
-	testData.Request.Memento = &plannerapi.Memento{
-		ScaleIn: &plannerapi.ScaleInMemento{
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
 			LastIdentifiedUnneededNodes: map[string]time.Time{},
 		},
 	}
@@ -412,8 +412,8 @@ func TestOnePoolScaleIn_NoScaleIn_UnderutilizedDurationNotMet(t *testing.T) {
 		testutil.MakeScheduledPodInfo("pod-small", "node-a", "100m", "128Mi"),
 		testutil.MakeScheduledPodInfo("pod-big", "node-b", "1700m", "6Gi"),
 	}
-	testData.Request.Memento = &plannerapi.Memento{
-		ScaleIn: &plannerapi.ScaleInMemento{
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
 			LastIdentifiedUnneededNodes: map[string]time.Time{
 				"node-a": time.Now().Add(-1 * time.Minute),
 			},
@@ -442,8 +442,8 @@ func TestOnePoolScaleIn_NoScaleIn_FirstTimeSeen(t *testing.T) {
 		testutil.MakeScheduledPodInfo("pod-small", "node-a", "100m", "128Mi"),
 		testutil.MakeScheduledPodInfo("pod-big", "node-b", "1700m", "6Gi"),
 	}
-	testData.Request.Memento = &plannerapi.Memento{
-		ScaleIn: &plannerapi.ScaleInMemento{
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
 			LastIdentifiedUnneededNodes: map[string]time.Time{},
 		},
 	}

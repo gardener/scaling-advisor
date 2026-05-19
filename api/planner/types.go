@@ -72,7 +72,7 @@ type Request struct {
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
 	DiagnosticVerbosity uint32 `json:"diagnosticVerbosity,omitzero"`
 	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
-	Memento *Memento
+	Memento Memento
 }
 
 // GetRef returns the unique reference for the scaling advice request.
@@ -521,5 +521,5 @@ type Factories struct {
 type Memento struct {
 	// LastIdentifiedNodesForScaleIn is a map of nodeName to the timestamp of when it was last successfully simulated for scale-in.
 	// This can be used by subsequent simulations to skip simulating the same node again within a certain time window.
-	ScaleIn *ScaleInMemento
+	ScaleIn ScaleInMemento
 }

@@ -135,7 +135,7 @@ type ScaleInPlanResult struct {
 	// ScaleInPlan is the generated scale-in plan.
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:"scaleInPlan,omitempty"`
 	//Memento is the partial details of a completed scale-in simulation
-	Memento *ScaleInMemento `json:"scaleInMemento,omitempty"`
+	Memento ScaleInMemento `json:"scaleInMemento,omitempty"`
 }
 
 // Note: Check with SimulatorConfig. SimulatorConfig will be changed to ScaleOutSimulatorConfig and the common fields between ScaleOutSimulatorConfig and ScaleInSimulatorConfig need to be looked at.
