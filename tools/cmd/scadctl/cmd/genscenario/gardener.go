@@ -43,6 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
@@ -899,6 +900,38 @@ func sanitizePod(pod *corev1.Pod) {
 	pod.ResourceVersion = ""
 	for i := range pod.Spec.Volumes {
 		pod.Spec.Volumes[i].Projected = nil
+	}
+
+	// This is needed to clean up pods that cannot be deployed due to failures:
+	// metadata.annotations[container.apparmor.security.beta.kubernetes.io/install-cni]:
+	// Invalid value: "install-cni": container not found
+	// Required as PodInfo doesn't track all the containers in the pod object. Rather
+	// all the container resources are combined to form a single dummy aggregated container.
+	maps.DeleteFunc(pod.Annotations, func(k, _ string) bool {
+		return strings.HasSuffix(k, "install-cni")
+	})
+
+	// This is needed to fix invalid pods having same keys in 'matchLabelKeys'
+	// and 'labelSelector' for `spec.topologySpreadConstraints`
+	for i, tsc := range pod.Spec.TopologySpreadConstraints {
+		if tsc.LabelSelector == nil || len(tsc.MatchLabelKeys) == 0 {
+			continue
+		}
+
+		matchLabelKeysSet := sets.New(tsc.MatchLabelKeys...)
+		// Remove conflicting keys from matchLabels
+		for key := range tsc.LabelSelector.MatchLabels {
+			if matchLabelKeysSet.Has(key) {
+				delete(pod.Spec.TopologySpreadConstraints[i].LabelSelector.MatchLabels, key)
+			}
+		}
+		// Remove conflicting keys from matchExpressions
+		pod.Spec.TopologySpreadConstraints[i].LabelSelector.MatchExpressions = slices.DeleteFunc(
+			tsc.LabelSelector.MatchExpressions,
+			func(expr metav1.LabelSelectorRequirement) bool {
+				return matchLabelKeysSet.Has(expr.Key)
+			},
+		)
 	}
 }
 
