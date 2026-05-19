@@ -56,20 +56,19 @@ func (t *defaultPdbTracker) MatchingPdbs(pod *corev1.Pod) []*policyv1.PodDisrupt
 	return pdbs
 }
 
-func (t *defaultPdbTracker) CanRemovePods(pods []*corev1.Pod) (canRemove bool, blockingPodName string) {
+func (t *defaultPdbTracker) CanRemovePods(pods []*corev1.Pod) (bool, string) {
 	for _, pdbInfo := range t.pdbInfos {
 		count := int32(0)
 		for _, pod := range pods {
 			if pod.Namespace == pdbInfo.pdb.Namespace && pdbInfo.selector.Matches(labels.Set(pod.Labels)) {
 				count += 1
 				if pdbInfo.pdb.Status.DisruptionsAllowed < count {
-					//TODO: Just log the podname rather than returning here.
 					return false, pod.Name
 				}
 			}
 		}
 	}
-	return true, blockingPodName
+	return true, ""
 }
 
 func (t *defaultPdbTracker) RemovePods(pods []*corev1.Pod) {
