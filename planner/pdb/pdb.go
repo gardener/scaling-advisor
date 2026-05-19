@@ -1,14 +1,13 @@
 package pdb
 
 import (
-	"github.com/gardener/scaling-advisor/common/drainutil"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 )
 
 // RemainingPdbTracker is responsible for tracking the remaining PDBs
 // TODO: Change the name from `RemainingPdbTracker` to `PdbTracker`
-type RemainingPdbTracker interface {
+type PdbTracker interface {
 	// SetPdbs sets PDBs of the remaining PDB tracker.
 	SetPdbs(pdbs []*policyv1.PodDisruptionBudget) error
 	// GetPdbs returns the current remaining PDBs.
@@ -17,7 +16,7 @@ type RemainingPdbTracker interface {
 	MatchingPdbs(pod *corev1.Pod) []*policyv1.PodDisruptionBudget
 
 	// CanRemovePods checks if the set of pods can be removed.
-	CanRemovePods(pods []*corev1.Pod) (canRemove bool, drainBlockingPod *drainutil.DrainBlockingPod)
+	CanRemovePods(pods []*corev1.Pod) (canRemove bool, blockingPodName string)
 	// RemovePods updates the remaining PDBs after pod removal.
 	RemovePods(pods []*corev1.Pod)
 

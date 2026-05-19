@@ -11,7 +11,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/drainutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -95,16 +95,14 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 
 		// Skip if node is marked with ScaleInDisabledKey.
 		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabledKey]; disabled {
-			//TODO: use the annotation constant rather than hardcoding it.
-			log.V(5).Info("Skipping node: scale-in disabled via annotation", "node", nodeName)
+			log.V(5).Info("Skipping node: scale-in disabled via annotation", "node", nodeName, "annotation", commonconstants.AnnotationScaleInDisabledKey)
 			skipNodes.Insert(nodeName)
 			continue
 		}
 
 		// Skip if node has pods with `sa.gardener.cloud/safe-to-evict` = "false".
-		if drainutil.HasNonEvictablePod(podsByNode[nodeName]) {
-			//TODO: use the annotation constant rather than hardcoding it.
-			log.V(5).Info("Skipping node: has pods with `sa.gardener.cloud/safe-to-evict=false`", "node", nodeName)
+		if podutil.HasNonEvictablePod(podsByNode[nodeName]) {
+			log.V(5).Info("Skipping node: has pods with annotation set to false", "node", nodeName, "annotation", commonconstants.AnnotationSafeToEvict)
 			skipNodes.Insert(nodeName)
 			continue
 		}
@@ -112,9 +110,9 @@ func (s *defaultScaleInCandidateSelector) NextCandidate(ctx context.Context, arg
 		// Skip if node has pods with disrupted PodDisruptionBudgets.
 		nodePods := podsByNode[nodeName]
 		if len(nodePods) > 0 {
-			if canRemove, blockingPod := args.PDBTracker.CanRemovePods(nodePods); !canRemove {
+			if canRemove, blockingPodName := args.PDBTracker.CanRemovePods(nodePods); !canRemove {
 				log.V(5).Info("Skipping node: has pods with disrupted PodDisruptionBudgets",
-					"node", nodeName, "blockingPod", blockingPod.Pod.Name)
+					"node", nodeName, "blockingPod", blockingPodName)
 				skipNodes.Insert(nodeName)
 				continue
 			}

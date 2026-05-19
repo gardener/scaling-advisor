@@ -19,7 +19,7 @@ type ScaleInCandidateArgs struct {
 	Constraint        sacorev1alpha1.ScalingConstraintSpec
 	View              minkapi.View
 	RequestRef        RequestRef
-	PDBTracker        pdb.RemainingPdbTracker
+	PDBTracker        pdb.PdbTracker
 	CandidateSelector ScaleInCandidateSelector
 }
 

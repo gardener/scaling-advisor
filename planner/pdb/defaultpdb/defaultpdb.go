@@ -1,7 +1,6 @@
 package pdb
 
 import (
-	"github.com/gardener/scaling-advisor/common/drainutil"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,16 +13,16 @@ type pdbInfo struct {
 }
 
 // defaultRemainingPdbTracker is the default implementation of RemainingPdbTracker
-type defaultRemainingPdbTracker struct {
+type defaultPdbTracker struct {
 	pdbInfos []*pdbInfo
 }
 
 // NewDefaultRemainingPdbTracker returns a new instance of defaultRemainingPdbTracker
-func NewDefaultRemainingPdbTracker() *defaultRemainingPdbTracker {
-	return &defaultRemainingPdbTracker{}
+func NewDefaultRemainingPdbTracker() *defaultPdbTracker {
+	return &defaultPdbTracker{}
 }
 
-func (t *defaultRemainingPdbTracker) SetPdbs(pdbs []*policyv1.PodDisruptionBudget) error {
+func (t *defaultPdbTracker) SetPdbs(pdbs []*policyv1.PodDisruptionBudget) error {
 	t.Clear()
 	for _, pdb := range pdbs {
 		pdbCopy := pdb.DeepCopy()
@@ -39,7 +38,7 @@ func (t *defaultRemainingPdbTracker) SetPdbs(pdbs []*policyv1.PodDisruptionBudge
 	return nil
 }
 
-func (t *defaultRemainingPdbTracker) GetPdbs() []*policyv1.PodDisruptionBudget {
+func (t *defaultPdbTracker) GetPdbs() []*policyv1.PodDisruptionBudget {
 	var pdbs []*policyv1.PodDisruptionBudget
 	for _, pdbInfo := range t.pdbInfos {
 		pdbs = append(pdbs, pdbInfo.pdb)
@@ -47,7 +46,7 @@ func (t *defaultRemainingPdbTracker) GetPdbs() []*policyv1.PodDisruptionBudget {
 	return pdbs
 }
 
-func (t *defaultRemainingPdbTracker) MatchingPdbs(pod *corev1.Pod) []*policyv1.PodDisruptionBudget {
+func (t *defaultPdbTracker) MatchingPdbs(pod *corev1.Pod) []*policyv1.PodDisruptionBudget {
 	var pdbs []*policyv1.PodDisruptionBudget
 	for _, pdbInfo := range t.pdbInfos {
 		if pod.Namespace == pdbInfo.pdb.Namespace && pdbInfo.selector.Matches(labels.Set(pod.Labels)) {
@@ -57,7 +56,7 @@ func (t *defaultRemainingPdbTracker) MatchingPdbs(pod *corev1.Pod) []*policyv1.P
 	return pdbs
 }
 
-func (t *defaultRemainingPdbTracker) CanRemovePods(pods []*corev1.Pod) (canRemove bool, drainBlockingPod *drainutil.DrainBlockingPod) {
+func (t *defaultPdbTracker) CanRemovePods(pods []*corev1.Pod) (canRemove bool, blockingPodName string) {
 	for _, pdbInfo := range t.pdbInfos {
 		count := int32(0)
 		for _, pod := range pods {
@@ -65,15 +64,15 @@ func (t *defaultRemainingPdbTracker) CanRemovePods(pods []*corev1.Pod) (canRemov
 				count += 1
 				if pdbInfo.pdb.Status.DisruptionsAllowed < count {
 					//TODO: Just log the podname rather than returning here.
-					return false, &drainutil.DrainBlockingPod{Pod: pod, Reason: drainutil.NotEnoughPdb}
+					return false, pod.Name
 				}
 			}
 		}
 	}
-	return true, drainBlockingPod
+	return true, blockingPodName
 }
 
-func (t *defaultRemainingPdbTracker) RemovePods(pods []*corev1.Pod) {
+func (t *defaultPdbTracker) RemovePods(pods []*corev1.Pod) {
 	for _, pdbInfo := range t.pdbInfos {
 		for _, pod := range pods {
 			if pod.Namespace == pdbInfo.pdb.Namespace && pdbInfo.selector.Matches(labels.Set(pod.Labels)) {
@@ -83,6 +82,6 @@ func (t *defaultRemainingPdbTracker) RemovePods(pods []*corev1.Pod) {
 	}
 }
 
-func (t *defaultRemainingPdbTracker) Clear() {
+func (t *defaultPdbTracker) Clear() {
 	t.pdbInfos = nil
 }

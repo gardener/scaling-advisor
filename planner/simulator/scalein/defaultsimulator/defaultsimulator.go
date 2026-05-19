@@ -224,7 +224,7 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, memento *pla
 }
 
 // initPdbTracker creates a RemainingPdbTracker and populates it with PDBs from the given ClusterSnapshot.
-func initPdbTracker(snapshotPDBs []policyv1.PodDisruptionBudget) (pdb.RemainingPdbTracker, error) {
+func initPdbTracker(snapshotPDBs []policyv1.PodDisruptionBudget) (pdb.PdbTracker, error) {
 	pdbPtrs := make([]*policyv1.PodDisruptionBudget, len(snapshotPDBs))
 	for i := range snapshotPDBs {
 		pdbPtrs[i] = &snapshotPDBs[i]

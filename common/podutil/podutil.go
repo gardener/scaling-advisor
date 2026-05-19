@@ -7,10 +7,10 @@ package podutil
 import (
 	"slices"
 
-	"github.com/gardener/scaling-advisor/common/objutil"
-
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -200,4 +200,14 @@ func CountUnscheduledPods(pods []corev1.Pod) (count int) {
 // IsUnscheduledPod determines if a given pod is unscheduled by checking if the NodeName in its spec is empty.
 func IsUnscheduledPod(pod *corev1.Pod) bool {
 	return pod.Spec.NodeName == ""
+}
+
+// HasNonEvictablePod returns true if any pod in the slice has the `sa.gardener.cloud/safe-to-evict` annotation set to "false".
+func HasNonEvictablePod(pods []*corev1.Pod) bool {
+	for _, pod := range pods {
+		if val, ok := pod.GetAnnotations()[commonconstants.AnnotationSafeToEvict]; ok && val == "false" {
+			return true
+		}
+	}
+	return false
 }
