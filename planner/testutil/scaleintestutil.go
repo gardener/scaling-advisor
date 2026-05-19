@@ -183,7 +183,21 @@ func Node(name string) *corev1.Node {
 
 // ---- request / config constructors ------------------------------------------
 
-func MakeRequest(id string, pods ...plannerapi.PodInfo) *plannerapi.Request {
+// RequestOpts configures optional fields on a test Request's ClusterSnapshot.
+type RequestOpts struct {
+	Pods []plannerapi.PodInfo
+	PDBs []*policyv1.PodDisruptionBudget
+}
+
+func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
+	var o RequestOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	pdbs := make([]policyv1.PodDisruptionBudget, 0, len(o.PDBs))
+	for _, p := range o.PDBs {
+		pdbs = append(pdbs, *p)
+	}
 	return &plannerapi.Request{
 		RequestRef: plannerapi.RequestRef{ID: id},
 		Constraint: &sacorev1alpha1.ScalingConstraint{},
@@ -191,7 +205,8 @@ func MakeRequest(id string, pods ...plannerapi.PodInfo) *plannerapi.Request {
 			ScaleIn: &plannerapi.ScaleInMemento{},
 		},
 		Snapshot: plannerapi.ClusterSnapshot{
-			Pods: pods,
+			Pods: o.Pods,
+			PDBs: pdbs,
 		},
 	}
 }

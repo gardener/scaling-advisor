@@ -7,7 +7,6 @@ import (
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/planner/pdb"
 	defaultpdb "github.com/gardener/scaling-advisor/planner/pdb/defaultpdb"
@@ -100,7 +99,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 	memento := d.getScaleInMemento()
 
 	// Initialize PDB tracker.
-	pdbTracker, err := initPdbTracker(ctx, simView)
+	pdbTracker, err := initPdbTracker(d.state.Request.Snapshot.PDBs)
 	if err != nil {
 		return err
 	}
@@ -235,22 +234,14 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, memento *pla
 	return scaleInItems, nil
 }
 
-// initPdbTracker creates a RemainingPdbTracker and populates it with PDBs from the given view.
-func initPdbTracker(ctx context.Context, view minkapi.View) (pdb.RemainingPdbTracker, error) {
-	pdbListObj, err := view.ListObjects(ctx, typeinfo.PodDisruptionBudgetDescriptor.GVK, minkapi.MatchAllCriteria)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list PodDisruptionBudgets: %w", err)
-	}
-	pdbList, ok := pdbListObj.(*policyv1.PodDisruptionBudgetList)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for PodDisruptionBudget list: %T", pdbListObj)
-	}
-	pdbPtrs := make([]*policyv1.PodDisruptionBudget, len(pdbList.Items))
-	for i := range pdbList.Items {
-		pdbPtrs[i] = &pdbList.Items[i]
+// initPdbTracker creates a RemainingPdbTracker and populates it with PDBs from the given ClusterSnapshot.
+func initPdbTracker(snapshotPDBs []policyv1.PodDisruptionBudget) (pdb.RemainingPdbTracker, error) {
+	pdbPtrs := make([]*policyv1.PodDisruptionBudget, len(snapshotPDBs))
+	for i := range snapshotPDBs {
+		pdbPtrs[i] = &snapshotPDBs[i]
 	}
 	tracker := defaultpdb.NewDefaultRemainingPdbTracker()
-	if err = tracker.SetPdbs(pdbPtrs); err != nil {
+	if err := tracker.SetPdbs(pdbPtrs); err != nil {
 		return nil, fmt.Errorf("failed to set PDBs on tracker: %w", err)
 	}
 	return tracker, nil

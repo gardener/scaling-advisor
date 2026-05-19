@@ -64,5 +64,10 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 			return err
 		}
 	}
+	for _, pdb := range cs.PDBs {
+		if _, err := view.CreateObject(ctx, typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb); err != nil {
+			return err
+		}
+	}
 	return nil
 }

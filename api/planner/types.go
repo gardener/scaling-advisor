@@ -16,6 +16,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/pricing"
+	policyv1 "k8s.io/api/policy/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -140,6 +141,8 @@ type ClusterSnapshot struct {
 	PriorityClasses []schedulingv1.PriorityClass `json:"priorityClasses,omitempty"`
 	// RuntimeClasses are the runtime classes that are present in the cluster.
 	RuntimeClasses []nodev1.RuntimeClass `json:"runtimeClasses,omitempty"`
+	// PDBs are the pod disruption budgets that are present in the cluster.
+	PDBs []policyv1.PodDisruptionBudget `json:"pdbs,omitempty"`
 }
 
 // GetUnscheduledPods returns all pods in the cluster snapshot that are not scheduled to any node.

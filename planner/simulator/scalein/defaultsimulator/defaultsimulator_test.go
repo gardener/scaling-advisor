@@ -7,10 +7,10 @@ import (
 	"time"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/planner/testutil"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -307,25 +307,7 @@ func TestComputeScaleInItems_MultipleNodes_MixedState(t *testing.T) {
 
 // ---- PDB integration tests --------------------------------------------------
 
-func newSimWithViewAccess(t *testing.T, va minkapi.ViewAccess, sel plannerapi.ScaleInCandidateSelector, cfg plannerapi.ScaleInSimulatorConfig) plannerapi.ScaleInSimulator {
-	t.Helper()
-	sim, err := New(plannerapi.SimulatorArgs{
-		ViewAccess:               va,
-		ScaleInCandidateSelector: sel,
-		ScaleInSimulatorConfig:   cfg,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	return sim
-}
-
 func TestSimulate_PDB_CandidateBlockedByExhaustedBudget(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	testutil.AddPDBToView(t, baseView, "pdb-web", "default", map[string]string{"app": "web"}, 0)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -338,8 +320,10 @@ func TestSimulate_PDB_CandidateBlockedByExhaustedBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
-	req := testutil.MakeRequest("pdb-blocked")
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	req := testutil.MakeRequest("pdb-blocked", testutil.RequestOpts{
+		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)},
+	})
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}}))
 
@@ -352,11 +336,6 @@ func TestSimulate_PDB_CandidateBlockedByExhaustedBudget(t *testing.T) {
 }
 
 func TestSimulate_PDB_CandidateAllowedBySufficientBudget(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	testutil.AddPDBToView(t, baseView, "pdb-web", "default", map[string]string{"app": "web"}, 1)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -369,8 +348,10 @@ func TestSimulate_PDB_CandidateAllowedBySufficientBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
-	req := testutil.MakeRequest("pdb-allowed")
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	req := testutil.MakeRequest("pdb-allowed", testutil.RequestOpts{
+		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)},
+	})
 	req.Memento.ScaleIn.LastIdentifiedUnneededNodes = map[string]time.Time{
 		"node-a": time.Now().Add(-10 * time.Minute),
 	}
@@ -389,11 +370,6 @@ func TestSimulate_PDB_CandidateAllowedBySufficientBudget(t *testing.T) {
 }
 
 func TestSimulate_PDB_OnlyUnblockedNodeSelected(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	testutil.AddPDBToView(t, baseView, "pdb-web", "default", map[string]string{"app": "web"}, 0)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -412,8 +388,10 @@ func TestSimulate_PDB_OnlyUnblockedNodeSelected(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA, "node-b": podsOnNodeB},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
-	req := testutil.MakeRequest("pdb-selective")
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	req := testutil.MakeRequest("pdb-selective", testutil.RequestOpts{
+		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)},
+	})
 	req.Memento.ScaleIn.LastIdentifiedUnneededNodes = map[string]time.Time{
 		"node-a": time.Now().Add(-10 * time.Minute),
 		"node-b": time.Now().Add(-10 * time.Minute),
@@ -433,11 +411,6 @@ func TestSimulate_PDB_OnlyUnblockedNodeSelected(t *testing.T) {
 }
 
 func TestSimulate_PDB_MultiplePodsSameNodeExceedBudget(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	testutil.AddPDBToView(t, baseView, "pdb-web", "default", map[string]string{"app": "web"}, 1)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a1", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -454,8 +427,10 @@ func TestSimulate_PDB_MultiplePodsSameNodeExceedBudget(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
-	req := testutil.MakeRequest("pdb-exceed")
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	req := testutil.MakeRequest("pdb-exceed", testutil.RequestOpts{
+		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)},
+	})
 
 	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}}))
 
@@ -468,8 +443,6 @@ func TestSimulate_PDB_MultiplePodsSameNodeExceedBudget(t *testing.T) {
 }
 
 func TestSimulate_PDB_NoPDBsInView_AllCandidatesAllowed(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -482,7 +455,7 @@ func TestSimulate_PDB_NoPDBsInView_AllCandidatesAllowed(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
 	req := testutil.MakeRequest("no-pdbs")
 	req.Memento.ScaleIn.LastIdentifiedUnneededNodes = map[string]time.Time{
 		"node-a": time.Now().Add(-10 * time.Minute),
@@ -499,11 +472,6 @@ func TestSimulate_PDB_NoPDBsInView_AllCandidatesAllowed(t *testing.T) {
 }
 
 func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	testutil.AddPDBToView(t, baseView, "pdb-web", "production", map[string]string{"app": "web"}, 0)
-
 	podsOnNodeA := []*corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "default", Labels: map[string]string{"app": "web"}},
@@ -516,8 +484,10 @@ func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 		Pods:  map[string][]*corev1.Pod{"node-a": podsOnNodeA},
 	}
 
-	sim := newSimWithViewAccess(t, va, sel, testutil.MakeSimulatorConfig(0))
-	req := testutil.MakeRequest("pdb-ns-mismatch")
+	sim := newSim(t, sel, testutil.MakeSimulatorConfig(0))
+	req := testutil.MakeRequest("pdb-ns-mismatch", testutil.RequestOpts{
+		PDBs: []*policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "production", map[string]string{"app": "web"}, 0)},
+	})
 	req.Memento.ScaleIn.LastIdentifiedUnneededNodes = map[string]time.Time{
 		"node-a": time.Now().Add(-10 * time.Minute),
 	}
@@ -532,14 +502,13 @@ func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 	}
 }
 
-func TestInitPdbTracker_LoadsPDBsFromView(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
+func TestInitPdbTracker_LoadsPDBsFromSnapshot(t *testing.T) {
+	snapshotPDBs := []policyv1.PodDisruptionBudget{
+		*testutil.MakePDB("pdb-1", "default", map[string]string{"app": "web"}, 2),
+		*testutil.MakePDB("pdb-2", "kube-system", map[string]string{"component": "dns"}, 1),
+	}
 
-	testutil.AddPDBToView(t, baseView, "pdb-1", "default", map[string]string{"app": "web"}, 2)
-	testutil.AddPDBToView(t, baseView, "pdb-2", "kube-system", map[string]string{"component": "dns"}, 1)
-
-	tracker, err := initPdbTracker(t.Context(), baseView)
+	tracker, err := initPdbTracker(snapshotPDBs)
 	if err != nil {
 		t.Fatalf("initPdbTracker: %v", err)
 	}
@@ -558,11 +527,8 @@ func TestInitPdbTracker_LoadsPDBsFromView(t *testing.T) {
 	}
 }
 
-func TestInitPdbTracker_EmptyView_EmptyTracker(t *testing.T) {
-	va := testutil.NewTestViewAccess(t)
-	baseView := va.GetBaseView()
-
-	tracker, err := initPdbTracker(t.Context(), baseView)
+func TestInitPdbTracker_EmptySnapshot_EmptyTracker(t *testing.T) {
+	tracker, err := initPdbTracker(nil)
 	if err != nil {
 		t.Fatalf("initPdbTracker: %v", err)
 	}
