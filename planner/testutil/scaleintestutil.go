@@ -12,7 +12,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/minkapi/view"
-	defaultpdb "github.com/gardener/scaling-advisor/planner/pdb/defaultpdb"
+	pdbtracker "github.com/gardener/scaling-advisor/planner/pdbtracker"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -219,9 +219,9 @@ func MakeSimulatorConfig(underutilizedDuration time.Duration) plannerapi.ScaleIn
 
 func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.NodePool, pdbs ...*policyv1.PodDisruptionBudget) plannerapi.ScaleInCandidateArgs {
 	t.Helper()
-	tracker := defaultpdb.NewDefaultRemainingPdbTracker()
+	tracker := pdbtracker.New()
 	if len(pdbs) > 0 {
-		if err := tracker.SetPdbs(pdbs); err != nil {
+		if err := tracker.SetPDBs(pdbs); err != nil {
 			t.Fatalf("failed to set PDBs: %v", err)
 		}
 	}
@@ -350,10 +350,10 @@ func (s *SuccessSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusSuccess
 }
 func (s *SuccessSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
-func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, nodeName string) error {
+func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.Node) error {
 	s.SimView = v
 	if s.NodeName == "" {
-		s.NodeName = nodeName
+		s.NodeName = node.Name
 	}
 	return nil
 }
@@ -361,7 +361,7 @@ func (s *SuccessSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{
 		Name:             "stub-success",
 		View:             s.SimView,
-		Items:            []sacorev1alpha1.ScaleInItem{{NodeName: s.NodeName}},
+		Item:             sacorev1alpha1.ScaleInItem{NodeName: s.NodeName},
 		PodsToReschedule: sets.New[commontypes.NamespacedName](),
 	}, nil
 }
@@ -379,7 +379,7 @@ func (p *PendingPodsSimulation) Status() plannerapi.ActivityStatus {
 func (p *PendingPodsSimulation) PriorityKey() commontypes.PriorityKey {
 	return commontypes.PriorityKey{}
 }
-func (p *PendingPodsSimulation) Run(_ context.Context, v minkapi.View, _ string) error {
+func (p *PendingPodsSimulation) Run(_ context.Context, v minkapi.View, _ *corev1.Node) error {
 	p.SimView = v
 	return nil
 }
@@ -388,7 +388,7 @@ func (p *PendingPodsSimulation) Result() (plannerapi.ScaleInSimRunResult, error)
 	return plannerapi.ScaleInSimRunResult{
 		Name:             "stub-pending",
 		View:             p.SimView,
-		Items:            nil,
+		Item:             sacorev1alpha1.ScaleInItem{},
 		PodsToReschedule: remaining,
 	}, nil
 }
@@ -401,8 +401,10 @@ func (f *FailingSimulation) Name() string { return "stub-fail" }
 func (f *FailingSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusFailure
 }
-func (f *FailingSimulation) PriorityKey() commontypes.PriorityKey                  { return commontypes.PriorityKey{} }
-func (f *FailingSimulation) Run(_ context.Context, _ minkapi.View, _ string) error { return f.Err }
+func (f *FailingSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
+func (f *FailingSimulation) Run(_ context.Context, _ minkapi.View, _ *corev1.Node) error {
+	return f.Err
+}
 func (f *FailingSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{}, f.Err
 }

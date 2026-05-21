@@ -6,12 +6,15 @@ import (
 
 	"time"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var _ plannerapi.ScaleInSimulation = (*defaultSimulation)(nil)
@@ -54,7 +57,7 @@ func (d *defaultSimulation) PriorityKey() commontypes.PriorityKey {
 	panic("implement me")
 }
 
-func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, nodeName string) (err error) {
+func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *corev1.Node) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot run %q, runNum %d: %w", plannerapi.ErrRunSimulation, d.args.Name, d.runNum(), err)
@@ -63,11 +66,11 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, nodeName
 		}
 	}()
 
-	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir); err != nil {
+	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir, node.Name); err != nil {
 		return
 	}
 
-	unboundPods, err := d.state.RemoveNodeAndUnbindPods(nodeName)
+	_, err = d.state.RemoveNodeAndUnbindPods(node.Name)
 	if err != nil {
 		return
 	}
@@ -83,17 +86,20 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, nodeName
 		return
 	}
 
-	nodePodAssignments, err := d.state.NodePodAssignments(unboundPods)
-	if err != nil {
-		return
-	}
-
 	d.result = plannerapi.ScaleInSimRunResult{
-		Name:               d.args.Name,
-		View:               view,
-		Items:              d.state.GetScaleInItems(),
-		NodePodAssignments: nodePodAssignments,
-		PodsToReschedule:   d.state.GetPodsToReschedule(),
+		Name: d.args.Name,
+		View: view,
+		Item: sacorev1alpha1.ScaleInItem{
+			NodePlacement: sacorev1alpha1.NodePlacement{
+				PoolName:         node.Labels[commonconstants.LabelNodePoolName],
+				TemplateName:     node.Labels[commonconstants.LabelNodeTemplateName],
+				InstanceType:     node.Labels[corev1.LabelInstanceTypeStable],
+				Region:           node.Labels[corev1.LabelTopologyRegion],
+				AvailabilityZone: node.Labels[corev1.LabelTopologyZone],
+			},
+			NodeName: node.Name,
+		},
+		PodsToReschedule: d.state.GetPodsToReschedule(),
 	}
 	d.state.status = plannerapi.ActivityStatusSuccess
 	log := logr.FromContextOrDiscard(ctx)

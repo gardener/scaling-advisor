@@ -519,7 +519,18 @@ type Factories struct {
 
 // Memento is an encapsulation of partial details of a completed simulation that can be used by subsequent simulations to optimize their execution.
 type Memento struct {
-	// LastIdentifiedNodesForScaleIn is a map of nodeName to the timestamp of when it was last successfully simulated for scale-in.
-	// This can be used by subsequent simulations to skip simulating the same node again within a certain time window.
+	// ScaleInMemento holds the `LastIdentifiedUnneededNodes` and `LastUnderutilizedSinceNodes` maps used for scale-in decisions.
 	ScaleIn ScaleInMemento
+}
+
+// PDBTracker is responsible for tracking the remaining PDBs
+type PDBTracker interface {
+	// SetPdbs sets PDBs of the remaining PDB tracker.
+	SetPDBs(pdbs []*policyv1.PodDisruptionBudget) error
+	// GetPdbs returns the current remaining PDBs.
+	GetPDBs() []*policyv1.PodDisruptionBudget
+	// CanRemovePods checks if the set of pods can be removed.
+	CanRemovePods(pods []*corev1.Pod) (canRemove bool, blockingPodName string)
+	// Clear resets the remaining PDB tracker to empty state.
+	Clear()
 }

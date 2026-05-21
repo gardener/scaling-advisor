@@ -9,15 +9,14 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -30,17 +29,14 @@ type RunState struct {
 	err                         error
 	ctx                         context.Context
 	view                        minkapi.View
-	scaleInNodes                map[string]*corev1.Node                                   // map of node names to scale-in nodes
 	unscheduledPods             map[commontypes.NamespacedName]plannerapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
-	scheduledPodNamesByNodeName map[string]sets.Set[commontypes.NamespacedName]           // map of node names to a set of scheduled pod names
-	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names scheduled during simulation run
+	leftoverUnscheduledPodNames sets.Set[commontypes.NamespacedName]                      // represents a set of pod names which were made unscheduled when scaling-in a node
 	status                      plannerapi.ActivityStatus
 	name                        string
 	traceDir                    string
 	numUnchangedTrackAttempts   int
 	numTrackAttempts            int
 	numReceivedEvents           int
-	numScheduledPods            int
 	runNum                      uint32
 	nodeCount                   atomic.Uint32
 }
@@ -48,9 +44,7 @@ type RunState struct {
 // FreshRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
 func FreshRunState() RunState {
 	return RunState{
-		status:                      plannerapi.ActivityStatusPending,
-		scheduledPodNamesByNodeName: make(map[string]sets.Set[commontypes.NamespacedName]),
-		scaleInNodes:                make(map[string]*corev1.Node),
+		status: plannerapi.ActivityStatusPending,
 	}
 }
 
@@ -58,11 +52,11 @@ func FreshRunState() RunState {
 // [plannerapi.ActivityStatusRunning] and returns the child run context or an error. The view is also interrogated for
 // initializing unscheduledPods. This method must be invoked before calling other
 // methods of [RunState]
-func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string) (context.Context, error) {
+func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string, nodeName string) (context.Context, error) {
 	r.name, r.runNum, r.status, r.view, r.traceDir = name, runNum, plannerapi.ActivityStatusRunning, view, traceDir
 	log := logr.FromContextOrDiscard(parentCtx).WithValues("simulationName", name, "runNum", runNum)
 	r.ctx = logr.NewContext(parentCtx, log)
-	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view)
+	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view, nodeName)
 	if err != nil {
 		return r.ctx, fmt.Errorf("unable to get unscheduled pods from view %q: %w", view.GetName(), err)
 	}
@@ -73,38 +67,6 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 
 func (r *RunState) GetPodsToReschedule() sets.Set[commontypes.NamespacedName] {
 	return r.leftoverUnscheduledPodNames
-}
-
-func (r *RunState) GetPodNodeAssignments() ([]plannerapi.NodePodAssignment, error) {
-	assignedNodeNames := slices.Collect(maps.Keys(r.scheduledPodNamesByNodeName))
-	assignedNodes, err := r.view.ListNodes(r.ctx, assignedNodeNames...)
-	if err != nil {
-		return nil, err
-	}
-	otherAssignments := make([]plannerapi.NodePodAssignment, len(assignedNodes))
-	for _, node := range assignedNodes {
-		scheduledPodInfos := r.getScheduledPodInfosForNode(node.Name)
-		if len(scheduledPodInfos) > 0 {
-			nodeResources := getNodeResourceInfo(&node)
-			otherAssignments = append(otherAssignments, plannerapi.NodePodAssignment{
-				NodeResources: nodeResources,
-				ScheduledPods: scheduledPodInfos,
-			})
-		}
-	}
-	return otherAssignments, nil
-}
-
-func (s *RunState) getScheduledPodInfosForNode(nodeName string) []plannerapi.PodResourceInfo {
-	scheduledPodNames := s.scheduledPodNamesByNodeName[nodeName].UnsortedList()
-	if len(scheduledPodNames) == 0 {
-		return nil
-	}
-	scheduledPodInfos := make([]plannerapi.PodResourceInfo, 0, len(scheduledPodNames))
-	for _, podName := range scheduledPodNames {
-		scheduledPodInfos = append(scheduledPodInfos, s.unscheduledPods[podName])
-	}
-	return scheduledPodInfos
 }
 
 func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
@@ -121,19 +83,17 @@ func getNodeResourceInfo(node *corev1.Node) plannerapi.NodeResourceInfo {
 func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.NamespacedName, error) {
 	log := logr.FromContextOrDiscard(r.ctx)
 
-	podListObj, err := r.view.ListObjects(r.ctx, typeinfo.PodsDescriptor.GVK, minkapi.MatchCriteria{})
+	pods, err := viewutil.ListPodsOfNode(r.ctx, r.view, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	podList, ok := podListObj.(*corev1.PodList)
-	if !ok {
-		return nil, err
-	}
-
 	var unboundPods []commontypes.NamespacedName
-	for _, pod := range podList.Items {
-		if pod.Spec.NodeName != nodeName {
+	for _, pod := range pods {
+		if isDaemonSetPod(pod) {
+			if err = r.view.DeleteObject(r.ctx, typeinfo.PodsDescriptor.GVK, cache.NewObjectName(pod.Namespace, pod.Name)); err != nil {
+				return nil, err
+			}
 			continue
 		}
 
@@ -143,24 +103,12 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.Names
 			return nil, err
 		}
 
-		//Remove pod from scheduledPodNamesByNodeName map and to unscheduledPods map in RunState
-		// It has to exist in scheduledPodNamesByNodeName, no? is this check needed?
-		if scheduledPods, exists := r.scheduledPodNamesByNodeName[nodeName]; exists {
-			scheduledPods.Delete(commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name})
-		}
 		r.unscheduledPods[commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name}] = podutil.PodResourceInfoFromCoreV1Pod(&pod)
 
 		unboundPods = append(unboundPods, commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name})
 	}
 
 	// Delete node from view
-	nodes, err := r.view.ListNodes(r.ctx, nodeName)
-	if err != nil {
-		return nil, err
-	}
-	if len(nodes) > 0 {
-		r.scaleInNodes[nodeName] = &nodes[0]
-	}
 	err = r.view.DeleteObject(r.ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nodeName))
 	if err != nil {
 		return nil, err
@@ -196,8 +144,7 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 			log.V(3).Info("simulation RunState stabilized - no new kube-scheduler events observed",
 				"numReceivedEvents", r.numReceivedEvents,
 				"maxUnchangedTrackAttempts", maxUnchangedTrackAttempts,
-				"numUnchangedTrackAttempts", r.numUnchangedTrackAttempts,
-				"numScheduledPods", r.numScheduledPods)
+				"numUnchangedTrackAttempts", r.numUnchangedTrackAttempts)
 			stabilized = true
 		}
 		return
@@ -256,18 +203,10 @@ func (r *RunState) addScheduledPod(pod *corev1.Pod) error {
 	if pod.Spec.NodeName == "" {
 		return fmt.Errorf("nodeName must be assigned to pod %q", podNsName)
 	}
-	scheduledPodNames := r.scheduledPodNamesByNodeName[pod.Spec.NodeName]
-	if scheduledPodNames == nil {
-		scheduledPodNames = sets.New[commontypes.NamespacedName]()
-	}
-	scheduledPodNames.Insert(podNsName)
-	r.scheduledPodNamesByNodeName[pod.Spec.NodeName] = scheduledPodNames
-	r.numScheduledPods++
 	r.leftoverUnscheduledPodNames.Delete(podNsName)
 	r.numUnchangedTrackAttempts = 0
 	log.V(4).Info("Added scheduledPod to RunState.scheduledPodNamesByNodeName and reset numUnchangedTrackAttempts",
 		"podNamespacedName", podNsName,
-		"numScheduledPods", r.numScheduledPods,
 		"leftoverUnscheduledPodCount", len(r.leftoverUnscheduledPodNames))
 	return nil
 }
@@ -294,35 +233,27 @@ func (r *RunState) NodePodAssignments(unboundPods []commontypes.NamespacedName) 
 	return nodePodAssignments, nil
 }
 
-func (r *RunState) GetScaleInItems() []sacorev1alpha1.ScaleInItem {
-	scaleInItems := make([]sacorev1alpha1.ScaleInItem, 0, len(r.scaleInNodes))
-	for _, node := range r.scaleInNodes {
-		scaleInItems = append(scaleInItems, sacorev1alpha1.ScaleInItem{
-			NodePlacement: sacorev1alpha1.NodePlacement{
-				PoolName:         node.Labels[commonconstants.LabelNodePoolName],
-				TemplateName:     node.Labels[commonconstants.LabelNodeTemplateName],
-				InstanceType:     node.Labels[corev1.LabelInstanceTypeStable],
-				Region:           node.Labels[corev1.LabelTopologyRegion],
-				AvailabilityZone: node.Labels[corev1.LabelTopologyZone],
-			},
-			NodeName: node.Name,
-		})
-	}
-	return scaleInItems
-}
-
-func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View, nodeName string) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
 	log := logr.FromContextOrDiscard(ctx)
-	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
+	pods, err := viewutil.ListPodsOfNode(ctx, v, nodeName)
 	if err != nil {
 		return
 	}
 	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodResourceInfo, len(pods))
 	for _, p := range pods {
-		if podutil.IsUnscheduledPod(&p) {
-			log.V(5).Info("found unscheduled pod", "pod", p)
+		if !isDaemonSetPod(p) {
+			log.V(5).Info("found non-daemonset pod attached to scale-in node", "pod", p)
 			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
 		}
 	}
 	return
+}
+
+func isDaemonSetPod(pod corev1.Pod) bool {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Kind == "DaemonSet" && ref.Controller != nil && *ref.Controller {
+			return true
+		}
+	}
+	return false
 }

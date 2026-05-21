@@ -64,6 +64,10 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
+	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
+	if err != nil {
+		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+	}
 	scaleInSimulator, err := p.args.SimulatorFactory.GetScaleInSimulator(plannerapi.SimulatorArgs{
 		ScaleInCandidateSelector: p.args.ScaleInCandidateSelector,
 		ScaleInSimulatorConfig:   p.args.ScaleInSimulatorConfig,
@@ -76,10 +80,6 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	}
 	defer ioutil.CloseQuietly(scaleInSimulator)
 	scaleInPlanResultCh := scaleInSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
-	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
-	if err != nil {
-		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
-	}
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
 		Strategy:          req.SimulatorStrategy,
@@ -114,7 +114,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 			}
 		}
 	}
-	// TODO: what do I send in response.Labels? -> union of scalein and scaleout plan maybe extract the common part
+	// TODO: what needs to be sent in response.Labels? -> union of scalein and scaleout plan; maybe extract the common part
 	response := plannerapi.Response{
 		RequestRef:   req.RequestRef,
 		ID:           objutil.GenerateName("scaling-plan-"),

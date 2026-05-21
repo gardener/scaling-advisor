@@ -508,12 +508,12 @@ func TestInitPdbTracker_LoadsPDBsFromSnapshot(t *testing.T) {
 		*testutil.MakePDB("pdb-2", "kube-system", map[string]string{"component": "dns"}, 1),
 	}
 
-	tracker, err := initPdbTracker(snapshotPDBs)
+	tracker, err := initPDBTracker(snapshotPDBs)
 	if err != nil {
 		t.Fatalf("initPdbTracker: %v", err)
 	}
 
-	pdbs := tracker.GetPdbs()
+	pdbs := tracker.GetPDBs()
 	if len(pdbs) != 2 {
 		t.Fatalf("expected 2 PDBs in tracker, got %d", len(pdbs))
 	}
@@ -528,12 +528,12 @@ func TestInitPdbTracker_LoadsPDBsFromSnapshot(t *testing.T) {
 }
 
 func TestInitPdbTracker_EmptySnapshot_EmptyTracker(t *testing.T) {
-	tracker, err := initPdbTracker(nil)
+	tracker, err := initPDBTracker(nil)
 	if err != nil {
 		t.Fatalf("initPdbTracker: %v", err)
 	}
 
-	pdbs := tracker.GetPdbs()
+	pdbs := tracker.GetPDBs()
 	if len(pdbs) != 0 {
 		t.Errorf("expected 0 PDBs, got %d", len(pdbs))
 	}

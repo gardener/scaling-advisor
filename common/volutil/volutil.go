@@ -365,6 +365,7 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 	return
 }
 
+// TODO: create UnbindClaim() and UnbindClaimAndVolume() to be used by scale-in for unbinding volumes.
 // BindClaimAndVolume performs end to end binding between the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
 func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume) error {
 	log := logr.FromContextOrDiscard(ctx)

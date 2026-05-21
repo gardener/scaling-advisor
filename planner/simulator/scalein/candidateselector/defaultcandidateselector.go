@@ -23,7 +23,6 @@ type defaultScaleInCandidateSelector struct {
 	NodeUtilizationCalculator planner.NodeUtilizationCalculator
 }
 
-// TODO: accept NodeUtilizationCalculator
 func New(nodeUtilizationCalculator planner.NodeUtilizationCalculator) planner.ScaleInCandidateSelector {
 	return &defaultScaleInCandidateSelector{
 		NodeUtilizationCalculator: nodeUtilizationCalculator,

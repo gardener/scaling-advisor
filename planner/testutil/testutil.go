@@ -430,12 +430,14 @@ func MakeNodeInfo(name string, opts ...NodeInfoOpts) plannerapi.NodeInfo {
 		o.Allocatable = corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1920m"),
 			corev1.ResourceMemory: resource.MustParse("7Gi"),
+			corev1.ResourcePods:   resource.MustParse("110"),
 		}
 	}
 	if o.Capacity == nil {
 		o.Capacity = corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("2"),
 			corev1.ResourceMemory: resource.MustParse("8Gi"),
+			corev1.ResourcePods:   resource.MustParse("110"),
 		}
 	}
 	return plannerapi.NodeInfo{

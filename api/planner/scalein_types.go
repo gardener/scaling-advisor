@@ -9,7 +9,6 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/planner/pdb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -19,7 +18,7 @@ type ScaleInCandidateArgs struct {
 	Constraint        sacorev1alpha1.ScalingConstraintSpec
 	View              minkapi.View
 	RequestRef        RequestRef
-	PDBTracker        pdb.PdbTracker
+	PDBTracker        PDBTracker
 	CandidateSelector ScaleInCandidateSelector
 }
 
@@ -85,7 +84,7 @@ type ScaleInSimulation interface {
 	PriorityKey() commontypes.PriorityKey
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and [ScaleInSimRunResult] consumption.
-	Run(ctx context.Context, view minkapi.View, nodeName string) error
+	Run(ctx context.Context, view minkapi.View, node *corev1.Node) error
 	// Result returns the latest [ScaleInPlanResult] if the simulation is in ActivityStatusSuccess,
 	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
 	// or an error if the ActivityStatus is ActivityStatusFailure
@@ -100,13 +99,11 @@ type ScaleInSimRunResult struct {
 	Name string
 	// View is the [minkapi.View] against which the simulation was run.
 	View minkapi.View
-	// Items is the slice of [sacorev1alpha1.ScaleInItem] where each item encapsulates the
-	// [sacorev1alpha1.NodePlacement] and associated delta.
-	Items []sacorev1alpha1.ScaleInItem
+	// Item is the [sacorev1alpha1.ScaleInItem] which encapsulates the
+	// [sacorev1alpha1.NodePlacement] and node name.
+	Item sacorev1alpha1.ScaleInItem
 	// PodsToReschedule Pods on Scaled-In node which are pending reschedule to other nodes.
 	PodsToReschedule sets.Set[commontypes.NamespacedName]
-	// NodePodAssignments represent the assignment of pods to reschedule to an existing nodes in the view other than the scaled in node.
-	NodePodAssignments []NodePodAssignment
 }
 
 // ScaleInSimulator is a facade that executes [ScaleInSimulation]'s to generate one or more [ScaleInPlanResult]'s sent on a result channel.
