@@ -2,13 +2,35 @@ package utilization
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	scaleintestutil "github.com/gardener/scaling-advisor/planner/testutil"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func makeNode(allocatable corev1.ResourceList) corev1.Node {
+	return corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+		Status:     corev1.NodeStatus{Allocatable: allocatable},
+	}
+}
+
+func makePods(requests ...corev1.ResourceList) []corev1.Pod {
+	pods := make([]corev1.Pod, 0, len(requests))
+	for i, req := range requests {
+		pods = append(pods, corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "pod-" + string(rune('a'+i))},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Resources: corev1.ResourceRequirements{Requests: req}},
+				},
+			},
+		})
+	}
+	return pods
+}
 
 func TestGetUtilization(t *testing.T) {
 	calc := New()
@@ -18,8 +40,6 @@ func TestGetUtilization(t *testing.T) {
 		nodeAllocate corev1.ResourceList
 		pods         []corev1.ResourceList
 		wantRatios   map[corev1.ResourceName]float64
-		wantErr      bool
-		lookupNode   string
 	}{
 		{
 			name: "single pod consumes half of cpu and memory",
@@ -76,66 +96,31 @@ func TestGetUtilization(t *testing.T) {
 				corev1.ResourceCPU: 1.0,
 			},
 		},
-		{
-			name:       "node not found returns error",
-			lookupNode: "ghost-node",
-			wantErr:    true,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			v := scaleintestutil.NewTestView(t)
-			nodeName := "test-node"
-			if tc.lookupNode != "" {
-				nodeName = tc.lookupNode
-			} else {
-				scaleintestutil.AddNode(t, v, nodeName, scaleintestutil.NodeOpts{Allocatable: tc.nodeAllocate})
-				for i, req := range tc.pods {
-					scaleintestutil.AddPod(t, v, "pod-"+string(rune('a'+i)), "default", nodeName, scaleintestutil.PodOpts{Requests: req})
-				}
-			}
+			node := makeNode(tc.nodeAllocate)
+			pods := makePods(tc.pods...)
 
-			util, err := calc.GetUtilization(context.Background(), v, nodeName)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			util := calc.GetUtilization(context.Background(), node, pods)
 
-			for resource, wantRatio := range tc.wantRatios {
-				gotRatio, ok := util.ResourceRatios[resource]
-				if !ok {
-					t.Errorf("resource %q missing from ResourceRatios", resource)
-					continue
-				}
-				const epsilon = 1e-9
-				if diff := gotRatio - wantRatio; diff > epsilon || diff < -epsilon {
-					t.Errorf("resource %q: got ratio %v, want %v", resource, gotRatio, wantRatio)
-				}
-			}
+			assertRatios(t, util, tc.wantRatios)
 		})
 	}
 }
 
-func TestGetUtilizationListNodesError(t *testing.T) {
-	calc := New()
-	v := &scaleintestutil.FailingView{ListNodesErr: errors.New("node listing failed")}
-	_, err := calc.GetUtilization(context.Background(), v, "any-node")
-	if err == nil {
-		t.Fatal("expected error from ListNodes failure, got nil")
-	}
-}
-
-func TestGetUtilizationListPodsError(t *testing.T) {
-	calc := New()
-	v := &scaleintestutil.FailingView{ListPodsErr: errors.New("pod listing failed")}
-	_, err := calc.GetUtilization(context.Background(), v, "any-node")
-	if err == nil {
-		t.Fatal("expected error from ListPods failure, got nil")
+func assertRatios(t *testing.T, util plannerapi.NodeUtilization, wantRatios map[corev1.ResourceName]float64) {
+	t.Helper()
+	for res, wantRatio := range wantRatios {
+		gotRatio, ok := util.ResourceRatios[res]
+		if !ok {
+			t.Errorf("resource %q missing from ResourceRatios", res)
+			continue
+		}
+		const epsilon = 1e-9
+		if diff := gotRatio - wantRatio; diff > epsilon || diff < -epsilon {
+			t.Errorf("resource %q: got ratio %v, want %v", res, gotRatio, wantRatio)
+		}
 	}
 }

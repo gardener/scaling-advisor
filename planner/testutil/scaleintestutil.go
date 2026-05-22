@@ -138,16 +138,16 @@ func AddPod(t *testing.T, v minkapi.View, name, namespace, nodeName string, opts
 func AddPDBToView(t *testing.T, v minkapi.View, name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) {
 	t.Helper()
 	pdb := MakePDB(name, namespace, matchLabels, disruptionsAllowed)
-	if _, err := v.CreateObject(t.Context(), typeinfo.PodDisruptionBudgetDescriptor.GVK, pdb); err != nil {
+	if _, err := v.CreateObject(t.Context(), typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb); err != nil {
 		t.Fatalf("failed to add PDB %q: %v", name, err)
 	}
 }
 
 // ---- object constructors ----------------------------------------------------
 
-func MakePDB(name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) *policyv1.PodDisruptionBudget {
+func MakePDB(name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) policyv1.PodDisruptionBudget {
 	minAvail := intstr.FromInt32(1)
-	return &policyv1.PodDisruptionBudget{
+	return policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -172,31 +172,21 @@ func Tmpl(name string, priority int32) sacorev1alpha1.NodeTemplate {
 	return sacorev1alpha1.NodeTemplate{Name: name, Priority: priority}
 }
 
-func EmptySkip() *sets.Set[string] {
-	s := sets.New[string]()
-	return &s
-}
-
 func Node(name string) *corev1.Node {
 	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
 }
 
 // ---- request / config constructors ------------------------------------------
 
-// RequestOpts configures optional fields on a test Request's ClusterSnapshot.
 type RequestOpts struct {
 	Pods []plannerapi.PodInfo
-	PDBs []*policyv1.PodDisruptionBudget
+	PDBs []policyv1.PodDisruptionBudget
 }
 
 func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 	var o RequestOpts
 	if len(opts) > 0 {
 		o = opts[0]
-	}
-	pdbs := make([]policyv1.PodDisruptionBudget, 0, len(o.PDBs))
-	for _, p := range o.PDBs {
-		pdbs = append(pdbs, *p)
 	}
 	return &plannerapi.Request{
 		RequestRef: plannerapi.RequestRef{ID: id},
@@ -206,7 +196,7 @@ func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 		},
 		Snapshot: plannerapi.ClusterSnapshot{
 			Pods: o.Pods,
-			PDBs: pdbs,
+			PDBs: o.PDBs,
 		},
 	}
 }
@@ -217,7 +207,7 @@ func MakeSimulatorConfig(underutilizedDuration time.Duration) plannerapi.ScaleIn
 	}
 }
 
-func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.NodePool, pdbs ...*policyv1.PodDisruptionBudget) plannerapi.ScaleInCandidateArgs {
+func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.NodePool, pdbs ...policyv1.PodDisruptionBudget) plannerapi.ScaleInCandidateSelectorArgs {
 	t.Helper()
 	tracker := pdbtracker.New()
 	if len(pdbs) > 0 {
@@ -225,10 +215,14 @@ func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.Node
 			t.Fatalf("failed to set PDBs: %v", err)
 		}
 	}
-	return plannerapi.ScaleInCandidateArgs{
+	return plannerapi.ScaleInCandidateSelectorArgs{
 		View:       v,
 		Constraint: sacorev1alpha1.ScalingConstraintSpec{NodePools: pools},
 		PDBTracker: tracker,
+		UtilizationThresholds: map[corev1.ResourceName]float64{
+			corev1.ResourceCPU:    0.5,
+			corev1.ResourceMemory: 0.5,
+		},
 	}
 }
 
@@ -247,19 +241,15 @@ func DrainResult(t *testing.T, ch <-chan plannerapi.ScaleInPlanResult) plannerap
 type StubUtilizationCalculator struct {
 	CPURatio float64
 	MemRatio float64
-	Err      error
 }
 
-func (s *StubUtilizationCalculator) GetUtilization(_ context.Context, _ minkapi.View, _ string) (plannerapi.NodeUtilization, error) {
-	if s.Err != nil {
-		return plannerapi.NodeUtilization{}, s.Err
-	}
+func (s *StubUtilizationCalculator) GetUtilization(_ context.Context, _ corev1.Node, _ []corev1.Pod) plannerapi.NodeUtilization {
 	return plannerapi.NodeUtilization{
 		ResourceRatios: map[corev1.ResourceName]float64{
 			corev1.ResourceCPU:    s.CPURatio,
 			corev1.ResourceMemory: s.MemRatio,
 		},
-	}, nil
+	}
 }
 
 func LowUtilCalc() plannerapi.NodeUtilizationCalculator {
@@ -270,10 +260,6 @@ func HighUtilCalc() plannerapi.NodeUtilizationCalculator {
 	return &StubUtilizationCalculator{CPURatio: 0.9, MemRatio: 0.9}
 }
 
-func ErrUtilCalc(err error) plannerapi.NodeUtilizationCalculator {
-	return &StubUtilizationCalculator{Err: err}
-}
-
 // ---- stub candidate selectors -----------------------------------------------
 
 // FixedCandidateSelector yields a pre-set sequence of nodes, then nil.
@@ -282,7 +268,10 @@ type FixedCandidateSelector struct {
 	Idx   int
 }
 
-func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateArgs, _ *sets.Set[string]) (*corev1.Node, error) {
+func (f *FixedCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
+	return nil
+}
+func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if f.Idx >= len(f.Nodes) {
 		return nil, nil
 	}
@@ -290,50 +279,71 @@ func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.S
 	f.Idx++
 	return n, nil
 }
+func (f *FixedCandidateSelector) RemoveCandidateNode(_ string) {}
 
 // ErrCandidateSelector always returns an error from NextCandidate.
 type ErrCandidateSelector struct{ Err error }
 
-func (e *ErrCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateArgs, _ *sets.Set[string]) (*corev1.Node, error) {
+func (e *ErrCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
+	return nil
+}
+func (e *ErrCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	return nil, e.Err
 }
+func (e *ErrCandidateSelector) RemoveCandidateNode(_ string) {}
 
-// AlwaysCandidateSelector returns the same node forever (until it gets
-// added to skipNodes by the caller, at which point it returns nil).
-type AlwaysCandidateSelector struct{ N *corev1.Node }
+// AlwaysCandidateSelector returns the same node until RemoveCandidateNode is called.
+type AlwaysCandidateSelector struct {
+	N       *corev1.Node
+	removed bool
+}
 
-func (a *AlwaysCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateArgs, skip *sets.Set[string]) (*corev1.Node, error) {
-	if skip.Has(a.N.Name) {
+func (a *AlwaysCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
+	return nil
+}
+func (a *AlwaysCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+	if a.removed {
 		return nil, nil
 	}
 	return a.N, nil
 }
+func (a *AlwaysCandidateSelector) RemoveCandidateNode(_ string) { a.removed = true }
 
 // PDBAwareCandidateSelector uses the PDBTracker from args to decide if a node's
 // pods can be removed. It yields nodes from a fixed list, skipping those blocked by PDBs.
 type PDBAwareCandidateSelector struct {
-	Nodes []*corev1.Node
-	Pods  map[string][]*corev1.Pod // nodeName -> pods on that node
-	Idx   int
+	Nodes   []*corev1.Node
+	Pods    map[string][]corev1.Pod // nodeName -> pods on that node
+	Idx     int
+	removed map[string]bool
 }
 
-func (p *PDBAwareCandidateSelector) NextCandidate(_ context.Context, args plannerapi.ScaleInCandidateArgs, skip *sets.Set[string]) (*corev1.Node, error) {
+func (p *PDBAwareCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
+	return nil
+}
+func (p *PDBAwareCandidateSelector) NextCandidate(_ context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	for p.Idx < len(p.Nodes) {
 		n := p.Nodes[p.Idx]
 		p.Idx++
-		if skip.Has(n.Name) {
+		if p.removed[n.Name] {
 			continue
 		}
 		nodePods := p.Pods[n.Name]
 		if len(nodePods) > 0 {
 			if canRemove, _ := args.PDBTracker.CanRemovePods(nodePods); !canRemove {
-				skip.Insert(n.Name)
+				p.RemoveCandidateNode(n.Name)
 				continue
 			}
 		}
 		return n, nil
 	}
 	return nil, nil
+}
+func (p *PDBAwareCandidateSelector) RemoveCandidateNode(nodeName string) {
+	if p.removed == nil {
+		p.removed = make(map[string]bool)
+	}
+	p.removed[nodeName] = true
 }
 
 // ---- stub simulations / factories -------------------------------------------

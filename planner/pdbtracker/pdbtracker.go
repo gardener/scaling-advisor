@@ -11,13 +11,13 @@ import (
 var _ plannerapi.PDBTracker = (*pdbTracker)(nil)
 
 type pdbInfo struct {
-	pdb      *policyv1.PodDisruptionBudget
+	pdb      policyv1.PodDisruptionBudget
 	selector labels.Selector
 }
 
 // pdbTracker is the default implementation of PDBTracker interface
 type pdbTracker struct {
-	pdbInfos []*pdbInfo
+	pdbInfos []pdbInfo
 }
 
 // New returns a new instance of pdbTracker
@@ -25,31 +25,30 @@ func New() *pdbTracker {
 	return &pdbTracker{}
 }
 
-func (t *pdbTracker) SetPDBs(pdbs []*policyv1.PodDisruptionBudget) error {
-	t.Clear()
+func (t *pdbTracker) SetPDBs(pdbs []policyv1.PodDisruptionBudget) error {
+	_ = t.Reset()
 	for _, pdb := range pdbs {
-		pdbCopy := pdb.DeepCopy()
-		selector, err := metav1.LabelSelectorAsSelector(pdbCopy.Spec.Selector)
+		selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
 		if err != nil {
 			return err
 		}
-		t.pdbInfos = append(t.pdbInfos, &pdbInfo{
-			pdb:      pdbCopy,
+		t.pdbInfos = append(t.pdbInfos, pdbInfo{
+			pdb:      pdb,
 			selector: selector,
 		})
 	}
 	return nil
 }
 
-func (t *pdbTracker) GetPDBs() []*policyv1.PodDisruptionBudget {
-	var pdbs []*policyv1.PodDisruptionBudget
+func (t *pdbTracker) GetPDBs() []policyv1.PodDisruptionBudget {
+	var pdbs []policyv1.PodDisruptionBudget
 	for _, pdbInfo := range t.pdbInfos {
 		pdbs = append(pdbs, pdbInfo.pdb)
 	}
 	return pdbs
 }
 
-func (t *pdbTracker) CanRemovePods(pods []*corev1.Pod) (bool, string) {
+func (t *pdbTracker) CanRemovePods(pods []corev1.Pod) (bool, string) {
 	for _, pdbInfo := range t.pdbInfos {
 		count := int32(0)
 		for _, pod := range pods {
@@ -64,6 +63,7 @@ func (t *pdbTracker) CanRemovePods(pods []*corev1.Pod) (bool, string) {
 	return true, ""
 }
 
-func (t *pdbTracker) Clear() {
+func (t *pdbTracker) Reset() error {
 	t.pdbInfos = nil
+	return nil
 }

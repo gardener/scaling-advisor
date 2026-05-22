@@ -8,13 +8,17 @@ import (
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/planner/testutil"
-	"k8s.io/apimachinery/pkg/util/sets"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestNextCandidate_NoNodes(t *testing.T) {
 	v := testutil.NewTestView(t)
 	sel := New(testutil.LowUtilCalc())
-	got, err := sel.NextCandidate(context.Background(), testutil.MakeCandidateArgs(t, v, nil), testutil.EmptySkip())
+	args := testutil.MakeCandidateArgs(t, v, nil)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,8 +33,11 @@ func TestNextCandidate_SingleEligibleNode(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,9 +56,12 @@ func TestNextCandidate_SkipNodesRespected(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
-	skip := sets.New("node-a")
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	sel.RemoveCandidateNode("node-a")
 
-	got, err := sel.NextCandidate(context.Background(), args, &skip)
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,9 +79,12 @@ func TestNextCandidate_AllNodesSkipped(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
-	skip := sets.New("node-a")
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	sel.RemoveCandidateNode("node-a")
 
-	got, err := sel.NextCandidate(context.Background(), args, &skip)
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,8 +99,11 @@ func TestNextCandidate_PoolMinReached(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 1, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -103,8 +119,11 @@ func TestNextCandidate_PoolMinNotReached(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 1, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,8 +139,11 @@ func TestNextCandidate_ScaleInDisabledAnnotation(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -138,8 +160,11 @@ func TestNextCandidate_NonEvictablePodBlocksNode(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,29 +179,17 @@ func TestNextCandidate_HighUtilizationSkipsNode(t *testing.T) {
 
 	sel := New(testutil.HighUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
+	args.UtilizationThresholds = map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5}
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != nil {
 		t.Fatalf("expected nil (high utilization), got %q", got.Name)
-	}
-}
-
-func TestNextCandidate_UtilizationErrorSkipsNode(t *testing.T) {
-	v := testutil.NewTestView(t)
-	testutil.AddNode(t, v, "node-a", testutil.NodeOpts{Pool: "pool1", Template: "tmpl1"})
-
-	sel := New(testutil.ErrUtilCalc(errors.New("utilization error")))
-	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
-
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != nil {
-		t.Fatalf("expected nil (utilization error skips node), got %q", got.Name)
 	}
 }
 
@@ -190,8 +203,11 @@ func TestNextCandidate_PicksLowestPriorityPool(t *testing.T) {
 		testutil.Pool("pool-high", 0, 10, testutil.Tmpl("tmpl1", 0)),
 		testutil.Pool("pool-low", 0, 1, testutil.Tmpl("tmpl1", 0)),
 	})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,8 +228,11 @@ func TestNextCandidate_PicksLowestPriorityTemplate(t *testing.T) {
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{
 		testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl-high", 10), testutil.Tmpl("tmpl-low", 1)),
 	})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,9 +251,9 @@ func TestNextCandidate_ListNodesError(t *testing.T) {
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, nil)
 
-	_, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	err := sel.Init(context.Background(), args)
 	if err == nil {
-		t.Fatal("expected error from ListNodes, got nil")
+		t.Fatal("expected error from ListNodes during Init, got nil")
 	}
 	if !errors.Is(err, listErr) {
 		t.Errorf("expected wrapped listErr, got: %v", err)
@@ -253,8 +272,11 @@ func TestNextCandidate_PDB_BlocksNodeWhenBudgetExhausted(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -273,8 +295,11 @@ func TestNextCandidate_PDB_AllowsNodeWhenBudgetSufficient(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -298,8 +323,11 @@ func TestNextCandidate_PDB_MultiplePodsExceedBudget(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -318,8 +346,11 @@ func TestNextCandidate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -338,8 +369,11 @@ func TestNextCandidate_PDB_LabelMismatchDoesNotBlock(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -361,8 +395,11 @@ func TestNextCandidate_PDB_BlockedNodeSkippedOtherNodeSelected(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -385,8 +422,11 @@ func TestNextCandidate_PDB_MultiplePDBsAllMustAllow(t *testing.T) {
 	pdb2 := testutil.MakePDB("pdb-frontend", "default", map[string]string{"tier": "frontend"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb1, pdb2)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -404,8 +444,11 @@ func TestNextCandidate_PDB_NoPDBsConfiguredAllowsAll(t *testing.T) {
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -421,8 +464,11 @@ func TestNextCandidate_PDB_NodeWithNoPodsNotBlocked(t *testing.T) {
 	pdb := testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))}, pdb)
+	if err := sel.Init(context.Background(), args); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
 
-	got, err := sel.NextCandidate(context.Background(), args, testutil.EmptySkip())
+	got, err := sel.NextCandidate(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

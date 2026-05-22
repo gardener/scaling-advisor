@@ -203,7 +203,7 @@ func IsUnscheduledPod(pod *corev1.Pod) bool {
 }
 
 // HasNonEvictablePod returns true if any pod in the slice has the `sa.gardener.cloud/safe-to-evict` annotation set to "false".
-func HasNonEvictablePod(pods []*corev1.Pod) bool {
+func HasNonEvictablePod(pods []corev1.Pod) bool {
 	for _, pod := range pods {
 		if val, ok := pod.GetAnnotations()[commonconstants.AnnotationSafeToEvict]; ok && val == "false" {
 			return true

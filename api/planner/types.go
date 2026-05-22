@@ -482,6 +482,8 @@ type SimulatorArgs struct {
 	ScaleInSimulatorConfig ScaleInSimulatorConfig
 	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
 	ScaleInCandidateSelector ScaleInCandidateSelector
+	// SimulationFactory is a factory facade for creating Simulation objects
+	SimulationFactory SimulationFactory
 }
 
 // ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
@@ -525,12 +527,11 @@ type Memento struct {
 
 // PDBTracker is responsible for tracking the remaining PDBs
 type PDBTracker interface {
+	commontypes.Resettable
 	// SetPdbs sets PDBs of the remaining PDB tracker.
-	SetPDBs(pdbs []*policyv1.PodDisruptionBudget) error
+	SetPDBs(pdbs []policyv1.PodDisruptionBudget) error
 	// GetPdbs returns the current remaining PDBs.
-	GetPDBs() []*policyv1.PodDisruptionBudget
+	GetPDBs() []policyv1.PodDisruptionBudget
 	// CanRemovePods checks if the set of pods can be removed.
-	CanRemovePods(pods []*corev1.Pod) (canRemove bool, blockingPodName string)
-	// Clear resets the remaining PDB tracker to empty state.
-	Clear()
+	CanRemovePods(pods []corev1.Pod) (canRemove bool, blockingPodName string)
 }

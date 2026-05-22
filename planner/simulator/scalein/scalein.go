@@ -46,7 +46,7 @@ func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.ScaleIn
 // InitializeRequestView performs out common initialization on this simulator state.
 func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 	log := logr.FromContextOrDiscard(ctx)
-	requestView, err := s.createRequestView(ctx)
+	requestView, err := s.createSimulationView(ctx)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 	return nil
 }
 
-func (s *SimulatorState) createRequestView(ctx context.Context) (view minkapi.View, err error) {
+func (s *SimulatorState) createSimulationView(ctx context.Context) (view minkapi.View, err error) {
 	view, err = s.viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, s.viewAccess.GetBaseView())
 	if err != nil {
 		return

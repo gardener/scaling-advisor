@@ -8,7 +8,7 @@ package factory
 import (
 	"fmt"
 
-	defsimulator "github.com/gardener/scaling-advisor/planner/simulator/scalein/defaultsimulator"
+	scaleinsimulator "github.com/gardener/scaling-advisor/planner/simulator/scalein/scaleinsimulator"
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout/singlenode"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
@@ -40,5 +40,5 @@ func (s *defaultFactory) GetScaleOutSimulator(args plannerapi.SimulatorArgs) (pl
 }
 
 func (s *defaultFactory) GetScaleInSimulator(args plannerapi.SimulatorArgs) (plannerapi.ScaleInSimulator, error) {
-	return defsimulator.New(args)
+	return scaleinsimulator.New(args)
 }

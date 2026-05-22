@@ -33,6 +33,7 @@ type simulatorMultiSim struct {
 	nodeScorer        plannerapi.NodeScorer
 	state             *scaleout.SimulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
+	simulationFactory plannerapi.SimulationFactory
 }
 
 // New creates a new plannerapi.ScaleOutSimulator that runs simulations for a single scaled node concurrently.
@@ -46,6 +47,7 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 		schedulerLauncher: args.SchedulerLauncher,
 		storageMetaAccess: args.StorageMetaAccess,
 		nodeScorer:        args.NodeScorer,
+		simulationFactory: args.SimulationFactory,
 	}, nil
 }
 
@@ -56,8 +58,8 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 // If the ScalingAdviceGenerationMode is Incremental, a ScaleOutPlanResult is produced from this one-cycle result and
 // sent on the planResultCh, otherwise the cycle result is stored until all cycles are finished. Following which, a
 // cumulative ScaleOutPlanResult is determined from all ScaleOutSimGroupCycleResult's obtained so far and sent on the planResultCh.
-func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleOutPlanResult {
-	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, simulationFactory, s.viewAccess)
+func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request) <-chan plannerapi.ScaleOutPlanResult {
+	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, s.simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
 		if err := s.doSimulate(ctx); err != nil {

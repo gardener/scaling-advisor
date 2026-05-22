@@ -14,22 +14,23 @@ import (
 )
 
 // ScaleInCandidateArgs encapsulates the arguments needed to select a candidate for scale in.
-type ScaleInCandidateArgs struct {
-	Constraint        sacorev1alpha1.ScalingConstraintSpec
-	View              minkapi.View
-	RequestRef        RequestRef
-	PDBTracker        PDBTracker
-	CandidateSelector ScaleInCandidateSelector
+type ScaleInCandidateSelectorArgs struct {
+	Constraint            sacorev1alpha1.ScalingConstraintSpec
+	View                  minkapi.View
+	PDBTracker            PDBTracker
+	UtilizationThresholds map[corev1.ResourceName]float64
 }
 
 // ScaleInCandidateSelector is the interface meant to select the next viable candidate for scale in by interrogating the nodes from the [minkapi.View]
 type ScaleInCandidateSelector interface {
-	NextCandidate(ctx context.Context, args ScaleInCandidateArgs, skipNodes *sets.Set[string]) (*corev1.Node, error)
+	Init(ctx context.Context, args ScaleInCandidateSelectorArgs) error
+	NextCandidate(ctx context.Context, args ScaleInCandidateSelectorArgs) (*corev1.Node, error)
+	RemoveCandidateNode(nodeName string)
 }
 
 // NodeUtilizationCalculator is the interface meant to calculate the utilization of a node having the given node name in the [minkapi.View]
 type NodeUtilizationCalculator interface {
-	GetUtilization(context context.Context, view minkapi.View, nodeName string) (NodeUtilization, error)
+	GetUtilization(context context.Context, node corev1.Node, pods []corev1.Pod) NodeUtilization
 }
 
 // NodeUtilization is the utilization of all resources on a node expressed as a fraction from 0 to 1
@@ -91,8 +92,6 @@ type ScaleInSimulation interface {
 	Result() (ScaleInSimRunResult, error)
 }
 
-type ScaleInCandidateSelectorArgs struct{}
-
 // ScaleInSimRunResult encapsulated the result of a completed [ScaleInSimulation]
 type ScaleInSimRunResult struct {
 	// Name of the ScaleInSimulation that produced this result.
@@ -110,7 +109,7 @@ type ScaleInSimRunResult struct {
 type ScaleInSimulator interface {
 	io.Closer
 
-	Simulate(ctx context.Context, request *Request, simulationFactory SimulationFactory) <-chan ScaleInPlanResult
+	Simulate(ctx context.Context, request *Request) <-chan ScaleInPlanResult
 }
 
 // ScaleInMemento is an encapsulation of partial details of a completed scale-in simulation that can be used by subsequent scale-in simulations
@@ -137,6 +136,7 @@ type ScaleInPlanResult struct {
 
 // Note: Check with SimulatorConfig. SimulatorConfig will be changed to ScaleOutSimulatorConfig and the common fields between ScaleOutSimulatorConfig and ScaleInSimulatorConfig need to be looked at.
 // ScaleInSimulatorConfig is static config params used to construct an instance of ScaleInSimulator
+// TODO: think about combining this with `SimulatorConfig`.
 type ScaleInSimulatorConfig struct {
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
 	TrackPollInterval time.Duration

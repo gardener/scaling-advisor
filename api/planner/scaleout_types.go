@@ -60,9 +60,9 @@ import (
 type ScaleOutSimulator interface {
 	io.Closer
 
-	// Simulate is the high level activity that runs [ScaleOutSimulation] created from given
-	// [SimulationFactory] with the given planner [Request].
-	Simulate(ctx context.Context, request *Request, simulationFactory SimulationFactory) (planResult <-chan ScaleOutPlanResult)
+	// Simulate is the high level activity that runs [ScaleOutSimulation] on the given
+	// [requestView] with the given planner [Request].
+	Simulate(ctx context.Context, request *Request) (planResult <-chan ScaleOutPlanResult)
 }
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate

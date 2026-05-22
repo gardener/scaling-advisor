@@ -238,7 +238,7 @@ func ObtainPlannerResponse(t *testing.T, planner plannerapi.ScalingPlanner, test
 	responseCh := planner.Plan(testData.RunContext, testData.Request)
 	response = <-responseCh
 	if response.Error != nil {
-		t.Fatalf("failed to generate scale-out plan: %v", response.Error)
+		t.Fatalf("failed to generate scaling plan: %v", response.Error)
 		return
 	}
 	planResultJson, err := json.MarshalIndent(response, "", "  ")
@@ -311,6 +311,7 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
 			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
 			UnderutilizedDuration:     5 * time.Minute,
+			UtilizationThresholds:     map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
 		}
 	} else { // allow comfortable time for debugging
 		simulatorConfig = plannerapi.SimulatorConfig{
@@ -322,6 +323,7 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
 			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
 			UnderutilizedDuration:     5 * time.Minute,
+			UtilizationThresholds:     map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
 		}
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true

@@ -142,7 +142,7 @@ func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 			if stabilized, err = d.state.Track(d.args.Config.MaxUnchangedTrackAttempts); err != nil || stabilized {
 				return
 			}
-			if len(d.state.leftoverUnscheduledPodNames) == 0 {
+			if len(d.state.podsToReschedule) == 0 {
 				log.V(2).Info("ending simulation run since leftoverUnscheduledPodNames is zero", "numTrackAttempts", d.state.numTrackAttempts)
 				return
 			}

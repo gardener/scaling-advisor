@@ -248,3 +248,12 @@ func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
 	}
 	return cmp.Compare(b.Second, a.Second)
 }
+
+// CmpPriorityKeyIncreasing is a compare function for [PriorityKey] in increasing value of priority.
+// ie lower priority values  before higher priority values
+func CmpPriorityKeyIncreasing(a, b PriorityKey) int {
+	if firstCmp := cmp.Compare(a.First, b.First); firstCmp != 0 {
+		return firstCmp
+	}
+	return cmp.Compare(a.Second, b.Second)
+}

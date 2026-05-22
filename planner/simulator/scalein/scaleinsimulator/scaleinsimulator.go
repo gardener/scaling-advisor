@@ -1,4 +1,4 @@
-package defaultSimulator
+package scaleinsimulator
 
 import (
 	"context"
@@ -11,33 +11,35 @@ import (
 	pdbtracker "github.com/gardener/scaling-advisor/planner/pdbtracker"
 	scalein "github.com/gardener/scaling-advisor/planner/simulator/scalein"
 	"github.com/go-logr/logr"
-	policyv1 "k8s.io/api/policy/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-var _ plannerapi.ScaleInSimulator = (*defaultSimulator)(nil)
+var _ plannerapi.ScaleInSimulator = (*scaleInSimulator)(nil)
 
-type defaultSimulator struct {
+type scaleInSimulator struct {
 	viewAccess               minkapi.ViewAccess
 	schedulerLauncher        plannerapi.SchedulerLauncher
 	traceDir                 string
 	state                    scalein.SimulatorState
 	scaleInCandidateSelector plannerapi.ScaleInCandidateSelector
 	scaleInSimulatorConfig   plannerapi.ScaleInSimulatorConfig
+	simulationFactory        plannerapi.SimulationFactory
+	pdbTracker               plannerapi.PDBTracker
 }
 
 // New creates a new [plannerapi.ScaleInSimulator] that runs simulations for scale-in nodes.
 func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleInSimulator, error) {
-	return &defaultSimulator{
+	return &scaleInSimulator{
 		scaleInSimulatorConfig:   args.ScaleInSimulatorConfig,
 		scaleInCandidateSelector: args.ScaleInCandidateSelector,
 		viewAccess:               args.ViewAccess,
 		schedulerLauncher:        args.SchedulerLauncher,
 		traceDir:                 args.TraceDir,
+		simulationFactory:        args.SimulationFactory,
+		pdbTracker:               pdbtracker.New(),
 	}, nil
 }
 
-func (d *defaultSimulator) Close() error {
+func (d *scaleInSimulator) Close() error {
 	return d.state.Reset()
 }
 
@@ -45,8 +47,8 @@ func (d *defaultSimulator) Close() error {
 // runs a simulation for each candidate, and accumulates successfully scaled-in nodes. A node is only included
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration (tracked via the [plannerapi.ScaleInMemento]).
-func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleInPlanResult {
-	d.state = scalein.NewSimulatorState(request, d.scaleInSimulatorConfig, simulationFactory, d.viewAccess)
+func (d *scaleInSimulator) Simulate(ctx context.Context, request *plannerapi.Request) <-chan plannerapi.ScaleInPlanResult {
+	d.state = scalein.NewSimulatorState(request, d.scaleInSimulatorConfig, d.simulationFactory, d.viewAccess)
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
@@ -58,7 +60,7 @@ func (d *defaultSimulator) Simulate(ctx context.Context, request *plannerapi.Req
 
 // doSimulate contains the main simulation loop for the default scale-in simulator. It is responsible for selecting candidates,
 // running simulations, and accumulating results to produce the final scale-in plan.
-func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
+func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// TODO: move the initializeRequestView out to the planner, same is used for scale-out and scale-in.
@@ -82,14 +84,18 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 
 	// Initialize views and loop state.
 	simView := d.state.RequestView()
-	//TODO: Take a look at scaleInSuccessNodes name. Find a better name. -> scaleInNomineeNodes
-	scaledInSuccessNodes := map[string]sacorev1alpha1.ScaleInItem{}
-	skipNodes := sets.New[string]()
+	scaleInNomineeNodes := map[string]sacorev1alpha1.ScaleInItem{}
 	memento := d.state.Request.Memento.ScaleIn
 
-	// Initialize PDB tracker.
-	pdbTracker, err := initPDBTracker(d.state.Request.Snapshot.PDBs)
-	if err != nil {
+	if err := d.scaleInCandidateSelector.Init(ctx, plannerapi.ScaleInCandidateSelectorArgs{
+		Constraint: d.state.Request.Constraint.Spec,
+		View:       simView,
+	}); err != nil {
+		return err
+	}
+
+	// Set PDBs in tracker from the snapshot
+	if err := d.pdbTracker.SetPDBs(d.state.Request.Snapshot.PDBs); err != nil {
 		return err
 	}
 
@@ -100,13 +106,12 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			return ctx.Err()
 		default:
 			// Select the next scale-in candidate.
-			nextCandidate, err := d.scaleInCandidateSelector.NextCandidate(ctx, plannerapi.ScaleInCandidateArgs{
-				Constraint: d.state.Request.Constraint.Spec,
-				View:       simView,
-				RequestRef: d.state.Request.GetRef(),
-				PDBTracker: pdbTracker,
-				//TODO: No need to pass pointer to set. Just set should be fine.
-			}, &skipNodes)
+			nextCandidate, err := d.scaleInCandidateSelector.NextCandidate(ctx, plannerapi.ScaleInCandidateSelectorArgs{
+				Constraint:            d.state.Request.Constraint.Spec,
+				View:                  simView,
+				PDBTracker:            d.pdbTracker,
+				UtilizationThresholds: d.scaleInSimulatorConfig.UtilizationThresholds,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to select scale-in candidate: %w", err)
 			}
@@ -114,7 +119,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
-				scaleInItems, err := d.computeScaleInItems(ctx, &memento, scaledInSuccessNodes)
+				scaleInItems, err := d.computeScaleInItems(ctx, &memento, scaleInNomineeNodes)
 				if err != nil {
 					return fmt.Errorf("failed to compute scale-in items: %w", err)
 				}
@@ -143,14 +148,14 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 			if len(result.PodsToReschedule) == 0 {
 				// All pods from scaled-in node were successfully rescheduled.
 				log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
-				scaledInSuccessNodes[candidateName] = result.Item
+				scaleInNomineeNodes[candidateName] = result.Item
 				simView = result.View
 			} else {
 				// There are pods that could not be rescheduled. We treat this as scale-in failure.
 				log.V(3).Info("Scale-in simulation failed for candidate (pods remain unscheduled)",
 					"node", candidateName, "podsToReschedule", len(result.PodsToReschedule))
-				skipNodes.Insert(candidateName)
 			}
+			d.scaleInCandidateSelector.RemoveCandidateNode(candidateName)
 		}
 	}
 }
@@ -158,7 +163,7 @@ func (d *defaultSimulator) doSimulate(ctx context.Context) (err error) {
 // computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
 // A node is only included in the plan if it has been continuously identified as unneeded across [plannerapi.ScalingPlanner.Plan] invocations
 // for at least the configured UnderutilizedDuration.
-func (d *defaultSimulator) computeScaleInItems(ctx context.Context, memento *plannerapi.ScaleInMemento, scaledInSuccessNodes map[string]sacorev1alpha1.ScaleInItem) ([]sacorev1alpha1.ScaleInItem, error) {
+func (d *scaleInSimulator) computeScaleInItems(ctx context.Context, memento *plannerapi.ScaleInMemento, scaledInSuccessNodes map[string]sacorev1alpha1.ScaleInItem) ([]sacorev1alpha1.ScaleInItem, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	now := time.Now()
 	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
@@ -172,7 +177,7 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, memento *pla
 	// nodes have exceeded the unneeded duration.
 	var scaleInItems []sacorev1alpha1.ScaleInItem
 	for nodeName, scaleInItem := range scaledInSuccessNodes {
-		firstSeen, exists := memento.LastIdentifiedUnneededNodes[nodeName]
+		firstSeenAt, exists := memento.LastIdentifiedUnneededNodes[nodeName]
 		if !exists {
 			// First time this node was identified as unneeded; record the timestamp but do not include in plan yet.
 			log.V(3).Info("Node newly identified as unneeded, recording timestamp", "node", nodeName)
@@ -180,30 +185,15 @@ func (d *defaultSimulator) computeScaleInItems(ctx context.Context, memento *pla
 			continue
 		}
 		// The node was previously identified as unneeded. Check if the unneeded duration has been exceeded.
-		if now.Sub(firstSeen) >= unneededDuration {
+		if now.Sub(firstSeenAt) >= unneededDuration {
 			log.V(2).Info("Node has exceeded unneeded duration, including in scale-in plan",
-				"node", nodeName, "firstSeen", firstSeen, "unneededDuration", unneededDuration)
+				"node", nodeName, "firstSeen", firstSeenAt, "unneededDuration", unneededDuration)
 			scaleInItems = append(scaleInItems, scaleInItem)
-			// can there be any failure case where we would want to keep this node in the memento for consideration in the next plan generation loop?
-			delete(memento.LastIdentifiedUnneededNodes, nodeName)
 		} else {
 			log.V(3).Info("Node identified as unneeded but duration not yet exceeded",
-				"node", nodeName, "firstSeen", firstSeen, "elapsed", now.Sub(firstSeen), "required", unneededDuration)
+				"node", nodeName, "firstSeen", firstSeenAt, "elapsed", now.Sub(firstSeenAt), "required", unneededDuration)
 		}
 	}
 
 	return scaleInItems, nil
-}
-
-// initPDBTracker creates a PDBTracker and populates it with PDBs from the given ClusterSnapshot.
-func initPDBTracker(snapshotPDBs []policyv1.PodDisruptionBudget) (plannerapi.PDBTracker, error) {
-	pdbPtrs := make([]*policyv1.PodDisruptionBudget, len(snapshotPDBs))
-	for i := range snapshotPDBs {
-		pdbPtrs[i] = &snapshotPDBs[i]
-	}
-	tracker := pdbtracker.New()
-	if err := tracker.SetPDBs(pdbPtrs); err != nil {
-		return nil, fmt.Errorf("failed to set PDBs on tracker: %w", err)
-	}
-	return tracker, nil
 }

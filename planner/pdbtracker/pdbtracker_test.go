@@ -16,7 +16,7 @@ var (
 	one    = intstr.FromInt(1)
 	label1 = "label-1"
 	label2 = "label-2"
-	pdb1   = &policyv1.PodDisruptionBudget{
+	pdb1   = policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
 			Namespace: "ns",
@@ -33,7 +33,7 @@ var (
 			DisruptionsAllowed: 1,
 		},
 	}
-	pdb2 = &policyv1.PodDisruptionBudget{
+	pdb2 = policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bar",
 			Namespace: "ns",
@@ -58,7 +58,7 @@ func TestBasicCanRemovePods(t *testing.T) {
 		podsLabel1      int
 		podsLabel2      int
 		podsBothLabels  int
-		pdbs            []*policyv1.PodDisruptionBudget
+		pdbs            []policyv1.PodDisruptionBudget
 		pdbsDisruptions [2]int32
 		canDisrupt      bool
 	}{
@@ -72,7 +72,7 @@ func TestBasicCanRemovePods(t *testing.T) {
 			name:            "Not enough pod disruption budgets",
 			podsLabel1:      2,
 			podsLabel2:      1,
-			pdbs:            []*policyv1.PodDisruptionBudget{pdb1, pdb2},
+			pdbs:            []policyv1.PodDisruptionBudget{pdb1, pdb2},
 			pdbsDisruptions: [2]int32{1, 0},
 			canDisrupt:      false,
 		},
@@ -80,7 +80,7 @@ func TestBasicCanRemovePods(t *testing.T) {
 			name:            "Enough pod disruption budgets",
 			podsLabel1:      2,
 			podsLabel2:      3,
-			pdbs:            []*policyv1.PodDisruptionBudget{pdb1, pdb2},
+			pdbs:            []policyv1.PodDisruptionBudget{pdb1, pdb2},
 			pdbsDisruptions: [2]int32{2, 4},
 			canDisrupt:      true,
 		},
@@ -89,14 +89,16 @@ func TestBasicCanRemovePods(t *testing.T) {
 			podsLabel1:      1,
 			podsLabel2:      1,
 			podsBothLabels:  1,
-			pdbs:            []*policyv1.PodDisruptionBudget{pdb1, pdb2},
+			pdbs:            []policyv1.PodDisruptionBudget{pdb1, pdb2},
 			pdbsDisruptions: [2]int32{1, 1},
 			canDisrupt:      true,
 		},
 	}
 	for _, test := range testCases {
-		pdb1.Status.DisruptionsAllowed = test.pdbsDisruptions[0]
-		pdb2.Status.DisruptionsAllowed = test.pdbsDisruptions[1]
+		if len(test.pdbs) >= 2 {
+			test.pdbs[0].Status.DisruptionsAllowed = test.pdbsDisruptions[0]
+			test.pdbs[1].Status.DisruptionsAllowed = test.pdbsDisruptions[1]
+		}
 		tracker := New()
 		if err := tracker.SetPDBs(test.pdbs); err != nil {
 			t.Errorf("SetPdbs failed: %v", err)
@@ -114,10 +116,10 @@ func TestBasicCanRemovePods(t *testing.T) {
 	}
 }
 
-func makePodsWithLabel(label string, amount int) []*apiv1.Pod {
-	pods := []*apiv1.Pod{}
+func makePodsWithLabel(label string, amount int) []apiv1.Pod {
+	pods := []apiv1.Pod{}
 	for i := 0; i < amount; i++ {
-		pod := &apiv1.Pod{
+		pod := apiv1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            fmt.Sprintf("pod-1-%d", i),
 				Namespace:       "ns",
@@ -133,9 +135,9 @@ func makePodsWithLabel(label string, amount int) []*apiv1.Pod {
 	return pods
 }
 
-func addLabelToPods(pods []*apiv1.Pod, label string) {
-	for _, pod := range pods {
-		pod.ObjectMeta.Labels[label] = "true"
+func addLabelToPods(pods []apiv1.Pod, label string) {
+	for i := range pods {
+		pods[i].ObjectMeta.Labels[label] = "true"
 	}
 }
 

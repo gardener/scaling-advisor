@@ -55,6 +55,7 @@ func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-cha
 	return responseCh
 }
 
+// TODO: need to initialize requestView here and pass it.
 func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, responseCh chan plannerapi.Response) error {
 	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceDir, req)
 	if err != nil {
@@ -74,12 +75,13 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		ViewAccess:               p.args.ViewAccess,
 		SchedulerLauncher:        p.args.SchedulerLauncher,
 		TraceDir:                 p.args.TraceDir,
+		SimulationFactory:        p.args.SimulationFactory,
 	})
 	if err != nil {
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleInSimulator)
-	scaleInPlanResultCh := scaleInSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
+	scaleInPlanResultCh := scaleInSimulator.Simulate(planCtx, req)
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
 		Strategy:          req.SimulatorStrategy,
@@ -88,12 +90,13 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		StorageMetaAccess: p.args.StorageMetaAccess,
 		NodeScorer:        nodeScorer,
 		TraceDir:          p.args.TraceDir,
+		SimulationFactory: p.args.SimulationFactory,
 	})
 	if err != nil {
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	scaleOutPlanResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
+	scaleOutPlanResultCh := scaleOutSimulator.Simulate(planCtx, req)
 	var scaleInPlanResult plannerapi.ScaleInPlanResult
 	var scaleOutPlanResult plannerapi.ScaleOutPlanResult
 	for receivedCount := 0; receivedCount < 2; {
