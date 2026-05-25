@@ -49,6 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "Test workflow modification"
           ${{ matrix.args.run }}
 
   check:

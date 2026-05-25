@@ -32,7 +32,7 @@ func TestOnePoolUnitScaleOut(t *testing.T) {
 		Items: []sacorev1alpha1.ScaleOutItem{
 			{
 				NodePlacement: poolAPlacement,
-				Delta:         1,
+				Delta:         2,
 			},
 		},
 	}
