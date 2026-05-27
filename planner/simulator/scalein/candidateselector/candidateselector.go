@@ -167,7 +167,7 @@ func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plann
 		lowestPriorityCandidates = append(lowestPriorityCandidates, nodeWithPriority.node)
 	}
 
-	log.V(5).Info("Lowest priority candidate nodes for scale-in", lowestPriorityCandidates)
+	log.V(5).Info("Lowest priority candidate nodes for scale-in", "nodes", lowestPriorityCandidates)
 
 	return &lowestPriorityCandidates[rand.IntN(len(lowestPriorityCandidates))], nil
 }

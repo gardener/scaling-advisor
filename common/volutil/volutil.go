@@ -32,11 +32,15 @@ import (
 
 // AsPVInfo converts the given corev1.PersistentVolume to a lean plannerapi PVInfo.
 func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
+	var nodeAffinity *corev1.NodeSelector
+	if pv.Spec.NodeAffinity != nil {
+		nodeAffinity = pv.Spec.NodeAffinity.Required
+	}
 	pvi := plannerapi.PVInfo{
 		AccessModes:      pv.Spec.AccessModes,
 		Capacity:         pv.Spec.Capacity,
 		ObjectMeta:       pv.ObjectMeta,
-		NodeAffinity:     pv.Spec.NodeAffinity.Required,
+		NodeAffinity:     nodeAffinity,
 		StorageClassName: pv.Spec.StorageClassName,
 		Phase:            pv.Status.Phase,
 	}
@@ -365,7 +369,67 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 	return
 }
 
-// TODO: create UnbindClaim() and UnbindClaimAndVolume() to be used by scale-in for unbinding volumes.
+// UnbindPodVolumes resets the volume bindings for all PVCs referenced by the given pod so that the
+// VolumeBinding plugin can re-evaluate placement when the pod is rescheduled to a different node.
+//
+// For each PVC referenced by the pod:
+//   - If the bound PV is a simulated one (annotated AnnDynamicallyProvisioned = "scaling-advisor"),
+//     the PV is deleted and the PVC is fully reset to Pending (VolumeName cleared, AnnBindCompleted,
+//     AnnBoundByController and AnnSelectedNode removed). The scheduler then treats it as an unbound
+//     WFFC claim and re-evaluates AllowedTopologies when selecting a node, after which doWork
+//     provisions a fresh simulated PV in the correct zone.
+//   - If the bound PV is a real (static) one, only the AnnSelectedNode annotation is removed from
+//     the PVC so the VolumeBinding plugin re-evaluates topology without discarding the real PV.
+func UnbindPodVolumes(ctx context.Context, view minkapi.View, pod *corev1.Pod) error {
+	log := logr.FromContextOrDiscard(ctx)
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+		pvcName := vol.PersistentVolumeClaim.ClaimName
+		obj, err := view.GetObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(pod.Namespace, pvcName))
+		if err != nil {
+			return fmt.Errorf("failed to get PVC %q/%q for pod %q: %w", pod.Namespace, pvcName, pod.Name, err)
+		}
+		pvc := obj.(*corev1.PersistentVolumeClaim).DeepCopy()
+
+		if pvc.Status.Phase != corev1.ClaimBound || pvc.Spec.VolumeName == "" {
+			continue
+		}
+
+		pvObj, err := view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pvc.Spec.VolumeName))
+		if err != nil {
+			return fmt.Errorf("failed to get PV %q for PVC %q/%q: %w", pvc.Spec.VolumeName, pod.Namespace, pvcName, err)
+		}
+		pv := pvObj.(*corev1.PersistentVolume).DeepCopy()
+
+		if pv.Annotations[storagevolume.AnnDynamicallyProvisioned] == "scaling-advisor" {
+			// Simulated PV: delete it and fully reset the PVC to Pending so the scheduler
+			// re-evaluates the WFFC claim from scratch, enforcing AllowedTopologies correctly.
+			// This is safe because UnbindPodVolumes always runs before launchSchedulerForSimulation,
+			// so the fresh informer cache the scheduler builds will already reflect these deletions.
+			log.V(3).Info("deleting simulated PV and resetting PVC to Pending for scale-in", "pvName", pv.Name, "pvcName", pvcName, "pvcNamespace", pod.Namespace)
+			if err = view.DeleteObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pv.Name)); err != nil {
+				return fmt.Errorf("failed to delete simulated PV %q: %w", pv.Name, err)
+			}
+			pvc.Spec.VolumeName = ""
+			pvc.Status.Phase = corev1.ClaimPending
+			delete(pvc.Annotations, storagevolume.AnnBindCompleted)
+			delete(pvc.Annotations, storagevolume.AnnBoundByController)
+			delete(pvc.Annotations, storagevolume.AnnSelectedNode)
+		} else {
+			// Real (static) PV: only clear the selected-node annotation so VolumeBinding re-evaluates.
+			log.V(3).Info("clearing AnnSelectedNode from PVC bound to real PV for scale-in", "pvName", pv.Name, "pvcName", pvcName, "pvcNamespace", pod.Namespace)
+			delete(pvc.Annotations, storagevolume.AnnSelectedNode)
+		}
+
+		if err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+			return fmt.Errorf("failed to update PVC %q/%q after unbind: %w", pod.Namespace, pvcName, err)
+		}
+	}
+	return nil
+}
+
 // BindClaimAndVolume performs end to end binding between the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
 func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume) error {
 	log := logr.FromContextOrDiscard(ctx)
@@ -377,7 +441,6 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pvc.Status.Phase = corev1.ClaimBound
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)

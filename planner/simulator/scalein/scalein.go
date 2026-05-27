@@ -56,7 +56,8 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 		return err
 	}
 
-	// if r.simConfig.BindVolumeClaimsForImmediateMode {
+	// TODO: Needs to be uncommented to handle pvc with Immediate binding mode.
+	// if s.simConfig.BindVolumeClaimsForImmediateMode {
 	// 	// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
 	// 	if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
 	// 		return err

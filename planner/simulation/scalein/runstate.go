@@ -13,6 +13,7 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -63,7 +64,6 @@ func (r *RunState) GetPodsToReschedule() sets.Set[commontypes.NamespacedName] {
 	return r.podsToReschedule
 }
 
-// TODO: take care of volumes attached to this node as well
 func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.NamespacedName, error) {
 	log := logr.FromContextOrDiscard(r.ctx)
 
@@ -79,6 +79,10 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.Names
 				return nil, err
 			}
 			continue
+		}
+
+		if err = volutil.UnbindPodVolumes(r.ctx, r.view, &pod); err != nil {
+			return nil, err
 		}
 
 		log.V(2).Info("Unbinding pod from node", "pod", pod.Name, "node", nodeName)

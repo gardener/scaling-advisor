@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/planner/testutil"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
@@ -16,6 +17,9 @@ import (
 	"github.com/gardener/scaling-advisor/samples"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	storagevolume "k8s.io/component-helpers/storage/volume"
 )
 
 func TestOnePoolUnitScaleOut(t *testing.T) {
@@ -449,4 +453,253 @@ func TestOnePoolScaleIn_NoScaleIn_FirstTimeSeen(t *testing.T) {
 	}
 
 	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, nil)
+}
+
+// TestOnePoolScaleIn_PodWithBoundPVC_PVCUnbound verifies that when the scale-in candidate node
+// holds a pod referencing a real bound PVC, the simulation unbinds the PVC (clears AnnSelectedNode)
+// so the pod can reschedule to the remaining node, and the scale-in plan is produced.
+func TestOnePoolScaleIn_PodWithBoundPVC_PVCUnbound(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	pv := testutil.MakePV("pv-stem", &corev1.ObjectReference{
+		Namespace: "default",
+		Name:      "pvc-stem",
+	}, false)
+	pv.Spec.StorageClassName = "standard"
+	pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
+		Required: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+				MatchExpressions: []corev1.NodeSelectorRequirement{{
+					Key:      corev1.LabelTopologyZone,
+					Operator: corev1.NodeSelectorOpIn,
+					Values:   []string{"eu-west-1c"},
+				}},
+			}},
+		},
+	}
+	pvc := testutil.MakeBoundPVC("pvc-stem", "default", "pv-stem", map[string]string{
+		storagevolume.AnnSelectedNode: "node-a",
+	})
+	pvc.Spec.StorageClassName = &pv.Spec.StorageClassName
+	pvc.Spec.Resources = corev1.VolumeResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+	}
+
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+	testData.Request.Snapshot.PVs = []plannerapi.PVInfo{volutil.AsPVInfo(*pv)}
+	testData.Request.Snapshot.PVCs = []plannerapi.PVCInfo{volutil.AsPVCInfo(*pvc)}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		{
+			ObjectMeta:         metav1.ObjectMeta{Name: "pod-with-pvc", Namespace: "default"},
+			NodeName:           "node-a",
+			SchedulerName:      "bin-packing-scheduler",
+			AggregatedRequests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+			Volumes: []corev1.Volume{{
+				Name:         "data",
+				VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-stem"}},
+			}},
+		},
+		testutil.MakeScheduledPodInfo("pod-filler", "node-b", "1100m", "4Gi"),
+	}
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	wantPlan := &sacorev1alpha1.ScaleInPlan{
+		Items: []sacorev1alpha1.ScaleInItem{
+			{
+				NodePlacement: testData.NodePlacements[0],
+				NodeName:      "node-a",
+			},
+		},
+	}
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, wantPlan)
+}
+
+// TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyPreventsReschedule verifies that when
+// the scale-in candidate node holds a pod referencing a simulated WFFC-bound PV and the
+// StorageClass has AllowedTopologies restricted to node-a's zone, UnbindPodVolumes deletes the
+// simulated PV and resets the PVC to Pending. The scheduler's VolumeBinding plugin then enforces
+// AllowedTopologies at the Reserve phase, correctly rejecting node-b in a different zone, so the
+// pod cannot be rescheduled and the scale-in plan is nil.
+func TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyPreventsReschedule(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		PoolZones:                           [][]string{{"eu-west-1a", "eu-west-1b"}},
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	scName := "standard"
+	sc := storagev1.StorageClass{
+		ObjectMeta:        metav1.ObjectMeta{Name: scName},
+		Provisioner:       "ebs.csi.aws.com",
+		VolumeBindingMode: func() *storagev1.VolumeBindingMode { m := storagev1.VolumeBindingWaitForFirstConsumer; return &m }(),
+		AllowedTopologies: []corev1.TopologySelectorTerm{{
+			MatchLabelExpressions: []corev1.TopologySelectorLabelRequirement{{
+				Key:    corev1.LabelTopologyZone,
+				Values: []string{"eu-west-1a"},
+			}},
+		}},
+	}
+
+	pv := testutil.MakePV("simVol-default-pvc-stem", &corev1.ObjectReference{
+		Namespace: "default",
+		Name:      "pvc-stem",
+	}, true)
+	pv.Spec.StorageClassName = scName
+	pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
+		Required: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+				MatchExpressions: []corev1.NodeSelectorRequirement{{
+					Key:      corev1.LabelTopologyZone,
+					Operator: corev1.NodeSelectorOpIn,
+					Values:   []string{"eu-west-1a"},
+				}},
+			}},
+		},
+	}
+
+	pvc := testutil.MakeBoundPVC("pvc-stem", "default", pv.Name, map[string]string{
+		storagevolume.AnnSelectedNode: "node-a",
+	})
+	pvc.Spec.StorageClassName = &scName
+
+	testData.Request.Snapshot.StorageClasses = []storagev1.StorageClass{sc}
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a", testutil.NodeInfoOpts{Zone: "eu-west-1a"}),
+		testutil.MakeNodeInfo("node-b", testutil.NodeInfoOpts{Zone: "eu-west-1b"}),
+	}
+	testData.Request.Snapshot.PVs = []plannerapi.PVInfo{volutil.AsPVInfo(*pv)}
+	testData.Request.Snapshot.PVCs = []plannerapi.PVCInfo{volutil.AsPVCInfo(*pvc)}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		{
+			ObjectMeta:         metav1.ObjectMeta{Name: "pod-with-pvc", Namespace: "default"},
+			NodeName:           "node-a",
+			SchedulerName:      "bin-packing-scheduler",
+			AggregatedRequests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+			Volumes: []corev1.Volume{{
+				Name:         "data",
+				VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-stem"}},
+			}},
+		},
+		testutil.MakeScheduledPodInfo("pod-filler", "node-b", "1100m", "4Gi"),
+	}
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	// AllowedTopologies restricts volumes to eu-west-1a; node-b is in eu-west-1b so the pod
+	// cannot be rescheduled — scale-in must be blocked.
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, nil)
+}
+
+// TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyMatchesDestination verifies that when
+// the StorageClass AllowedTopologies includes node-b's zone (eu-west-1b), the scheduler selects
+// node-b at Reserve, doWork provisions a fresh simulated PV in eu-west-1b, and the scale-in plan
+// is produced.
+func TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyMatchesDestination(t *testing.T) {
+	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		PoolZones:                           [][]string{{"eu-west-1a", "eu-west-1b"}},
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	scName := "standard"
+	sc := storagev1.StorageClass{
+		ObjectMeta:        metav1.ObjectMeta{Name: scName},
+		Provisioner:       "ebs.csi.aws.com",
+		VolumeBindingMode: func() *storagev1.VolumeBindingMode { m := storagev1.VolumeBindingWaitForFirstConsumer; return &m }(),
+		AllowedTopologies: []corev1.TopologySelectorTerm{{
+			MatchLabelExpressions: []corev1.TopologySelectorLabelRequirement{{
+				Key:    corev1.LabelTopologyZone,
+				Values: []string{"eu-west-1b"},
+			}},
+		}},
+	}
+
+	pv := testutil.MakePV("simVol-default-pvc-stem", &corev1.ObjectReference{
+		Namespace: "default",
+		Name:      "pvc-stem",
+	}, true)
+	pv.Spec.StorageClassName = scName
+	pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
+		Required: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+				MatchExpressions: []corev1.NodeSelectorRequirement{{
+					Key:      corev1.LabelTopologyZone,
+					Operator: corev1.NodeSelectorOpIn,
+					Values:   []string{"eu-west-1a"},
+				}},
+			}},
+		},
+	}
+
+	pvc := testutil.MakeBoundPVC("pvc-stem", "default", pv.Name, map[string]string{
+		storagevolume.AnnSelectedNode: "node-a",
+	})
+	pvc.Spec.StorageClassName = &scName
+
+	testData.Request.Snapshot.StorageClasses = []storagev1.StorageClass{sc}
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a", testutil.NodeInfoOpts{Zone: "eu-west-1a"}),
+		testutil.MakeNodeInfo("node-b", testutil.NodeInfoOpts{Zone: "eu-west-1b"}),
+	}
+	testData.Request.Snapshot.PVs = []plannerapi.PVInfo{volutil.AsPVInfo(*pv)}
+	testData.Request.Snapshot.PVCs = []plannerapi.PVCInfo{volutil.AsPVCInfo(*pvc)}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{
+		{
+			ObjectMeta:         metav1.ObjectMeta{Name: "pod-with-pvc", Namespace: "default"},
+			NodeName:           "node-a",
+			SchedulerName:      "bin-packing-scheduler",
+			AggregatedRequests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+			Volumes: []corev1.Volume{{
+				Name:         "data",
+				VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-stem"}},
+			}},
+		},
+		testutil.MakeScheduledPodInfo("pod-filler", "node-b", "1100m", "4Gi"),
+	}
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	// AllowedTopologies allows eu-west-1b where node-b lives; doWork provisions a fresh
+	// simulated PV there and the pod reschedules successfully.
+	wantPlan := &sacorev1alpha1.ScaleInPlan{
+		Items: []sacorev1alpha1.ScaleInItem{{
+			NodePlacement: testData.NodePlacements[0],
+			NodeName:      "node-a",
+		}},
+	}
+	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, wantPlan)
 }

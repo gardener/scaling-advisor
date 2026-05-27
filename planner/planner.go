@@ -106,15 +106,16 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		case r, ok := <-scaleInPlanResultCh:
 			if ok {
 				scaleInPlanResult = r
-				scaleInPlanResultCh = nil
-				receivedCount++
+
 			}
+			scaleInPlanResultCh = nil
+			receivedCount++
 		case r, ok := <-scaleOutPlanResultCh:
 			if ok {
 				scaleOutPlanResult = r
-				scaleOutPlanResultCh = nil
-				receivedCount++
 			}
+			scaleOutPlanResultCh = nil
+			receivedCount++
 		}
 	}
 	// TODO: what needs to be sent in response.Labels? -> union of scalein and scaleout plan; maybe extract the common part

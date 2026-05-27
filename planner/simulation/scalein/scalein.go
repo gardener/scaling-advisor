@@ -156,6 +156,15 @@ func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 func (d *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
+	provisionedPVs, err := volutil.ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx, view)
+	if err != nil {
+		return err
+	}
+	if len(provisionedPVs) > 0 {
+		log.V(3).Info("ProvisionAndBindVolumesFoSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts",
+			"numProvisionedPVs", len(provisionedPVs))
+		d.state.numUnchangedTrackAttempts = 0
+	}
 	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx, view)
 	if err != nil {
 		return err
@@ -164,7 +173,7 @@ func (d *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error
 		log.V(3).Info("Reset RunState.numUnchangedTrackAttempts since BindClaimsAndVolumesWithNonNilClaimRefs performed work", "numBound", numBound)
 		d.state.numUnchangedTrackAttempts = 0
 	}
-	return err
+	return nil
 }
 
 func (d *defaultSimulation) runNum() uint32 {

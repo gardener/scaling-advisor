@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"maps"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
+	storagevolume "k8s.io/component-helpers/storage/volume"
 )
 
 // ---- view / object helpers --------------------------------------------------
@@ -430,6 +432,61 @@ func (s *StubSimulationFactory) NewScaleOut(_ plannerapi.ScaleOutSimArgs) (plann
 }
 func (s *StubSimulationFactory) NewScaleIn(_ plannerapi.ScaleInSimArgs) (plannerapi.ScaleInSimulation, error) {
 	return s.Sim, s.Err
+}
+
+// ---- PV / PVC / Pod constructors --------------------------------------------
+
+func MakePV(name string, claimRef *corev1.ObjectReference, simulated bool) *corev1.PersistentVolume {
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: corev1.PersistentVolumeSpec{
+			Capacity:    corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			ClaimRef:    claimRef,
+		},
+		Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound},
+	}
+	if simulated {
+		pv.Annotations = map[string]string{
+			storagevolume.AnnDynamicallyProvisioned: "scaling-advisor",
+		}
+	}
+	return pv
+}
+
+func MakeBoundPVC(name, namespace, pvName string, extraAnnotations map[string]string) *corev1.PersistentVolumeClaim {
+	ann := map[string]string{
+		storagevolume.AnnBindCompleted:     "yes",
+		storagevolume.AnnBoundByController: "yes",
+	}
+	maps.Copy(ann, extraAnnotations)
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   namespace,
+			Annotations: ann,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			VolumeName: pvName,
+			Resources:  corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")}},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+	}
+}
+
+func MakePodWithPVC(name, namespace, nodeName, pvcName string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec: corev1.PodSpec{
+			NodeName: nodeName,
+			Volumes: []corev1.Volume{
+				{
+					Name:         "data",
+					VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName}},
+				},
+			},
+		},
+	}
 }
 
 // ---- stub views -------------------------------------------------------------
