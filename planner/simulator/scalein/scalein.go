@@ -10,6 +10,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/gardener/scaling-advisor/planner/simulator"
 	"github.com/go-logr/logr"
@@ -26,12 +27,12 @@ type SimulatorState struct {
 	// SimRunCounter is a run counter for the number of simulation runs
 	SimRunCounter *atomic.Uint32
 	view          minkapi.View
-	simConfig     plannerapi.ScaleInSimulatorConfig
+	simConfig     plannerapi.SimulatorConfig
 	mu            sync.Mutex
 }
 
 // RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
-func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.ScaleInSimulatorConfig,
+func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig,
 	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) SimulatorState {
 	return SimulatorState{
 		Request:           request,
@@ -56,13 +57,12 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 		return err
 	}
 
-	// TODO: Needs to be uncommented to handle pvc with Immediate binding mode.
-	// if s.simConfig.BindVolumeClaimsForImmediateMode {
-	// 	// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
-	// 	if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
-	// 		return err
-	// 	}
-	// }
+	if s.simConfig.BindVolumeClaimsForImmediateMode {
+		// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView for all simulations
+		if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
+			return err
+		}
+	}
 	err = viewutil.LogObjects(ctx, "requestView", requestView)
 	if err != nil {
 		log.Info("failed to dump requestView objects", "requestView", requestView.GetName(), "error", err)

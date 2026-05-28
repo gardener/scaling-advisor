@@ -21,7 +21,7 @@ type scaleInSimulator struct {
 	traceDir                 string
 	state                    scalein.SimulatorState
 	scaleInCandidateSelector plannerapi.ScaleInCandidateSelector
-	scaleInSimulatorConfig   plannerapi.ScaleInSimulatorConfig
+	simulatorConfig          plannerapi.SimulatorConfig
 	simulationFactory        plannerapi.SimulationFactory
 	pdbTracker               plannerapi.PDBTracker
 }
@@ -29,7 +29,7 @@ type scaleInSimulator struct {
 // New creates a new [plannerapi.ScaleInSimulator] that runs simulations for scale-in nodes.
 func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleInSimulator, error) {
 	return &scaleInSimulator{
-		scaleInSimulatorConfig:   args.ScaleInSimulatorConfig,
+		simulatorConfig:          args.Config,
 		scaleInCandidateSelector: args.ScaleInCandidateSelector,
 		viewAccess:               args.ViewAccess,
 		schedulerLauncher:        args.SchedulerLauncher,
@@ -48,7 +48,7 @@ func (d *scaleInSimulator) Close() error {
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration (tracked via the [plannerapi.ScaleInMemento]).
 func (d *scaleInSimulator) Simulate(ctx context.Context, request *plannerapi.Request) <-chan plannerapi.ScaleInPlanResult {
-	d.state = scalein.NewSimulatorState(request, d.scaleInSimulatorConfig, d.simulationFactory, d.viewAccess)
+	d.state = scalein.NewSimulatorState(request, d.simulatorConfig, d.simulationFactory, d.viewAccess)
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
@@ -75,7 +75,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 		//TODO: Name might not be required -> add requestId to the end.
 		Name:     "scalein-sim",
 		TraceDir: d.traceDir,
-		Config:   d.scaleInSimulatorConfig,
+		Config:   d.simulatorConfig,
 	}
 	scaleInSim, err := d.state.SimulationFactory.NewScaleIn(simArgs)
 	if err != nil {
@@ -110,7 +110,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 				Constraint:            d.state.Request.Constraint.Spec,
 				View:                  simView,
 				PDBTracker:            d.pdbTracker,
-				UtilizationThresholds: d.scaleInSimulatorConfig.UtilizationThresholds,
+				UtilizationThresholds: d.simulatorConfig.UtilizationThresholds,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to select scale-in candidate: %w", err)
@@ -143,17 +143,17 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 				return fmt.Errorf("%w: failed to get result for node %q: %w", plannerapi.ErrRunSimulation, candidateName, err)
 			}
 
-			// If the simulation result contains zero pods to reschedule, we consider the scale-in successful for this candidate
-			// and add it to the set of scaled-in nodes.
-			if len(result.PodsToReschedule) == 0 {
+			// All pods displaced from the scale-in node were successfully rescheduled
+			// without making any previously schedulable pod unschedulable
+			if result.IsSimulationSuccess {
 				// All pods from scaled-in node were successfully rescheduled.
 				log.V(3).Info("Scale-in simulation succeeded for candidate (all pods rescheduled)", "node", candidateName)
 				scaleInNomineeNodes[candidateName] = result.Item
 				simView = result.View
 			} else {
 				// There are pods that could not be rescheduled. We treat this as scale-in failure.
-				log.V(3).Info("Scale-in simulation failed for candidate (pods remain unscheduled)",
-					"node", candidateName, "podsToReschedule", len(result.PodsToReschedule))
+				log.V(3).Info("Scale-in simulation failed for candidate",
+					"node", candidateName)
 			}
 			d.scaleInCandidateSelector.RemoveCandidateNode(candidateName)
 		}
@@ -166,7 +166,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 func (d *scaleInSimulator) computeScaleInItems(ctx context.Context, memento *plannerapi.ScaleInMemento, scaledInSuccessNodes map[string]sacorev1alpha1.ScaleInItem) ([]sacorev1alpha1.ScaleInItem, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	now := time.Now()
-	unneededDuration := d.scaleInSimulatorConfig.UnderutilizedDuration
+	unneededDuration := d.simulatorConfig.UnderutilizedDuration
 
 	// Ensure memento is initialized.
 	if memento.LastIdentifiedUnneededNodes == nil {

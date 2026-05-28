@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/sets"
 	storagevolume "k8s.io/component-helpers/storage/volume"
 )
 
@@ -203,8 +202,8 @@ func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 	}
 }
 
-func MakeSimulatorConfig(underutilizedDuration time.Duration) plannerapi.ScaleInSimulatorConfig {
-	return plannerapi.ScaleInSimulatorConfig{
+func MakeSimulatorConfig(underutilizedDuration time.Duration) plannerapi.SimulatorConfig {
+	return plannerapi.SimulatorConfig{
 		UnderutilizedDuration: underutilizedDuration,
 	}
 }
@@ -371,10 +370,10 @@ func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.
 }
 func (s *SuccessSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{
-		Name:             "stub-success",
-		View:             s.SimView,
-		Item:             sacorev1alpha1.ScaleInItem{NodeName: s.NodeName},
-		PodsToReschedule: sets.New[commontypes.NamespacedName](),
+		Name:                "stub-success",
+		View:                s.SimView,
+		Item:                sacorev1alpha1.ScaleInItem{NodeName: s.NodeName},
+		IsSimulationSuccess: true,
 	}, nil
 }
 
@@ -396,12 +395,11 @@ func (p *PendingPodsSimulation) Run(_ context.Context, v minkapi.View, _ *corev1
 	return nil
 }
 func (p *PendingPodsSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
-	remaining := sets.New(commontypes.NamespacedName{Namespace: "default", Name: "stuck-pod"})
 	return plannerapi.ScaleInSimRunResult{
-		Name:             "stub-pending",
-		View:             p.SimView,
-		Item:             sacorev1alpha1.ScaleInItem{},
-		PodsToReschedule: remaining,
+		Name:                "stub-pending",
+		View:                p.SimView,
+		Item:                sacorev1alpha1.ScaleInItem{},
+		IsSimulationSuccess: false,
 	}, nil
 }
 

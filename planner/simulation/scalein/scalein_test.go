@@ -237,19 +237,14 @@ func TestRemoveNodeAndUnbindPods_SimulatedPVDeletedAndPVCReset(t *testing.T) {
 	}
 
 	rs := FreshRunState()
-	runCtx, err := rs.Init(ctx, "test-sim", 1, v, "", "node-a")
+	_, err := rs.Init(ctx, "test-sim", 1, v, "", "node-a")
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	unboundPods, err := rs.RemoveNodeAndUnbindPods("node-a")
+	err = rs.RemoveNodeAndUnbindPods("node-a")
 	if err != nil {
 		t.Fatalf("RemoveNodeAndUnbindPods: %v", err)
-	}
-	_ = runCtx
-
-	if len(unboundPods) != 1 || unboundPods[0].Name != "pod-a" {
-		t.Errorf("expected [pod-a] unbound, got %v", unboundPods)
 	}
 
 	// Simulated PV must be deleted.
@@ -308,7 +303,7 @@ func TestRemoveNodeAndUnbindPods_RealPVKept(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	if _, err := rs.RemoveNodeAndUnbindPods("node-a"); err != nil {
+	if err := rs.RemoveNodeAndUnbindPods("node-a"); err != nil {
 		t.Fatalf("RemoveNodeAndUnbindPods: %v", err)
 	}
 

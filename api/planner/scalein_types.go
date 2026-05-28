@@ -10,7 +10,6 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // ScaleInCandidateArgs encapsulates the arguments needed to select a candidate for scale in.
@@ -66,7 +65,7 @@ type ScaleInSimArgs struct {
 	// Name is the name of the simulation instance
 	Name string
 	// Config is the simulation configuration.
-	Config ScaleInSimulatorConfig
+	Config SimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
@@ -101,8 +100,8 @@ type ScaleInSimRunResult struct {
 	// Item is the [sacorev1alpha1.ScaleInItem] which encapsulates the
 	// [sacorev1alpha1.NodePlacement] and node name.
 	Item sacorev1alpha1.ScaleInItem
-	// PodsToReschedule Pods on Scaled-In node which are pending reschedule to other nodes.
-	PodsToReschedule sets.Set[commontypes.NamespacedName]
+	// IsSimulationSuccess denotes whether the scale-in simulation was successful.
+	IsSimulationSuccess bool
 }
 
 // ScaleInSimulator is a facade that executes [ScaleInSimulation]'s to generate one or more [ScaleInPlanResult]'s sent on a result channel.
@@ -132,23 +131,4 @@ type ScaleInPlanResult struct {
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:"scaleInPlan,omitempty"`
 	//Memento is the partial details of a completed scale-in simulation
 	Memento ScaleInMemento `json:"scaleInMemento,omitempty"`
-}
-
-// Note: Check with SimulatorConfig. SimulatorConfig will be changed to ScaleOutSimulatorConfig and the common fields between ScaleOutSimulatorConfig and ScaleInSimulatorConfig need to be looked at.
-// ScaleInSimulatorConfig is static config params used to construct an instance of ScaleInSimulator
-// TODO: think about combining this with `SimulatorConfig`.
-type ScaleInSimulatorConfig struct {
-	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
-	TrackPollInterval time.Duration
-	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
-	// a candidate for scale in.
-	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
-	// utilization thresholds expressed as fractions from 0 to 1.
-	UtilizationThresholds map[corev1.ResourceName]float64
-	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
-	// considered a candidate for scale in.
-	UnderutilizedDuration time.Duration
-	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
-	// considered as stabilized.
-	MaxUnchangedTrackAttempts int
 }

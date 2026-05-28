@@ -386,6 +386,14 @@ type SimulatorConfig struct {
 	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
 	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
 	BindVolumeClaimsForImmediateMode bool
+	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
+	// a candidate for scale in.
+	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
+	// utilization thresholds expressed as fractions from 0 to 1.
+	UtilizationThresholds map[corev1.ResourceName]float64
+	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
+	// considered a candidate for scale in.
+	UnderutilizedDuration time.Duration
 }
 
 // ScalingPlannerArgs encapsulates the arguments required to create a ScalingPlanner.
@@ -407,9 +415,7 @@ type ScalingPlannerArgs struct {
 	// TraceDir is the directory for storing traces when diagnostics are enabled.
 	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
-	SimulatorConfig SimulatorConfig
-	// ScaleInSimulatorConfig holds the configuration for the scale-in simulator.
-	ScaleInSimulatorConfig   ScaleInSimulatorConfig
+	SimulatorConfig          SimulatorConfig
 	ScaleInCandidateSelector ScaleInCandidateSelector
 }
 
@@ -478,8 +484,6 @@ type SimulatorArgs struct {
 	TraceDir string
 	// Config holds the static simulator config parameters
 	Config SimulatorConfig
-	// ScaleInSimulatorConfig holds the static scale-in simulator config parameters. This is needed as an argument for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
-	ScaleInSimulatorConfig ScaleInSimulatorConfig
 	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
 	ScaleInCandidateSelector ScaleInCandidateSelector
 	// SimulationFactory is a factory facade for creating Simulation objects

@@ -70,7 +70,7 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *co
 		return
 	}
 
-	_, err = d.state.RemoveNodeAndUnbindPods(node.Name)
+	err = d.state.RemoveNodeAndUnbindPods(node.Name)
 	if err != nil {
 		return
 	}
@@ -99,13 +99,9 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *co
 			},
 			NodeName: node.Name,
 		},
-		PodsToReschedule: d.state.GetPodsToReschedule(),
+		IsSimulationSuccess: d.state.IsSimulationSuccess(),
 	}
 	d.state.status = plannerapi.ActivityStatusSuccess
-	log := logr.FromContextOrDiscard(ctx)
-	if len(d.result.PodsToReschedule) > 0 {
-		log.V(3).Info("LeftoverUnscheduledPods after scale-in run", "PodsToReschedule", len(d.result.PodsToReschedule))
-	}
 	return
 }
 
@@ -142,8 +138,8 @@ func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 			if stabilized, err = d.state.Track(d.args.Config.MaxUnchangedTrackAttempts); err != nil || stabilized {
 				return
 			}
-			if len(d.state.podsToReschedule) == 0 {
-				log.V(2).Info("ending simulation run since leftoverUnscheduledPodNames is zero", "numTrackAttempts", d.state.numTrackAttempts)
+			if len(d.state.pendingPods) == 0 {
+				log.V(2).Info("ending simulation run since pendingPods is zero", "numTrackAttempts", d.state.numTrackAttempts)
 				return
 			}
 		}

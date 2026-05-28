@@ -3,8 +3,6 @@ package scalein
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"sync/atomic"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
@@ -27,7 +25,9 @@ type RunState struct {
 	err                       error
 	ctx                       context.Context
 	view                      minkapi.View
-	podsToReschedule          sets.Set[commontypes.NamespacedName] // represents a set of pod names which would need to be rescheduled because of scaling-in the node
+	initialUnscheduledPods    sets.Set[commontypes.NamespacedName]
+	pendingPods               sets.Set[commontypes.NamespacedName]
+	currentUnscheduledPods    sets.Set[commontypes.NamespacedName]
 	status                    plannerapi.ActivityStatus
 	name                      string
 	traceDir                  string
@@ -52,54 +52,63 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 	r.name, r.runNum, r.status, r.view, r.traceDir = name, runNum, plannerapi.ActivityStatusRunning, view, traceDir
 	log := logr.FromContextOrDiscard(parentCtx).WithValues("simulationName", name, "runNum", runNum)
 	r.ctx = logr.NewContext(parentCtx, log)
-	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view, nodeName)
+	unscheduledPods, err := getUnscheduledPodsMap(r.ctx, view)
 	if err != nil {
 		return r.ctx, fmt.Errorf("unable to get unscheduled pods from view %q: %w", view.GetName(), err)
 	}
-	r.podsToReschedule = sets.New(slices.Collect(maps.Keys(unscheduledPods))...)
+	r.initialUnscheduledPods = unscheduledPods
+	r.currentUnscheduledPods = unscheduledPods.Union(nil)
+	r.pendingPods = sets.New[commontypes.NamespacedName]()
 	return r.ctx, nil
 }
 
-func (r *RunState) GetPodsToReschedule() sets.Set[commontypes.NamespacedName] {
-	return r.podsToReschedule
+func (r *RunState) IsSimulationSuccess() bool {
+	if r.pendingPods.Len() > 0 {
+		return false
+	}
+	for unscheduledPod := range r.currentUnscheduledPods {
+		if !r.initialUnscheduledPods.Has(unscheduledPod) {
+			return false
+		}
+	}
+	return true
 }
 
-func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) ([]commontypes.NamespacedName, error) {
+func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 	log := logr.FromContextOrDiscard(r.ctx)
 
 	pods, err := viewutil.ListPodsOfNode(r.ctx, r.view, nodeName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var unboundPods []commontypes.NamespacedName
 	for _, pod := range pods {
 		if isDaemonSetPod(pod) {
 			if err = r.view.DeleteObject(r.ctx, typeinfo.PodsDescriptor.GVK, cache.NewObjectName(pod.Namespace, pod.Name)); err != nil {
-				return nil, err
+				return err
 			}
 			continue
 		}
 
 		if err = volutil.UnbindPodVolumes(r.ctx, r.view, &pod); err != nil {
-			return nil, err
+			return err
 		}
 
 		log.V(2).Info("Unbinding pod from node", "pod", pod.Name, "node", nodeName)
 		pod.Spec.NodeName = ""
 		if err = r.view.UpdateObject(r.ctx, typeinfo.PodsDescriptor.GVK, &pod); err != nil {
-			return nil, err
+			return err
 		}
 
-		unboundPods = append(unboundPods, commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name})
+		r.pendingPods.Insert(commontypes.NamespacedName{Namespace: pod.Namespace, Name: pod.Name})
 	}
 
 	// Delete node from view
 	err = r.view.DeleteObject(r.ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nodeName))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return unboundPods, nil
+	return nil
 }
 
 // Track is used to track the RunState of the simulation by recording the pod-node binding(s) if any made in this
@@ -147,20 +156,71 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 			"ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance,
 			"Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
 		r.numReceivedEvents++
-		if ev.Action != "Binding" && ev.Reason != "Scheduled" {
-			if ev.Reason == "FailedScheduling" {
-				log.V(4).Info("FailedScheduling event", "index", idx, "id", ev.UID,
-					"ReportingController", ev.ReportingController, "ReportingInstance", ev.ReportingInstance,
-					"Action", ev.Action, "Reason", ev.Reason, "Regarding", ev.Regarding, "Note", ev.Note)
+		switch {
+		case ev.Action == "Binding" && ev.Reason == "Scheduled":
+			if err = r.handleScheduledPodEvent(ev); err != nil {
+				return
 			}
-			continue
-		}
-		if err = r.handleScheduledPodEvent(ev); err != nil {
-			return
+		case ev.Action == "Preempted" && ev.Reason == "Preempting":
+			if err = r.handlePreemptedPodEvent(ev); err != nil {
+				return
+			}
+		case ev.Reason == "FailedScheduling":
+			if err = r.handleFailedSchedulingEvent(ev); err != nil {
+				return
+			}
 		}
 	}
 
 	return
+}
+
+func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) error {
+	log := logr.FromContextOrDiscard(r.ctx)
+	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
+	log.V(4).Info("FailedScheduling pod event", "podNamespacedName", podNsName, "eventNote", ev.Note)
+	obj, err := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
+	if err != nil {
+		return err
+	}
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return fmt.Errorf("object %T with name %q is not a Pod", obj, podNsName)
+	}
+	if pod.Spec.NodeName != "" {
+		return fmt.Errorf("failed-scheduling pod %q unexpectedly has node name %q assigned", podNsName, pod.Spec.NodeName)
+	}
+	if r.pendingPods.Has(podNsName) {
+		r.numUnchangedTrackAttempts = 0
+		r.pendingPods.Delete(podNsName)
+		r.currentUnscheduledPods.Insert(podNsName)
+		log.V(4).Info("Removed pod from RunState.pendingPods and added to currentUnscheduledPods on FailedScheduling",
+			"podNamespacedName", podNsName, "pendingPodsCount", r.pendingPods.Len())
+	}
+	return nil
+}
+
+func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) error {
+	log := logr.FromContextOrDiscard(r.ctx)
+	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
+	log.V(4).Info("Preempted pod event", "podNamespacedName", podNsName, "eventNote", ev.Note)
+	obj, err := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
+	if err != nil {
+		return err
+	}
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return fmt.Errorf("object %T with name %q is not a Pod", obj, podNsName)
+	}
+	if pod.Spec.NodeName != "" {
+		return fmt.Errorf("preempted pod %q still has node name %q assigned", podNsName, pod.Spec.NodeName)
+	}
+	r.pendingPods.Insert(podNsName)
+	r.numUnchangedTrackAttempts = 0
+	log.V(4).Info("Added pod to RunState.pendingPods and reset numUnchangedTrackAttempts",
+		"podNamespacedName", podNsName,
+		"pendingPodsCount", len(r.pendingPods))
+	return nil
 }
 
 func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) error {
@@ -178,35 +238,26 @@ func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) error {
 	if pod.Spec.NodeName == "" {
 		return fmt.Errorf("scheduledPod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
 	}
-	err = r.removeFromPodsToReschedule(pod)
-	return err
-}
-
-func (r *RunState) removeFromPodsToReschedule(pod *corev1.Pod) error {
-	log := logr.FromContextOrDiscard(r.ctx)
-	podNsName := objutil.NamespacedName(pod)
-	if pod.Spec.NodeName == "" {
-		return fmt.Errorf("nodeName must be assigned to pod %q", podNsName)
-	}
-	r.podsToReschedule.Delete(podNsName)
+	r.currentUnscheduledPods.Delete(podNsName)
+	r.pendingPods.Delete(podNsName)
 	r.numUnchangedTrackAttempts = 0
-	log.V(4).Info("Removed pod from RunState.podsToReschedule and reset numUnchangedTrackAttempts",
+	log.V(4).Info("Removed pod from RunState.podsToReschedule, RunState.pendingPods and reset numUnchangedTrackAttempts",
 		"podNamespacedName", podNsName,
-		"podsToRescheduleCount", len(r.podsToReschedule))
+		"podsToRescheduleCount", len(r.currentUnscheduledPods))
 	return nil
 }
 
-func getUnscheduledPodsMap(ctx context.Context, v minkapi.View, nodeName string) (unscheduled map[commontypes.NamespacedName]plannerapi.PodResourceInfo, err error) {
+func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled sets.Set[commontypes.NamespacedName], err error) {
 	log := logr.FromContextOrDiscard(ctx)
-	pods, err := viewutil.ListPodsOfNode(ctx, v, nodeName)
+	pods, err := v.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return
 	}
-	unscheduled = make(map[commontypes.NamespacedName]plannerapi.PodResourceInfo, len(pods))
+	unscheduled = make(sets.Set[commontypes.NamespacedName])
 	for _, p := range pods {
-		if !isDaemonSetPod(p) {
-			log.V(5).Info("found non-daemonset pod attached to scale-in node", "pod", p)
-			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
+		if podutil.IsUnscheduledPod(&p) {
+			log.V(5).Info("found unscheduled pod", "pod", p)
+			unscheduled.Insert(objutil.NamespacedName(&p))
 		}
 	}
 	return

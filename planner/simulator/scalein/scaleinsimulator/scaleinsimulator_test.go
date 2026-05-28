@@ -16,13 +16,13 @@ import (
 
 // ---- helpers -------------------------------------------------
 
-func newSimulator(t *testing.T, sel plannerapi.ScaleInCandidateSelector, cfg plannerapi.ScaleInSimulatorConfig, factory plannerapi.SimulationFactory) plannerapi.ScaleInSimulator {
+func newSimulator(t *testing.T, sel plannerapi.ScaleInCandidateSelector, cfg plannerapi.SimulatorConfig, factory plannerapi.SimulationFactory) plannerapi.ScaleInSimulator {
 	t.Helper()
 	va := testutil.NewTestViewAccess(t)
 	sim, err := New(plannerapi.SimulatorArgs{
 		ViewAccess:               va,
 		ScaleInCandidateSelector: sel,
-		ScaleInSimulatorConfig:   cfg,
+		Config:                   cfg,
 		SimulationFactory:        factory,
 	})
 	if err != nil {
@@ -178,13 +178,13 @@ func TestSimulate_ResultChannelClosedAfterResult(t *testing.T) {
 
 // ---- computeScaleInItems unit tests -----------------------------------------
 
-func makeDefaultSimulator(t *testing.T, cfg plannerapi.ScaleInSimulatorConfig) *scaleInSimulator {
+func makeDefaultSimulator(t *testing.T, cfg plannerapi.SimulatorConfig) *scaleInSimulator {
 	t.Helper()
 	va := testutil.NewTestViewAccess(t)
 	s, err := New(plannerapi.SimulatorArgs{
 		ViewAccess:               va,
 		ScaleInCandidateSelector: &testutil.FixedCandidateSelector{},
-		ScaleInSimulatorConfig:   cfg,
+		Config:                   cfg,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

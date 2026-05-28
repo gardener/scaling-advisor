@@ -299,32 +299,17 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		t.Fatalf("failed to load scheduler config: %v", err)
 		return
 	}
-	var simulatorConfig plannerapi.SimulatorConfig
-	var scaleInSimCfg plannerapi.ScaleInSimulatorConfig
+	simulatorConfig := plannerapi.SimulatorConfig{
+		MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+		UnderutilizedDuration:  5 * time.Minute,
+		UtilizationThresholds:  map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
+	}
 	if os.Getenv("DEBUG") == "" {
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
-		scaleInSimCfg = plannerapi.ScaleInSimulatorConfig{
-			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
-			UnderutilizedDuration:     5 * time.Minute,
-			UtilizationThresholds:     map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
-		}
+		simulatorConfig.TrackPollInterval = plannerapi.DefaultTrackPollInterval
+		simulatorConfig.MaxUnchangedTrackAttempts = plannerapi.DefaultMaxUnchangedTrackAttempts
 	} else { // allow comfortable time for debugging
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
-		scaleInSimCfg = plannerapi.ScaleInSimulatorConfig{
-			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
-			UnderutilizedDuration:     5 * time.Minute,
-			UtilizationThresholds:     map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
-		}
+		simulatorConfig.TrackPollInterval = 100 * plannerapi.DefaultTrackPollInterval
+		simulatorConfig.MaxUnchangedTrackAttempts = 10 * plannerapi.DefaultMaxUnchangedTrackAttempts
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
@@ -343,7 +328,6 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		SimulatorFactory:         args.Factories.Simulator,
 		SimulationFactory:        args.Factories.Simulation,
 		TraceDir:                 traceDir,
-		ScaleInSimulatorConfig:   scaleInSimCfg,
 		ScaleInCandidateSelector: args.Factories.ScaleInCandidateSelector,
 	}
 	planr, err = args.Factories.Planner.NewPlanner(scalePlannerArgs)
