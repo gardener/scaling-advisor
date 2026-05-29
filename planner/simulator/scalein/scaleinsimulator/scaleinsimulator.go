@@ -111,9 +111,6 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
 				scaleInItems := d.computeScaleInItems(ctx)
-				if err != nil {
-					return fmt.Errorf("failed to compute scale-in items: %w", err)
-				}
 				if len(scaleInItems) == 0 {
 					scalein.SendPlanError(d.state.Request.GetRef(), d.state.ResultCh, d.state.RequestView(), d.state.Memento, plannerapi.ErrNoScaleInPlan)
 				} else {
