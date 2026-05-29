@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	scalein "github.com/gardener/scaling-advisor/planner/simulator/scalein"
+
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	scalein "github.com/gardener/scaling-advisor/planner/simulator/scalein"
 	"github.com/go-logr/logr"
 )
 
@@ -18,11 +19,11 @@ var _ plannerapi.ScaleInSimulator = (*scaleInSimulator)(nil)
 type scaleInSimulator struct {
 	viewAccess               minkapi.ViewAccess
 	schedulerLauncher        plannerapi.SchedulerLauncher
-	traceDir                 string
-	state                    scalein.SimulatorState
 	scaleInCandidateSelector plannerapi.ScaleInCandidateSelector
-	simulatorConfig          plannerapi.SimulatorConfig
 	simulationFactory        plannerapi.SimulationFactory
+	traceDir                 string
+	simulatorConfig          plannerapi.SimulatorConfig
+	state                    scalein.SimulatorState
 }
 
 // New creates a new [plannerapi.ScaleInSimulator] that runs simulations for scale-in nodes.
@@ -109,7 +110,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 			if nextCandidate == nil {
 				log.V(3).Info("No more scale-in candidates available, ending simulation loop.")
 				// Compute ScaleInItems.
-				scaleInItems, err := d.computeScaleInItems(ctx)
+				scaleInItems := d.computeScaleInItems(ctx)
 				if err != nil {
 					return fmt.Errorf("failed to compute scale-in items: %w", err)
 				}
@@ -152,7 +153,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 // computeScaleInItems builds the list of scale-in items from the set of successfully scaled-in nodes.
 // A node is only included in the plan if it has been continuously identified as unneeded across [plannerapi.ScalingPlanner.Plan] invocations
 // for at least the configured UnderutilizedDuration.
-func (d *scaleInSimulator) computeScaleInItems(ctx context.Context) ([]sacorev1alpha1.ScaleInItem, error) {
+func (d *scaleInSimulator) computeScaleInItems(ctx context.Context) []sacorev1alpha1.ScaleInItem {
 	log := logr.FromContextOrDiscard(ctx)
 	now := time.Now()
 	unneededDuration := d.simulatorConfig.UnderutilizedDuration
@@ -181,5 +182,5 @@ func (d *scaleInSimulator) computeScaleInItems(ctx context.Context) ([]sacorev1a
 		}
 	}
 
-	return scaleInItems, nil
+	return scaleInItems
 }

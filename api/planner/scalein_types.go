@@ -9,15 +9,16 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
+
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ScaleInCandidateArgs encapsulates the arguments needed to select a candidate for scale in.
+// ScaleInCandidateSelectorArgs encapsulates the arguments needed to select a candidate for scale in.
 type ScaleInCandidateSelectorArgs struct {
-	Constraint            sacorev1alpha1.ScalingConstraintSpec
 	View                  minkapi.View
 	PDBTracker            PDBTracker
 	UtilizationThresholds map[corev1.ResourceName]float64
+	Constraint            sacorev1alpha1.ScalingConstraintSpec
 }
 
 // ScaleInCandidateSelector is the interface meant to select the next viable candidate for scale in by interrogating the nodes from the [minkapi.View]
@@ -29,7 +30,7 @@ type ScaleInCandidateSelector interface {
 
 // NodeUtilizationCalculator is the interface meant to calculate the utilization of a node having the given node name in the [minkapi.View]
 type NodeUtilizationCalculator interface {
-	GetUtilization(context context.Context, node corev1.Node, pods []corev1.Pod) NodeUtilization
+	GetUtilization(node corev1.Node, pods []corev1.Pod) NodeUtilization
 }
 
 // NodeUtilization is the utilization of all resources on a node expressed as a fraction from 0 to 1
@@ -64,12 +65,12 @@ type ScaleInSimArgs struct {
 	RunCounter *atomic.Uint32
 	// Name is the name of the simulation instance
 	Name string
-	// Config is the simulation configuration.
-	Config SimulatorConfig
 	//NodeName is the name of the node to be simulated for scale in.
 	NodeName string
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
 	TraceDir string
+	// Config is the simulation configuration.
+	Config SimulatorConfig
 }
 
 // ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node

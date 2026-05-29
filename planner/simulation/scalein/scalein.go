@@ -3,7 +3,6 @@ package scalein
 import (
 	"context"
 	"fmt"
-
 	"time"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -66,7 +65,7 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *co
 		}
 	}()
 
-	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir, node.Name); err != nil {
+	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir); err != nil {
 		return
 	}
 

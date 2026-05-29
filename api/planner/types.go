@@ -16,10 +16,10 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/pricing"
-	policyv1 "k8s.io/api/policy/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +54,8 @@ type Request struct {
 	// TODO: add planner strategy - scale-in before scale-out, scale-out before scale-in, or independent scale-in/scale-out planning
 	// CreationTime is the time at which request was created
 	CreationTime time.Time `json:"creationTime,omitzero"`
+	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
+	Memento Memento
 	// Constraint represents the constraints using which the scaling advice is generated.
 	Constraint *sacorev1alpha1.ScalingConstraint `json:"constraint,omitempty"`
 	RequestRef
@@ -71,8 +73,6 @@ type Request struct {
 	// By default, its value is 0 that disables diagnostics.
 	// The verbosity level is also passed to the logging framework (e.g. klog) used by scaling advisor components (e.g. kube-scheduler).
 	DiagnosticVerbosity uint32 `json:"diagnosticVerbosity,omitzero"`
-	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
-	Memento Memento
 }
 
 // GetRef returns the unique reference for the scaling advice request.
@@ -376,6 +376,11 @@ type NodeResourceInfo struct {
 
 // SimulatorConfig holds the configuration for the internal simulator used by the scaling advisor planner.
 type SimulatorConfig struct {
+	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
+	// a candidate for scale in.
+	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
+	// utilization thresholds expressed as fractions from 0 to 1.
+	UtilizationThresholds map[corev1.ResourceName]float64
 	// MaxParallelSimulations is the maximum number of parallel simulations that can be run by the scaling advisor planner.
 	MaxParallelSimulations int
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
@@ -383,17 +388,12 @@ type SimulatorConfig struct {
 	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
 	// considered as stabilized.
 	MaxUnchangedTrackAttempts int
-	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
-	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
-	BindVolumeClaimsForImmediateMode bool
-	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
-	// a candidate for scale in.
-	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
-	// utilization thresholds expressed as fractions from 0 to 1.
-	UtilizationThresholds map[corev1.ResourceName]float64
 	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
 	// considered a candidate for scale in.
 	UnderutilizedDuration time.Duration
+	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
+	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
+	BindVolumeClaimsForImmediateMode bool
 }
 
 // ScalingPlannerArgs encapsulates the arguments required to create a ScalingPlanner.
@@ -411,12 +411,12 @@ type ScalingPlannerArgs struct {
 	// SimulatorFactory is the factory facade to create simulators
 	SimulatorFactory SimulatorFactory
 	// SimulationFactory is the factory facade to create simulations.
-	SimulationFactory SimulationFactory
+	SimulationFactory        SimulationFactory
+	ScaleInCandidateSelector ScaleInCandidateSelector
 	// TraceDir is the directory for storing traces when diagnostics are enabled.
 	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
-	SimulatorConfig          SimulatorConfig
-	ScaleInCandidateSelector ScaleInCandidateSelector
+	SimulatorConfig SimulatorConfig
 }
 
 // ScalingPlanner defines the interface for computing scaling plans.
@@ -478,16 +478,16 @@ type SimulatorArgs struct {
 	StorageMetaAccess StorageMetaAccess
 	// NodeScorer holds the facade to compute NodeScores for simulated scaled nodes.
 	NodeScorer NodeScorer
+	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
+	ScaleInCandidateSelector ScaleInCandidateSelector
+	// SimulationFactory is a factory facade for creating Simulation objects
+	SimulationFactory SimulationFactory
 	// Strategy holds the simulator strategy which customizes simulator implementation and behaviorchanges simulator implementation and behavior
 	Strategy commontypes.SimulatorStrategy
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
 	TraceDir string
 	// Config holds the static simulator config parameters
 	Config SimulatorConfig
-	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
-	ScaleInCandidateSelector ScaleInCandidateSelector
-	// SimulationFactory is a factory facade for creating Simulation objects
-	SimulationFactory SimulationFactory
 }
 
 // ScalingPlannerService is the facade for the scaling planner microservice that embeds a ScalingPlanner
@@ -499,6 +499,8 @@ type ScalingPlannerService interface {
 
 // ScalingPlannerServiceConfig holds the service configuration for the scaling planner microservice.
 type ScalingPlannerServiceConfig struct {
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider commontypes.CloudProvider
 	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
@@ -509,8 +511,6 @@ type ScalingPlannerServiceConfig struct {
 	MinKAPIConfig minkapi.Config
 	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
 	ClientConfig commontypes.QPSBurst
-	// SimulatorConfig holds the configuration used by the internal simulator.
-	SimulatorConfig SimulatorConfig
 }
 
 // Factories is a struct that holds all planner factories.

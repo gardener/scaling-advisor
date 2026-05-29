@@ -3,9 +3,10 @@ package scalein
 import (
 	"testing"
 
+	"github.com/gardener/scaling-advisor/planner/testutil"
+
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/volutil"
-	"github.com/gardener/scaling-advisor/planner/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -237,7 +238,7 @@ func TestRemoveNodeAndUnbindPods_SimulatedPVDeletedAndPVCReset(t *testing.T) {
 	}
 
 	rs := FreshRunState()
-	_, err := rs.Init(ctx, "test-sim", 1, v, "", "node-a")
+	_, err := rs.Init(ctx, "test-sim", 1, v, "")
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -299,7 +300,7 @@ func TestRemoveNodeAndUnbindPods_RealPVKept(t *testing.T) {
 	}
 
 	rs := FreshRunState()
-	if _, err := rs.Init(ctx, "test-sim", 1, v, "", "node-a"); err != nil {
+	if _, err := rs.Init(ctx, "test-sim", 1, v, ""); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 

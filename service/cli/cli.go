@@ -40,13 +40,12 @@ type App struct {
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
 	InstancePricingPath string
-	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
-	CloudProvider    string
-	TraceDir         string
-	ServerConfig     commontypes.ServerConfig
-	ClientConfig     commontypes.QPSBurst
-	WatchConfig      minkapi.WatchConfig
-	SimulationConfig plannerapi.SimulatorConfig
+	CloudProvider       string
+	TraceDir            string
+	ServerConfig        commontypes.ServerConfig
+	SimulationConfig    plannerapi.SimulatorConfig
+	ClientConfig        commontypes.QPSBurst
+	WatchConfig         minkapi.WatchConfig
 }
 
 // ParseProgramFlags parses the command line arguments and returns Opts.

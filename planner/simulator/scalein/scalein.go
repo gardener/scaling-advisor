@@ -4,14 +4,15 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gardener/scaling-advisor/planner/pdbtracker"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/planner/pdbtracker"
 )
 
-// RequestState holds the internal Request scoped state of a ScaleInSimulator
+// SimulatorState holds the internal request-scoped state of a ScaleInSimulator.
 type SimulatorState struct {
 	// SimulationFactory is used to create `ScaleInSimulation`s
 	SimulationFactory plannerapi.SimulationFactory
@@ -28,7 +29,7 @@ type SimulatorState struct {
 	mu                  sync.Mutex
 }
 
-// RequestStateWith constructs a fresh simulator RequestState with the given planner Request and parameters
+// NewSimulatorState constructs a fresh SimulatorState with the given planner Request and parameters.
 func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig,
 	simulationFactory plannerapi.SimulationFactory, requestView minkapi.View) SimulatorState {
 	return SimulatorState{
@@ -68,6 +69,7 @@ func (s *SimulatorState) Reset() error {
 	return nil
 }
 
+// SendPlanResult sends a successful ScaleInPlanResult to the given channel.
 func SendPlanResult(requestRef plannerapi.RequestRef, planResultCh chan<- plannerapi.ScaleInPlanResult, view minkapi.View, memento plannerapi.ScaleInMemento, scaleInItems []sacorev1alpha1.ScaleInItem) {
 	planResult := plannerapi.ScaleInPlanResult{
 		Memento: memento,

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/gardener/scaling-advisor/planner/testutil"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/planner/testutil"
 	corev1 "k8s.io/api/core/v1"
 )
 

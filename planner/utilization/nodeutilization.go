@@ -1,8 +1,6 @@
 package utilization
 
 import (
-	"context"
-
 	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	corev1 "k8s.io/api/core/v1"
@@ -12,11 +10,12 @@ var _ planner.NodeUtilizationCalculator = (*defaultNodeUtilizationCalculator)(ni
 
 type defaultNodeUtilizationCalculator struct{}
 
+// New returns a new NodeUtilizationCalculator.
 func New() planner.NodeUtilizationCalculator {
 	return &defaultNodeUtilizationCalculator{}
 }
 
-func (c *defaultNodeUtilizationCalculator) GetUtilization(ctx context.Context, node corev1.Node, pods []corev1.Pod) planner.NodeUtilization {
+func (c *defaultNodeUtilizationCalculator) GetUtilization(node corev1.Node, pods []corev1.Pod) planner.NodeUtilization {
 	allocatable := node.Status.Allocatable
 	totalRequests := make(corev1.ResourceList)
 	for i := range pods {

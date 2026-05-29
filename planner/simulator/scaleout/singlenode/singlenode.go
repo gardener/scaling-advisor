@@ -31,9 +31,9 @@ type simulatorMultiSim struct {
 	schedulerLauncher plannerapi.SchedulerLauncher
 	storageMetaAccess plannerapi.StorageMetaAccess
 	nodeScorer        plannerapi.NodeScorer
+	simulationFactory plannerapi.SimulationFactory
 	state             *scaleout.SimulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
-	simulationFactory plannerapi.SimulationFactory
 }
 
 // New creates a new plannerapi.ScaleOutSimulator that runs simulations for a single scaled node concurrently.

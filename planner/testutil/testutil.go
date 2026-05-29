@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/common/ioutil"
-
 	"github.com/gardener/scaling-advisor/planner/scheduler"
 
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
@@ -21,6 +19,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
@@ -377,14 +376,14 @@ func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []
 
 // NodeInfoOpts configures a test NodeInfo for scale-in planner tests.
 type NodeInfoOpts struct {
+	Allocatable  corev1.ResourceList
+	Capacity     corev1.ResourceList
 	Pool         string
 	Template     string
 	InstanceType string
 	Region       string
 	Zone         string
 	Arch         string
-	Allocatable  corev1.ResourceList
-	Capacity     corev1.ResourceList
 }
 
 // MakeNodeInfo creates a plannerapi.NodeInfo with all required labels populated.

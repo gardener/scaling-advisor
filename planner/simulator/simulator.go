@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
-
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -18,6 +16,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
+	"github.com/go-logr/logr"
 )
 
 // InitializeRequestView creates a sandbox view over the base view, populates it from the request snapshot,

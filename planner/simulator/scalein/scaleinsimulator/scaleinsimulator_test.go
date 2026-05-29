@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/planner/testutil"
+
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/planner/testutil"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -197,10 +198,7 @@ func makeDefaultSimulator(t *testing.T, cfg plannerapi.SimulatorConfig) *scaleIn
 
 func TestComputeScaleInItems_EmptyInput(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(0))
-	items, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	items := d.computeScaleInItems(t.Context())
 	if len(items) != 0 {
 		t.Errorf("expected 0 items, got %d", len(items))
 	}
@@ -210,10 +208,7 @@ func TestComputeScaleInItems_FirstSeen_RecordedNotEmitted(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(10*time.Minute))
 	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	items := d.computeScaleInItems(t.Context())
 	if len(items) != 0 {
 		t.Errorf("expected 0 items on first sighting, got %d", len(items))
 	}
@@ -229,10 +224,7 @@ func TestComputeScaleInItems_DurationNotExceeded_NotEmitted(t *testing.T) {
 	}
 	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	items := d.computeScaleInItems(t.Context())
 	if len(items) != 0 {
 		t.Errorf("expected 0 items (duration not exceeded), got %d", len(items))
 	}
@@ -245,10 +237,7 @@ func TestComputeScaleInItems_DurationExceeded_Emitted(t *testing.T) {
 	}
 	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	items := d.computeScaleInItems(t.Context())
 	if len(items) != 1 || items[0].NodeName != "node-a" {
 		t.Errorf("expected [node-a], got %+v", items)
 	}
@@ -258,10 +247,7 @@ func TestComputeScaleInItems_NilMementoMap_Initialised(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(0))
 	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	_, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	_ = d.computeScaleInItems(t.Context())
 	if d.state.Memento.LastIdentifiedUnneededNodes == nil {
 		t.Error("expected memento map to be initialised")
 	}
@@ -279,10 +265,7 @@ func TestComputeScaleInItems_MultipleNodes_MixedState(t *testing.T) {
 		"node-new":   {NodeName: "node-new"},
 	}
 
-	items, err := d.computeScaleInItems(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	items := d.computeScaleInItems(t.Context())
 	if len(items) != 1 || items[0].NodeName != "node-old" {
 		t.Errorf("expected only node-old emitted, got %+v", items)
 	}

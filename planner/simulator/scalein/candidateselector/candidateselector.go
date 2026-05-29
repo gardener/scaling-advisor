@@ -10,31 +10,32 @@ import (
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
 
-var _ planner.ScaleInCandidateSelector = (*scaleInCandidateSelector)(nil)
+var _ plannerapi.ScaleInCandidateSelector = (*scaleInCandidateSelector)(nil)
 
 type nodeAndPriorityKey struct {
-	priority commontypes.PriorityKey
 	node     corev1.Node
+	priority commontypes.PriorityKey
 }
 
 type scaleInCandidateSelector struct {
-	NodeUtilizationCalculator     planner.NodeUtilizationCalculator
+	NodeUtilizationCalculator     plannerapi.NodeUtilizationCalculator
 	candidateNodesWithPriorityMap map[string]nodeAndPriorityKey
 }
 
-func New(nodeUtilizationCalculator planner.NodeUtilizationCalculator) planner.ScaleInCandidateSelector {
+// New returns an instance of plannerapi.NodeUtilizationCalculator.
+func New(nodeUtilizationCalculator plannerapi.NodeUtilizationCalculator) plannerapi.ScaleInCandidateSelector {
 	return &scaleInCandidateSelector{
 		NodeUtilizationCalculator: nodeUtilizationCalculator,
 	}
 }
 
-func (s *scaleInCandidateSelector) Init(ctx context.Context, args planner.ScaleInCandidateSelectorArgs) error {
+func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.ScaleInCandidateSelectorArgs) error {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// Get all nodes from the view.
@@ -110,7 +111,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args planner.ScaleI
 	return nil
 }
 
-func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args planner.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// Get all pods for SafeToEvict check.
@@ -141,8 +142,8 @@ func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plann
 		}
 
 		// Skip if node utilization is more than the threshold
-		nodeUtilization := s.NodeUtilizationCalculator.GetUtilization(ctx, nodeWithPriority.node, podsByNode[nodeName])
-		if !nodeUtilization.BelowUtilizationThreshold(planner.NodeUtilization{ResourceRatios: args.UtilizationThresholds}) {
+		nodeUtilization := s.NodeUtilizationCalculator.GetUtilization(nodeWithPriority.node, podsByNode[nodeName])
+		if !nodeUtilization.BelowUtilizationThreshold(plannerapi.NodeUtilization{ResourceRatios: args.UtilizationThresholds}) {
 			log.V(5).Info("Skipping node: utilization above threshold",
 				"node", nodeName, "utilization", nodeUtilization.ResourceRatios, "requestID", ctx.Value("requestID"), "correlationID", ctx.Value("correlationID"))
 			continue

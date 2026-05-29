@@ -3,7 +3,6 @@ package scalein
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -35,7 +34,6 @@ type RunState struct {
 	numTrackAttempts          int
 	numReceivedEvents         int
 	runNum                    uint32
-	nodeCount                 atomic.Uint32
 }
 
 // FreshRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
@@ -48,7 +46,7 @@ func FreshRunState() RunState {
 // Init initializes this RunState from the given params, changes the [RunState]'s [plannerapi.ActivityStatus] to
 // [plannerapi.ActivityStatusRunning] and returns the child run context or an error.
 // This method must be invoked before calling other methods of [RunState]
-func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string, nodeName string) (context.Context, error) {
+func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string) (context.Context, error) {
 	r.name, r.runNum, r.status, r.view, r.traceDir = name, runNum, plannerapi.ActivityStatusRunning, view, traceDir
 	log := logr.FromContextOrDiscard(parentCtx).WithValues("simulationName", name, "runNum", runNum)
 	r.ctx = logr.NewContext(parentCtx, log)
@@ -62,6 +60,7 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 	return r.ctx, nil
 }
 
+// IsSimulationSuccess reports whether all displaced pods were successfully rescheduled.
 func (r *RunState) IsSimulationSuccess() bool {
 	if r.pendingPods.Len() > 0 {
 		return false
@@ -74,6 +73,7 @@ func (r *RunState) IsSimulationSuccess() bool {
 	return true
 }
 
+// RemoveNodeAndUnbindPods removes the node from the view and unbinds all pods scheduled on it.
 func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 	log := logr.FromContextOrDiscard(r.ctx)
 

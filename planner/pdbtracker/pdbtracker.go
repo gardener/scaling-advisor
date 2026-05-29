@@ -11,8 +11,8 @@ import (
 var _ plannerapi.PDBTracker = (*pdbTracker)(nil)
 
 type pdbInfo struct {
-	pdb      policyv1.PodDisruptionBudget
 	selector labels.Selector
+	pdb      policyv1.PodDisruptionBudget
 }
 
 // pdbTracker is the default implementation of PDBTracker interface

@@ -1,7 +1,6 @@
 package utilization
 
 import (
-	"context"
 	"testing"
 
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
@@ -36,10 +35,10 @@ func TestGetUtilization(t *testing.T) {
 	calc := New()
 
 	tests := []struct {
-		name         string
 		nodeAllocate corev1.ResourceList
-		pods         []corev1.ResourceList
 		wantRatios   map[corev1.ResourceName]float64
+		name         string
+		pods         []corev1.ResourceList
 	}{
 		{
 			name: "single pod consumes half of cpu and memory",
@@ -103,7 +102,7 @@ func TestGetUtilization(t *testing.T) {
 			node := makeNode(tc.nodeAllocate)
 			pods := makePods(tc.pods...)
 
-			util := calc.GetUtilization(context.Background(), node, pods)
+			util := calc.GetUtilization(node, pods)
 
 			assertRatios(t, util, tc.wantRatios)
 		})

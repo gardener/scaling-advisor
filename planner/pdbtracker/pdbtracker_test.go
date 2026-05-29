@@ -55,10 +55,10 @@ var (
 func TestBasicCanRemovePods(t *testing.T) {
 	testCases := []struct {
 		name            string
+		pdbs            []policyv1.PodDisruptionBudget
 		podsLabel1      int
 		podsLabel2      int
 		podsBothLabels  int
-		pdbs            []policyv1.PodDisruptionBudget
 		pdbsDisruptions [2]int32
 		canDisrupt      bool
 	}{
@@ -137,7 +137,7 @@ func makePodsWithLabel(label string, amount int) []apiv1.Pod {
 
 func addLabelToPods(pods []apiv1.Pod, label string) {
 	for i := range pods {
-		pods[i].ObjectMeta.Labels[label] = "true"
+		pods[i].Labels[label] = "true"
 	}
 }
 

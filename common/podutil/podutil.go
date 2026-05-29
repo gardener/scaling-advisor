@@ -7,10 +7,11 @@ package podutil
 import (
 	"slices"
 
+	"github.com/gardener/scaling-advisor/common/objutil"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	pdbtracker "github.com/gardener/scaling-advisor/planner/pdbtracker"
+
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
@@ -13,7 +15,6 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/minkapi/view"
-	pdbtracker "github.com/gardener/scaling-advisor/planner/pdbtracker"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -24,6 +25,7 @@ import (
 
 // ---- view / object helpers --------------------------------------------------
 
+// NewTestView creates a new base minkapi.View for use in tests.
 func NewTestView(t *testing.T) minkapi.View {
 	t.Helper()
 	v, err := view.NewBase(&minkapi.ViewArgs{
@@ -41,6 +43,7 @@ func NewTestView(t *testing.T) minkapi.View {
 	return v
 }
 
+// NewTestViewAccess creates a new minkapi.ViewAccess for use in tests.
 func NewTestViewAccess(t *testing.T) minkapi.ViewAccess {
 	t.Helper()
 	va, err := view.NewAccess(t.Context(), &minkapi.ViewArgs{
@@ -61,11 +64,12 @@ func NewTestViewAccess(t *testing.T) minkapi.ViewAccess {
 // NodeOpts configures a test node. Zero value gives a bare node with default allocatable (4 CPU, 8Gi memory).
 type NodeOpts struct {
 	Allocatable corev1.ResourceList
+	Annotations map[string]string
 	Pool        string
 	Template    string
-	Annotations map[string]string
 }
 
+// AddNode adds a node with the given name to the view.
 func AddNode(t *testing.T, v minkapi.View, name string, opts ...NodeOpts) {
 	t.Helper()
 	var o NodeOpts
@@ -104,6 +108,7 @@ type PodOpts struct {
 	Annotations map[string]string
 }
 
+// AddPod adds a pod with the given name, namespace, and node name to the view.
 func AddPod(t *testing.T, v minkapi.View, name, namespace, nodeName string, opts ...PodOpts) {
 	t.Helper()
 	var o PodOpts
@@ -136,6 +141,7 @@ func AddPod(t *testing.T, v minkapi.View, name, namespace, nodeName string, opts
 	}
 }
 
+// AddPDBToView adds a PodDisruptionBudget to the view.
 func AddPDBToView(t *testing.T, v minkapi.View, name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) {
 	t.Helper()
 	pdb := MakePDB(name, namespace, matchLabels, disruptionsAllowed)
@@ -146,6 +152,7 @@ func AddPDBToView(t *testing.T, v minkapi.View, name, namespace string, matchLab
 
 // ---- object constructors ----------------------------------------------------
 
+// MakePDB constructs a PodDisruptionBudget for use in tests.
 func MakePDB(name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) policyv1.PodDisruptionBudget {
 	minAvail := intstr.FromInt32(1)
 	return policyv1.PodDisruptionBudget{
@@ -165,25 +172,30 @@ func MakePDB(name, namespace string, matchLabels map[string]string, disruptionsA
 	}
 }
 
+// Pool constructs a NodePool with the given name, min replicas, priority, and templates.
 func Pool(name string, min, priority int32, templates ...sacorev1alpha1.NodeTemplate) sacorev1alpha1.NodePool {
 	return sacorev1alpha1.NodePool{Name: name, Min: min, Priority: priority, NodeTemplates: templates}
 }
 
+// Tmpl constructs a NodeTemplate with the given name and priority.
 func Tmpl(name string, priority int32) sacorev1alpha1.NodeTemplate {
 	return sacorev1alpha1.NodeTemplate{Name: name, Priority: priority}
 }
 
+// Node constructs a bare corev1.Node with the given name.
 func Node(name string) *corev1.Node {
 	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
 }
 
 // ---- request / config constructors ------------------------------------------
 
+// RequestOpts configures a test planner request.
 type RequestOpts struct {
 	Pods []plannerapi.PodInfo
 	PDBs []policyv1.PodDisruptionBudget
 }
 
+// MakeRequest constructs a minimal plannerapi.Request with the given ID.
 func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 	var o RequestOpts
 	if len(opts) > 0 {
@@ -202,12 +214,14 @@ func MakeRequest(id string, opts ...RequestOpts) *plannerapi.Request {
 	}
 }
 
+// MakeSimulatorConfig constructs a SimulatorConfig with the given underutilized duration.
 func MakeSimulatorConfig(underutilizedDuration time.Duration) plannerapi.SimulatorConfig {
 	return plannerapi.SimulatorConfig{
 		UnderutilizedDuration: underutilizedDuration,
 	}
 }
 
+// MakeCandidateArgs constructs ScaleInCandidateSelectorArgs for use in tests.
 func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.NodePool, pdbs ...policyv1.PodDisruptionBudget) plannerapi.ScaleInCandidateSelectorArgs {
 	t.Helper()
 	tracker := pdbtracker.New()
@@ -227,6 +241,7 @@ func MakeCandidateArgs(t *testing.T, v minkapi.View, pools []sacorev1alpha1.Node
 	}
 }
 
+// DrainResult reads one result from the channel and returns it.
 func DrainResult(t *testing.T, ch <-chan plannerapi.ScaleInPlanResult) plannerapi.ScaleInPlanResult {
 	t.Helper()
 	r, ok := <-ch
@@ -244,7 +259,8 @@ type StubUtilizationCalculator struct {
 	MemRatio float64
 }
 
-func (s *StubUtilizationCalculator) GetUtilization(_ context.Context, _ corev1.Node, _ []corev1.Pod) plannerapi.NodeUtilization {
+// GetUtilization implements plannerapi.NodeUtilizationCalculator.
+func (s *StubUtilizationCalculator) GetUtilization(_ corev1.Node, _ []corev1.Pod) plannerapi.NodeUtilization {
 	return plannerapi.NodeUtilization{
 		ResourceRatios: map[corev1.ResourceName]float64{
 			corev1.ResourceCPU:    s.CPURatio,
@@ -253,10 +269,12 @@ func (s *StubUtilizationCalculator) GetUtilization(_ context.Context, _ corev1.N
 	}
 }
 
+// LowUtilCalc returns a NodeUtilizationCalculator that always reports low utilization.
 func LowUtilCalc() plannerapi.NodeUtilizationCalculator {
 	return &StubUtilizationCalculator{CPURatio: 0.1, MemRatio: 0.1}
 }
 
+// HighUtilCalc returns a NodeUtilizationCalculator that always reports high utilization.
 func HighUtilCalc() plannerapi.NodeUtilizationCalculator {
 	return &StubUtilizationCalculator{CPURatio: 0.9, MemRatio: 0.9}
 }
@@ -269,9 +287,12 @@ type FixedCandidateSelector struct {
 	Idx   int
 }
 
+// Init implements plannerapi.ScaleInCandidateSelector.
 func (f *FixedCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
 	return nil
 }
+
+// NextCandidate implements plannerapi.ScaleInCandidateSelector.
 func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if f.Idx >= len(f.Nodes) {
 		return nil, nil
@@ -280,17 +301,24 @@ func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.S
 	f.Idx++
 	return n, nil
 }
+
+// RemoveCandidateNode implements plannerapi.ScaleInCandidateSelector.
 func (f *FixedCandidateSelector) RemoveCandidateNode(_ string) {}
 
 // ErrCandidateSelector always returns an error from NextCandidate.
 type ErrCandidateSelector struct{ Err error }
 
+// Init implements plannerapi.ScaleInCandidateSelector.
 func (e *ErrCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
 	return nil
 }
+
+// NextCandidate implements plannerapi.ScaleInCandidateSelector.
 func (e *ErrCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	return nil, e.Err
 }
+
+// RemoveCandidateNode implements plannerapi.ScaleInCandidateSelector.
 func (e *ErrCandidateSelector) RemoveCandidateNode(_ string) {}
 
 // AlwaysCandidateSelector returns the same node until RemoveCandidateNode is called.
@@ -299,29 +327,37 @@ type AlwaysCandidateSelector struct {
 	removed bool
 }
 
+// Init implements plannerapi.ScaleInCandidateSelector.
 func (a *AlwaysCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
 	return nil
 }
+
+// NextCandidate implements plannerapi.ScaleInCandidateSelector.
 func (a *AlwaysCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if a.removed {
 		return nil, nil
 	}
 	return a.N, nil
 }
+
+// RemoveCandidateNode implements plannerapi.ScaleInCandidateSelector.
 func (a *AlwaysCandidateSelector) RemoveCandidateNode(_ string) { a.removed = true }
 
 // PDBAwareCandidateSelector uses the PDBTracker from args to decide if a node's
 // pods can be removed. It yields nodes from a fixed list, skipping those blocked by PDBs.
 type PDBAwareCandidateSelector struct {
-	Nodes   []*corev1.Node
 	Pods    map[string][]corev1.Pod // nodeName -> pods on that node
-	Idx     int
 	removed map[string]bool
+	Nodes   []*corev1.Node
+	Idx     int
 }
 
+// Init implements plannerapi.ScaleInCandidateSelector.
 func (p *PDBAwareCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) error {
 	return nil
 }
+
+// NextCandidate implements plannerapi.ScaleInCandidateSelector.
 func (p *PDBAwareCandidateSelector) NextCandidate(_ context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	for p.Idx < len(p.Nodes) {
 		n := p.Nodes[p.Idx]
@@ -340,6 +376,8 @@ func (p *PDBAwareCandidateSelector) NextCandidate(_ context.Context, args planne
 	}
 	return nil, nil
 }
+
+// RemoveCandidateNode implements plannerapi.ScaleInCandidateSelector.
 func (p *PDBAwareCandidateSelector) RemoveCandidateNode(nodeName string) {
 	if p.removed == nil {
 		p.removed = make(map[string]bool)
@@ -349,18 +387,27 @@ func (p *PDBAwareCandidateSelector) RemoveCandidateNode(nodeName string) {
 
 // ---- stub simulations / factories -------------------------------------------
 
-// SuccessSimulation: Run succeeds, all pods rescheduled.
+// SuccessSimulation is a stub ScaleInSimulation where Run succeeds and all pods are rescheduled.
 type SuccessSimulation struct {
-	NodeName string
 	SimView  minkapi.View
+	NodeName string
 }
 
+// Reset implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Reset() error { return nil }
+
+// Name implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Name() string { return "stub-success" }
+
+// Status implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusSuccess
 }
+
+// PriorityKey implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
+
+// Run implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.Node) error {
 	s.SimView = v
 	if s.NodeName == "" {
@@ -368,6 +415,8 @@ func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.
 	}
 	return nil
 }
+
+// Result implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{
 		Name:                "stub-success",
@@ -377,23 +426,34 @@ func (s *SuccessSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	}, nil
 }
 
-// PendingPodsSimulation: Run succeeds but pods remain unscheduled.
+// PendingPodsSimulation is a stub ScaleInSimulation where Run succeeds but pods remain unscheduled.
 type PendingPodsSimulation struct {
 	SimView minkapi.View
 }
 
+// Reset implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) Reset() error { return nil }
+
+// Name implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) Name() string { return "stub-pending" }
+
+// Status implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusSuccess
 }
+
+// PriorityKey implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) PriorityKey() commontypes.PriorityKey {
 	return commontypes.PriorityKey{}
 }
+
+// Run implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) Run(_ context.Context, v minkapi.View, _ *corev1.Node) error {
 	p.SimView = v
 	return nil
 }
+
+// Result implements plannerapi.ScaleInSimulation.
 func (p *PendingPodsSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{
 		Name:                "stub-pending",
@@ -403,18 +463,29 @@ func (p *PendingPodsSimulation) Result() (plannerapi.ScaleInSimRunResult, error)
 	}, nil
 }
 
-// FailingSimulation: Run returns an error.
+// FailingSimulation is a stub ScaleInSimulation where Run returns an error.
 type FailingSimulation struct{ Err error }
 
+// Reset implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Reset() error { return nil }
+
+// Name implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Name() string { return "stub-fail" }
+
+// Status implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusFailure
 }
+
+// PriorityKey implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
+
+// Run implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Run(_ context.Context, _ minkapi.View, _ *corev1.Node) error {
 	return f.Err
 }
+
+// Result implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{}, f.Err
 }
@@ -425,15 +496,19 @@ type StubSimulationFactory struct {
 	Err error
 }
 
+// NewScaleOut implements plannerapi.SimulationFactory.
 func (s *StubSimulationFactory) NewScaleOut(_ plannerapi.ScaleOutSimArgs) (plannerapi.ScaleOutSimulation, error) {
 	panic("not used in scale-in tests")
 }
+
+// NewScaleIn implements plannerapi.SimulationFactory.
 func (s *StubSimulationFactory) NewScaleIn(_ plannerapi.ScaleInSimArgs) (plannerapi.ScaleInSimulation, error) {
 	return s.Sim, s.Err
 }
 
 // ---- PV / PVC / Pod constructors --------------------------------------------
 
+// MakePV constructs a PersistentVolume for use in tests.
 func MakePV(name string, claimRef *corev1.ObjectReference, simulated bool) *corev1.PersistentVolume {
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
@@ -452,6 +527,7 @@ func MakePV(name string, claimRef *corev1.ObjectReference, simulated bool) *core
 	return pv
 }
 
+// MakeBoundPVC constructs a bound PersistentVolumeClaim for use in tests.
 func MakeBoundPVC(name, namespace, pvName string, extraAnnotations map[string]string) *corev1.PersistentVolumeClaim {
 	ann := map[string]string{
 		storagevolume.AnnBindCompleted:     "yes",
@@ -472,6 +548,7 @@ func MakeBoundPVC(name, namespace, pvName string, extraAnnotations map[string]st
 	}
 }
 
+// MakePodWithPVC constructs a Pod with a PersistentVolumeClaim volume for use in tests.
 func MakePodWithPVC(name, namespace, nodeName, pvcName string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -497,6 +574,7 @@ type FailingView struct {
 	ListPodsErr  error
 }
 
+// ListNodes implements minkapi.View.
 func (f *FailingView) ListNodes(_ context.Context, _ ...string) ([]corev1.Node, error) {
 	if f.ListNodesErr != nil {
 		return nil, f.ListNodesErr
@@ -511,6 +589,7 @@ func (f *FailingView) ListNodes(_ context.Context, _ ...string) ([]corev1.Node, 
 	}, nil
 }
 
+// ListPods implements minkapi.View.
 func (f *FailingView) ListPods(_ context.Context, _ minkapi.MatchCriteria) ([]corev1.Pod, error) {
 	return nil, f.ListPodsErr
 }
