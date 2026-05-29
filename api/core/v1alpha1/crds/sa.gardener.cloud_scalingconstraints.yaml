@@ -42,28 +42,6 @@ spec:
           spec:
             description: Spec defines the specification of the ScalingConstraint.
             properties:
-              consumerID:
-                description: |-
-                  ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advice.
-                  It allows a consumer to accept or reject the advice by checking the ConsumerID for which the scaling advice has been created.
-                type: string
-              defaultBackoffPolicy:
-                description: DefaultBackoffPolicy defines a default backoff policy
-                  for all NodePools of a cluster. Backoff policy can be overridden
-                  at the NodePool level.
-                properties:
-                  initialBackoff:
-                    description: InitialBackoffDuration defines the lower limit of
-                      the backoff duration.
-                    type: string
-                  maxBackoff:
-                    description: MaxBackoffDuration defines the upper limit of the
-                      backoff duration.
-                    type: string
-                required:
-                - initialBackoff
-                - maxBackoff
-                type: object
               nodePools:
                 description: NodePools is the list of node pools to choose from when
                   creating scaling advice.
@@ -82,23 +60,6 @@ spec:
                       items:
                         type: string
                       type: array
-                    defaultBackoffPolicy:
-                      description: BackoffPolicy defines the backoff policy applicable
-                        to resource exhaustion of any instance type + zone combination
-                        in this node pool.
-                      properties:
-                        initialBackoff:
-                          description: InitialBackoffDuration defines the lower limit
-                            of the backoff duration.
-                          type: string
-                        maxBackoff:
-                          description: MaxBackoffDuration defines the upper limit
-                            of the backoff duration.
-                          type: string
-                      required:
-                      - initialBackoff
-                      - maxBackoff
-                      type: object
                     labels:
                       additionalProperties:
                         type: string
@@ -109,76 +70,6 @@ spec:
                       description: Name is the name of the node pool. It must be unique
                         within the cluster.
                       type: string
-                    nodeTemplates:
-                      description: NodeTemplates is a slice of NodeTemplate.
-                      items:
-                        description: |-
-                          NodeTemplate defines a node template configuration for an instance type.
-                          All nodes of a certain instance type in a node pool will be created using this template.
-                        properties:
-                          architecture:
-                            description: Architecture is the architecture of the instance
-                              type.
-                            type: string
-                          capacity:
-                            additionalProperties:
-                              anyOf:
-                              - type: integer
-                              - type: string
-                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                              x-kubernetes-int-or-string: true
-                            description: Capacity defines the capacity of resources
-                              that are available for this instance type.
-                            type: object
-                          instanceType:
-                            description: InstanceType is the instance type of the
-                              node template.
-                            type: string
-                          kubeReservedCapacity:
-                            additionalProperties:
-                              anyOf:
-                              - type: integer
-                              - type: string
-                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                              x-kubernetes-int-or-string: true
-                            description: |-
-                              KubeReserved defines the capacity for kube reserved resources.
-                              See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
-                            type: object
-                          maxVolumes:
-                            description: MaxVolumes is the max number of volumes that
-                              can be attached to a node of this instance type.
-                            format: int32
-                            type: integer
-                          name:
-                            description: Name is the name of the node template.
-                            type: string
-                          priority:
-                            description: Priority is the priority of the node template.
-                              The lower the number, the higher the priority.
-                            format: int32
-                            type: integer
-                          systemReservedCapacity:
-                            additionalProperties:
-                              anyOf:
-                              - type: integer
-                              - type: string
-                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                              x-kubernetes-int-or-string: true
-                            description: |-
-                              SystemReserved defines the capacity for system reserved resources.
-                              See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
-                              Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
-                            type: object
-                        required:
-                        - architecture
-                        - capacity
-                        - instanceType
-                        - maxVolumes
-                        - name
-                        - priority
-                        type: object
-                      type: array
                     priority:
                       description: Priority is the priority of the node pool.
                       format: int32
@@ -195,10 +86,44 @@ spec:
                     region:
                       description: Region is the name of the region.
                       type: string
-                    scaleInPolicy:
-                      description: ScaleInPolicy defines the scale in policy for this
-                        node pool.
-                      type: object
+                    requirements:
+                      description: Requirements encapsulates the slice of requirement
+                        selectors for this NodePool
+                      items:
+                        description: |-
+                          NodePoolRequirement is a requirement selector that encapsulates values, a key, and an operator
+                          that relates the key and values.
+                        properties:
+                          key:
+                            description: Key is the label key that the selector applies
+                              to.
+                            type: string
+                          operator:
+                            description: |-
+                              Operator represents a key's relationship to a set of values.
+                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                            type: string
+                          priority:
+                            description: Priority represents the priority of this
+                              requirement. Higher values have greater priority.
+                            format: int32
+                            type: integer
+                          values:
+                            description: |-
+                              Values is an array of string values. If the operator is "In" or "NotIn",
+                              the values array must be non-empty. If the operator is "Exists" or "DoesNotExist:,
+                              the values array must be empty. If the operator is "Gt" or "Lt", the values
+                              array must have a single element, which will be interpreted as an integer.
+                              This array is replaced during a strategic merge patch.
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                        - key
+                        - operator
+                        type: object
+                      type: array
                     taints:
                       description: Taints is a list of taints applied to all the nodes
                         in this node pool.
@@ -234,15 +159,77 @@ spec:
                   required:
                   - availabilityZones
                   - name
-                  - nodeTemplates
-                  - priority
                   - region
                   type: object
                 type: array
-              scaleInPolicy:
-                description: ScaleInPolicy defines the default scale in policy to
-                  be used when scaling in a node pool.
-                type: object
+              nodeTemplates:
+                description: NodeTemplates is the slice of all NodeTemplates used
+                  within the scaling constraint spec.
+                items:
+                  description: |-
+                    NodeTemplate defines a node template configuration for an instance type.
+                    There can be different NodeTemplate's for a [ScalingConstraintSpec] for the same instance type.
+                    This is permitted to allow the opportunity for different SystemReserved.
+                  properties:
+                    architecture:
+                      description: Architecture is the architecture of the instance
+                        type.
+                      type: string
+                    capacity:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: Capacity defines the capacity of resources that
+                        are available for this instance type.
+                      type: object
+                    instanceType:
+                      description: InstanceType is the instance type of the node template.
+                      type: string
+                    kubeReservedCapacity:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        KubeReserved defines the capacity for kube reserved resources.
+                        See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
+                      type: object
+                    maxVolumes:
+                      description: MaxVolumes is the max number of volumes that can
+                        be attached to a node of this instance type.
+                      format: int32
+                      type: integer
+                    name:
+                      description: Name is the name of the node template. Name is
+                        unique within a particular [ScalingConstraintSpec]
+                      type: string
+                    systemReservedCapacity:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        SystemReserved defines the capacity for system reserved resources.
+                        See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
+                        Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
+                      type: object
+                  required:
+                  - architecture
+                  - capacity
+                  - instanceType
+                  - maxVolumes
+                  - name
+                  type: object
+                type: array
+            required:
+            - nodeTemplates
             type: object
           status:
             description: Status defines the status of the ScalingConstraint.
