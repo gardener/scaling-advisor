@@ -170,7 +170,7 @@ func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plann
 
 	log.V(5).Info("Lowest priority candidate nodes for scale-in", "nodes", lowestPriorityCandidates)
 
-	return &lowestPriorityCandidates[rand.IntN(len(lowestPriorityCandidates))], nil
+	return &lowestPriorityCandidates[rand.IntN(len(lowestPriorityCandidates))], nil // #nosec G404 -- cryptographic randomness not required here. It randomly picks one of the equally-prioritized scale-in candidate nodes.
 }
 
 func (s *scaleInCandidateSelector) RemoveCandidateNode(nodeName string) {
