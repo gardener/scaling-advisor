@@ -62,7 +62,7 @@ type ScaleOutSimulator interface {
 
 	// Simulate is the high level activity that runs [ScaleOutSimulation] on the given
 	// [requestView] with the given planner [Request].
-	Simulate(ctx context.Context, request *Request) (planResult <-chan ScaleOutPlanResult)
+	Simulate(ctx context.Context, request *Request, requestView minkapi.View) (planResult <-chan ScaleOutPlanResult)
 }
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate

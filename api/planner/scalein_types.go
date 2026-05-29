@@ -108,7 +108,7 @@ type ScaleInSimRunResult struct {
 type ScaleInSimulator interface {
 	io.Closer
 
-	Simulate(ctx context.Context, request *Request) <-chan ScaleInPlanResult
+	Simulate(ctx context.Context, request *Request, requestView minkapi.View) <-chan ScaleInPlanResult
 }
 
 // ScaleInMemento is an encapsulation of partial details of a completed scale-in simulation that can be used by subsequent scale-in simulations
@@ -131,4 +131,6 @@ type ScaleInPlanResult struct {
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:"scaleInPlan,omitempty"`
 	//Memento is the partial details of a completed scale-in simulation
 	Memento ScaleInMemento `json:"scaleInMemento,omitempty"`
+	// View is the modified request view return after performing scale-in simulation
+	View minkapi.View
 }

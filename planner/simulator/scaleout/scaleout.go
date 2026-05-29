@@ -14,16 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/planner/simulator"
-
 	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/viewutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
 )
 
@@ -50,7 +46,7 @@ type SimulatorState struct {
 
 // NewSimulatorState constructs a fresh [SimulatorState] for the [plannerapi.ScaleOutSimulator] processing the given
 // [plannerapi.Request] with the given parameters
-func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) *SimulatorState {
+func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess, requestView minkapi.View) *SimulatorState {
 	return &SimulatorState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleOutPlanResult),
@@ -58,36 +54,8 @@ func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.Simulat
 		SimRunCounter:     &atomic.Uint32{},
 		simConfig:         simConfig,
 		viewAccess:        viewAccess,
+		views:             []minkapi.View{requestView},
 	}
-}
-
-// InitializeRequestView performs common initialization on this simulator state. This currently includes:
-//   - populating the request view
-//   - Binding volume claims for immediate volume binding mode
-func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
-	log := logr.FromContextOrDiscard(ctx)
-	requestView, err := s.createRequestView(ctx, s.viewAccess)
-	if err != nil {
-		return err
-	}
-
-	if err = simulator.PopulateView(ctx, requestView, &s.Request.Snapshot); err != nil {
-		err = fmt.Errorf("%w: %w", plannerapi.ErrPopulateRequestView, err)
-		return err
-	}
-
-	if s.simConfig.BindVolumeClaimsForImmediateMode {
-		// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView
-		// for all simulations
-		if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
-			return err
-		}
-	}
-	err = viewutil.LogObjects(ctx, "requestView", requestView)
-	if err != nil {
-		log.Info("failed to dump requestView objects", "requestView", requestView.GetName(), "error", err)
-	}
-	return nil
 }
 
 // CreateSandboxView creates a sandbox view with the given name from the given delegate view, adds the new view to
@@ -229,15 +197,6 @@ func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.No
 		SystemReserved: template.SystemReserved,
 		Architecture:   template.Architecture,
 	}
-}
-
-func (s *SimulatorState) createRequestView(ctx context.Context, viewAccess minkapi.ViewAccess) (view minkapi.View, err error) {
-	view, err = viewAccess.GetSandboxViewOverDelegate(ctx, "Request-"+s.Request.ID, viewAccess.GetBaseView())
-	if err != nil {
-		return
-	}
-	s.views = append(s.views, view)
-	return
 }
 
 // createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.

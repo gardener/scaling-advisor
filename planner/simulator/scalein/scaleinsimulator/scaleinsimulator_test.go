@@ -37,7 +37,7 @@ func TestSimulate_NoCandidates_EmptyPlan(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{} // immediately returns nil
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r1")))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r1"), nil))
 
 	if !errors.Is(result.Error, plannerapi.ErrNoScaleInPlan) {
 		t.Fatalf("expected ErrNoScaleInPlan, got: %v", result.Error)
@@ -52,7 +52,7 @@ func TestSimulate_CandidateSelectorError_ErrorResult(t *testing.T) {
 	sel := &testutil.ErrCandidateSelector{Err: selErr}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r2")))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r2"), nil))
 
 	if result.Error == nil {
 		t.Fatal("expected an error result, got nil")
@@ -68,7 +68,7 @@ func TestSimulate_SimulationFactoryError_ErrorResult(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Err: factoryErr})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r3")))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r3"), nil))
 
 	if result.Error == nil {
 		t.Fatal("expected an error result, got nil")
@@ -83,7 +83,7 @@ func TestSimulate_SimulationRunError_ErrorResult(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: &testutil.FailingSimulation{Err: runErr}})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r4")))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r4"), nil))
 
 	if result.Error == nil {
 		t.Fatal("expected an error result, got nil")
@@ -97,7 +97,7 @@ func TestSimulate_PendingPods_NodeSkippedNotInPlan(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: &testutil.PendingPodsSimulation{}})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r5")))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("r5"), nil))
 
 	if !errors.Is(result.Error, plannerapi.ErrNoScaleInPlan) {
 		t.Fatalf("expected ErrNoScaleInPlan, got: %v", result.Error)
@@ -112,7 +112,7 @@ func TestSimulate_SuccessfulCandidate_NodeRecordedInMemento(t *testing.T) {
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(10*time.Minute), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}})
 
 	req := testutil.MakeRequest("r6")
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	// First sighting → no plan items yet, so ErrNoScaleInPlan is returned.
 	if !errors.Is(result.Error, plannerapi.ErrNoScaleInPlan) {
@@ -135,7 +135,7 @@ func TestSimulate_SuccessfulCandidate_EmittedAfterDuration(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(5*time.Minute), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{NodeName: "node-a"}})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -155,7 +155,7 @@ func TestSimulate_ContextCancelled_ErrorResult(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result := testutil.DrainResult(t, sim.Simulate(ctx, testutil.MakeRequest("r8")))
+	result := testutil.DrainResult(t, sim.Simulate(ctx, testutil.MakeRequest("r8"), nil))
 
 	if result.Error == nil {
 		t.Fatal("expected an error from cancelled context, got nil")
@@ -169,7 +169,7 @@ func TestSimulate_ResultChannelClosedAfterResult(t *testing.T) {
 	sel := &testutil.FixedCandidateSelector{}
 	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: &testutil.SuccessSimulation{}})
 
-	ch := sim.Simulate(t.Context(), testutil.MakeRequest("r9"))
+	ch := sim.Simulate(t.Context(), testutil.MakeRequest("r9"), nil)
 	<-ch // consume the result
 	if _, open := <-ch; open {
 		t.Error("expected channel to be closed after result")
@@ -189,12 +189,15 @@ func makeDefaultSimulator(t *testing.T, cfg plannerapi.SimulatorConfig) *scaleIn
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	return s.(*scaleInSimulator)
+	sim := s.(*scaleInSimulator)
+	sim.state.Request = &plannerapi.Request{}
+	sim.state.ScaleInNomineeNodes = make(map[string]sacorev1alpha1.ScaleInItem)
+	return sim
 }
 
 func TestComputeScaleInItems_EmptyInput(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(0))
-	items, err := d.computeScaleInItems(t.Context(), &plannerapi.ScaleInMemento{}, nil)
+	items, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -205,31 +208,28 @@ func TestComputeScaleInItems_EmptyInput(t *testing.T) {
 
 func TestComputeScaleInItems_FirstSeen_RecordedNotEmitted(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(10*time.Minute))
-	memento := &plannerapi.ScaleInMemento{}
-	successNodes := map[string]sacorev1alpha1.ScaleInItem{"node-a": {NodeName: "node-a"}}
+	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context(), memento, successNodes)
+	items, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(items) != 0 {
 		t.Errorf("expected 0 items on first sighting, got %d", len(items))
 	}
-	if _, ok := memento.LastIdentifiedUnneededNodes["node-a"]; !ok {
+	if _, ok := d.state.Memento.LastIdentifiedUnneededNodes["node-a"]; !ok {
 		t.Error("expected node-a recorded in memento")
 	}
 }
 
 func TestComputeScaleInItems_DurationNotExceeded_NotEmitted(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(10*time.Minute))
-	memento := &plannerapi.ScaleInMemento{
-		LastIdentifiedUnneededNodes: map[string]time.Time{
-			"node-a": time.Now().Add(-1 * time.Minute),
-		},
+	d.state.Memento.LastIdentifiedUnneededNodes = map[string]time.Time{
+		"node-a": time.Now().Add(-1 * time.Minute),
 	}
-	successNodes := map[string]sacorev1alpha1.ScaleInItem{"node-a": {NodeName: "node-a"}}
+	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context(), memento, successNodes)
+	items, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,14 +240,12 @@ func TestComputeScaleInItems_DurationNotExceeded_NotEmitted(t *testing.T) {
 
 func TestComputeScaleInItems_DurationExceeded_Emitted(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(5*time.Minute))
-	memento := &plannerapi.ScaleInMemento{
-		LastIdentifiedUnneededNodes: map[string]time.Time{
-			"node-a": time.Now().Add(-10 * time.Minute),
-		},
+	d.state.Memento.LastIdentifiedUnneededNodes = map[string]time.Time{
+		"node-a": time.Now().Add(-10 * time.Minute),
 	}
-	successNodes := map[string]sacorev1alpha1.ScaleInItem{"node-a": {NodeName: "node-a"}}
+	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	items, err := d.computeScaleInItems(t.Context(), memento, successNodes)
+	items, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -258,33 +256,30 @@ func TestComputeScaleInItems_DurationExceeded_Emitted(t *testing.T) {
 
 func TestComputeScaleInItems_NilMementoMap_Initialised(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(0))
-	memento := &plannerapi.ScaleInMemento{}
-	successNodes := map[string]sacorev1alpha1.ScaleInItem{"node-a": {NodeName: "node-a"}}
+	d.state.ScaleInNomineeNodes["node-a"] = sacorev1alpha1.ScaleInItem{NodeName: "node-a"}
 
-	_, err := d.computeScaleInItems(t.Context(), memento, successNodes)
+	_, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if memento.LastIdentifiedUnneededNodes == nil {
+	if d.state.Memento.LastIdentifiedUnneededNodes == nil {
 		t.Error("expected memento map to be initialised")
 	}
 }
 
 func TestComputeScaleInItems_MultipleNodes_MixedState(t *testing.T) {
 	d := makeDefaultSimulator(t, testutil.MakeSimulatorConfig(5*time.Minute))
-	memento := &plannerapi.ScaleInMemento{
-		LastIdentifiedUnneededNodes: map[string]time.Time{
-			"node-old":   time.Now().Add(-10 * time.Minute),
-			"node-young": time.Now().Add(-1 * time.Minute),
-		},
+	d.state.Memento.LastIdentifiedUnneededNodes = map[string]time.Time{
+		"node-old":   time.Now().Add(-10 * time.Minute),
+		"node-young": time.Now().Add(-1 * time.Minute),
 	}
-	successNodes := map[string]sacorev1alpha1.ScaleInItem{
+	d.state.ScaleInNomineeNodes = map[string]sacorev1alpha1.ScaleInItem{
 		"node-old":   {NodeName: "node-old"},
 		"node-young": {NodeName: "node-young"},
 		"node-new":   {NodeName: "node-new"},
 	}
 
-	items, err := d.computeScaleInItems(t.Context(), memento, successNodes)
+	items, err := d.computeScaleInItems(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -313,7 +308,7 @@ func TestSimulate_PDB_CandidateBlockedByExhaustedBudget(t *testing.T) {
 		PDBs: []policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 0)},
 	})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if !errors.Is(result.Error, plannerapi.ErrNoScaleInPlan) {
 		t.Fatalf("expected ErrNoScaleInPlan (node blocked by PDB), got: %v", result.Error)
@@ -344,7 +339,7 @@ func TestSimulate_PDB_CandidateAllowedBySufficientBudget(t *testing.T) {
 		"node-a": time.Now().Add(-10 * time.Minute),
 	}
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -385,7 +380,7 @@ func TestSimulate_PDB_OnlyUnblockedNodeSelected(t *testing.T) {
 		"node-b": time.Now().Add(-10 * time.Minute),
 	}
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -420,7 +415,7 @@ func TestSimulate_PDB_MultiplePodsSameNodeExceedBudget(t *testing.T) {
 		PDBs: []policyv1.PodDisruptionBudget{testutil.MakePDB("pdb-web", "default", map[string]string{"app": "web"}, 1)},
 	})
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if !errors.Is(result.Error, plannerapi.ErrNoScaleInPlan) {
 		t.Fatalf("expected ErrNoScaleInPlan (2 pods exceed PDB budget of 1), got: %v", result.Error)
@@ -449,7 +444,7 @@ func TestSimulate_PDB_NoPDBsInView_AllCandidatesAllowed(t *testing.T) {
 		"node-a": time.Now().Add(-10 * time.Minute),
 	}
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -480,8 +475,7 @@ func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 		"node-a": time.Now().Add(-10 * time.Minute),
 	}
 
-	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req))
-
+	result := testutil.DrainResult(t, sim.Simulate(t.Context(), req, nil))
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
 	}

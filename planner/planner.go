@@ -9,13 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"path/filepath"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/simulator"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
@@ -55,7 +57,6 @@ func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-cha
 	return responseCh
 }
 
-// TODO: need to initialize requestView here and pass it.
 func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, responseCh chan plannerapi.Response) error {
 	planCtx, logCloser, err := wrapPlanContext(ctx, p.args.TraceDir, req)
 	if err != nil {
@@ -65,10 +66,44 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
-	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
+	requestView, err := simulator.InitializeRequestView(planCtx, req, p.args.ViewAccess, p.args.SimulatorConfig)
 	if err != nil {
-		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+		return err
 	}
+	defer ioutil.CloseQuietly(requestView)
+
+	response := plannerapi.Response{
+		RequestRef: req.RequestRef,
+		ID:         objutil.GenerateName("scaling-plan-"),
+		Labels:     make(map[string]string),
+	}
+
+	scaleInResult, err := p.doScaleIn(planCtx, req, requestView)
+	if err != nil {
+		return err
+	}
+	maps.Copy(response.Labels, scaleInResult.Labels)
+	response.ScaleInPlan = scaleInResult.ScaleInPlan
+
+	// Use the post-scale-in view as the starting point for scale-out.
+	// If scale-in produced no usable view (e.g. ErrNoScaleInPlan), fall back to the original request view.
+	scaleOutView := scaleInResult.View
+	if scaleOutView == nil {
+		scaleOutView = requestView
+	}
+
+	scaleOutResult, err := p.doScaleOut(planCtx, req, scaleOutView)
+	if err != nil {
+		return err
+	}
+	maps.Copy(response.Labels, scaleOutResult.Labels)
+	response.ScaleOutPlan = scaleOutResult.ScaleOutPlan
+
+	responseCh <- response
+	return nil
+}
+
+func (p *defaultPlanner) doScaleIn(ctx context.Context, req *plannerapi.Request, requestView minkapi.View) (plannerapi.ScaleInPlanResult, error) {
 	scaleInSimulator, err := p.args.SimulatorFactory.GetScaleInSimulator(plannerapi.SimulatorArgs{
 		ScaleInCandidateSelector: p.args.ScaleInCandidateSelector,
 		Config:                   p.args.SimulatorConfig,
@@ -78,10 +113,29 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		SimulationFactory:        p.args.SimulationFactory,
 	})
 	if err != nil {
-		return err
+		return plannerapi.ScaleInPlanResult{}, err
 	}
 	defer ioutil.CloseQuietly(scaleInSimulator)
-	scaleInPlanResultCh := scaleInSimulator.Simulate(planCtx, req)
+
+	select {
+	case <-ctx.Done():
+		return plannerapi.ScaleInPlanResult{}, ctx.Err()
+	case r, ok := <-scaleInSimulator.Simulate(ctx, req, requestView):
+		if !ok {
+			return plannerapi.ScaleInPlanResult{}, nil
+		}
+		if r.Error != nil && !errors.Is(r.Error, plannerapi.ErrNoScaleInPlan) {
+			return plannerapi.ScaleInPlanResult{}, r.Error
+		}
+		return r, nil
+	}
+}
+
+func (p *defaultPlanner) doScaleOut(ctx context.Context, req *plannerapi.Request, requestView minkapi.View) (plannerapi.ScaleOutPlanResult, error) {
+	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
+	if err != nil {
+		return plannerapi.ScaleOutPlanResult{}, fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+	}
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
 		Strategy:          req.SimulatorStrategy,
@@ -93,50 +147,22 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		SimulationFactory: p.args.SimulationFactory,
 	})
 	if err != nil {
-		return err
+		return plannerapi.ScaleOutPlanResult{}, err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	scaleOutPlanResultCh := scaleOutSimulator.Simulate(planCtx, req)
-	var scaleInPlanResult plannerapi.ScaleInPlanResult
-	var scaleOutPlanResult plannerapi.ScaleOutPlanResult
-	for receivedCount := 0; receivedCount < 2; {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case r, ok := <-scaleInPlanResultCh:
-			if ok {
-				scaleInPlanResult = r
 
-			}
-			scaleInPlanResultCh = nil
-			receivedCount++
-		case r, ok := <-scaleOutPlanResultCh:
-			if ok {
-				scaleOutPlanResult = r
-			}
-			scaleOutPlanResultCh = nil
-			receivedCount++
+	select {
+	case <-ctx.Done():
+		return plannerapi.ScaleOutPlanResult{}, ctx.Err()
+	case r, ok := <-scaleOutSimulator.Simulate(ctx, req, requestView):
+		if !ok {
+			return plannerapi.ScaleOutPlanResult{}, nil
 		}
+		if r.Error != nil && !errors.Is(r.Error, plannerapi.ErrNoScaleOutPlan) {
+			return plannerapi.ScaleOutPlanResult{}, r.Error
+		}
+		return r, nil
 	}
-	// TODO: what needs to be sent in response.Labels? -> union of scalein and scaleout plan; maybe extract the common part
-	response := plannerapi.Response{
-		RequestRef:   req.RequestRef,
-		ID:           objutil.GenerateName("scaling-plan-"),
-		ScaleInPlan:  scaleInPlanResult.ScaleInPlan,
-		ScaleOutPlan: scaleOutPlanResult.ScaleOutPlan,
-	}
-	if scaleInPlanResult.Error != nil && !errors.Is(scaleInPlanResult.Error, plannerapi.ErrNoScaleInPlan) {
-		response.Error = scaleInPlanResult.Error
-		responseCh <- response
-		return nil
-	} else if scaleOutPlanResult.Error != nil && !errors.Is(scaleOutPlanResult.Error, plannerapi.ErrNoScaleOutPlan) {
-		response.Error = scaleOutPlanResult.Error
-		responseCh <- response
-		return nil
-	}
-	composeScaleOutAndScaleInPlanItems(response.ScaleOutPlan, response.ScaleInPlan)
-	responseCh <- response
-	return nil
 }
 
 func validateRequest(req *plannerapi.Request) error {
@@ -200,64 +226,4 @@ func SendErrorResponse(resultsCh chan<- plannerapi.Response, requestRef plannera
 		ID:    objutil.GenerateName("plan-error"),
 		Error: err,
 	}
-}
-
-// composeScaleOutAndScaleInPlanItems removes redundant operations where the same
-// NodePlacement appears in both plans. For each overlapping placement the
-// smaller count is subtracted from both sides so we never scale-out and
-// scale-in the same placement.
-func composeScaleOutAndScaleInPlanItems(scaleOutPlan *sacorev1alpha1.ScaleOutPlan, scaleInPlan *sacorev1alpha1.ScaleInPlan) {
-	if scaleOutPlan == nil || scaleInPlan == nil {
-		return
-	}
-	// Count how many nodes are being scaled in per NodePlacement.
-	scaleInCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
-	for _, item := range scaleInPlan.Items {
-		scaleInCountByPlacement[item.NodePlacement]++
-	}
-	// Build a map of scale-out deltas by NodePlacement.
-	scaleOutDeltaByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
-	for _, item := range scaleOutPlan.Items {
-		scaleOutDeltaByPlacement[item.NodePlacement] += item.Delta
-	}
-	// Compute the overlap: for each placement, the number of redundant nodes is min(scaleIn, scaleOut).
-	overlapByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
-	for placement, scaleInCount := range scaleInCountByPlacement {
-		if scaleOutDelta, ok := scaleOutDeltaByPlacement[placement]; ok {
-			overlapByPlacement[placement] = min(scaleInCount, scaleOutDelta)
-		}
-	}
-	if len(overlapByPlacement) == 0 {
-		return
-	}
-	// Remove overlap from scale-out items.
-	composedScaleOutItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(scaleOutPlan.Items))
-	for _, item := range scaleOutPlan.Items {
-		if overlap := overlapByPlacement[item.NodePlacement]; overlap > 0 {
-			reduction := min(overlap, item.Delta)
-			overlapByPlacement[item.NodePlacement] -= reduction
-			item.Delta -= reduction
-			if item.Delta <= 0 {
-				continue
-			}
-		}
-		composedScaleOutItems = append(composedScaleOutItems, item)
-	}
-	scaleOutPlan.Items = composedScaleOutItems
-	// Re-compute overlap for scale-in removal (reset from original counts).
-	for placement := range overlapByPlacement {
-		scaleInCount := scaleInCountByPlacement[placement]
-		scaleOutDelta := scaleOutDeltaByPlacement[placement]
-		overlapByPlacement[placement] = min(scaleInCount, scaleOutDelta)
-	}
-	// Remove overlap from scale-in items.
-	composedScaleInItems := make([]sacorev1alpha1.ScaleInItem, 0, len(scaleInPlan.Items))
-	for _, item := range scaleInPlan.Items {
-		if overlap := overlapByPlacement[item.NodePlacement]; overlap > 0 {
-			overlapByPlacement[item.NodePlacement]--
-			continue
-		}
-		composedScaleInItems = append(composedScaleInItems, item)
-	}
-	scaleInPlan.Items = composedScaleInItems
 }
