@@ -40,18 +40,10 @@ type ScalingConstraintList struct {
 
 // ScalingConstraintSpec defines the specification of the ScalingConstraint.
 type ScalingConstraintSpec struct {
-	// DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level.
-	// +optional
-	DefaultBackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
-	// ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool.
-	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
-	// ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advice.
-	// It allows a consumer to accept or reject the advice by checking the ConsumerID for which the scaling advice has been created.
-	// +optional
-	ConsumerID string `json:"consumerID,omitempty"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools,omitempty"`
+	// NodeTemplates is the slice of all NodeTemplates used within the scaling constraint spec.
+	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 }
 
 // GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
@@ -74,49 +66,78 @@ type ScalingConstraintStatus struct {
 // NodePool defines a node pool configuration for a cluster.
 type NodePool struct {
 	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
+	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
+	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 	// Quota defines the quota for the node pool.
-	Quota corev1.ResourceList `json:"quota,omitempty"`
-	// ScaleInPolicy defines the scale in policy for this node pool.
 	// +optional
-	ScaleInPolicy *ScaleInPolicy `json:"scaleInPolicy,omitempty"`
-	// BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool.
-	BackoffPolicy *BackoffPolicy `json:"defaultBackoffPolicy,omitempty"`
+	Quota corev1.ResourceList `json:"quota,omitempty"`
 	// Name is the name of the node pool. It must be unique within the cluster.
+	// +required
 	Name string `json:"name"`
 	// Region is the name of the region.
+	// +required
 	Region string `json:"region"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
+	// +optional
 	Taints []corev1.Taint `json:"taints,omitempty"`
 	// AvailabilityZones is a list of availability zones for the node pool.
 	AvailabilityZones []string `json:"availabilityZones"`
-	// NodeTemplates is a slice of NodeTemplate.
-	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 	// Priority is the priority of the node pool.
-	Priority int32 `json:"priority"`
+	// +optional
+	Priority int32 `json:"priority,omitzero"`
+	// Requirements encapsulates the slice of requirement selectors for this NodePool
+	// +optional
+	Requirements []NodePoolRequirement `json:"requirements,omitempty"`
 }
 
-// GetNodePlacements computes and returns all the possible `NodePlacement`s for this NodePool.
-func (p *NodePool) GetNodePlacements() []NodePlacement {
-	placements := make([]NodePlacement, 0, len(p.NodeTemplates)*len(p.AvailabilityZones))
-	for _, nt := range p.NodeTemplates {
-		for _, az := range p.AvailabilityZones {
-			placements = append(placements, NodePlacement{
-				PoolName:         p.Name,
-				TemplateName:     nt.Name,
-				InstanceType:     nt.InstanceType,
-				Region:           p.Region,
-				AvailabilityZone: az,
-			})
-		}
-	}
-	return placements
+// NodePoolRequirement is a requirement selector that encapsulates values, a key, and an operator
+// that relates the key and values.
+type NodePoolRequirement struct {
+	// Priority represents the priority of this requirement. Higher values have greater priority.
+	// +optional
+	Priority int32 `json:"priority,omitzero"`
+	// Key is the label key that the selector applies to.
+	// +required
+	Key string `json:"key"`
+	// Operator represents a key's relationship to a set of values.
+	// Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+	// +required
+	Operator NodePoolRequirementOperator `json:"operator"`
+	// Values is an array of string values. If the operator is "In" or "NotIn",
+	// the values array must be non-empty. If the operator is "Exists" or "DoesNotExist:,
+	// the values array must be empty. If the operator is "Gt" or "Lt", the values
+	// array must have a single element, which will be interpreted as an integer.
+	// This array is replaced during a strategic merge patch.
+	// +optional
+	// +listType=atomic
+	Values []string `json:"values,omitempty"`
 }
+
+// NodePoolRequirementOperator is the set of operators that can be used in a [NodePoolRequirement]
+// +enum
+type NodePoolRequirementOperator string
+
+const (
+	// NodePoolRequirementOpIn is the enum constant for the "In" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpIn NodePoolRequirementOperator = "In"
+	// NodePoolRequirementOpNotIn is the enum constant for the "NotIn" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpNotIn NodePoolRequirementOperator = "NotIn"
+	// NodePoolRequirementOpExists is the enum constant for the "Exist" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpExists NodePoolRequirementOperator = "Exists"
+	// NodePoolRequirementOpDoesNotExist is the enum constant for the "DoesNotExist" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpDoesNotExist NodePoolRequirementOperator = "DoesNotExist"
+	// NodePoolRequirementOpGt is the enum constant for the "Gt" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpGt NodePoolRequirementOperator = "Gt"
+	// NodePoolRequirementOpLt is the enum constant for the "Lt" operator used within a [NodePoolRequirement].
+	NodePoolRequirementOpLt NodePoolRequirementOperator = "Lt"
+)
 
 // NodeTemplate defines a node template configuration for an instance type.
-// All nodes of a certain instance type in a node pool will be created using this template.
+// There can be different NodeTemplate's for a [ScalingConstraintSpec] for the same instance type.
+// This is permitted to allow the opportunity for different SystemReserved.
 type NodeTemplate struct {
 	// Capacity defines the capacity of resources that are available for this instance type.
 	Capacity corev1.ResourceList `json:"capacity"`
@@ -129,14 +150,12 @@ type NodeTemplate struct {
 	// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
 	// +optional
 	SystemReserved corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
-	// Name is the name of the node template.
+	// Name is the name of the node template. Name is unique within a particular [ScalingConstraintSpec]
 	Name string `json:"name"`
 	// Architecture is the architecture of the instance type.
 	Architecture string `json:"architecture"`
 	// InstanceType is the instance type of the node template.
 	InstanceType string `json:"instanceType"`
-	// Priority is the priority of the node template. The lower the number, the higher the priority.
-	Priority int32 `json:"priority"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes,omitzero"`
 }
@@ -157,17 +176,4 @@ type InstancePricing struct {
 	// +kubebuilder:validation:Type=number
 	// +kubebuilder:validation:Format=double
 	Price float64 `json:"price"`
-}
-
-// BackoffPolicy defines the backoff policy to be used when backing off from suggesting an instance type + zone in subsequence scaling advice upon failed scaling operation.
-type BackoffPolicy struct {
-	// InitialBackoffDuration defines the lower limit of the backoff duration.
-	InitialBackoffDuration metav1.Duration `json:"initialBackoff"`
-	// MaxBackoffDuration defines the upper limit of the backoff duration.
-	MaxBackoffDuration metav1.Duration `json:"maxBackoff"`
-}
-
-// ScaleInPolicy defines the scale in policy to be used when scaling in a node pool.
-type ScaleInPolicy struct {
-	//TODO design this better.
 }
