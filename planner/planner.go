@@ -86,7 +86,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	response.ScaleInPlan = scaleInResult.ScaleInPlan
 
 	// Use the post-scale-in view as the starting point for scale-out.
-	// If scale-in produced no usable view (e.g. ErrNoScaleInPlan), fall back to the original request view.
+	// If scale-in produced no usable view, fall back to the original request view.
 	scaleOutView := scaleInResult.View
 	if scaleOutView == nil {
 		scaleOutView = requestView
