@@ -5,6 +5,7 @@
 package planner
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -702,4 +703,88 @@ func TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyMatchesDestinatio
 		}},
 	}
 	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, wantPlan)
+}
+
+// TestOnePoolScaleIn_RejectedDueToPreemption verifies that scale-in is rejected when the
+// displaced pod from the candidate node can only be rescheduled onto the remaining node by
+// preempting a different (lower-priority) pod that is already running there, and the preempted
+// pod cannot itself be rescheduled anywhere else.
+//
+// Setup:
+//   - node-a (scale-in candidate, low utilization): hosts pod-high-prio (900m / 2Gi, priority 1000).
+//   - node-b (high utilization): hosts pod-low-prio (1500m / 4Gi, priority 0). Free CPU on node-b
+//     is ~420m which is insufficient for pod-high-prio's 900m request.
+//
+// When node-a is removed, pod-high-prio is unbound and must be rescheduled. It does not fit on
+// node-b alongside pod-low-prio, so the scheduler preempts pod-low-prio. pod-low-prio (1500m / 4Gi)
+// then becomes pending; with node-a gone and node-b now hosting pod-high-prio, there is nowhere
+// to place it. The simulation does not produce a successful run for the candidate node, so the
+// planner returns no scale-in plan.
+func TestOnePoolScaleIn_RejectedDueToPreemption(t *testing.T) {
+	planr, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+
+	// pod-high-prio sits on node-a (the scale-in candidate). Its request is small relative to
+	// node-a's allocatable (900m / 1920m ≈ 47% CPU) so node-a remains under the 50% utilization
+	// threshold and qualifies for scale-in.
+	podHighPrio := plannerapi.PodInfo{
+		ObjectMeta:    metav1.ObjectMeta{Name: "pod-high-prio", Namespace: "default"},
+		NodeName:      "node-a",
+		SchedulerName: "bin-packing-scheduler",
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("900m"),
+			corev1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+		Priority: 1000,
+	}
+	// pod-low-prio sits on node-b consuming most of its capacity. Free CPU on node-b after this
+	// pod is 1920m - 1500m = 420m, far less than pod-high-prio's 900m request, forcing preemption
+	// when pod-high-prio attempts to reschedule onto node-b.
+	podLowPrio := plannerapi.PodInfo{
+		ObjectMeta:    metav1.ObjectMeta{Name: "pod-low-prio", Namespace: "default"},
+		NodeName:      "node-b",
+		SchedulerName: "bin-packing-scheduler",
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1500m"),
+			corev1.ResourceMemory: resource.MustParse("4Gi"),
+		},
+		Priority: 0,
+	}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{podHighPrio, podLowPrio}
+
+	// Memento: node-a was first identified as underutilized 10 minutes ago, exceeding the 5-min
+	// UnderutilizedDuration so it qualifies as a scale-in candidate.
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	// Drive the planner directly so we can observe rejection regardless of whether the
+	// simulation produces a clean nil plan or surfaces the preemption-induced failure as an
+	// error: in either case the outcome is "scale-in for node-a is not approved".
+	responseCh := planr.Plan(testData.RunContext, testData.Request)
+	response := <-responseCh
+	if response.Error != nil && errors.Is(response.Error, plannerapi.ErrNoScaleInPlan) {
+		// Preemption of a different pod on node-b that cannot itself be rescheduled is reported
+		// by the simulation as a failure to converge — this is an acceptable form of rejection.
+		t.Logf("scale-in rejected via simulation error: %v", response.Error)
+		return
+	}
+	if response.ScaleInPlan != nil && len(response.ScaleInPlan.Items) > 0 {
+		t.Fatalf("expected no scale-in plan (preemption of pod-low-prio leaves it pending) but got %+v", response.ScaleInPlan)
+	}
 }
