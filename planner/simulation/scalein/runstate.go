@@ -162,9 +162,7 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 				return
 			}
 		case ev.Action == "Preempting" && ev.Reason == "Preempted":
-			if err = r.handlePreemptedPodEvent(ev); err != nil {
-				return
-			}
+			r.handlePreemptedPodEvent(ev)
 		case ev.Reason == "FailedScheduling":
 			if err = r.handleFailedSchedulingEvent(ev); err != nil {
 				return
@@ -187,9 +185,6 @@ func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) error {
 	if !ok {
 		return fmt.Errorf("object %T with name %q is not a Pod", obj, podNsName)
 	}
-	// if pod.Spec.NodeName != "" {
-	// 	return fmt.Errorf("failed-scheduling pod %q unexpectedly has node name %q assigned", podNsName, pod.Spec.NodeName)
-	// }
 	if r.pendingPods.Has(podNsName) {
 		r.numUnchangedTrackAttempts = 0
 		r.pendingPods.Delete(podNsName)
@@ -200,27 +195,15 @@ func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) error {
 	return nil
 }
 
-func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) error {
+func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
 	log.V(4).Info("Preempted pod event", "podNamespacedName", podNsName, "eventNote", ev.Note)
-	// obj, err := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
-	// if err != nil {
-	// 	return err
-	// }
-	// pod, ok := obj.(*corev1.Pod)
-	// if !ok {
-	// 	return fmt.Errorf("object %T with name %q is not a Pod", obj, podNsName)
-	// }
-	// if pod.Spec.NodeName != "" {
-	// 	return fmt.Errorf("preempted pod %q still has node name %q assigned", podNsName, pod.Spec.NodeName)
-	// }
 	r.pendingPods.Insert(podNsName)
 	r.numUnchangedTrackAttempts = 0
 	log.V(4).Info("Added pod to RunState.pendingPods and reset numUnchangedTrackAttempts",
 		"podNamespacedName", podNsName,
 		"pendingPodsCount", len(r.pendingPods))
-	return nil
 }
 
 func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) error {
