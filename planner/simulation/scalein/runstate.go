@@ -13,7 +13,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/viewutil"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
@@ -83,7 +82,7 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 	}
 
 	for _, pod := range pods {
-		if isDaemonSetPod(pod) {
+		if podutil.IsDaemonSetPod(pod) {
 			if err = r.view.DeleteObject(r.ctx, typeinfo.PodsDescriptor.GVK, cache.NewObjectName(pod.Namespace, pod.Name)); err != nil {
 				return err
 			}
@@ -158,33 +157,21 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 		r.numReceivedEvents++
 		switch {
 		case ev.Action == "Binding" && ev.Reason == "Scheduled":
-			if err = r.handleScheduledPodEvent(ev); err != nil {
-				return
-			}
+			r.handleScheduledPodEvent(ev)
 		case ev.Action == "Preempting" && ev.Reason == "Preempted":
 			r.handlePreemptedPodEvent(ev)
 		case ev.Reason == "FailedScheduling":
-			if err = r.handleFailedSchedulingEvent(ev); err != nil {
-				return
-			}
+			r.handleFailedSchedulingEvent(ev)
 		}
 	}
 
 	return
 }
 
-func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) error {
+func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
 	log.V(4).Info("FailedScheduling pod event", "podNamespacedName", podNsName, "eventNote", ev.Note)
-	obj, err := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
-	if err != nil {
-		return err
-	}
-	_, ok := obj.(*corev1.Pod)
-	if !ok {
-		return fmt.Errorf("object %T with name %q is not a Pod", obj, podNsName)
-	}
 	if r.pendingPods.Has(podNsName) {
 		r.numUnchangedTrackAttempts = 0
 		r.pendingPods.Delete(podNsName)
@@ -192,7 +179,6 @@ func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) error {
 		log.V(4).Info("Removed pod from RunState.pendingPods and added to currentUnscheduledPods on FailedScheduling",
 			"podNamespacedName", podNsName, "pendingPodsCount", r.pendingPods.Len())
 	}
-	return nil
 }
 
 func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
@@ -206,28 +192,16 @@ func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 		"pendingPodsCount", len(r.pendingPods))
 }
 
-func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) error {
+func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
 	log.V(4).Info("PodScheduled event.", "podNamespacedName", podNsName, "eventNote", ev.Note)
-	obj, err := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName())
-	if err != nil {
-		return err
-	}
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		return fmt.Errorf("object %T and name %q is not a Pod", pod, podNsName)
-	}
-	if pod.Spec.NodeName == "" {
-		return fmt.Errorf("scheduledPod %q has no assigned node name even with binding event note %q", podNsName, ev.Note)
-	}
 	r.currentUnscheduledPods.Delete(podNsName)
 	r.pendingPods.Delete(podNsName)
 	r.numUnchangedTrackAttempts = 0
 	log.V(4).Info("Removed pod from RunState.podsToReschedule, RunState.pendingPods and reset numUnchangedTrackAttempts",
 		"podNamespacedName", podNsName,
 		"podsToRescheduleCount", len(r.currentUnscheduledPods))
-	return nil
 }
 
 func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled sets.Set[commontypes.NamespacedName], err error) {
@@ -244,13 +218,4 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled set
 		}
 	}
 	return
-}
-
-func isDaemonSetPod(pod corev1.Pod) bool {
-	for _, ref := range pod.OwnerReferences {
-		if ref.Kind == "DaemonSet" && ref.Controller != nil && *ref.Controller {
-			return true
-		}
-	}
-	return false
 }

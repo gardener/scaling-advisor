@@ -212,3 +212,12 @@ func HasNonEvictablePod(pods []corev1.Pod) bool {
 	}
 	return false
 }
+
+func IsDaemonSetPod(pod corev1.Pod) bool {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Kind == "DaemonSet" && ref.Controller != nil && *ref.Controller {
+			return true
+		}
+	}
+	return false
+}
