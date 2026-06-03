@@ -187,6 +187,40 @@ func Node(name string) *corev1.Node {
 	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
 }
 
+// PreemptionScenarioPods builds the (pod-high-prio on node-a, pod-low-prio on node-b) workload
+// used by the scale-in/preemption tests. lowPrioOwnerRefs lets the caller mark pod-low-prio as
+// controller-owned (so a Deployment/ReplicaSet would create a replacement after preemption) or
+// bare (nothing is recreated). Capacity sizing forces preemption when pod-high-prio is displaced
+// from node-a: pod-high-prio (900m) cannot fit alongside pod-low-prio (1500m) on node-b's 1920m
+// allocatable, but does fit by itself once pod-low-prio is preempted.
+func PreemptionScenarioPods(lowPrioOwnerRefs []metav1.OwnerReference) (high, low plannerapi.PodInfo) {
+	high = plannerapi.PodInfo{
+		ObjectMeta:    metav1.ObjectMeta{Name: "pod-high-prio", Namespace: "default"},
+		NodeName:      "node-a",
+		SchedulerName: "bin-packing-scheduler",
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("900m"),
+			corev1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+		Priority: 1000,
+	}
+	low = plannerapi.PodInfo{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "pod-low-prio",
+			Namespace:       "default",
+			OwnerReferences: lowPrioOwnerRefs,
+		},
+		NodeName:      "node-b",
+		SchedulerName: "bin-packing-scheduler",
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1500m"),
+			corev1.ResourceMemory: resource.MustParse("4Gi"),
+		},
+		Priority: 0,
+	}
+	return high, low
+}
+
 // ---- request / config constructors ------------------------------------------
 
 // RequestOpts configures a test planner request.

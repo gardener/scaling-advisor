@@ -12,6 +12,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/testutil"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/volutil"
@@ -705,22 +706,22 @@ func TestOnePoolScaleIn_PodWithSimulatedWFFCPVC_AllowedTopologyMatchesDestinatio
 	testutil.ObtainAndAssertScaleInPlan(t, planner, &testData, wantPlan)
 }
 
-// TestOnePoolScaleIn_RejectedDueToPreemption verifies that scale-in is rejected when the
-// displaced pod from the candidate node can only be rescheduled onto the remaining node by
-// preempting a different (lower-priority) pod that is already running there, and the preempted
-// pod cannot itself be rescheduled anywhere else.
+// TestOnePoolScaleIn_RejectedDueToPreemption_ControllerOwnedVictim verifies that scale-in is
+// rejected when removing the candidate node forces a controller-owned pod on the remaining node
+// to be preempted, and the controller's replacement pod cannot be rescheduled anywhere.
 //
 // Setup:
 //   - node-a (scale-in candidate, low utilization): hosts pod-high-prio (900m / 2Gi, priority 1000).
-//   - node-b (high utilization): hosts pod-low-prio (1500m / 4Gi, priority 0). Free CPU on node-b
-//     is ~420m which is insufficient for pod-high-prio's 900m request.
+//   - node-b (high utilization): hosts pod-low-prio (1500m / 4Gi, priority 0) owned by a
+//     ReplicaSet. Free CPU on node-b is ~420m, insufficient for pod-high-prio's 900m request.
 //
-// When node-a is removed, pod-high-prio is unbound and must be rescheduled. It does not fit on
-// node-b alongside pod-low-prio, so the scheduler preempts pod-low-prio. pod-low-prio (1500m / 4Gi)
-// then becomes pending; with node-a gone and node-b now hosting pod-high-prio, there is nowhere
-// to place it. The simulation does not produce a successful run for the candidate node, so the
-// planner returns no scale-in plan.
-func TestOnePoolScaleIn_RejectedDueToPreemption(t *testing.T) {
+// Flow: removing node-a unbinds pod-high-prio. The kube-scheduler can only place it on node-b
+// by preempting pod-low-prio, which the scheduler then deletes. Because pod-low-prio has a
+// controller owner, the simulation re-creates it (modeling the ReplicaSet controller). The
+// re-created pod cannot fit anywhere — node-a is gone and node-b is now occupied by
+// pod-high-prio — so its rescheduling fails. IsSimulationSuccess returns false and the planner
+// emits no scale-in plan.
+func TestOnePoolScaleIn_RejectedDueToPreemption_ControllerOwnedVictim(t *testing.T) {
 	planr, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset:                          samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
@@ -735,32 +736,14 @@ func TestOnePoolScaleIn_RejectedDueToPreemption(t *testing.T) {
 		testutil.MakeNodeInfo("node-b"),
 	}
 
-	// pod-high-prio sits on node-a (the scale-in candidate). Its request is small relative to
-	// node-a's allocatable (900m / 1920m ≈ 47% CPU) so node-a remains under the 50% utilization
-	// threshold and qualifies for scale-in.
-	podHighPrio := plannerapi.PodInfo{
-		ObjectMeta:    metav1.ObjectMeta{Name: "pod-high-prio", Namespace: "default"},
-		NodeName:      "node-a",
-		SchedulerName: "bin-packing-scheduler",
-		AggregatedRequests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("900m"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		},
-		Priority: 1000,
-	}
-	// pod-low-prio sits on node-b consuming most of its capacity. Free CPU on node-b after this
-	// pod is 1920m - 1500m = 420m, far less than pod-high-prio's 900m request, forcing preemption
-	// when pod-high-prio attempts to reschedule onto node-b.
-	podLowPrio := plannerapi.PodInfo{
-		ObjectMeta:    metav1.ObjectMeta{Name: "pod-low-prio", Namespace: "default"},
-		NodeName:      "node-b",
-		SchedulerName: "bin-packing-scheduler",
-		AggregatedRequests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1500m"),
-			corev1.ResourceMemory: resource.MustParse("4Gi"),
-		},
-		Priority: 0,
-	}
+	controllerTrue := true
+	podHighPrio, podLowPrio := testutil.PreemptionScenarioPods([]metav1.OwnerReference{{
+		APIVersion: "apps/v1",
+		Kind:       "ReplicaSet",
+		Name:       "pod-low-prio-rs",
+		UID:        "pod-low-prio-rs-uid",
+		Controller: &controllerTrue,
+	}})
 	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{podHighPrio, podLowPrio}
 
 	// Memento: node-a was first identified as underutilized 10 minutes ago, exceeding the 5-min
@@ -779,12 +762,129 @@ func TestOnePoolScaleIn_RejectedDueToPreemption(t *testing.T) {
 	responseCh := planr.Plan(testData.RunContext, testData.Request)
 	response := <-responseCh
 	if response.Error != nil && errors.Is(response.Error, plannerapi.ErrNoScaleInPlan) {
-		// Preemption of a different pod on node-b that cannot itself be rescheduled is reported
-		// by the simulation as a failure to converge — this is an acceptable form of rejection.
 		t.Logf("scale-in rejected via simulation error: %v", response.Error)
 		return
 	}
 	if response.ScaleInPlan != nil && len(response.ScaleInPlan.Items) > 0 {
-		t.Fatalf("expected no scale-in plan (preemption of pod-low-prio leaves it pending) but got %+v", response.ScaleInPlan)
+		t.Fatalf("expected no scale-in plan (controller-owned pod-low-prio's replacement cannot reschedule) but got %+v", response.ScaleInPlan)
 	}
+}
+
+// TestOnePoolScaleIn_ApprovedAfterBarePodPreemption verifies the complementary case to
+// TestOnePoolScaleIn_RejectedDueToPreemption_ControllerOwnedVictim: when the preempted pod is
+// bare (no controller owner), no replacement is created in a real cluster, so the simulation
+// has no follow-up scheduling to model. The displaced high-priority pod is successfully bound
+// on the remaining node and the scale-in is approved.
+//
+// Setup is identical to the controller-owned case except pod-low-prio carries no
+// OwnerReferences. After preemption the simulation does not attempt to recreate it; with only
+// pod-high-prio left to place on node-b, scheduling succeeds and the simulation reports
+// IsSimulationSuccess=true for node-a.
+func TestOnePoolScaleIn_ApprovedAfterBarePodPreemption(t *testing.T) {
+	planr, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{
+		testutil.MakeNodeInfo("node-a"),
+		testutil.MakeNodeInfo("node-b"),
+	}
+
+	podHighPrio, podLowPrio := testutil.PreemptionScenarioPods(nil)
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{podHighPrio, podLowPrio}
+
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	// Bare pod-low-prio gets preempted and is gone forever (no controller to recreate it). The
+	// scale-in succeeds: pod-high-prio is rescheduled onto node-b and node-a is approved.
+	wantPlan := &sacorev1alpha1.ScaleInPlan{
+		Items: []sacorev1alpha1.ScaleInItem{{
+			NodePlacement: testData.NodePlacements[0],
+			NodeName:      "node-a",
+		}},
+	}
+	testutil.ObtainAndAssertScaleInPlan(t, planr, &testData, wantPlan)
+}
+
+// TestOnePoolScaleIn_ApprovedWithControllerOwnedVictimReschedulable is the positive complement
+// to TestOnePoolScaleIn_RejectedDueToPreemption_ControllerOwnedVictim: the controller-owned
+// preempted pod CAN be rescheduled, this time onto a third node that has spare capacity. The
+// scale-in is therefore approved.
+//
+// Setup:
+//   - node-a (scale-in candidate, low utilization) and node-b (high utilization) both carry the
+//     label "tier=primary". node-a hosts pod-high-prio (900m / 2Gi, priority 1000) which has
+//     NodeSelector{tier=primary}, restricting it to node-a or node-b. node-b hosts pod-low-prio
+//     (1500m / 4Gi, priority 0) owned by a ReplicaSet, with no NodeSelector.
+//   - node-c is empty, has no "tier" label, and is annotated with ScaleInDisabled so it is not
+//     considered as a scale-in candidate. It is the only node where pod-low-prio's recreated
+//     replica can land — pod-high-prio cannot go there because of its NodeSelector.
+//
+// Flow: removing node-a unbinds pod-high-prio. Its NodeSelector forces it onto node-b (node-c
+// is excluded), but node-b doesn't have room alongside pod-low-prio, so the scheduler preempts
+// pod-low-prio. The simulation re-creates pod-low-prio (modeling its owning ReplicaSet); the
+// kube-scheduler schedules the replacement onto node-c which has plenty of capacity. All
+// displaced pods land successfully → IsSimulationSuccess=true → scale-in for node-a is approved.
+func TestOnePoolScaleIn_ApprovedWithControllerOwnedVictimReschedulable(t *testing.T) {
+	planr, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
+		PoolPreset:                          samples.PoolPreset1P,
+		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{},
+		Factories:                           NewFactories(),
+	})
+	if !ok {
+		return
+	}
+
+	// nodes a and b carry the "tier=primary" label that pod-high-prio's NodeSelector requires;
+	// node-c does not, so pod-high-prio cannot land there. node-c is also annotated as
+	// scale-in-disabled so the candidate selector ignores it (otherwise it would be eligible
+	// alongside node-a and the simulator could pick it at random).
+	nodeA := testutil.MakeNodeInfo("node-a")
+	nodeA.Labels["tier"] = "primary"
+	nodeB := testutil.MakeNodeInfo("node-b")
+	nodeB.Labels["tier"] = "primary"
+	nodeC := testutil.MakeNodeInfo("node-c")
+	nodeC.Annotations = map[string]string{commonconstants.AnnotationScaleInDisabledKey: "true"}
+	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{nodeA, nodeB, nodeC}
+
+	controllerTrue := true
+	podHighPrio, podLowPrio := testutil.PreemptionScenarioPods([]metav1.OwnerReference{{
+		APIVersion: "apps/v1",
+		Kind:       "ReplicaSet",
+		Name:       "pod-low-prio-rs",
+		UID:        "pod-low-prio-rs-uid",
+		Controller: &controllerTrue,
+	}})
+	// Constrain pod-high-prio to nodes a/b so it must preempt rather than spill onto node-c.
+	podHighPrio.NodeSelector = map[string]string{"tier": "primary"}
+	testData.Request.Snapshot.Pods = []plannerapi.PodInfo{podHighPrio, podLowPrio}
+
+	testData.Request.Memento = plannerapi.Memento{
+		ScaleIn: plannerapi.ScaleInMemento{
+			LastIdentifiedUnneededNodes: map[string]time.Time{
+				"node-a": time.Now().Add(-10 * time.Minute),
+			},
+		},
+	}
+
+	// pod-low-prio's recreated replica reschedules onto node-c, so the scale-in for node-a is
+	// approved.
+	wantPlan := &sacorev1alpha1.ScaleInPlan{
+		Items: []sacorev1alpha1.ScaleInItem{{
+			NodePlacement: testData.NodePlacements[0],
+			NodeName:      "node-a",
+		}},
+	}
+	testutil.ObtainAndAssertScaleInPlan(t, planr, &testData, wantPlan)
 }
