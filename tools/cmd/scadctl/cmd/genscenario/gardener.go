@@ -842,6 +842,8 @@ func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
 	return
 }
 
+// Source: (this is just a simplified version of autoscaler priority expander parsing)
+// https://github.com/kubernetes/autoscaler/blob/212f88b4e4f3ca95902d5c186197a46790c7bacc/cluster-autoscaler/expander/priority/priority.go#L91
 func constructPrioritiesFromConfigMap(caPriorityCM corev1.ConfigMap) (caPrioritiesMap, error) {
 	priorityStr, found := caPriorityCM.Data["priorities"]
 	if !found {
@@ -850,7 +852,7 @@ func constructPrioritiesFromConfigMap(caPriorityCM corev1.ConfigMap) (caPrioriti
 
 	var config map[int][]string
 	if err := yaml.Unmarshal([]byte(priorityStr), &config); err != nil {
-		return nil, fmt.Errorf("can't parse YAML with priorities in the configmap: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal priorities configmap: %v", err)
 	}
 	priorities := make(caPrioritiesMap)
 	for prio, reList := range config {
@@ -885,7 +887,6 @@ func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacore
 		Architecture: ptr.Deref(worker.Machine.Architecture, ""),
 		InstanceType: worker.Machine.Type,
 		Priority:     ptr.Deref(worker.Priority, 0),
-		// TODO: add pool.NodeTemplate.VirtualCapacity
 		Capacity:     a.constructNodeTemplateCapacity(worker.ProviderConfig, worker.Machine.Type),
 		KubeReserved: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
@@ -895,10 +896,12 @@ func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacore
 }
 
 func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtension, machineType string) (capacity corev1.ResourceList) {
+	// Capacity currently consists of data from the cloudprofile
 	capacity = a.instanceTypeToCapacity[machineType]
 	var (
-		providerConfigData map[string]any
-		virtualCapacity    corev1.ResourceList
+		providerConfigData  map[string]any
+		providerCfgCapacity corev1.ResourceList
+		virtualCapacity     corev1.ResourceList
 	)
 	if providerConfig == nil {
 		return
@@ -912,6 +915,23 @@ func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtens
 		return
 	}
 
+	// Update capacity with 'providerConfig.nodeTemplate.capacity'
+	capacityData, _, err := unstructured.NestedMap(nodeTemplate, "capacity")
+	if err != nil {
+		return
+	}
+
+	capacityBytes, err := stdjson.Marshal(capacityData)
+	if err != nil {
+		return
+	}
+	if err = stdjson.Unmarshal(capacityBytes, &providerCfgCapacity); err != nil {
+		return
+	}
+
+	maps.Copy(capacity, providerCfgCapacity)
+
+	// Update capacity with 'providerConfig.nodeTemplate.virtualCapacity'
 	virtualCapacityData, _, err := unstructured.NestedMap(nodeTemplate, "virtualCapacity")
 	if err != nil {
 		return
@@ -926,6 +946,7 @@ func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtens
 	}
 
 	maps.Copy(capacity, virtualCapacity)
+
 	return
 }
 

@@ -267,8 +267,8 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 // PodOwnerInfo encapsulates the different owners for a pod object with the minimal
 // metadata necessary for reconstruction of the owner object. This includes owners such
 // as 'ReplicaSet', 'StatefulSet', 'Job' etc.
-// This data is currently used to allow for the benchmarking harness to reconstruct the
-// pod owners to allow for cluster-autoscaler to function properly for scale-in activities.
+// This data is currently used by the benchmarking harness to reconstruct the
+// pod owners, allowing cluster-autoscaler to perform scale-in correctly.
 type PodOwnerInfo struct {
 	Selector        *metav1.LabelSelector `json:"selector,omitzero"`
 	TargetReplicas  *int32                `json:"targetReplicas,omitzero"`
