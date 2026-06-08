@@ -219,7 +219,7 @@ var gardenerCmd = &cobra.Command{
 
 func (sc *ShootCoordinate) getFullyQualifiedName() string {
 	trimmedLandscape := strings.TrimPrefix(sc.Landscape, "sap-landscape-")
-	return fmt.Sprintf("%s:%s:%s", trimmedLandscape, sc.Project, sc.Shoot)
+	return fmt.Sprintf("%s_%s_%s", trimmedLandscape, sc.Project, sc.Shoot)
 }
 
 // ---------------------------------------------------------------------------------
