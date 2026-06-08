@@ -41,16 +41,35 @@ type RunState struct {
 	runNum                    uint32
 }
 
-// FreshRunState returns a fresh RunState whose status is set to [plannerapi.ActivityStatusPending]
+// FreshRunState returns a zero-valued RunState whose status is [plannerapi.ActivityStatusPending].
+// All other fields are left zero; the caller must invoke [RunState.Init] before any other method
+// (which transitions the status to [plannerapi.ActivityStatusRunning] and populates the view,
+// pod-tracking sets and snapshot of initial pod specs).
 func FreshRunState() RunState {
 	return RunState{
 		status: plannerapi.ActivityStatusPending,
 	}
 }
 
-// Init initializes this RunState from the given params, changes the [RunState]'s [plannerapi.ActivityStatus] to
-// [plannerapi.ActivityStatusRunning] and returns the child run context or an error.
-// This method must be invoked before calling other methods of [RunState]
+// Init prepares this RunState for a single simulation run against the given view and must be
+// called before any other RunState method. It:
+//
+//   - Stores the run identity (name, runNum, traceDir) and view on the receiver.
+//   - Derives a child context that carries a logger annotated with simulationName and runNum;
+//     the derived context is returned so callers can pass it to subsequent operations.
+//   - Transitions the status from [plannerapi.ActivityStatusPending] to
+//     [plannerapi.ActivityStatusRunning].
+//   - Lists every pod currently in the view and snapshots a deep copy of each into
+//     initialPodSpecs. This snapshot is the source of truth for handlePreemptedPodEvent when
+//     re-creating a victim that the kube-scheduler has already deleted.
+//   - Computes initialUnscheduledPods (the set of pods that were unscheduled at run start) and
+//     seeds currentUnscheduledPods to a copy of it. IsSimulationSuccess later compares
+//     currentUnscheduledPods against initialUnscheduledPods to detect newly unscheduled pods.
+//   - Initializes pendingPods to an empty set; pods are inserted into it as they are unbound by
+//     [RunState.RemoveNodeAndUnbindPods] or as preemption victims are observed.
+//
+// Returns the child context. An error is returned (and the receiver left partially populated)
+// only if listing pods from the view fails.
 func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, view minkapi.View, traceDir string) (context.Context, error) {
 	r.name, r.runNum, r.status, r.view, r.traceDir = name, runNum, plannerapi.ActivityStatusRunning, view, traceDir
 	log := logr.FromContextOrDiscard(parentCtx).WithValues("simulationName", name, "runNum", runNum)
@@ -75,7 +94,20 @@ func (r *RunState) Init(parentCtx context.Context, name string, runNum uint32, v
 	return r.ctx, nil
 }
 
-// IsSimulationSuccess reports whether all displaced pods were successfully rescheduled.
+// IsSimulationSuccess reports whether the simulation has reached a successful steady state.
+// Two conditions must hold:
+//
+//   - pendingPods is empty: every pod that was unbound by [RunState.RemoveNodeAndUnbindPods]
+//     or recreated by handlePreemptedPodEvent has either been rescheduled (a Scheduled event
+//     was observed and removed it from pendingPods) or fell out of pendingPods via
+//     handleFailedSchedulingEvent.
+//   - No pod is unscheduled now that wasn't already unscheduled at run start: every entry in
+//     currentUnscheduledPods must be in initialUnscheduledPods. A pod that becomes unscheduled
+//     during the run (e.g., a displaced pod that the scheduler couldn't place anywhere) fails
+//     this check and indicates that scaling in the candidate node would leave a workload
+//     stranded.
+//
+// Both conditions are necessary; either one alone is insufficient.
 func (r *RunState) IsSimulationSuccess() bool {
 	if r.pendingPods.Len() > 0 {
 		return false
@@ -88,7 +120,24 @@ func (r *RunState) IsSimulationSuccess() bool {
 	return true
 }
 
-// RemoveNodeAndUnbindPods removes the node from the view and unbinds all pods scheduled on it.
+// RemoveNodeAndUnbindPods simulates removing the given node from the cluster: it disassociates
+// every pod scheduled on that node from the node, then deletes the node from the view. The
+// kube-scheduler observing the resulting state will treat the displaced pods as unscheduled and
+// attempt to reschedule them onto remaining nodes — that is the rescheduling pressure the
+// scale-in simulation is designed to verify.
+//
+// For each pod found on the node, the behavior depends on the pod's owner:
+//
+//   - DaemonSet pods are deleted from the view outright. DaemonSet replicas follow the node, so
+//     a DaemonSet replacement on a remaining node would already have been counted at start; we
+//     do not try to reschedule them.
+//   - All other pods have their bound volumes unbound (via [volutil.UnbindPodVolumes]) so the
+//     kube-scheduler's VolumeBinding plugin re-evaluates volume placement, then have their
+//     Spec.NodeName cleared via UpdateObject, and are inserted into pendingPods so the run
+//     tracks their rescheduling outcome.
+//
+// Finally the node itself is deleted from the view. Returns the first error encountered while
+// listing pods, unbinding volumes, updating pods, or deleting the node.
 func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 	log := logr.FromContextOrDiscard(r.ctx)
 
@@ -126,19 +175,33 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 	return nil
 }
 
-// Track is used to track the RunState of the simulation by recording the pod-node binding(s) if any made in this
-// [RunState]'s view by the `kube-scheduler`. It returns true if the RunState has not changed over many Track
-// attempts that exceed the given maxUnchangedTrackAttempts or an error.
+// Track inspects the kube-scheduler events accumulated in this [RunState]'s view since the
+// previous Track call and updates the simulation's pod-tracking sets accordingly. It signals
+// stabilization (no progress for too long) so the caller knows the simulation has reached a
+// steady state and can be terminated.
 //
-// Track does the following internally:
-//   - Increments numTrackAttempts and gets the last slice of events (if any) in the [minkapi.EventSink] of
-//     this RunState's [minkapi.View].
-//   - If the slice of events is empty, increment numUnchangedTrackAttempts.
-//     If the numUnchangedTrackAttempts > maxUnchangedTrackAttempts,
-//     then stabilized is considered as true and returned.
-//   - If the slice of event is not empty, reset numUnchangedTrackAttempts and also invoke Reset on the
-//     [minkapi.EventSink]
-//   - For each "Scheduled" event in the slice of events, remove scheduled pod name from podsToReschedule
+// Track does the following:
+//   - Increments numTrackAttempts.
+//   - Reads the current batch of events from the [minkapi.EventSink] of this RunState's view.
+//   - If the batch is empty, increments numUnchangedTrackAttempts. When numUnchangedTrackAttempts
+//     exceeds maxUnchangedTrackAttempts, the run is considered stabilized and (true, nil) is
+//     returned. The caller is expected to stop iterating once stabilized is true.
+//   - If the batch is non-empty, drains the EventSink (via Reset) before dispatching events; if
+//     the Reset itself fails, numUnchangedTrackAttempts is cleared and the error is returned.
+//   - For each event, dispatches by (Action, Reason) tuple:
+//     "Binding"/"Scheduled"     -> handleScheduledPodEvent: removes the pod from pendingPods and
+//     currentUnscheduledPods (the pod was successfully bound to a node).
+//     "Preempting"/"Preempted"  -> handlePreemptedPodEvent: re-creates the controller-owned
+//     victim pod in the view (modeling the workload controller) and tracks it in
+//     pendingPods so its rescheduling outcome is observed.
+//     reason == "FailedScheduling" -> handleFailedSchedulingEvent: if the pod was in pendingPods,
+//     moves it to currentUnscheduledPods (kube-scheduler could not place it).
+//     The dispatched handlers individually reset numUnchangedTrackAttempts when they observe
+//     real progress (a state change in the tracking sets), so the stabilization counter only
+//     advances during quiescent batches.
+//
+// Track returns (true, nil) when the run has stabilized, (false, err) on a backing-store error,
+// or (false, nil) when a batch was processed and the caller should poll again.
 func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err error) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	r.numTrackAttempts++
@@ -184,6 +247,16 @@ func (r *RunState) Track(maxUnchangedTrackAttempts int) (stabilized bool, err er
 	return
 }
 
+// handleFailedSchedulingEvent reacts to a kube-scheduler "FailedScheduling" event. The event
+// means the scheduler attempted to place the regarding pod and could not find a suitable node
+// (or, in the preemption case, found candidate victims but no feasible result).
+//
+// If the pod is currently in pendingPods (i.e., it is one we are waiting on), it is moved to
+// currentUnscheduledPods and removed from pendingPods. This advances the simulation's view of
+// "displaced pods that ultimately could not be placed" — exactly the set IsSimulationSuccess
+// uses to decide whether the run failed. numUnchangedTrackAttempts is reset to 0 because real
+// progress was observed; pods not in pendingPods (e.g., FailedScheduling events for pods we are
+// not tracking) are ignored without disturbing the stabilization counter.
 func (r *RunState) handleFailedSchedulingEvent(ev eventsv1.Event) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	podNsName := objutil.NamespacedNameFromEventRegarding(ev)
@@ -260,6 +333,12 @@ func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 		"pendingPodsCount", len(r.pendingPods))
 }
 
+// handleScheduledPodEvent reacts to a kube-scheduler "Binding/Scheduled" event. The event means
+// the scheduler successfully bound the regarding pod to a node. The pod is removed from both
+// pendingPods (it is no longer waiting to be rescheduled) and currentUnscheduledPods (it is no
+// longer unscheduled). numUnchangedTrackAttempts is reset to 0 because real progress was
+// observed. Removing from sets that don't contain the pod is a no-op, so this handler is safe
+// to call for any Scheduled event regardless of whether the pod was previously tracked.
 func (r *RunState) handleScheduledPodEvent(ev eventsv1.Event) {
 	log := logr.FromContextOrDiscard(r.ctx)
 	podNsName := objutil.NamespacedNameFromEventRegarding(ev)

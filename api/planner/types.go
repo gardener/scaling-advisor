@@ -51,7 +51,6 @@ type RequestRef struct {
 
 // Request represents a request to the scaling planner to generate a scaling plan.
 type Request struct {
-	// TODO: add planner strategy - scale-in before scale-out, scale-out before scale-in, or independent scale-in/scale-out planning
 	// CreationTime is the time at which request was created
 	CreationTime time.Time `json:"creationTime,omitzero"`
 	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
@@ -411,7 +410,9 @@ type ScalingPlannerArgs struct {
 	// SimulatorFactory is the factory facade to create simulators
 	SimulatorFactory SimulatorFactory
 	// SimulationFactory is the factory facade to create simulations.
-	SimulationFactory        SimulationFactory
+	SimulationFactory SimulationFactory
+	// ScaleInCandidateSelector enumerates the next scale-in candidate node for the simulator
+	// to evaluate.
 	ScaleInCandidateSelector ScaleInCandidateSelector
 	// TraceDir is the directory for storing traces when diagnostics are enabled.
 	TraceDir string

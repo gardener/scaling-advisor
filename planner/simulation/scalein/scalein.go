@@ -116,11 +116,17 @@ func (d *defaultSimulation) launchSchedulerForSimulation(ctx context.Context, si
 	return d.args.SchedulerLauncher.Launch(ctx, schedLaunchParams)
 }
 
-// workAndTrackUntilStabilized starts a loop which performs work and tracks the state of the simulation until one of the following conditions is met:
-//  1. All the pods are scheduled.
-//  2. Events have stabilized. i.e., no more scheduling events within maxUnchangedTrackAttempts
-//  3. Context timeout.
-//  4. Any error
+// workAndTrackUntilStabilized drives the per-tick simulation loop. Each tick calls doWork to
+// advance side-effecting state (e.g. simulated PV provisioning), waits TrackPollInterval, then
+// invokes [RunState.Track] to consume any kube-scheduler events. The loop returns when:
+//
+//  1. ctx is cancelled or times out — returns ctx.Err().
+//  2. doWork or Track returns an error — returns that error.
+//  3. Track reports stabilized (no events for MaxUnchangedTrackAttempts consecutive polls).
+//  4. pendingPods is empty (every displaced pod was rescheduled or moved to currentUnscheduledPods).
+//
+// On normal termination (cases 3 and 4) the returned error is nil; the caller inspects
+// [RunState.IsSimulationSuccess] to decide whether the run actually succeeded.
 func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, view minkapi.View) (err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var stabilized bool
@@ -145,9 +151,11 @@ func (d *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 	}
 }
 
-// doWork does miscellaneous simulation work to ensure that the kube-scheduler can
-// continue pod-node bindings. Currently, it delegates to BindClaimsAndVolumesWithNonNilClaimRefs and if the parent
-// SimulatorStrategy supports multiple node scaling, a call is issued to CreateSimulationNodes
+// doWork performs the per-tick side-effecting work the kube-scheduler cannot do on its own:
+// provisioning a simulated PV for any WFFC PVC the scheduler has annotated with a selected
+// node, and finalizing static-binding metadata for WFFC PVCs whose PV the scheduler has chosen.
+// When either step actually does work, numUnchangedTrackAttempts is reset so the stabilization
+// counter reflects the progress.
 func (d *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())

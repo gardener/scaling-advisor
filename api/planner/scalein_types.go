@@ -13,33 +13,50 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ScaleInCandidateSelectorArgs encapsulates the arguments needed to select a candidate for scale in.
+// ScaleInCandidateSelectorArgs carries the inputs a [ScaleInCandidateSelector] needs to
+// evaluate the cluster view and pick the next scale-in candidate.
 type ScaleInCandidateSelectorArgs struct {
-	View                  minkapi.View
-	PDBTracker            PDBTracker
+	// View is the cluster view to enumerate nodes and their pods from.
+	View minkapi.View
+	// PDBTracker is consulted to skip nodes whose eviction would violate a PDB.
+	PDBTracker PDBTracker
+	// UtilizationThresholds bounds, per resource, the fraction (0-1) below which a node is
+	// considered underutilized.
 	UtilizationThresholds map[corev1.ResourceName]float64
-	Constraint            sacorev1alpha1.ScalingConstraintSpec
+	// Constraint carries the user's NodePool min/max and priority configuration.
+	Constraint sacorev1alpha1.ScalingConstraintSpec
 }
 
-// ScaleInCandidateSelector is the interface meant to select the next viable candidate for scale in by interrogating the nodes from the [minkapi.View]
+// ScaleInCandidateSelector enumerates scale-in candidates from a [minkapi.View], filtering on
+// utilization, PDBs, and pool constraints.
 type ScaleInCandidateSelector interface {
+	// Init seeds the selector's candidate set from the view in args; called once per request
+	// before NextCandidate.
 	Init(ctx context.Context, args ScaleInCandidateSelectorArgs) error
+	// NextCandidate returns the next candidate node, or (nil, nil) when none remain. args may
+	// carry an updated view reflecting prior accepted candidates.
 	NextCandidate(ctx context.Context, args ScaleInCandidateSelectorArgs) (*corev1.Node, error)
+	// RemoveCandidateNode drops nodeName from the internal candidate pool so subsequent
+	// NextCandidate calls do not return it.
 	RemoveCandidateNode(nodeName string)
 }
 
-// NodeUtilizationCalculator is the interface meant to calculate the utilization of a node having the given node name in the [minkapi.View]
+// NodeUtilizationCalculator computes the resource utilization of a node from the pods on it.
 type NodeUtilizationCalculator interface {
+	// GetUtilization returns each tracked resource's usage as a fraction of node allocatable.
 	GetUtilization(node corev1.Node, pods []corev1.Pod) NodeUtilization
 }
 
-// NodeUtilization is the utilization of all resources on a node expressed as a fraction from 0 to 1
+// NodeUtilization captures per-resource utilization derived from pod resource requests (not
+// metrics-server data).
 type NodeUtilization struct {
-	// ResourceRatios is a map of resource names such `cpu`/`memory`/`gpu`/etc. to the utilization expressed as fraction from [0-1.0]
+	// ResourceRatios maps a resource name (e.g. "cpu", "memory") to its utilization as a
+	// fraction in [0, 1.0]; values above 1.0 indicate overcommit.
 	ResourceRatios map[corev1.ResourceName]float64
 }
 
-// BelowResourceThreshold returns true if the utilization of the given resource is below the provided threshold.
+// BelowResourceThreshold reports whether nu's utilization for resourceName is strictly below
+// threshold. Resources missing from ResourceRatios are treated as below any threshold.
 func (nu NodeUtilization) BelowResourceThreshold(resourceName corev1.ResourceName, threshold float64) bool {
 	if utilization, exists := nu.ResourceRatios[resourceName]; exists {
 		return utilization < threshold
@@ -47,7 +64,8 @@ func (nu NodeUtilization) BelowResourceThreshold(resourceName corev1.ResourceNam
 	return true
 }
 
-// BelowUtilizationThreshold returns true if the utilization of all resources is below the provided thresholds in the watermark.
+// BelowUtilizationThreshold reports whether nu is below watermark on every resource named in
+// watermark. Resources present in nu but absent from watermark are ignored.
 func (nu NodeUtilization) BelowUtilizationThreshold(watermark NodeUtilization) bool {
 	for resourceName, threshold := range watermark.ResourceRatios {
 		if !nu.BelowResourceThreshold(resourceName, threshold) {
@@ -57,81 +75,88 @@ func (nu NodeUtilization) BelowUtilizationThreshold(watermark NodeUtilization) b
 	return true
 }
 
-// ScaleInSimArgs represents the arguments necessary for creating a [ScaleInSimulation] instance.
+// ScaleInSimArgs are the dependencies a [SimulationFactory] needs to construct a
+// [ScaleInSimulation] for one request.
 type ScaleInSimArgs struct {
-	// SchedulerLauncher is used to launch scheduler instances for the simulation.
+	// SchedulerLauncher launches an in-process kube-scheduler bound to the simulation view.
 	SchedulerLauncher SchedulerLauncher
-	// RunCounter is an atomic counter for tracking simulation runs.
+	// RunCounter is shared across simulations in a request and increments per Run.
 	RunCounter *atomic.Uint32
-	// Name is the name of the simulation instance
+	// Name is the logical simulation name; surfaces in logs, traces, and results.
 	Name string
-	//NodeName is the name of the node to be simulated for scale in.
+	// NodeName is currently unused; the candidate node is supplied per-Run instead.
 	NodeName string
-	// TraceDir is the base directory for storing trace logs and other dump data by the simulation
+	// TraceDir is the base directory for trace logs and per-run dumps. Empty disables tracing.
 	TraceDir string
-	// Config is the simulation configuration.
+	// Config is the simulator-wide configuration (poll interval, thresholds, etc.).
 	Config SimulatorConfig
 }
 
-// ScaleInSimulation represents a simulation that removes a virtual node(s) and attempts to bind the resulting evicted pods to already ready node
-// in a minkapi View.
+// ScaleInSimulation simulates removing one candidate node at a time, rescheduling its
+// displaced pods, and reporting whether the workload still fits.
 type ScaleInSimulation interface {
 	commontypes.Resettable
-	// Name returns the logical simulation name
+	// Name returns the logical simulation name.
 	Name() string
-	// Status returns the current ActivityStatus of the simulation
+	// Status returns the current [ActivityStatus].
 	Status() ActivityStatus
-	// PriorityKey returns the PriorityKey for the [ScaleInSimulation] which represents the priority order in which a scale-in simulation is executed
+	// PriorityKey returns the priority used by orchestration to order simulations.
 	PriorityKey() commontypes.PriorityKey
-	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
-	// This is a blocking call, and callers are expected to manage concurrency and [ScaleInSimRunResult] consumption.
+	// Run executes one simulation pass for node against view. Blocks until the run stabilizes,
+	// errors, or ctx is cancelled. Not safe for concurrent invocation on the same receiver.
 	Run(ctx context.Context, view minkapi.View, node *corev1.Node) error
-	// Result returns the latest [ScaleInPlanResult] if the simulation is in ActivityStatusSuccess,
-	// or nil if the simulation is in ActivityStatusPending or ActivityStatusRunning
-	// or an error if the ActivityStatus is ActivityStatusFailure
+	// Result returns the most recent run's outcome:
+	//   - the result when status is [ActivityStatusSuccess];
+	//   - a sentinel error when still [ActivityStatusPending] or [ActivityStatusRunning];
+	//   - the underlying failure error when [ActivityStatusFailure].
 	Result() (ScaleInSimRunResult, error)
 }
 
-// ScaleInSimRunResult encapsulated the result of a completed [ScaleInSimulation]
+// ScaleInSimRunResult is the outcome of a completed [ScaleInSimulation.Run].
 type ScaleInSimRunResult struct {
-	// Name of the ScaleInSimulation that produced this result.
+	// Name of the simulation that produced this result.
 	Name string
-	// View is the [minkapi.View] against which the simulation was run.
+	// View is the post-run view, including any mutations made during the run.
 	View minkapi.View
-	// Item is the [sacorev1alpha1.ScaleInItem] which encapsulates the
-	// [sacorev1alpha1.NodePlacement] and node name.
+	// Item describes the candidate node placement and name.
 	Item sacorev1alpha1.ScaleInItem
-	// IsSimulationSuccess denotes whether the scale-in simulation was successful.
+	// IsSimulationSuccess is true iff every displaced pod was rescheduled and no
+	// previously-scheduled pod was left unschedulable.
 	IsSimulationSuccess bool
 }
 
-// ScaleInSimulator is a facade that executes [ScaleInSimulation]'s to generate one or more [ScaleInPlanResult]'s sent on a result channel.
+// ScaleInSimulator is the request-level facade: select candidates, run simulations, emit
+// [ScaleInPlanResult]s.
 type ScaleInSimulator interface {
 	io.Closer
-
+	// Simulate evaluates request against requestView and returns a channel that delivers one
+	// or more results and is closed when no more will follow.
 	Simulate(ctx context.Context, request *Request, requestView minkapi.View) <-chan ScaleInPlanResult
 }
 
-// ScaleInMemento is an encapsulation of partial details of a completed scale-in simulation that can be used by subsequent scale-in simulations
+// ScaleInMemento carries cross-invocation timestamps so the planner can require sustained
+// under-utilization before recommending a node for removal.
 type ScaleInMemento struct {
-	// LastIdentifiedUnneededNodes is a map of nodeName to the timestamp of when it was last successfully simulated for scale-in.
-	// This can be used by subsequent simulations to skip simulating the same node again within a certain time window.
+	// LastIdentifiedUnneededNodes maps node name to the time it was first observed as a
+	// successful scale-in candidate. The planner emits a node only after it has stayed in
+	// this map for the configured underutilized duration.
 	LastIdentifiedUnneededNodes map[string]time.Time
-	// LastUnderutilizedSinceNodes is a map of nodeName to the timestamp of when it was last successfully simulated for underutilization.
+	// LastUnderutilizedSinceNodes maps node name to the last time it was observed below the
+	// utilization thresholds, regardless of full-simulation outcome.
 	LastUnderutilizedSinceNodes map[string]time.Time
 }
 
-// ScaleInPlanResult represents a result from the ScaleInSimulator.Simulate
+// ScaleInPlanResult is one delivery from [ScaleInSimulator.Simulate].
 type ScaleInPlanResult struct {
-	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation
-	// No further responses will be sent for the associated request.
+	// Error, when non-nil, is terminal; the channel is closed after delivering it.
 	Error error `json:"error,omitempty"`
-	// Labels is the associated metadata.
+	// Labels is metadata propagated onto the planner response.
 	Labels map[string]string `json:"labels,omitempty"`
-	// ScaleInPlan is the generated scale-in plan.
+	// ScaleInPlan is the generated plan, or nil when no candidates qualified (paired with
+	// Error == [ErrNoScaleInPlan]).
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:"scaleInPlan,omitempty"`
-	//Memento is the partial details of a completed scale-in simulation
+	// Memento captures cross-invocation state the planner persists for the next request.
 	Memento ScaleInMemento `json:"scaleInMemento,omitempty"`
-	// View is the modified request view return after performing scale-in simulation
+	// View is the post-simulation view, used by downstream stages (e.g. scale-out).
 	View minkapi.View
 }

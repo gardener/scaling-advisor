@@ -369,17 +369,17 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 	return
 }
 
-// UnbindPodVolumes resets the volume bindings for all PVCs referenced by the given pod so that the
-// VolumeBinding plugin can re-evaluate placement when the pod is rescheduled to a different node.
+// UnbindPodVolumes resets the volume bindings for every PVC referenced by pod so the
+// kube-scheduler's VolumeBinding plugin re-evaluates placement when the pod is rescheduled.
+// Per PVC:
+//   - If bound to a simulated PV (annotated AnnDynamicallyProvisioned = "scaling-advisor"),
+//     the PV is deleted and the PVC is reset to Pending (VolumeName cleared, AnnBindCompleted /
+//     AnnBoundByController / AnnSelectedNode removed). doWork later re-provisions a fresh
+//     simulated PV in the zone the scheduler picks, honoring AllowedTopologies.
+//   - If bound to a real (static) PV, only AnnSelectedNode is cleared so the plugin
+//     re-evaluates topology without discarding the real PV.
 //
-// For each PVC referenced by the pod:
-//   - If the bound PV is a simulated one (annotated AnnDynamicallyProvisioned = "scaling-advisor"),
-//     the PV is deleted and the PVC is fully reset to Pending (VolumeName cleared, AnnBindCompleted,
-//     AnnBoundByController and AnnSelectedNode removed). The scheduler then treats it as an unbound
-//     WFFC claim and re-evaluates AllowedTopologies when selecting a node, after which doWork
-//     provisions a fresh simulated PV in the correct zone.
-//   - If the bound PV is a real (static) one, only the AnnSelectedNode annotation is removed from
-//     the PVC so the VolumeBinding plugin re-evaluates topology without discarding the real PV.
+// PVCs that are not Bound or have no VolumeName are skipped.
 func UnbindPodVolumes(ctx context.Context, view minkapi.View, pod *corev1.Pod) error {
 	log := logr.FromContextOrDiscard(ctx)
 	for _, vol := range pod.Spec.Volumes {
