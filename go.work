@@ -1,8 +1,11 @@
-go 1.25.5
+go 1.25.0
 
 use (
 	./api
-	./bench
+	// 'bench' module is explicitly excluded from the workspace
+	// because karpenter also uses core k8s packages resulting in
+	// conflicts with other modules and patch go versions which
+	// causes 'hack/check.sh' to fail.
 	./common
 	./minkapi
 	./operator

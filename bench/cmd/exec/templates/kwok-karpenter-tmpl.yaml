@@ -10,11 +10,11 @@ componentsPatches:
   - name: kube-apiserver
     extraArgs:
     - key: disable-admission-plugins
-      value: "TaintNodesByCondition"
+      value: "TaintNodesByCondition,Priority"
   - name: kube-scheduler
     extraArgs:
     - key: v
-      value: "6"
+      value: "4"
 components:
   - name: karpenter
     image: karpenter.local/kwok:{{.ImageTag}}

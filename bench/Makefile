@@ -3,6 +3,7 @@
 MODULE_ROOT     := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
 REPO_ROOT               := $(shell dirname "$(MODULE_ROOT)")
 REPO_HACK_DIR           := $(REPO_ROOT)/hack
+export GOWORK := off
 
 scalebench_main_pkg_path = .
 scalebench_binary_name = scalebench
@@ -51,9 +52,12 @@ build:
 format: $(GOIMPORTS_REVISER)
 	@$(REPO_HACK_DIR)/format.sh ./...
 
+## check: for 'bench' module, the 'hack/check.sh' is not invoked and the linter is
+##        explicitly called to avoid performing the 'patch' golang version check
+##        which karpenter doesn't adhere to.
 .PHONY: check
 check: $(GOLANGCI_LINT) format
-	@$(REPO_HACK_DIR)/check.sh --golangci-lint-config=../.golangci.yaml ./...
+	golangci-lint run -c "${REPO_ROOT}/.golangci.yaml" --timeout 10m ./...
 
 ## run: run the client
 .PHONY: run

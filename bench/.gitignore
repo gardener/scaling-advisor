@@ -1,1 +1,9 @@
-cmd/scenarios/*
+# cmd/scenarios/*
+
+# Harness generated files
+cmd/scenarios/**/logs/
+kwok-config.yaml
+node_classes.yaml
+node_pools.yaml
+instance_types.json
+ca-kwok-provider-template.yaml

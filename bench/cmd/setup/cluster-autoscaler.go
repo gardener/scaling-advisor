@@ -127,7 +127,6 @@ func constructKwokProviderTemplate(constraint sacorev1alpha1.ScalingConstraint, 
 func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1alpha1.NodeTemplate) corev1.Node {
 	annotations := nodePool.Annotations
 	if annotations == nil {
-		// Needed to fix null annotations panic in CA kwok
 		annotations = make(map[string]string)
 	}
 	annotations["kwok.x-k8s.io/node"] = "fake"
@@ -137,6 +136,10 @@ func buildTemplateNode(nodePool sacorev1alpha1.NodePool, nodeTemplate sacorev1al
 	labels[corev1.LabelInstanceTypeStable] = nodeTemplate.InstanceType
 	// Region is required to compute the pricing information for the node
 	labels[corev1.LabelTopologyRegion] = nodePool.Region
+	// CA kwok provider uses this label to identify and create nodegroups
+	if _, exists := labels["worker.gardener.cloud/pool"]; !exists {
+		labels["worker.gardener.cloud/pool"] = nodeTemplate.Name
+	}
 
 	node := corev1.Node{
 		ObjectMeta: v1.ObjectMeta{

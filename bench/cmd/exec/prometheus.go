@@ -16,6 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const (
+	scrapeInterval = "1s"
+	dockerHostIP   = "host.docker.internal"
+)
+
 var (
 	// ContainerCPUUsage tracks current CPU usage in millicores per container.
 	ContainerCPUUsage = prometheus.NewGaugeVec(
@@ -106,6 +111,14 @@ var (
 		},
 	)
 
+	// NodesDeletedTotal counts nodes scaled down by the scaler during the harness run.
+	NodesDeletedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "scaling_nodes_deleted_total",
+			Help: "Total number of nodes scaled down by the scaler",
+		},
+	)
+
 	// PodsScheduledTotal counts previously-unscheduled pods that got scheduled during the benchmark.
 	PodsScheduledTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -115,20 +128,24 @@ var (
 	)
 )
 
-var prometheusScrapeInterval = "1s"
-
-// PrometheusConfigParams holds the parameters for the prometheus configuration template.
-type prometheusConfigParams struct {
-	HostIP         string
-	Port           int
-	ScrapeInterval string
+func init() {
+	prometheus.MustRegister(ContainerCPUUsage)
+	prometheus.MustRegister(ContainerMemoryUsage)
+	prometheus.MustRegister(ContainerMemoryLimit)
+	prometheus.MustRegister(ContainerCPUThrottledPeriods)
+	prometheus.MustRegister(ContainerCPUTotalPeriods)
+	prometheus.MustRegister(ContainerCPUThrottledTime)
+	prometheus.MustRegister(ContainerPIDs)
+	prometheus.MustRegister(NodesCreatedTotal)
+	prometheus.MustRegister(NodesDeletedTotal)
+	prometheus.MustRegister(PodsScheduledTotal)
 }
 
 func writePrometheusConfig(port int) (string, error) {
 	params := prometheusConfigParams{
-		HostIP:         "host.docker.internal",
+		HostIP:         dockerHostIP,
 		Port:           port,
-		ScrapeInterval: prometheusScrapeInterval,
+		ScrapeInterval: scrapeInterval,
 	}
 
 	data, err := content.ReadFile("templates/prometheus-config.yaml")
@@ -158,20 +175,6 @@ func writePrometheusConfig(port int) (string, error) {
 	}
 
 	return tempFile.Name(), nil
-}
-
-func init() {
-	prometheus.MustRegister(ContainerCPUUsage)
-	prometheus.MustRegister(ContainerMemoryUsage)
-	prometheus.MustRegister(ContainerMemoryRSS)
-	prometheus.MustRegister(ContainerMemoryMaxUsage)
-	prometheus.MustRegister(ContainerMemoryLimit)
-	prometheus.MustRegister(ContainerCPUThrottledPeriods)
-	prometheus.MustRegister(ContainerCPUTotalPeriods)
-	prometheus.MustRegister(ContainerCPUThrottledTime)
-	prometheus.MustRegister(ContainerPIDs)
-	prometheus.MustRegister(NodesCreatedTotal)
-	prometheus.MustRegister(PodsScheduledTotal)
 }
 
 // ServeMetrics starts a prometheus metrics server and returns the server
@@ -204,7 +207,7 @@ func SetContainerMetrics(containerName string, s ContainerStats) {
 	ContainerCPUThrottledPeriods.WithLabelValues(containerName).Set(float64(s.CPUThrottledPeriods))
 	ContainerCPUTotalPeriods.WithLabelValues(containerName).Set(float64(s.CPUTotalPeriods))
 	ContainerCPUThrottledTime.WithLabelValues(containerName).Set(float64(s.CPUThrottledTimeNs))
-	ContainerPIDs.WithLabelValues(containerName).Set(float64(s.PIDs))
+	ContainerPIDs.WithLabelValues(containerName).Set(float64(s.PID))
 }
 
 // ResetContainerMetrics zeroes all prometheus gauges for the given container.

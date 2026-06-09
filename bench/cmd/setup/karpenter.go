@@ -10,11 +10,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
+	"time"
 
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
@@ -140,13 +142,18 @@ func importKarpenterImage(ctx context.Context, binPath, imageName string) error 
 	if err := dockerImport.Wait(); err != nil {
 		return fmt.Errorf("docker import failed: %w", err)
 	}
+
+	fmt.Printf("Docker image %q built\n", imageName)
 	return nil
 }
 
 // constructNodePoolsAndNodeClasses builds the Karpenter NodePool and KWOKNodeClass lists
 // from the scaling-advisor node pool definitions and writes them to outputDir.
 func constructNodePoolsAndClasses(nodePools []sacorev1alpha1.NodePool, outputDir string) error {
-	var karpenterNodePools karpenterv1.NodePoolList
+	var (
+		karpenterNodePools karpenterv1.NodePoolList
+		maxPoolPriority    int32
+	)
 	karpenterNodePools.SetGroupVersionKind(schema.GroupVersion{
 		Group: karpenterapis.Group, Version: "v1",
 	}.WithKind("NodePoolList"))
@@ -157,7 +164,11 @@ func constructNodePoolsAndClasses(nodePools []sacorev1alpha1.NodePool, outputDir
 	}.WithKind("KWOKNodeClassList"))
 
 	for _, nodePool := range nodePools {
-		pool, class := buildNodePoolAndClass(nodePool)
+		maxPoolPriority = max(maxPoolPriority, nodePool.Priority)
+	}
+
+	for _, nodePool := range nodePools {
+		pool, class := buildNodePoolAndClass(nodePool, maxPoolPriority)
 		karpenterNodePools.Items = append(karpenterNodePools.Items, pool)
 		kwokNodeClasses.Items = append(kwokNodeClasses.Items, class)
 	}
@@ -181,11 +192,17 @@ func constructNodePoolsAndClasses(nodePools []sacorev1alpha1.NodePool, outputDir
 // corresponding Karpenter NodePool and KWOKNodeClass pair.
 func buildNodePoolAndClass(
 	nodePool sacorev1alpha1.NodePool,
+	maxPoolPriority int32,
 ) (karpenterv1.NodePool, karpenterkwokv1alpha1.KWOKNodeClass) {
 	instancesList := make([]string, len(nodePool.NodeTemplates))
 	for i, nodeTemplate := range nodePool.NodeTemplates {
 		instancesList[i] = nodeTemplate.InstanceType
 	}
+
+	// This is required since karpenter has a hard validation on the pool weight
+	// being in the range 1-100. Karpenter forbids 'zero' weight so offset by 1
+	// to ensure that pools with no explicit priority still get a valid value.
+	normalisedPoolPriority := int32(math.Round(float64(nodePool.Priority*99)/float64(maxPoolPriority))) + 1
 
 	pool := karpenterv1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
@@ -202,14 +219,15 @@ func buildNodePoolAndClass(
 			Disruption: karpenterv1.Disruption{
 				ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
 				// TODO: the below would be set up once scaling advisor
-				// `ScaleInPolicy` has been defined.
-				ConsolidateAfter: karpenterv1.NillableDuration{},
-				Budgets:          []karpenterv1.Budget{},
+				// `ScaleInPolicy` has been defined. Currently hardcoded to
+				// 30s
+				ConsolidateAfter: karpenterv1.NillableDuration{
+					Duration: ptr.To(30 * time.Second),
+				},
+				Budgets: []karpenterv1.Budget{},
 			},
 			Limits: karpenterv1.Limits(nodePool.Quota),
-			// Karpenter forbids a zero weight; offset by 1 so pools with no
-			// explicit priority still get a valid value.
-			Weight: ptr.To(nodePool.Priority + 1),
+			Weight: ptr.To(normalisedPoolPriority),
 		},
 	}
 	// Region is required to compute the pricing information for the node
@@ -247,19 +265,15 @@ func constructNodePoolTemplateSpec(
 		Taints: nodePool.Taints,
 		Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
 			{
-				NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-					Key:      corev1.LabelInstanceTypeStable,
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   instanceTypes,
-				},
+				Key:       corev1.LabelInstanceTypeStable,
+				Operator:  corev1.NodeSelectorOpIn,
+				Values:    instanceTypes,
 				MinValues: ptr.To(len(nodePool.NodeTemplates)),
 			},
 			{
-				NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-					Key:      corev1.LabelTopologyZone,
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   nodePool.AvailabilityZones,
-				},
+				Key:      corev1.LabelTopologyZone,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   nodePool.AvailabilityZones,
 			},
 		},
 		NodeClassRef: &karpenterv1.NodeClassReference{

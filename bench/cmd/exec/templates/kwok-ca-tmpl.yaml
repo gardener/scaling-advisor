@@ -10,28 +10,30 @@ componentsPatches:
   - name: kube-apiserver
     extraArgs:
     - key: disable-admission-plugins
-      value: "TaintNodesByCondition"
+      value: "TaintNodesByCondition,Priority"
   - name: kube-scheduler
     extraArgs:
     - key: v
-      value: "6"
+      value: "4"
 components:
   - name: cluster-autoscaler
     image: gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:{{.ImageTag}}
     command:
       - /cluster-autoscaler
     args:
-      - --v=4
+      - --v=2
       - --leader-elect=false
       - --cloud-provider=kwok
       - --kubeconfig=/etc/kubeconfig/kubeconfig
-      - --scale-down-unneeded-time=2s # FIXME: setup CA flags
-      - --scale-down-utilization-threshold=0.95
+      - --expander=priority,least-waste
+      - --new-pod-scale-up-delay=0s
+      - --max-nodes-total=4094
+      - --stderrthreshold=info
     envs:
       - name: KUBERNETES_SERVICE_HOST
         value: "127.0.0.1"
       - name: KUBERNETES_SERVICE_PORT
-        value: "32766" #"6443"
+        value: "32766"
       - name: KWOK_PROVIDER_MODE
         value: "local"
       - name: POD_NAMESPACE

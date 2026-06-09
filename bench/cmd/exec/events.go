@@ -6,85 +6,40 @@ package exec
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math"
 	"slices"
-	"sync"
 	"time"
 
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
+
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	"github.com/gardener/scaling-advisor/common/objutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
-	"sigs.k8s.io/e2e-framework/klient/k8s/watcher"
 )
-
-// ScalingEvent represents a single event in the scaling timeline.
-type ScalingEvent struct {
-	Timestamp time.Time `json:"timestamp"`
-	Type      string    `json:"type"`
-	Source    string    `json:"source"`
-	Name      string    `json:"name"`
-	Namespace string    `json:"namespace,omitempty"`
-	Details   string    `json:"details,omitempty"`
-	Region    string    `json:"region,omitempty"`
-}
-
-// TimingBreakdown captures the different durations during scaling.
-type TimingBreakdown struct {
-	FirstFailedScheduling time.Time `json:"firstFailedScheduling,omitzero"`
-	FirstNodeCreated      time.Time `json:"firstNodeCreated,omitzero"`
-	LastPodResolved       time.Time `json:"lastPodResolved,omitzero"`
-	ReactionTime          string    `json:"reactionTime"`
-	SchedulingTime        string    `json:"schedulingTime"`
-	TotalDuration         string    `json:"totalDuration"`
-}
-
-// TODO: update this docstring
-// EventCollector watches Kubernetes events, nodes, and pods to build
-// a timeline and compute timing.
-type EventCollector struct {
-	// Setup
-	res         *resources.Resources
-	eventConfig ScalerEventConfig
-
-	// Internal state
-	mu       sync.Mutex
-	watchers []*watcher.EventHandlerFuncs
-	done     chan struct{}
-
-	unscheduledCounter int
-	scheduledCount     int
-	unschedulablePods  sets.Set[string]
-
-	// Map of to be deleted node name to the pods on the node
-	podsToRecreate map[string]corev1.PodList
-
-	// Collected data
-	events             []ScalingEvent
-	timing             TimingBreakdown
-	podScheduleLatency map[string]time.Duration
-}
 
 // NewEventCollector creates an EventCollector that watches for scaling events.
 func NewEventCollector(res *resources.Resources, unscheduledCount int, eventConfig ScalerEventConfig) *EventCollector {
+	// log.Printf("DEBUG: Unsched counter initial: %d\n", unscheduledCount)
 	return &EventCollector{
 		res:                res,
 		unscheduledCounter: unscheduledCount,
-		podsToRecreate:     make(map[string]corev1.PodList),
 		eventConfig:        eventConfig,
 		done:               make(chan struct{}),
 	}
 }
 
-// Start begins three watches: Events (FailedScheduling), Nodes (Added), Pods (Modified/Scheduled).
+// Start begins three watches: Events, Nodes (Add/Update/Delete) and
+// Pods (Scheduled/Deleted).
 func (ec *EventCollector) Start(ctx context.Context) error {
-	if ec.unscheduledCounter <= 0 {
-		ec.finish()
-		return nil
-	}
+	// FIXME: this breaks scale-in testing
+	// if ec.unscheduledCounter <= 0 {
+	// 	ec.finish()
+	// 	return nil
+	// }
 
 	existingNodes := &corev1.NodeList{}
 	if err := ec.res.List(ctx, existingNodes); err != nil {
@@ -96,7 +51,7 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 	}
 
 	ec.unschedulablePods = sets.New[string]()
-	ec.podScheduleLatency = make(map[string]time.Duration)
+	ec.podSchedulingDurations = make(map[string][]podSchedulingDuration)
 
 	if err := ec.watchEvents(ctx); err != nil {
 		return err
@@ -112,7 +67,12 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 	return nil
 }
 
-// TODO: update this to look for eviction events and add those pods to the podsToRecreate slice?
+// watchEvents looks for:
+//  1. first 'FailedScheduling' event raised by the scheduler in order to start tracking
+//     all reaction and scheduling timing.
+//  2. 'Preempted' events to know which pods will be recreated.
+//  3. scaler specific events ('MarksPodsUnschedulable') to find pods which are marked as
+//     unschedulable hence won't be triggering further scale-ups.
 func (ec *EventCollector) watchEvents(ctx context.Context) error {
 	ew := ec.res.Watch(&corev1.EventList{}, func(listOpts *metav1.ListOptions) {
 		listOpts.ResourceVersion = "0"
@@ -132,11 +92,14 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 		}
 
 		cfg := ec.eventConfig
-		if event.Reason == "FailedScheduling" && (source == "default-scheduler" || source == "kube-scheduler") {
+		// Capture the first 'FailedScheduling' event from the scheduler
+		// used for time tracking purposes
+		if event.Reason == "FailedScheduling" &&
+			(source != "cluster-autoscaler" && source != "karpenter") {
 			if ec.timing.FirstFailedScheduling.IsZero() {
-				ec.timing.FirstFailedScheduling = event.CreationTimestamp.Time
+				ec.timing.FirstFailedScheduling = event.CreationTimestamp.UTC()
 				ec.events = append(ec.events, ScalingEvent{
-					Timestamp: event.CreationTimestamp.Time,
+					Timestamp: event.CreationTimestamp.UTC(),
 					Type:      event.Reason,
 					Source:    source,
 					Name:      event.InvolvedObject.Name,
@@ -144,18 +107,39 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 					Details:   event.Message,
 				})
 			}
-		} else if source == cfg.Source && slices.Contains(cfg.EventNames, event.Reason) {
+		} else if event.Reason == "Preempted" {
 			ec.events = append(ec.events, ScalingEvent{
-				Timestamp: event.CreationTimestamp.Time,
+				Timestamp: event.CreationTimestamp.UTC(),
 				Type:      event.Reason,
 				Source:    source,
 				Name:      event.InvolvedObject.Name,
 				Namespace: event.InvolvedObject.Namespace,
 				Details:   event.Message,
 			})
-			if slices.Contains(cfg.MarksPodUnschedulable, event.Reason) {
-				ec.podUnschedulable(event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name)
+			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
+		} else if source == cfg.Source && slices.Contains(cfg.WatchedEvents, event.Reason) { // scaler events
+			// Karpenter produces a very hefty message for its 'FailedScheduling' events
+			// detailing out all the constraints that failed, this can bloat up the events
+			// file. If this information is needed, logs can be checked.
+			message := event.Message
+			if event.Reason == "FailedScheduling" && source == benchutil.ScalerKarpenter {
+				message = "Failed to scheduled pod"
 			}
+			ec.events = append(ec.events, ScalingEvent{
+				Timestamp: event.CreationTimestamp.UTC(),
+				Type:      event.Reason,
+				Source:    source,
+				Name:      event.InvolvedObject.Name,
+				Namespace: event.InvolvedObject.Namespace,
+				Details:   message,
+			})
+			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, message)
+			if slices.Contains(cfg.MarksPodUnschedulable, event.Reason) {
+				key := event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name
+				ec.podUnschedulable(key)
+			}
+		} else if event.Reason == "Scheduled" {
+			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
 		}
 	})
 	if err := ew.Start(ctx); err != nil {
@@ -165,6 +149,9 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 	return nil
 }
 
+// watchNodes collects:
+//  1. creation events for non existing nodes.
+//  2. delete events to know which nodes might've been scaled-in.
 func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[string]bool) error {
 	nw := ec.res.Watch(&corev1.NodeList{}, func(listOpts *metav1.ListOptions) {
 		listOpts.ResourceVersion = "0"
@@ -181,7 +168,7 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 		defer ec.mu.Unlock()
 
 		ec.events = append(ec.events, ScalingEvent{
-			Timestamp: node.CreationTimestamp.Time,
+			Timestamp: node.CreationTimestamp.UTC(),
 			Type:      "NodeCreated",
 			Source:    "node-watch",
 			Name:      node.Name,
@@ -190,49 +177,28 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 		})
 
 		if ec.timing.FirstNodeCreated.IsZero() {
-			ec.timing.FirstNodeCreated = node.CreationTimestamp.Time
+			ec.timing.FirstNodeCreated = node.CreationTimestamp.UTC()
 			ec.computeReactionTime()
 		}
 		NodesCreatedTotal.Inc()
-	})
-	nw.WithUpdateFunc(func(obj any) {
-		node, ok := obj.(*corev1.Node)
-		if !ok || node.DeletionTimestamp == nil {
-			return
-		}
-		podsOnDeletedNode := corev1.PodList{}
-		if err := ec.res.List(ctx, &podsOnDeletedNode, func(listOpts *metav1.ListOptions) {
-			listOpts.FieldSelector = fmt.Sprintf("spec.nodeName=%s", node.Name)
-		}); err != nil {
-			return
-		}
-		ec.podsToRecreate[node.Name] = podsOnDeletedNode
 	})
 	nw.WithDeleteFunc(func(obj any) {
 		node, ok := obj.(*corev1.Node)
 		if !ok {
 			return
 		}
-		podsToCreate, ok := ec.podsToRecreate[node.Name]
-		if !ok {
-			return
-		}
-		// TODO: update the totalPods slice
-		for _, p := range podsToCreate.Items {
-			owners := p.GetOwnerReferences()
-			if owners == nil {
-				continue
-			}
-			if slices.ContainsFunc(owners, func(owner metav1.OwnerReference) bool {
-				return owner.Kind == "Job"
-			}) {
-				continue
-			}
-			p.Spec.NodeName = ""
-			if err := ec.res.Create(ctx, &p); err != nil {
-				ec.unscheduledCounter++
-			}
-		}
+		ec.mu.Lock()
+		defer ec.mu.Unlock()
+
+		ec.events = append(ec.events, ScalingEvent{
+			Timestamp: time.Now().UTC(),
+			Type:      "NodeDeleted",
+			Source:    "node-watch",
+			Name:      node.Name,
+			Details:   node.Labels[corev1.LabelInstanceTypeStable],
+			Region:    node.Labels[corev1.LabelTopologyRegion],
+		})
+		NodesDeletedTotal.Inc()
 	})
 
 	if err := nw.Start(ctx); err != nil {
@@ -242,6 +208,9 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 	return nil
 }
 
+// watchPods collects:
+//  1. update events to find pods which got scheduled.
+//  2. delete events to re-create non daemonset/job pods.
 func (ec *EventCollector) watchPods(ctx context.Context) error {
 	pw := ec.res.Watch(&corev1.PodList{}, func(listOpts *metav1.ListOptions) {
 		listOpts.ResourceVersion = "0"
@@ -253,8 +222,53 @@ func (ec *EventCollector) watchPods(ctx context.Context) error {
 		}
 		ec.mu.Lock()
 		defer ec.mu.Unlock()
+
+		// Check if this pod (having the same 'name' and 'UID') has already been tracked
+		key := objutil.NamespacedName(pod).String()
+		if latencies, exists := ec.podSchedulingDurations[key]; exists {
+			if slices.ContainsFunc(latencies, func(latency podSchedulingDuration) bool {
+				return latency.UID == string(pod.UID)
+			}) {
+				return
+			}
+		}
 		ec.podScheduled(pod)
 	})
+	pw.WithDeleteFunc(func(obj any) {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			return
+		}
+		// If a pod is deleted and is a job pod or a daemonset pod, then its not re-created
+		owners := pod.GetOwnerReferences()
+		if owners == nil {
+			return
+		}
+		if slices.ContainsFunc(owners, func(owner metav1.OwnerReference) bool {
+			return owner.Kind == "Job" || owner.Kind == "DaemonSet"
+		}) {
+			return
+		}
+		ec.mu.Lock()
+		defer ec.mu.Unlock()
+		// If nodename is non-empty, i.e. pod was already scheduled, only then increment
+		// the total unscheduled pods counter
+		if pod.Spec.NodeName != "" {
+			ec.unscheduledCounter++
+			// log.Printf("DEBUG: Unsched counter: %d\n", ec.unscheduledCounter)
+			pod.Spec.NodeName = ""
+		}
+		pod.ResourceVersion = ""
+		pod.UID = ""
+		pod.DeletionTimestamp = nil
+		pod.Status = corev1.PodStatus{}
+		if err := ec.res.Create(ctx, pod); err != nil {
+			log.Printf("ERR: could not recreate pod %q: %s", pod.Name, err.Error())
+		} else {
+			log.Printf("Recreated deleted pod: %q", pod.Name)
+		}
+	})
+
 	if err := pw.Start(ctx); err != nil {
 		return err
 	}
@@ -291,7 +305,6 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 	var timeline []ScalingEvent
 	for _, e := range ec.events {
 		countByType[e.Type]++
-		// FIXME: clean these 3 nested level ifs
 		if e.Type == "NodeCreated" && e.Details != "" {
 			instanceDetails := instanceTypes[e.Details]
 			if instanceDetails.Count == 0 {
@@ -313,11 +326,12 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 		timeline = append(timeline, e)
 	}
 
-	var schedulingDurations map[string]string
-	if len(ec.podScheduleLatency) > 0 {
-		schedulingDurations = make(map[string]string, len(ec.podScheduleLatency))
-		for name, d := range ec.podScheduleLatency {
-			schedulingDurations[name] = d.String()
+	schedulingDurations := make(map[string][]string, len(ec.podSchedulingDurations))
+	if len(ec.podSchedulingDurations) > 0 {
+		for name, duration := range ec.podSchedulingDurations {
+			for _, d := range duration {
+				schedulingDurations[name] = append(schedulingDurations[name], d.TimeToSchedule.String())
+			}
 		}
 	}
 
@@ -337,12 +351,13 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 			Failures:            failures,
 		},
 	}
+	log.Printf("%+v\n", summary.Nodes)
 
 	return timeline, ec.timing, summary
 }
 
-// exitCriteriaMet checks if the number of unschedulable pods plus the number of scheduled pods
-// meets or exceeds the total number of unscheduled pods we are waiting for
+// exitCriteriaMet checks if the sum of number of unschedulable pods (that couldn't trigger scale up)
+// and scheduled pods meets or exceeds the total number of unscheduled pods we are waiting for
 func (ec *EventCollector) exitCriteriaMet() bool {
 	return ec.unschedulablePods.Len()+ec.scheduledCount >= ec.unscheduledCounter
 }
@@ -353,9 +368,10 @@ func (ec *EventCollector) podUnschedulable(podName string) {
 	}
 	ec.unschedulablePods.Insert(podName)
 	log.Printf("Pod %q marked unschedulable\n", podName)
+	// log.Printf("DEBUG: Unschedulable: %d\n", len(ec.unschedulablePods))
 
 	if ec.exitCriteriaMet() {
-		ec.timing.LastPodResolved = time.Now()
+		ec.timing.LastPodResolved = time.Now().UTC()
 		ec.computeSchedulingTime()
 		ec.computeTotalDuration()
 		ec.finish()
@@ -363,15 +379,12 @@ func (ec *EventCollector) podUnschedulable(podName string) {
 }
 
 func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
-	key := pod.Namespace + "/" + pod.Name
-	if _, exists := ec.podScheduleLatency[key]; exists {
-		return
-	}
+	key := objutil.NamespacedName(pod).String()
 
-	scheduledTime := time.Now()
+	scheduledTime := time.Now().UTC()
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionTrue {
-			scheduledTime = cond.LastTransitionTime.Time
+			scheduledTime = cond.LastTransitionTime.UTC()
 			break
 		}
 	}
@@ -385,9 +398,13 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 		Details:   pod.Spec.NodeName,
 	})
 
-	ec.podScheduleLatency[key] = scheduledTime.Sub(pod.CreationTimestamp.Time)
+	ec.podSchedulingDurations[key] = append(ec.podSchedulingDurations[key], podSchedulingDuration{
+		UID:            string(pod.UID),
+		TimeToSchedule: scheduledTime.Sub(pod.CreationTimestamp.UTC()),
+	})
 
 	ec.scheduledCount++
+	// log.Printf("DEBUG: Sched counter: %d\n", ec.scheduledCount)
 	PodsScheduledTotal.Inc()
 
 	if ec.exitCriteriaMet() {
@@ -407,14 +424,16 @@ func (ec *EventCollector) finish() {
 }
 
 func (ec *EventCollector) computeSchedulingLatency() SchedulingLatency {
-	if len(ec.podScheduleLatency) == 0 {
+	if len(ec.podSchedulingDurations) == 0 {
 		return SchedulingLatency{}
 	}
 
-	durations := make([]time.Duration, 0, len(ec.podScheduleLatency))
-	for _, d := range ec.podScheduleLatency {
-		if d > 0 {
-			durations = append(durations, d)
+	durations := make([]time.Duration, 0, len(ec.podSchedulingDurations))
+	for _, latencies := range ec.podSchedulingDurations {
+		for _, l := range latencies {
+			if l.TimeToSchedule > 0 {
+				durations = append(durations, l.TimeToSchedule)
+			}
 		}
 	}
 	if len(durations) == 0 {

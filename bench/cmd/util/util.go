@@ -105,6 +105,12 @@ func SaveJsonToFile(data any, path string) error {
 	return encoder.Encode(data)
 }
 
+// CheckIfDockerRunning checks if docker daemon is running by executing 'docker info'
+func CheckIfDockerRunning() error {
+	cmd := exec.Command("docker", "info")
+	return cmd.Run()
+}
+
 // CheckIfImageExists runs "docker image inspect" to find if specified image is already present
 func CheckIfImageExists(imageName string) (skipBuild bool) {
 	check := exec.Command("docker", "image", "inspect", imageName)

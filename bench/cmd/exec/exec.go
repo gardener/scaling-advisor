@@ -6,11 +6,11 @@ package exec
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,18 +18,17 @@ import (
 	"text/template"
 	"time"
 
-	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
-	"github.com/gardener/scaling-advisor/pricing"
 
 	"github.com/gardener/scaling-advisor/api/planner"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	"github.com/gardener/scaling-advisor/pricing"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/e2e-framework/klient"
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
@@ -39,63 +38,27 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
+var temporaryFiles []string
+
 const prometheusPort = 2112
-
-// ScalerEventConfig describes the events a scaler emits and which ones
-// indicate a pod has been deemed unschedulable.
-type ScalerEventConfig struct {
-	Source                string   // Event source to match (e.g. "karpenter", "cluster-autoscaler")
-	EventNames            []string // Event names to watch for (e.g. "FailedScheduling", "NodeCreated", "PodScheduled")
-	MarksPodUnschedulable []string // Subset of EventNames that mark a pod as unschedulable
-}
-
-// ExecScaler is the interface that every scaler backend must implement to
-// participate in a benchmark run.
-type ExecScaler interface {
-	// DeployScalerData creates the scaler-specific Kubernetes objects (CRDs,
-	// ConfigMaps, NodePools, etc.) in the KWOK cluster.
-	DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) error
-
-	// GetScalerKWOKTemplatePath returns the embedded-FS path to the
-	// kwokctl configuration template for this scaler.
-	GetScalerKWOKTemplatePath() string
-
-	// CheckRequiredDataPresent verifies that everything produced by
-	// "setup" (files + Docker images) is available before the cluster
-	// is created.
-	CheckRequiredDataPresent(scenarioDir, version string) error
-
-	// EventConfig returns the scaler-specific event configuration.
-	EventConfig() ScalerEventConfig
-}
-
-// ExecArgs has the flag variables — bound by cobra, read once in execCmd.RunE, then
-// passed explicitly to all callees so that no other function touches these globals.
-type ExecArgs struct {
-	Scaler        string
-	SnapshotFile  string
-	ScalerVersion string
-	PricingFile   string
-	SkipCleanup   bool
-	WaitForCancel bool
-}
 
 // NewExecCommand runs a scaler inside a KWOK cluster populated with data
 // from the cluster snapshot. It is the counterpart to "setup", which prepares
 // the resources and deploys the scaler image that this command consumes.
-func NewExecCommand(ctx context.Context) *cobra.Command {
+func NewExecCommand(_ context.Context) *cobra.Command {
 	var execArgs ExecArgs
 	var execCmd = &cobra.Command{
 		Use:   "exec <scaler> <options>",
 		Short: "Run the scaler by utilizing the data and produce the report",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, cmdArgs []string) (err error) {
+		RunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
+			cmd.SilenceUsage = true
 			// Only the scaler is passed as an argument to the command, rest are all flags
 			execArgs.Scaler = cmdArgs[0]
 
-			// FIXME: this might need checking
+			clusterName := envconf.RandomName("cluster", 17)
 			execCtx := benchutil.SetupSignalHandler()
-			execCtx, err = Run(execCtx, execArgs)
+			_, err = Run(execCtx, execArgs, clusterName)
 			if err != nil {
 				return
 			}
@@ -112,6 +75,13 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 	)
 	_ = execCmd.MarkFlagRequired("snap")
 	_ = execCmd.MarkFlagFilename("snap", "json")
+
+	execCmd.PersistentFlags().StringVarP(
+		&execArgs.ConfigFile,
+		"config", "c", "",
+		"kwokctl configuration file, fall back to embedded config (optional)",
+	)
+	_ = execCmd.MarkFlagFilename("config", "yaml")
 
 	execCmd.PersistentFlags().BoolVarP(
 		&execArgs.SkipCleanup,
@@ -145,99 +115,111 @@ func NewExecCommand(ctx context.Context) *cobra.Command {
 // runtime cluster using 'kwokctl' (this includes control plane components and the scaler).
 // Then it deploys all the objects present in the snapshot in the cluster alongwith the
 // artefacts produced by the "setup" subcommand.
-func Run(execCtx context.Context, args ExecArgs) (ctx context.Context, err error) {
+func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, error) {
+	summary := Summary{}
+	// Set the log entry prefix time to UTC so that it matches the container
+	// log times and the metric timestamps
+	log.SetFlags(log.Ldate | log.Ltime | log.LUTC | log.Lshortfile)
+
 	scenarioDir, err := filepath.Abs(path.Dir(args.SnapshotFile))
 	if err != nil {
-		return nil, fmt.Errorf("cannot resolve scenario directory: %w", err)
+		return summary, fmt.Errorf("cannot resolve scenario directory: %w", err)
 	}
 
 	scaler, err := getScaler(args.Scaler)
 	if err != nil {
-		return nil, fmt.Errorf("cannot get scaler: %w", err)
+		return summary, fmt.Errorf("cannot get scaler: %w", err)
+	}
+
+	err = benchutil.CheckIfDockerRunning()
+	if err != nil {
+		return summary, fmt.Errorf("docker is not running: %v", err)
 	}
 
 	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", args.PricingFile)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing pricing data: %v", err)
+		return summary, fmt.Errorf("error parsing pricing data: %v", err)
 	}
 
 	err = scaler.CheckRequiredDataPresent(scenarioDir, args.ScalerVersion)
 	if err != nil {
-		return nil, fmt.Errorf("please run 'setup' before running 'exec': %v", err)
+		return summary, fmt.Errorf("please run 'setup' before running 'exec': %v", err)
 	}
 
-	kwokClusterName := envconf.RandomName("kwok-cluster", 17)
-
-	// FIXME: what is with this arguments blow-up
-	execCtx, cfg, promConfigPath, err := setupClusterForScaling(execCtx, scaler, kwokClusterName, scenarioDir, args.ScalerVersion)
+	execCtx, cfg, err := setupCluster(execCtx, scaler, clusterName, scenarioDir, args.ConfigFile, args.ScalerVersion)
 	if err != nil {
-		return nil, err
+		return summary, err
 	}
-	// FIXME: aaaaaaaaaaaaaargggggggggggghhhhhhh
-	defer cleanupCluster(execCtx, cfg, kwokClusterName, scenarioDir, promConfigPath, args.SkipCleanup)
+	defer cleanupCluster(execCtx, cfg, clusterName, scenarioDir, args.SkipCleanup)
 
 	clusterSnapshot, err := benchutil.LoadJSONFromFile[planner.ClusterSnapshot](args.SnapshotFile)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load cluster snapshot: %v", err)
+		return summary, fmt.Errorf("cannot load cluster snapshot: %v", err)
 	}
 
 	if err := deployObjects(execCtx, cfg, clusterSnapshot); err != nil {
-		return nil, fmt.Errorf("error running KWOK cluster: %v", err)
+		return summary, fmt.Errorf("error running KWOK cluster: %v", err)
 	}
 	if err := scaler.DeployScalerData(execCtx, cfg, scenarioDir); err != nil {
-		return nil, fmt.Errorf("error deploying the scaler data: %v", err)
+		return summary, fmt.Errorf("error deploying the scaler data: %v", err)
+	}
+	if err := scaler.DeployNodes(execCtx, cfg, &clusterSnapshot); err != nil {
+		return summary, fmt.Errorf("error deploying nodes: %v", err)
 	}
 
-	scheduled, unscheduled := partitionPods(clusterSnapshot.Pods)
+	scheduled, unscheduled, daemonSetPodCount := partitionPods(clusterSnapshot.Pods)
 
 	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
 	if err := deployPods(execCtx, cfg, scheduled); err != nil {
-		return nil, fmt.Errorf("error deploying scheduled pods: %v", err)
+		return summary, fmt.Errorf("error deploying scheduled pods: %v", err)
 	}
 	log.Printf("Deployed all %d scheduled pods", len(scheduled))
 
 	meta := RunMetadata{
-		StartTime:     time.Now(),
+		StartTime:     time.Now().UTC(),
 		ScalerName:    args.Scaler,
 		ScalerVersion: args.ScalerVersion,
 		SnapshotFile:  args.SnapshotFile,
 	}
 	meta.Summary.ClusterState.Before = ClusterStats{
-		NodeCount:       len(clusterSnapshot.Nodes),
-		ScheduledPods:   len(scheduled),
-		UnscheduledPods: len(unscheduled),
+		NodeCount:     len(clusterSnapshot.Nodes),
+		ScheduledPods: len(scheduled),
+		// FIXME: need to do this for all events as well
+		// CA doesn't emit events for DS pods not triggering scale up
+		UnscheduledNonDaemonSetPods: len(unscheduled) - daemonSetPodCount,
 	}
 
-	mon, err := newMonitor(execCtx, cfg, &meta, kwokClusterName, scenarioDir)
+	mon, err := newMonitor(execCtx, cfg, &meta, clusterName, scenarioDir)
 	if err != nil {
-		return nil, fmt.Errorf("monitoring setup failed: %v", err)
+		return summary, fmt.Errorf("monitoring setup failed: %v", err)
 	}
 	mon.waitForCancel = args.WaitForCancel
 
 	if err := mon.start(execCtx, scaler.EventConfig()); err != nil {
-		return nil, fmt.Errorf("monitoring start failed: %v", err)
+		return summary, fmt.Errorf("monitoring start failed: %v", err)
 	}
 	defer mon.ec.Stop()
 
 	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
 	if err := deployPods(execCtx, cfg, unscheduled); err != nil {
-		return nil, fmt.Errorf("error deploying unscheduled pods: %v", err)
+		return summary, fmt.Errorf("error deploying unscheduled pods: %v", err)
+	}
+	for _, p := range unscheduled {
+		fmt.Printf("Deployed %q\n", p.Name)
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
 	mon.stop(execCtx, pricingData)
 
 	log.Println("Successfully completed!")
-	// TODO: revert and fix this
-	// <-execCtx.Done()
-	return execCtx, nil
+
+	return mon.meta.Summary, nil
 }
 
 func init() {
 	// Register apiextensionsv1 types (CustomResourceDefinition) with the
 	// global client-go scheme so that the e2e-framework client can create
 	// CRD objects.
-
 	_ = apiextensionsv1.AddToScheme(scheme.Scheme)
 }
 
@@ -252,68 +234,69 @@ func getScaler(scalerName string) (ExecScaler, error) {
 	}
 }
 
-// KwokctlConfigTemplateParams stores all the parameters
-// needed for the kwokctl configuration template.
-type KwokctlConfigTemplateParams struct {
-	HomeDir                 string
-	ClusterName             string
-	KubeSchedulerConfigPath string
-	OutputPath              string
-	ScenarioDirectory       string
-	ImageTag                string
-	PrometheusConfigPath    string
-}
-
 // setupClusterForScaling creates a fresh KWOK cluster configured for the
 // given scaler.
-func setupClusterForScaling(
+func setupCluster(
 	ctx context.Context,
 	scaler ExecScaler,
 	clusterName string,
 	scenarioDir string,
+	configFile string,
 	imageTag string,
-) (context.Context, *envconf.Config, string, error) {
+) (context.Context, *envconf.Config, error) {
 	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
 
 	kubeSchedulerConfigPath, err := writeEmbeddedKubeSchedulerConfig()
 	if err != nil {
-		return ctx, nil, "", fmt.Errorf("cannot write kube-scheduler config: %w", err)
+		return ctx, nil, fmt.Errorf("cannot write kube-scheduler config: %w", err)
 	}
-	// TODO: Can this cause problems?
-	defer os.Remove(kubeSchedulerConfigPath)
+	temporaryFiles = append(temporaryFiles, kubeSchedulerConfigPath)
 
 	promConfigPath, err := writePrometheusConfig(prometheusPort)
 	if err != nil {
-		return ctx, nil, "", fmt.Errorf("cannot write prometheus config: %w", err)
+		return ctx, nil, fmt.Errorf("cannot write prometheus config: %w", err)
 	}
+	temporaryFiles = append(temporaryFiles, promConfigPath)
 
-	kwokctlCfgFile := path.Join(scenarioDir, "kwok-config.yaml")
+	outputKwokCfgFile := path.Join(scenarioDir, "kwok-config.yaml")
 	templateParams := KwokctlConfigTemplateParams{
 		HomeDir:                 os.Getenv("HOME"),
 		ClusterName:             clusterName,
 		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
-		OutputPath:              kwokctlCfgFile,
+		OutputPath:              outputKwokCfgFile,
 		ScenarioDirectory:       scenarioDir,
 		ImageTag:                imageTag,
 		PrometheusConfigPath:    promConfigPath,
 	}
 
-	err = generateKwokctlConfig(templateParams, scaler.GetScalerKWOKTemplatePath())
+	err = generateKwokctlConfig(templateParams, scaler, configFile)
 	if err != nil {
-		return ctx, nil, "", fmt.Errorf("cannot create kwok config: %w", err)
+		return ctx, nil, fmt.Errorf("cannot create kwok config: %w", err)
 	}
 	log.Printf("Wrote kwok config template to %q\n", templateParams.OutputPath)
 
 	testenv := env.New()
-	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), clusterName, kwokctlCfgFile)
+	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), clusterName, outputKwokCfgFile)
 	cfg := testenv.EnvConf()
 
 	ctx, err = createClusterFunc(ctx, cfg)
 	if err != nil {
-		return ctx, nil, "", fmt.Errorf("failed to create cluster: %w", err)
+		return ctx, nil, fmt.Errorf("failed to create cluster: %w", err)
 	}
 
-	return ctx, cfg, promConfigPath, nil
+	restCfg := cfg.Client().RESTConfig()
+	// Create a client with API server warnings suppressed (e.g. pod names
+	// exceeding the 63-char DNS label limit, this introduces a lot of noise).
+	restCfg.WarningHandler = rest.NoWarnings{}
+	// Disable rate limiting to speed up the deployment
+	restCfg.QPS = -1
+	client, err := klient.New(restCfg)
+	if err != nil {
+		return ctx, nil, fmt.Errorf("failed to create client: %w", err)
+	}
+	cfg.WithClient(client)
+
+	return ctx, cfg, nil
 }
 
 // cleanupCluster exports pod/container logs and (unless --skip-cleanup is set)
@@ -321,29 +304,30 @@ func setupClusterForScaling(
 func cleanupCluster(
 	ctx context.Context,
 	cfg *envconf.Config,
-	kwokClusterName string,
+	clusterName string,
 	scenarioDir string,
-	promConfigPath string,
 	skipCleanup bool,
 ) {
-	os.Remove(promConfigPath)
+	for _, file := range temporaryFiles {
+		os.Remove(file)
+	}
 
 	logsDir := path.Join(scenarioDir, "logs")
 
 	if err := os.MkdirAll(logsDir, 0750); err != nil {
 		fmt.Printf("Warning: Failed to create logs directory %q: %v\n", logsDir, err)
 	} else {
-		exportLogsFunc := envfuncs.ExportClusterLogs(kwokClusterName, logsDir)
+		exportLogsFunc := envfuncs.ExportClusterLogs(clusterName, logsDir)
 		if _, err := exportLogsFunc(ctx, cfg); err != nil {
 			fmt.Printf("Warning: Failed to export logs: %v\n", err)
 		} else {
-			fmt.Printf("\nExported logs to %q\n", logsDir)
+			fmt.Printf("\nExported logs to %q\n", path.Join(logsDir, clusterName))
 		}
 	}
 
 	if !skipCleanup {
 		log.Println("Cleaning up...")
-		destroyClusterFunc := envfuncs.DestroyCluster(kwokClusterName)
+		destroyClusterFunc := envfuncs.DestroyCluster(clusterName)
 		if _, err := destroyClusterFunc(ctx, cfg); err != nil {
 			fmt.Printf("Warning: Failed to destroy cluster: %v\n", err)
 		}
@@ -351,134 +335,29 @@ func cleanupCluster(
 }
 
 // ---------------------------------------------------------------------------
-// Object deployment
-// ---------------------------------------------------------------------------
-
-// deployObjects creates the non-pod Kubernetes objects that form the cluster
-// state: priority classes, nodes and defaultNamespaces' service account
-func deployObjects(ctx context.Context, cfg *envconf.Config, clusterSnapshot planner.ClusterSnapshot) (err error) {
-	err = deployPriorityClasses(ctx, clusterSnapshot, cfg)
-	if err != nil {
-		return
-	}
-	err = deployNodes(ctx, clusterSnapshot, cfg)
-	if err != nil {
-		return
-	}
-	// Just to be safe, create default NS if it doesn't exist
-	defaultNamespaces := []string{
-		corev1.NamespaceDefault,
-		"kube-system",
-		"kube-public",
-		corev1.NamespaceNodeLease,
-	}
-	for _, ns := range defaultNamespaces {
-		err := createNamespaceAndDefaultSA(ctx, cfg, ns)
-		if err != nil {
-			return err
-		}
-	}
-	return
-}
-
-func deployPriorityClasses(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
-	log.Println("Deploying priority classes...")
-	for _, pClass := range clusterSnapshot.PriorityClasses {
-		pClass.ResourceVersion = ""
-		if err := cfg.Client().Resources().Create(ctx, &pClass); err != nil {
-			return fmt.Errorf("failed to create priorityClass: %w", err)
-		}
-	}
-	return nil
-}
-
-func deployNodes(ctx context.Context, clusterSnapshot planner.ClusterSnapshot, cfg *envconf.Config) error {
-	log.Printf("Deploying nodes, count %d...\n", len(clusterSnapshot.Nodes))
-	for _, nodeInfo := range clusterSnapshot.Nodes {
-		node := nodeutil.AsNode(nodeInfo)
-		node.Spec.ProviderID = "kwok://" + node.Name // required so KWOK recognises node
-		node.ResourceVersion = ""
-		if err := cfg.Client().Resources().Create(ctx, node); err != nil {
-			return fmt.Errorf("failed to create node: %w", err)
-		}
-	}
-	return nil
-}
-
-// deployPods deploys the specified pods into the cluster.
-// It also creates the namespace used by the pod and the 'default' ServiceAccount
-// for that namespace.
-func deployPods(ctx context.Context, cfg *envconf.Config, pods []planner.PodInfo) error {
-	for _, podInfo := range pods {
-		if err := createNamespaceAndDefaultSA(ctx, cfg, podInfo.Namespace); err != nil {
-			return err
-		}
-		if err := createPod(ctx, cfg, podInfo); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func createNamespaceAndDefaultSA(ctx context.Context, cfg *envconf.Config, name string) error {
-	ns := &corev1.Namespace{}
-	ns.Name = name
-	err := cfg.Client().Resources().Create(ctx, ns)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed to create namespace: %w", err)
-	}
-	return createDefaultServiceAccount(ctx, cfg, name)
-}
-
-// KWOK does not auto-create service accounts, so we must
-// create a "default" SA in every namespace ourselves.
-func createDefaultServiceAccount(ctx context.Context, cfg *envconf.Config, name string) error {
-	sa := corev1.ServiceAccount{}
-	sa.Name = "default"
-	sa.Namespace = name
-	if err := cfg.Client().Resources().Create(ctx, &sa); err != nil && !errors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed to create default serviceAccount in namespace %q: %w", name, err)
-	}
-	return nil
-}
-
-// createPod converts a PodInfo to a corev1.Pod, applies the fixups needed
-// for KWOK (dummy image, cleared identity fields) and creates it.
-func createPod(ctx context.Context, cfg *envconf.Config, podInfo planner.PodInfo) error {
-	p := podutil.AsPod(podInfo)
-	if p.Spec.Containers[0].Image == "" {
-		p.Spec.Containers[0].Image = "dummy-image"
-	}
-	// This is done to prevent container names that can have more than 63 chars
-	p.Spec.Containers[0].Name = "dummy-container"
-	p.ResourceVersion = ""
-	p.UID = ""
-	if err := cfg.Client().Resources().Create(ctx, p); err != nil {
-		return fmt.Errorf("failed to create pod %q: %w", p.Name, err)
-	}
-	return nil
-}
-
-func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo) {
-	for _, podInfo := range pods {
-		if podInfo.NodeName == "" {
-			unscheduled = append(unscheduled, podInfo)
-		} else {
-			scheduled = append(scheduled, podInfo)
-		}
-	}
-	return
-}
-
-// ---------------------------------------------------------------------------
 // Template & config helpers
 // ---------------------------------------------------------------------------
 
-func generateKwokctlConfig(params KwokctlConfigTemplateParams, templateConfigPath string) error {
-	data, err := content.ReadFile(templateConfigPath)
-	if err != nil {
-		return fmt.Errorf("cannot read %s from content FS: %w", templateConfigPath, err)
+func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler, configPath string) error {
+	var (
+		data               []byte
+		templateConfigPath string
+		err                error
+	)
+	if configPath != "" {
+		templateConfigPath = configPath
+		data, err = os.ReadFile(templateConfigPath)
+		if err != nil {
+			return fmt.Errorf("cannot read %s from filesystem: %w", templateConfigPath, err)
+		}
+	} else {
+		templateConfigPath = scaler.GetScalerKWOKTemplatePath()
+		data, err = content.ReadFile(templateConfigPath)
+		if err != nil {
+			return fmt.Errorf("cannot read %s from content FS: %w", templateConfigPath, err)
+		}
 	}
+
 	templateConfig, err := template.New(templateConfigPath).Parse(string(data))
 	if err != nil {
 		return fmt.Errorf("cannot parse %s template: %w", templateConfigPath, err)
@@ -518,28 +397,14 @@ func writeEmbeddedKubeSchedulerConfig() (string, error) {
 // Monitoring and metrics collection
 // ---------------------------------------------------------------------------
 
-// monitorState groups the resources needed for metrics collection and
-// event watching during a benchmark run.
-type monitorState struct {
-	monitors      []*DockerMonitor
-	ec            *EventCollector
-	metrics       map[string][]ContainerStats
-	wg            *sync.WaitGroup
-	cancelStream  context.CancelFunc
-	server        *http.Server
-	cfg           *envconf.Config
-	meta          *RunMetadata
-	clusterName   string
-	scenarioDir   string
-	waitForCancel bool
-}
-
 // newMonitor creates a monitorState by discovering Docker containers and
 // preparing the metrics infrastructure. Call start() to begin streaming.
 func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clusterName, scenarioDir string) (*monitorState, error) {
-	containers := []string{meta.ScalerName, "kube-apiserver", "etcd", "kube-scheduler", "kwok-controller"}
+	containers := []string{
+		meta.ScalerName, "kube-apiserver", "etcd", "kube-scheduler", "kwok-controller",
+	}
 
-	var monitors []*DockerMonitor
+	var monitors []DockerMonitor
 	for _, name := range containers {
 		m := NewDockerMonitor(clusterName + "-" + name)
 		if err := m.WaitForReady(ctx); err != nil {
@@ -575,7 +440,7 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for m := range metricsChan {
-			ts := m.Timestamp.Time
+			ts := m.Timestamp.UTC()
 			for _, container := range m.Containers {
 				stats := container.Stats
 				stats.Timestamp = ts
@@ -602,7 +467,7 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 	}()
 
 	log.Println("Starting event collection and measuring scaling timeline...")
-	mon.ec = NewEventCollector(mon.cfg.Client().Resources(), mon.meta.Summary.ClusterState.Before.UnscheduledPods, eventConfig)
+	mon.ec = NewEventCollector(mon.cfg.Client().Resources(), mon.meta.Summary.ClusterState.Before.UnscheduledNonDaemonSetPods, eventConfig)
 	if err := mon.ec.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start event collector: %w", err)
 	}
@@ -617,13 +482,6 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 		log.Printf("Event collector wait interrupted: %v", err)
 	}
 
-	events, timing, eventsSummary := mon.ec.Results(pricingData)
-	mon.ec.Stop()      // stop event watches
-	mon.cancelStream() // stop all metric streams
-	mon.meta.EndTime = time.Now()
-	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
-		valueOrNA(timing.TotalDuration), valueOrNA(timing.ReactionTime), valueOrNA(timing.SchedulingTime))
-
 	if mon.waitForCancel {
 		for _, m := range mon.monitors {
 			ResetContainerMetrics(m.containerNamePrefix)
@@ -631,6 +489,13 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 		log.Println("Waiting for Ctrl+C...")
 		<-ctx.Done()
 	}
+
+	events, timing, eventsSummary := mon.ec.Results(pricingData)
+	mon.ec.Stop()      // stop event watches
+	mon.cancelStream() // stop all metric streams
+	mon.meta.EndTime = time.Now().UTC()
+	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
+		cmp.Or(timing.TotalDuration, "N/A"), cmp.Or(timing.ReactionTime, "N/A"), cmp.Or(timing.SchedulingTime, "N/A"))
 
 	mon.clusterStateAfter(context.Background())
 
@@ -657,13 +522,6 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	}
 }
 
-func valueOrNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}
-
 func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	nodes := &corev1.NodeList{}
 	if err := mon.cfg.Client().Resources().List(ctx, nodes); err == nil {
@@ -674,7 +532,9 @@ func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	if err := mon.cfg.Client().Resources().List(ctx, pods); err == nil {
 		for _, pod := range pods.Items {
 			if pod.Spec.NodeName == "" {
-				mon.meta.Summary.ClusterState.After.UnscheduledPods++
+				if owners := pod.GetOwnerReferences(); len(owners) > 0 && owners[0].Kind != "DaemonSet" {
+					mon.meta.Summary.ClusterState.After.UnscheduledNonDaemonSetPods++
+				}
 			} else {
 				mon.meta.Summary.ClusterState.After.ScheduledPods++
 			}

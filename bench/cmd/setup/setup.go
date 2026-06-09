@@ -39,7 +39,7 @@ type SetupArgs struct {
 }
 
 // NewSetupCommand is the entry point for getting the scaler for the "setup" subcommand.
-func NewSetupCommand(ctx context.Context) *cobra.Command {
+func NewSetupCommand(_ context.Context) *cobra.Command {
 	var setupArgs SetupArgs
 	var setupCmd = &cobra.Command{
 		Use:   "setup <scaler> <options>",
@@ -48,7 +48,8 @@ func NewSetupCommand(ctx context.Context) *cobra.Command {
 		RunE: func(_ *cobra.Command, cmdArgs []string) (err error) {
 			// Only the scaler is passed as an argument to the command, rest are all flags
 			setupArgs.Scaler = cmdArgs[0]
-			return Run(ctx, setupArgs)
+			setupCtx := benchutil.SetupSignalHandler()
+			return Run(setupCtx, setupArgs)
 		},
 	}
 
@@ -83,6 +84,11 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 	scaler, err := getScaler(args.Scaler, args.PricingFile)
 	if err != nil {
 		return err
+	}
+
+	err = benchutil.CheckIfDockerRunning()
+	if err != nil {
+		return fmt.Errorf("docker is not running: %v", err)
 	}
 
 	// Derive the output directory from the constraints file location so

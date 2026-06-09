@@ -22,51 +22,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DockerMonitor per docker container
-type DockerMonitor struct {
-	containerNamePrefix string
-	containerID         string
-	httpClient          *http.Client
-}
-
-type dockerStats struct {
-	CPUStats struct {
-		CPUUsage struct {
-			TotalUsage uint64 `json:"total_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-		OnlineCPUs     uint32 `json:"online_cpus"`
-		ThrottlingData struct {
-			Periods          uint64 `json:"periods"`
-			ThrottledPeriods uint64 `json:"throttled_periods"`
-			ThrottledTime    uint64 `json:"throttled_time"`
-		} `json:"throttling_data"`
-	} `json:"cpu_stats"`
-	PreCPUStats struct {
-		CPUUsage struct {
-			TotalUsage uint64 `json:"total_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-	} `json:"precpu_stats"`
-	MemoryStats struct {
-		Usage    uint64 `json:"usage"`
-		MaxUsage uint64 `json:"max_usage"`
-		Limit    uint64 `json:"limit"`
-		Stats    struct {
-			RSS uint64 `json:"rss"`
-		} `json:"stats"`
-	} `json:"memory_stats"`
-	PidsStats struct {
-		Current uint32 `json:"current"`
-	} `json:"pids_stats"`
-}
-
 // dockerSocketPath returns the Docker socket path by checking DOCKER_HOST,
 // then common socket locations.
 func dockerSocketPath() string {
 	if host := os.Getenv("DOCKER_HOST"); host != "" {
-		if strings.HasPrefix(host, "unix://") {
-			return strings.TrimPrefix(host, "unix://")
+		if after, ok := strings.CutPrefix(host, "unix://"); ok {
+			return after
 		}
 	}
 	home, _ := os.UserHomeDir()
@@ -84,9 +45,9 @@ func dockerSocketPath() string {
 }
 
 // NewDockerMonitor creates a new DockerMonitor
-func NewDockerMonitor(containerNamePrefix string) *DockerMonitor {
+func NewDockerMonitor(containerNamePrefix string) DockerMonitor {
 	sockPath := dockerSocketPath()
-	return &DockerMonitor{
+	return DockerMonitor{
 		containerNamePrefix: containerNamePrefix,
 		httpClient:          newDialHTTPClient(sockPath),
 	}
@@ -108,7 +69,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 
 	if id, err := m.findContainerIDByPrefix(ctx, m.containerNamePrefix); err == nil && id != "" {
 		m.containerID = id
-		log.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+		log.Printf("Found container: %s\n", m.containerNamePrefix)
 		return nil
 	}
 
@@ -126,7 +87,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 			}
 			if id != "" {
 				m.containerID = id
-				log.Printf("Found container: %s (id: %s)\n", m.containerNamePrefix, m.containerID)
+				log.Printf("Found container: %s\n", m.containerNamePrefix)
 				return nil
 			}
 		}
@@ -187,32 +148,30 @@ func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics)
 }
 
 func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
-	var cpuMilli int64
+	var cpuMilli uint64
 	if stats.PreCPUStats.SystemCPUUsage > 0 && stats.CPUStats.SystemCPUUsage > 0 {
 		cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
 		systemDelta := float64(stats.CPUStats.SystemCPUUsage - stats.PreCPUStats.SystemCPUUsage)
 		onlineCPUs := float64(stats.CPUStats.OnlineCPUs)
 		if systemDelta > 0 && onlineCPUs > 0 {
 			percent := (cpuDelta / systemDelta) * onlineCPUs * 100.0
-			cpuMilli = int64(percent * 10.0)
+			cpuMilli = uint64(percent * 10.0)
 		}
 	}
 
 	return &PodMetrics{
-		Timestamp: metav1.NewTime(time.Now()),
+		Timestamp: metav1.NewTime(time.Now().UTC()),
 		Containers: []ContainerMetrics{
 			{
 				Name: m.containerNamePrefix,
 				Stats: ContainerStats{
 					CPUMillicores:       cpuMilli,
-					MemoryMi:            int64(stats.MemoryStats.Usage) / (1024 * 1024),
-					MemoryRSSMi:         int64(stats.MemoryStats.Stats.RSS) / (1024 * 1024),
-					MemoryMaxUsageMi:    int64(stats.MemoryStats.MaxUsage) / (1024 * 1024),
-					MemoryLimitMi:       int64(stats.MemoryStats.Limit) / (1024 * 1024),
+					MemoryMi:            stats.MemoryStats.Usage / (1024 * 1024),
+					MemoryLimitMi:       stats.MemoryStats.Limit / (1024 * 1024),
 					CPUThrottledPeriods: stats.CPUStats.ThrottlingData.ThrottledPeriods,
 					CPUTotalPeriods:     stats.CPUStats.ThrottlingData.Periods,
 					CPUThrottledTimeNs:  stats.CPUStats.ThrottlingData.ThrottledTime,
-					PIDs:                stats.PidsStats.Current,
+					PID:                 stats.PidsStats.Current,
 				},
 			},
 		},
