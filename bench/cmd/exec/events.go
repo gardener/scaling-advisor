@@ -136,7 +136,15 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, message)
 			if slices.Contains(cfg.MarksPodUnschedulable, event.Reason) {
 				key := event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name
-				ec.podUnschedulable(key)
+				var pod corev1.Pod 
+				err := ec.res.Get(ctx, event.InvolvedObject.Namespace, event.InvolvedObject.Name, pod);
+				if err != nil {
+					log.Printf("ERR: could not fetch pod %q: %s", key, err.Error())
+				}
+				// If its a daemonset pod, then its not tracked
+				if !isOwner(pod.GetOwnerReferences(), "DaemonSet") {
+					ec.podUnschedulable(key)
+				}
 			}
 		} else if event.Reason == "Scheduled" {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
@@ -239,16 +247,11 @@ func (ec *EventCollector) watchPods(ctx context.Context) error {
 		if !ok {
 			return
 		}
-		// If a pod is deleted and is a job pod or a daemonset pod, then its not re-created
-		owners := pod.GetOwnerReferences()
-		if owners == nil {
+		// If a pod is deleted and its a daemonset or a job pod, then its not re-created
+		if isOwner(pod.GetOwnerReferences(), "Daemonset") || isOwner(pod.GetOwnerReferences(), "Job") {
 			return
 		}
-		if slices.ContainsFunc(owners, func(owner metav1.OwnerReference) bool {
-			return owner.Kind == "Job" || owner.Kind == "DaemonSet"
-		}) {
-			return
-		}
+		
 		ec.mu.Lock()
 		defer ec.mu.Unlock()
 		// If nodename is non-empty, i.e. pod was already scheduled, only then increment
@@ -403,6 +406,7 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 		TimeToSchedule: scheduledTime.Sub(pod.CreationTimestamp.UTC()),
 	})
 
+	if 
 	ec.scheduledCount++
 	// log.Printf("DEBUG: Sched counter: %d\n", ec.scheduledCount)
 	PodsScheduledTotal.Inc()
@@ -483,4 +487,16 @@ func (ec *EventCollector) computeTotalDuration() {
 	}
 	duration := ec.timing.LastPodResolved.Sub(ec.timing.FirstFailedScheduling)
 	ec.timing.TotalDuration = duration.String()
+}
+
+func isOwner(owners []corev1.OwnerReference, kind string) bool {
+	if owners == nil {
+		return false
+	}
+	if slices.ContainsFunc(owners, func(owner metav1.OwnerReference) bool {
+		return owner.Kind == kind
+	}) {
+		return true
+	}
+	return false
 }

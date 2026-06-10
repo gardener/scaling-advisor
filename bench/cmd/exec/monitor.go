@@ -154,7 +154,7 @@ func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	if err := mon.cfg.Client().Resources().List(ctx, pods); err == nil {
 		for _, pod := range pods.Items {
 			if pod.Spec.NodeName == "" {
-				if owners := pod.GetOwnerReferences(); len(owners) > 0 && owners[0].Kind != "DaemonSet" {
+				if !isOwner(pod.GetOwnerReferences(), "Daemonset") {
 					mon.meta.Summary.ClusterState.After.UnscheduledNonDaemonSetPods++
 				}
 			} else {

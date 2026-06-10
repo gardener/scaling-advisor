@@ -87,7 +87,7 @@ func deployPods(ctx context.Context, cfg *envconf.Config, pods []planner.PodInfo
 func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo, daemonSetPodCount int) {
 	for _, podInfo := range pods {
 		if podInfo.NodeName == "" {
-			if owners := podInfo.GetOwnerReferences(); len(owners) > 0 && owners[0].Kind == "DaemonSet" {
+			if isOwner(podInfo.GetOwnerReferences(), "DaemonSet") {
 				daemonSetPodCount++
 			}
 			unscheduled = append(unscheduled, podInfo)
