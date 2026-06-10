@@ -292,11 +292,11 @@ func FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx context.Context, view min
 		pvc.Status.Phase = corev1.ClaimBound
 		metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 		pv.Status.Phase = corev1.VolumeBound
-		err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc)
+		err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{})
 		if err != nil {
 			return
 		}
-		err = view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv)
+		err = view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{})
 		if err != nil {
 			return
 		}
@@ -377,7 +377,7 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
 	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
-	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
 	}
@@ -393,7 +393,7 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pv.Status.Phase = corev1.VolumeBound
 	pv.Status.LastPhaseTransitionTime = ptr.To(metav1.Now())
 	metav1.SetMetaDataAnnotation(&pv.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pv->pvc", "pv", pv, "pvc", pvc)
 		return fmt.Errorf("%w: failed to bind pv %q ->pvc %q: %w", plannerapi.ErrBindClaimVolume, pv.Name, pvc.Name, err)
 	}
@@ -455,7 +455,7 @@ func createSimulatedVolumeMatchingClaim(ctx context.Context, view minkapi.View, 
 			},
 		}
 	}
-	if _, err = view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err = view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		err = fmt.Errorf("could not create simulated PV %q matching PVC %q: %w", pv.Name, objutil.NamespacedName(pvc), err)
 		return
 	}

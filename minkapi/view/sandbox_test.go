@@ -51,7 +51,7 @@ func TestStoreGetNode(t *testing.T) {
 	baseChangeCount := b.GetObjectChangeCount()
 	sandboxChangeCount := s.GetObjectChangeCount()
 	nA := testNodes[0]
-	err = storeNode(t, b, &nA)
+	err = storeNode(t, b, &nA, mkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -73,7 +73,7 @@ func TestStoreGetNode(t *testing.T) {
 	baseChangeCount = b.GetObjectChangeCount()
 	nB := *nA.DeepCopy()
 	nB.GenerateName = "b-"
-	err = storeNode(t, s, &nB)
+	err = storeNode(t, s, &nB, mkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		return
 	}
@@ -91,7 +91,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 		return
 	}
 	nA := testNodes[0]
-	err = storeNode(t, b, &nA)
+	err = storeNode(t, b, &nA, mkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -111,7 +111,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 		},
 	}
 	nAWithCondChange.Status.Conditions = conditions
-	err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAWithCondChange)
+	err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAWithCondChange, mkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to update node: %v", s.GetName(), err)
 		return
@@ -145,12 +145,12 @@ func TestSandboxPodSandboxNodeBinding(t *testing.T) {
 	}
 	initialBaseChangeCount := b.GetObjectChangeCount()
 	nA := testNodes[0]
-	err = storeNode(t, s, &nA)
+	err = storeNode(t, s, &nA, mkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		return
 	}
 	pA := testPods[0]
-	err = storePod(t, s, &pA)
+	err = storePod(t, s, &pA, mkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		return
 	}
@@ -193,13 +193,13 @@ func TestSandboxPodBaseNodeBinding(t *testing.T) {
 		return
 	}
 	nA := testNodes[0]
-	err = storeNode(t, b, &nA) //store node in base
+	err = storeNode(t, b, &nA, mkapi.ObjectOptions{}) //store node in base
 	if err != nil {
 		return
 	}
 	baseChangeCountAfterNodeStore := b.GetObjectChangeCount()
 	pA := testPods[0]
-	err = storePod(t, s, &pA) // store pod in sandbox
+	err = storePod(t, s, &pA, mkapi.ObjectOptions{NoBroadcast: true}) // store pod in sandbox
 	if err != nil {
 		return
 	}
@@ -247,12 +247,12 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 		return
 	}
 	nA := testNodes[0]
-	err = storeNode(t, s, &nA) //store node in the sandbox view
+	err = storeNode(t, s, &nA, mkapi.ObjectOptions{NoBroadcast: true}) //store node in the sandbox view
 	if err != nil {
 		return
 	}
 	pA := testPods[0]
-	err = storePod(t, b, &pA) // store pod in the base view
+	err = storePod(t, b, &pA, mkapi.ObjectOptions{}) // store pod in the base view
 	if err != nil {
 		return
 	}
@@ -388,9 +388,9 @@ func createBinding(p *corev1.Pod, n *corev1.Node) corev1.Binding {
 	}
 }
 
-func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
+func storePod(t *testing.T, v mkapi.View, p *corev1.Pod, opts mkapi.ObjectOptions) error {
 	t.Helper()
-	_, err := v.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, p)
+	_, err := v.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, p, opts)
 	if err != nil {
 		t.Fatalf("failed to store pod: %v", err)
 		return err
@@ -398,9 +398,9 @@ func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 	return nil
 }
 
-func storeNode(t *testing.T, v mkapi.View, n *corev1.Node) error {
+func storeNode(t *testing.T, v mkapi.View, n *corev1.Node, opts mkapi.ObjectOptions) error {
 	t.Helper()
-	_, err := v.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, n)
+	_, err := v.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, n, opts)
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", v.GetName(), err)
 		return err

@@ -67,14 +67,14 @@ type ResourceStore interface {
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
-	// Add adds a new object to the store.
-	Add(ctx context.Context, mo metav1.Object) error
+	// Add adds a new object to the store using the given opts.
+	Add(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// GetByKey retrieves an object from the store by its key.
 	GetByKey(ctx context.Context, key string) (o runtime.Object, err error)
 	// Get retrieves an object from the store by its name.
 	Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error)
-	// Update updates an existing object in the store.
-	Update(ctx context.Context, mo metav1.Object) error
+	// Update updates an existing object in the store using the given opts.
+	Update(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// DeleteByKey deletes an object from the store by its key.
 	DeleteByKey(ctx context.Context, key string) error
 	// Delete deletes an object from the store by its name.
@@ -92,6 +92,12 @@ type ResourceStore interface {
 	GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (watch.Interface, error)
 	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
 	GetVersionCounter() *atomic.Int64
+}
+
+// ObjectOptions represents options when storing or querying an object.
+type ObjectOptions struct {
+	// NoBroadcast means there will be no watch event broadcasted when this object is created or updated.
+	NoBroadcast bool
 }
 
 // ResourceStoreArgs contains arguments for creating a ResourceStore.
@@ -138,12 +144,12 @@ type View interface {
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	// GetEventSink returns the event sink for this view.
 	GetEventSink() EventSink
-	// CreateObject creates a new object of the specified GVK in this view.
-	CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error)
+	// CreateObject creates a new object of the specified GVK in this view using the given opts.
+	CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts ObjectOptions) (metav1.Object, error)
 	// GetObject retrieves an object of the specified GVK by name.
 	GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (runtime.Object, error)
-	// UpdateObject updates an existing object of the specified GVK.
-	UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) error
+	// UpdateObject updates an existing object of the specified GVK using the given opts.
+	UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts ObjectOptions) error
 	// UpdatePodNodeBinding updates a pod's node binding and returns the updated pod.
 	UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error)
 	// PatchObject applies a patch to an object of the specified GVK.

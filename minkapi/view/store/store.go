@@ -75,7 +75,7 @@ func (s *InMemResourceStore) Reset() error {
 
 // Add adds the given metav1 Object to this store, setting the right resource version, updating the resource version counter and broadcasting the Add event to any watchers.
 // TODO think on how to handle context cancellation
-func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
+func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object, opts minkapi.ObjectOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -92,18 +92,20 @@ func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object) error {
 	}
 	log.V(4).Info("added object to store", "kind", s.args.ObjectGVK.Kind, "key", key, "resourceVersion", mo.GetResourceVersion())
 
-	go func() {
-		err = s.broadcaster.Action(watch.Added, o)
-		if err != nil {
-			log.Error(err, "failed to broadcast object add", "key", key)
-		}
-	}()
+	if !opts.NoBroadcast {
+		go func(broadcastObj runtime.Object) {
+			err = s.broadcaster.Action(watch.Added, broadcastObj)
+			if err != nil {
+				log.Error(err, "failed to broadcast object add", "key", key)
+			}
+		}(o.DeepCopyObject())
+	}
 	return nil
 }
 
 // Update updates the given metav1.Object in the store, setting the next resource version and broadcasting a Modified event.
 // TODO think on how to handle context cancellation
-func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object) error {
+func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts minkapi.ObjectOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -119,12 +121,14 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object) error
 		return apierrors.NewInternalError(fmt.Errorf("cannot update object %q in store: %w", key, err))
 	}
 	log.V(4).Info("updated object in store", "kind", s.args.ObjectGVK.Kind, "key", key, "resourceVersion", mo.GetResourceVersion())
-	go func() {
-		err = s.broadcaster.Action(watch.Modified, o)
-		if err != nil {
-			log.Error(err, "failed to broadcast object update", "key", key)
-		}
-	}()
+	if !opts.NoBroadcast {
+		go func(broadcastObj runtime.Object) {
+			err = s.broadcaster.Action(watch.Modified, broadcastObj)
+			if err != nil {
+				log.Error(err, "failed to broadcast object update", "key", key)
+			}
+		}(o.DeepCopyObject())
+	}
 	return nil
 }
 

@@ -22,22 +22,22 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 		return err
 	}
 	for _, pc := range cs.PriorityClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.PriorityClassesDescriptor.GVK, &pc, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, rc := range cs.RuntimeClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.RuntimeClassDescriptor.GVK, &rc); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.RuntimeClassDescriptor.GVK, &rc, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, sc := range cs.StorageClasses {
-		if _, err := view.CreateObject(ctx, typeinfo.StorageClassDescriptor.GVK, &sc); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.StorageClassDescriptor.GVK, &sc, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, nodeInfo := range cs.Nodes {
-		createdObj, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo))
+		createdObj, err := view.CreateObject(ctx, typeinfo.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo), minkapi.ObjectOptions{})
 		if err != nil {
 			return err
 		}
@@ -45,22 +45,22 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 			continue
 		}
 		csiNode := nodeutil.NewCSINode(nodeInfo.Name, createdObj.GetUID(), *nodeInfo.CSINodeSpec)
-		if _, err = view.CreateObject(ctx, typeinfo.CSINodeDescriptor.GVK, csiNode); err != nil {
+		if _, err = view.CreateObject(ctx, typeinfo.CSINodeDescriptor.GVK, csiNode, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, pvc := range cs.PVCs {
-		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc)); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, pv := range cs.PVs {
-		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv)); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, pod := range cs.Pods {
-		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod)); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, podutil.AsPod(pod), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
