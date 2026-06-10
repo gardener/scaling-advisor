@@ -62,7 +62,7 @@ type ScalerEventConfig struct {
 	Source string
 	// Event names to watch for (e.g. "FailedScheduling", "NodeCreated", "PodScheduled")
 	WatchedEvents []string
-	// Subset of EventNames that mark a pod as unschedulable
+	// Subset of WatchedEvents that mark a pod as unschedulable
 	MarksPodUnschedulable []string
 }
 
@@ -159,10 +159,15 @@ type ScalingEvent struct {
 type TimingBreakdown struct {
 	FirstFailedScheduling time.Time `json:"firstFailedScheduling,omitzero"`
 	FirstNodeCreated      time.Time `json:"firstNodeCreated,omitzero"`
+	LastScaleInTime       time.Time `json:"lastScaleOutTime,omitzero"`
+	LastScaleOutTime      time.Time `json:"lastScaleInTime,omitzero"`
 	LastPodResolved       time.Time `json:"lastPodResolved,omitzero"`
-	ReactionTime          string    `json:"reactionTime"`
-	SchedulingTime        string    `json:"schedulingTime"`
-	TotalDuration         string    `json:"totalDuration"`
+
+	ReactionTime   string `json:"reactionTime"`
+	ScaleOutTime   string `json:"scaleOutTime"`
+	ScaleInTime    string `json:"scaleInTime"`
+	SchedulingTime string `json:"schedulingTime"`
+	TotalDuration  string `json:"totalDuration"`
 }
 
 type podSchedulingDuration struct {
@@ -270,8 +275,9 @@ type InstanceDetails struct {
 
 // NodesSummary holds node scaling information.
 type NodesSummary struct {
-	InstanceTypes map[string]InstanceDetails `json:"instanceTypes"`
-	TotalCreated  int                        `json:"totalCreated"`
+	InstanceTypes    map[string]InstanceDetails `json:"instanceTypes"`
+	TotalCreated     int                        `json:"totalCreated"`
+	TotalHourlyPrice float64                    `json:"totalHourlyPrice"`
 }
 
 // Summary holds the structured summary of the benchmark run.

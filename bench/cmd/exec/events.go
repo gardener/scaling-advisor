@@ -117,35 +117,8 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 				Details:   event.Message,
 			})
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
-		} else if source == cfg.Source && slices.Contains(cfg.WatchedEvents, event.Reason) { // scaler events
-			// Karpenter produces a very hefty message for its 'FailedScheduling' events
-			// detailing out all the constraints that failed, this can bloat up the events
-			// file. If this information is needed, logs can be checked.
-			message := event.Message
-			if event.Reason == "FailedScheduling" && source == benchutil.ScalerKarpenter {
-				message = "Failed to scheduled pod"
-			}
-			ec.events = append(ec.events, ScalingEvent{
-				Timestamp: event.CreationTimestamp.UTC(),
-				Type:      event.Reason,
-				Source:    source,
-				Name:      event.InvolvedObject.Name,
-				Namespace: event.InvolvedObject.Namespace,
-				Details:   message,
-			})
-			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, message)
-			if slices.Contains(cfg.MarksPodUnschedulable, event.Reason) {
-				key := event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name
-				var pod corev1.Pod 
-				err := ec.res.Get(ctx, event.InvolvedObject.Namespace, event.InvolvedObject.Name, pod);
-				if err != nil {
-					log.Printf("ERR: could not fetch pod %q: %s", key, err.Error())
-				}
-				// If its a daemonset pod, then its not tracked
-				if !isOwner(pod.GetOwnerReferences(), "DaemonSet") {
-					ec.podUnschedulable(key)
-				}
-			}
+		} else if source == cfg.Source && slices.Contains(cfg.WatchedEvents, event.Reason) {
+			ec.processScalerEvent(ctx, cfg, source, event)
 		} else if event.Reason == "Scheduled" {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
 		}
@@ -155,6 +128,41 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 	}
 	ec.watchers = append(ec.watchers, ew)
 	return nil
+}
+
+func (ec *EventCollector) processScalerEvent(ctx context.Context, eCfg ScalerEventConfig, source string, event *corev1.Event) {
+	// Karpenter produces a very hefty message for its 'FailedScheduling' events
+	// detailing out all the constraints that failed, this can bloat up the events
+	// file. If this information is needed, logs can be checked.
+	message := event.Message
+	if event.Reason == "FailedScheduling" && source == benchutil.ScalerKarpenter {
+		message = "Failed to scheduled pod"
+	}
+
+	ec.events = append(ec.events, ScalingEvent{
+		Timestamp: event.CreationTimestamp.UTC(),
+		Type:      event.Reason,
+		Source:    source,
+		Name:      event.InvolvedObject.Name,
+		Namespace: event.InvolvedObject.Namespace,
+		Details:   message,
+	})
+
+	log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, message)
+
+	if slices.Contains(eCfg.MarksPodUnschedulable, event.Reason) {
+		key := event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name
+		var pod corev1.Pod
+		err := ec.res.Get(ctx, event.InvolvedObject.Name, event.InvolvedObject.Namespace, &pod)
+		if err != nil {
+			log.Printf("ERR: could not fetch pod %q: %s", key, err.Error())
+			return
+		}
+		// If its a daemonset pod, then its not tracked
+		if !isOwner(pod.GetOwnerReferences(), "DaemonSet") {
+			ec.podUnschedulable(key)
+		}
+	}
 }
 
 // watchNodes collects:
@@ -183,6 +191,7 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 			Details:   node.Labels[corev1.LabelInstanceTypeStable],
 			Region:    node.Labels[corev1.LabelTopologyRegion],
 		})
+		ec.timing.LastScaleOutTime = node.CreationTimestamp.UTC()
 
 		if ec.timing.FirstNodeCreated.IsZero() {
 			ec.timing.FirstNodeCreated = node.CreationTimestamp.UTC()
@@ -206,6 +215,11 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 			Details:   node.Labels[corev1.LabelInstanceTypeStable],
 			Region:    node.Labels[corev1.LabelTopologyRegion],
 		})
+		if node.GetDeletionTimestamp() != nil {
+			ec.timing.LastScaleInTime = node.DeletionTimestamp.UTC()
+		} else {
+			ec.timing.LastScaleInTime = time.Now().UTC()
+		}
 		NodesDeletedTotal.Inc()
 	})
 
@@ -251,7 +265,7 @@ func (ec *EventCollector) watchPods(ctx context.Context) error {
 		if isOwner(pod.GetOwnerReferences(), "Daemonset") || isOwner(pod.GetOwnerReferences(), "Job") {
 			return
 		}
-		
+
 		ec.mu.Lock()
 		defer ec.mu.Unlock()
 		// If nodename is non-empty, i.e. pod was already scheduled, only then increment
@@ -303,7 +317,10 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 
 	countByType := make(map[string]int)
 	instanceTypes := make(map[string]InstanceDetails)
-	var failures []ScalingFailure
+	var (
+		failures         []ScalingFailure
+		totalHourlyPrice float64
+	)
 
 	var timeline []ScalingEvent
 	for _, e := range ec.events {
@@ -316,6 +333,7 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 				instanceDetails.Region = e.Region
 			}
 			instanceDetails.Count++
+			totalHourlyPrice += instanceDetails.Price
 			instanceTypes[e.Details] = instanceDetails
 		}
 
@@ -344,8 +362,9 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 			CountByType: countByType,
 		},
 		Nodes: NodesSummary{
-			TotalCreated:  countByType["NodeCreated"],
-			InstanceTypes: instanceTypes,
+			TotalCreated:     countByType["NodeCreated"],
+			InstanceTypes:    instanceTypes,
+			TotalHourlyPrice: totalHourlyPrice,
 		},
 		Pods: PodsSummary{
 			UnschedulablePods:   ec.unschedulablePods.Len(),
@@ -375,6 +394,7 @@ func (ec *EventCollector) podUnschedulable(podName string) {
 
 	if ec.exitCriteriaMet() {
 		ec.timing.LastPodResolved = time.Now().UTC()
+		ec.computeScalingTimes()
 		ec.computeSchedulingTime()
 		ec.computeTotalDuration()
 		ec.finish()
@@ -406,13 +426,13 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 		TimeToSchedule: scheduledTime.Sub(pod.CreationTimestamp.UTC()),
 	})
 
-	if 
 	ec.scheduledCount++
 	// log.Printf("DEBUG: Sched counter: %d\n", ec.scheduledCount)
 	PodsScheduledTotal.Inc()
 
 	if ec.exitCriteriaMet() {
 		ec.timing.LastPodResolved = scheduledTime
+		ec.computeScalingTimes()
 		ec.computeSchedulingTime()
 		ec.computeTotalDuration()
 		ec.finish()
@@ -473,6 +493,17 @@ func (ec *EventCollector) computeReactionTime() {
 	ec.timing.ReactionTime = duration.String()
 }
 
+func (ec *EventCollector) computeScalingTimes() {
+	if !ec.timing.FirstFailedScheduling.IsZero() && !ec.timing.LastScaleInTime.IsZero() {
+		duration := ec.timing.LastScaleInTime.Sub(ec.timing.FirstFailedScheduling)
+		ec.timing.ScaleInTime = duration.String()
+	}
+	if !ec.timing.FirstFailedScheduling.IsZero() && !ec.timing.LastScaleOutTime.IsZero() {
+		duration := ec.timing.LastScaleOutTime.Sub(ec.timing.FirstFailedScheduling)
+		ec.timing.ScaleOutTime = duration.String()
+	}
+}
+
 func (ec *EventCollector) computeSchedulingTime() {
 	if ec.timing.FirstNodeCreated.IsZero() || ec.timing.LastPodResolved.IsZero() {
 		return
@@ -489,7 +520,7 @@ func (ec *EventCollector) computeTotalDuration() {
 	ec.timing.TotalDuration = duration.String()
 }
 
-func isOwner(owners []corev1.OwnerReference, kind string) bool {
+func isOwner(owners []metav1.OwnerReference, kind string) bool {
 	if owners == nil {
 		return false
 	}

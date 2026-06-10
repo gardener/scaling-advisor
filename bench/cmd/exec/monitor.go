@@ -116,8 +116,13 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	mon.ec.Stop()      // stop event watches
 	mon.cancelStream() // stop all metric streams
 	mon.meta.EndTime = time.Now().UTC()
-	log.Printf("Scaling complete. Total time: %s, Reaction time: %s, Scheduling time: %s\n",
-		cmp.Or(timing.TotalDuration, "N/A"), cmp.Or(timing.ReactionTime, "N/A"), cmp.Or(timing.SchedulingTime, "N/A"))
+	log.Println("Scaling complete")
+	fmt.Printf(
+		"Reaction time: %s, ScaleIn time: %s, ScaleOut time: %s, Scheduling time: %s, Total time: %s\n",
+		cmp.Or(timing.ReactionTime, "N/A"), cmp.Or(timing.ScaleInTime, "N/A"),
+		cmp.Or(timing.ScaleOutTime, "N/A"), cmp.Or(timing.SchedulingTime, "N/A"),
+		cmp.Or(timing.TotalDuration, "N/A"),
+	)
 
 	mon.clusterStateAfter(context.Background())
 

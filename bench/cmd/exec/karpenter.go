@@ -131,7 +131,8 @@ func (ke *karpenterExec) EventConfig() ScalerEventConfig {
 	return ScalerEventConfig{
 		Source: benchutil.ScalerKarpenter,
 		WatchedEvents: []string{
-			"Nominated", "Launched", "NoCompatibleInstanceTypes", "FailedScheduling",
+			"Nominated", "Launched", "NoCompatibleInstanceTypes",
+			"FailedScheduling", "DisruptionTerminating",
 		},
 		MarksPodUnschedulable: []string{"FailedScheduling"},
 	}
