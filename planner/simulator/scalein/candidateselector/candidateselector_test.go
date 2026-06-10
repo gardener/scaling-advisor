@@ -136,7 +136,7 @@ func TestNextCandidate_PoolMinNotReached(t *testing.T) {
 func TestNextCandidate_ScaleInDisabledAnnotation(t *testing.T) {
 	v := testutil.NewTestView(t)
 	testutil.AddNode(t, v, "node-a", testutil.NodeOpts{Pool: "pool1", Template: "tmpl1",
-		Annotations: map[string]string{commonconstants.AnnotationScaleInDisabledKey: "true"}})
+		Annotations: map[string]string{commonconstants.AnnotationScaleInDisabled: "true"}})
 
 	sel := New(testutil.LowUtilCalc())
 	args := testutil.MakeCandidateArgs(t, v, []sacorev1alpha1.NodePool{testutil.Pool("pool1", 0, 0, testutil.Tmpl("tmpl1", 0))})

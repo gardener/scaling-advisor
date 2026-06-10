@@ -157,12 +157,12 @@ func CreateAllNodeTemplates(pools []sacorev1alpha1.NodePool) []plannerapi.ScaleO
 	return allNodeTemplates
 }
 
-// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
+// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by Priority to slice of
 // [plannerapi.ScaleOutNodeTemplate]
-func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTemplate) map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate {
-	templatesByPriority := make(map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate)
+func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTemplate) map[commontypes.Priority][]plannerapi.ScaleOutNodeTemplate {
+	templatesByPriority := make(map[commontypes.Priority][]plannerapi.ScaleOutNodeTemplate)
 	for _, t := range templates {
-		pk := t.PriorityKey
+		pk := t.Priority
 		group, ok := templatesByPriority[pk]
 		if !ok {
 			group = []plannerapi.ScaleOutNodeTemplate{t}
@@ -188,7 +188,7 @@ func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.No
 		Annotations: pool.Annotations,
 		Quota:       pool.Quota,
 		Taints:      pool.Taints,
-		PriorityKey: commontypes.PriorityKey{
+		Priority: commontypes.Priority{
 			First:  pool.Priority,
 			Second: template.Priority,
 		},

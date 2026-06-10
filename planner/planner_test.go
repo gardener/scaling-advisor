@@ -855,7 +855,7 @@ func TestOnePoolScaleIn_ApprovedWithControllerOwnedVictimReschedulable(t *testin
 	nodeB := testutil.MakeNodeInfo("node-b")
 	nodeB.Labels["tier"] = "primary"
 	nodeC := testutil.MakeNodeInfo("node-c")
-	nodeC.Annotations = map[string]string{commonconstants.AnnotationScaleInDisabledKey: "true"}
+	nodeC.Annotations = map[string]string{commonconstants.AnnotationScaleInDisabled: "true"}
 	testData.Request.Snapshot.Nodes = []plannerapi.NodeInfo{nodeA, nodeB, nodeC}
 
 	controllerTrue := true

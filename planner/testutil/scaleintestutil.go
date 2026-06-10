@@ -438,8 +438,8 @@ func (s *SuccessSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusSuccess
 }
 
-// PriorityKey implements plannerapi.ScaleInSimulation.
-func (s *SuccessSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
+// Priority implements plannerapi.ScaleInSimulation.
+func (s *SuccessSimulation) Priority() commontypes.Priority { return commontypes.Priority{} }
 
 // Run implements plannerapi.ScaleInSimulation.
 func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.Node) error {
@@ -476,9 +476,9 @@ func (p *PendingPodsSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusSuccess
 }
 
-// PriorityKey implements plannerapi.ScaleInSimulation.
-func (p *PendingPodsSimulation) PriorityKey() commontypes.PriorityKey {
-	return commontypes.PriorityKey{}
+// Priority implements plannerapi.ScaleInSimulation.
+func (p *PendingPodsSimulation) Priority() commontypes.Priority {
+	return commontypes.Priority{}
 }
 
 // Run implements plannerapi.ScaleInSimulation.
@@ -511,8 +511,8 @@ func (f *FailingSimulation) Status() plannerapi.ActivityStatus {
 	return plannerapi.ActivityStatusFailure
 }
 
-// PriorityKey implements plannerapi.ScaleInSimulation.
-func (f *FailingSimulation) PriorityKey() commontypes.PriorityKey { return commontypes.PriorityKey{} }
+// Priority implements plannerapi.ScaleInSimulation.
+func (f *FailingSimulation) Priority() commontypes.Priority { return commontypes.Priority{} }
 
 // Run implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Run(_ context.Context, _ minkapi.View, _ *corev1.Node) error {

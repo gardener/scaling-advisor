@@ -100,8 +100,8 @@ type ScaleInSimulation interface {
 	Name() string
 	// Status returns the current [ActivityStatus].
 	Status() ActivityStatus
-	// PriorityKey returns the priority used by orchestration to order simulations.
-	PriorityKey() commontypes.PriorityKey
+	// Priority returns the priority used by orchestration to order simulations.
+	Priority() commontypes.Priority
 	// Run executes one simulation pass for node against view. Blocks until the run stabilizes,
 	// errors, or ctx is cancelled. Not safe for concurrent invocation on the same receiver.
 	Run(ctx context.Context, view minkapi.View, node *corev1.Node) error

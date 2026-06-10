@@ -51,7 +51,7 @@ func (d *defaultSimulation) Status() plannerapi.ActivityStatus {
 	return d.state.status
 }
 
-func (d *defaultSimulation) PriorityKey() commontypes.PriorityKey {
+func (d *defaultSimulation) Priority() commontypes.Priority {
 	//TODO implement me
 	panic("implement me")
 }

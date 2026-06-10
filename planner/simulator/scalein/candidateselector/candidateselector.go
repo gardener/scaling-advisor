@@ -18,14 +18,14 @@ import (
 
 var _ plannerapi.ScaleInCandidateSelector = (*scaleInCandidateSelector)(nil)
 
-type nodeAndPriorityKey struct {
+type nodeAndPriority struct {
 	node     corev1.Node
-	priority commontypes.PriorityKey
+	priority commontypes.Priority
 }
 
 type scaleInCandidateSelector struct {
 	NodeUtilizationCalculator     plannerapi.NodeUtilizationCalculator
-	candidateNodesWithPriorityMap map[string]nodeAndPriorityKey
+	candidateNodesWithPriorityMap map[string]nodeAndPriority
 }
 
 // New returns an instance of plannerapi.NodeUtilizationCalculator.
@@ -75,7 +75,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 		}
 	}
 
-	candidateNodesWithPriorityMap := make(map[string]nodeAndPriorityKey)
+	candidateNodesWithPriorityMap := make(map[string]nodeAndPriority)
 	for _, node := range nodes {
 		nodeName := node.Name
 		poolName := node.Labels[commonconstants.LabelNodePoolName]
@@ -90,9 +90,9 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 		}
 
 		// Skip if node is marked with ScaleInDisabledKey.
-		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabledKey]; disabled {
+		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabled]; disabled {
 			log.V(5).Info("Skipping node: scale-in disabled via annotation",
-				"node", nodeName, "annotation", commonconstants.AnnotationScaleInDisabledKey, "requestID", ctx.Value("requestID"), "correlationID", ctx.Value("correlationID"))
+				"node", nodeName, "annotation", commonconstants.AnnotationScaleInDisabled, "requestID", ctx.Value("requestID"), "correlationID", ctx.Value("correlationID"))
 			continue
 		}
 
@@ -103,7 +103,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 			continue
 		}
 
-		candidateNodesWithPriorityMap[nodeName] = nodeAndPriorityKey{priority: getNodePriorityKey(node, poolByName), node: node}
+		candidateNodesWithPriorityMap[nodeName] = nodeAndPriority{priority: getNodePriority(node, poolByName), node: node}
 	}
 
 	s.candidateNodesWithPriorityMap = candidateNodesWithPriorityMap
@@ -129,7 +129,7 @@ func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plann
 	}
 
 	// Filter candidates.
-	var candidatesWithPriority []nodeAndPriorityKey
+	var candidatesWithPriority []nodeAndPriority
 	for nodeName, nodeWithPriority := range s.candidateNodesWithPriorityMap {
 		// Skip if node has pods with disrupted PodDisruptionBudgets.
 		nodePods := podsByNode[nodeName]
@@ -156,8 +156,8 @@ func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plann
 		return nil, nil
 	}
 
-	slices.SortFunc(candidatesWithPriority, func(a, b nodeAndPriorityKey) int {
-		return commontypes.CmpPriorityKeyIncreasing(a.priority, b.priority)
+	slices.SortFunc(candidatesWithPriority, func(a, b nodeAndPriority) int {
+		return commontypes.CmpPriorityIncreasing(a.priority, b.priority)
 	})
 
 	var lowestPriorityCandidates []corev1.Node
@@ -177,18 +177,18 @@ func (s *scaleInCandidateSelector) RemoveCandidateNode(nodeName string) {
 	delete(s.candidateNodesWithPriorityMap, nodeName)
 }
 
-// getNodePriorityKey returns the PriorityKey for a node by looking up its pool and template in the constraint.
-func getNodePriorityKey(node corev1.Node, poolByName map[string]*sacorev1alpha1.NodePool) commontypes.PriorityKey {
+// getNodePriority returns the Priority for a node by looking up its pool and template in the constraint.
+func getNodePriority(node corev1.Node, poolByName map[string]*sacorev1alpha1.NodePool) commontypes.Priority {
 	poolName := node.Labels[commonconstants.LabelNodePoolName]
 	pool, ok := poolByName[poolName]
 	if !ok {
-		return commontypes.PriorityKey{}
+		return commontypes.Priority{}
 	}
 	templateName := node.Labels[commonconstants.LabelNodeTemplateName]
 	for _, nt := range pool.NodeTemplates {
 		if nt.Name == templateName {
-			return commontypes.PriorityKey{First: pool.Priority, Second: nt.Priority}
+			return commontypes.Priority{First: pool.Priority, Second: nt.Priority}
 		}
 	}
-	return commontypes.PriorityKey{First: pool.Priority}
+	return commontypes.Priority{First: pool.Priority}
 }

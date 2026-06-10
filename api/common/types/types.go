@@ -227,31 +227,31 @@ const (
 	TraceLogPathCtxKey ContextKey = "trace-log"
 )
 
-// PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
-type PriorityKey struct {
+// Priority represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
+type Priority struct {
 	// First is the first priority value. Higher values represent higher priority.
 	First int32
 	// Second is the second priority value. Higher value represent higher priority. Secondary weight compared to First
 	Second int32
 }
 
-// String returns a string representation of the PriorityKey.
-func (k PriorityKey) String() string {
+// String returns a string representation of the Priority.
+func (k Priority) String() string {
 	return fmt.Sprintf("%d-%d", k.First, k.Second)
 }
 
-// CmpPriorityKeyDecreasing is a compare function for [PriorityKey] in decreasing value of priority.
-// ie higher priority values  before lower priority values which is the kubernetes convention.
-func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
+// CmpPriorityDecreasing is a compare function for [Priority] in decreasing value of priority.
+// ie higher priority values before lower priority values.
+func CmpPriorityDecreasing(a, b Priority) int {
 	if firstCmp := cmp.Compare(b.First, a.First); firstCmp != 0 {
 		return firstCmp
 	}
 	return cmp.Compare(b.Second, a.Second)
 }
 
-// CmpPriorityKeyIncreasing is a compare function for [PriorityKey] in increasing value of priority.
-// ie lower priority values  before higher priority values
-func CmpPriorityKeyIncreasing(a, b PriorityKey) int {
+// CmpPriorityIncreasing is a compare function for [Priority] in increasing value of priority.
+// ie lower priority values before higher priority values
+func CmpPriorityIncreasing(a, b Priority) int {
 	if firstCmp := cmp.Compare(a.First, b.First); firstCmp != 0 {
 		return firstCmp
 	}

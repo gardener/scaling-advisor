@@ -94,7 +94,7 @@ type NodePool struct {
 	AvailabilityZones []string `json:"availabilityZones"`
 	// NodeTemplates is a slice of NodeTemplate.
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
-	// Priority is the priority of the node pool.
+	// Priority is the priority of the node pool. The higher the number, the higher the priority.
 	Priority int32 `json:"priority"`
 	// Min is the minimum number of nodes that must be maintained in this node pool.
 	// Scale-in will not reduce the node count below this value.
@@ -139,7 +139,7 @@ type NodeTemplate struct {
 	Architecture string `json:"architecture"`
 	// InstanceType is the instance type of the node template.
 	InstanceType string `json:"instanceType"`
-	// Priority is the priority of the node template. The lower the number, the higher the priority.
+	// Priority is the priority of the node template. The higher the number, the higher the priority.
 	Priority int32 `json:"priority"`
 	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
 	MaxVolumes int32 `json:"maxVolumes,omitzero"`

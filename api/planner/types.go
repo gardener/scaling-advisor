@@ -530,12 +530,12 @@ type Memento struct {
 	ScaleIn ScaleInMemento
 }
 
-// PDBTracker is responsible for tracking the remaining PDBs
+// PDBTracker is responsible for tracking the PDBs
 type PDBTracker interface {
 	commontypes.Resettable
-	// SetPdbs sets PDBs of the remaining PDB tracker.
+	// SetPDBs sets PDBs of the remaining PDB tracker.
 	SetPDBs(pdbs []policyv1.PodDisruptionBudget) error
-	// GetPdbs returns the current remaining PDBs.
+	// GetPDBs returns the current remaining PDBs.
 	GetPDBs() []policyv1.PodDisruptionBudget
 	// CanRemovePods checks if the set of pods can be removed.
 	CanRemovePods(pods []corev1.Pod) (canRemove bool, blockingPodName string)
