@@ -1,0 +1,192 @@
+[
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-central-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.115,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-southeast-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.12,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-west-2",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.111,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "us-east-2",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.096,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "sa-east-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.153,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-northeast-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.124,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-south-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.101,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-northeast-3",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.124,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-northeast-2",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.118,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "us-west-2",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.096,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ap-southeast-2",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.12,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-north-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.102,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "us-east-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.096,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-west-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.107,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-west-3",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.112,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "eu-south-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.112,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "ca-central-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.107,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "us-west-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.112,
+    "GPU": 0,
+    "VCPU": 2
+  },
+  {
+    "InstanceType": "m5.large",
+    "Region": "me-central-1",
+    "OS": "Linux",
+    "Memory": 8589934592,
+    "GPUMemory": 0,
+    "HourlyPrice": 0.118,
+    "GPU": 0,
+    "VCPU": 2
+  }
+]

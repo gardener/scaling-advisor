@@ -1,0 +1,216 @@
+{
+    "pods": [
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-1",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-2",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-3",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-4",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-5",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-6",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-7",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-8",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-9",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        }
+    ],
+    "podOwners": [
+        {
+            "selector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "test"
+                }
+            },
+            "targetReplicas": 9,
+            "name": "owner-replica-set",
+            "namespace": "default",
+            "kind": "ReplicaSet",
+            "currentReplicas": 9
+        }
+    ]
+}
