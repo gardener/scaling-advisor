@@ -10,7 +10,7 @@ componentsPatches:
   - name: kube-apiserver
     extraArgs:
     - key: disable-admission-plugins
-      value: "TaintNodesByCondition,Priority"
+      value: "TaintNodesByCondition"
   - name: kube-scheduler
     extraArgs:
     - key: v

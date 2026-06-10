@@ -72,7 +72,7 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 			SchedulerName:             info.SchedulerName,
 			Tolerations:               info.Tolerations,
 			PriorityClassName:         info.PriorityClassName,
-			Priority:                  ptr.To(info.Priority),
+			Priority:                  ptrOrNil(info.Priority),
 			RuntimeClassName:          ptrOrNil(info.RuntimeClassName),
 			PreemptionPolicy:          ptrOrNil(info.PreemptionPolicy),
 			Overhead:                  info.Overhead,
