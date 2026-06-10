@@ -15,6 +15,7 @@ import (
 	"time"
 
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
@@ -138,7 +139,7 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	eventsSummary.ClusterState = mon.meta.Summary.ClusterState
 	mon.meta.Summary = eventsSummary
 	mon.meta.TotalRunDuration = mon.meta.EndTime.Sub(mon.meta.StartTime).String()
-	log.Printf("Total benchmarking run time: %s\n", mon.meta.TotalRunDuration)
+	fmt.Printf("Total benchmarking run time: %s\n", mon.meta.TotalRunDuration)
 
 	logsDir := path.Join(mon.scenarioDir, "logs", "kwok-"+mon.clusterName)
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
@@ -159,7 +160,7 @@ func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	if err := mon.cfg.Client().Resources().List(ctx, pods); err == nil {
 		for _, pod := range pods.Items {
 			if pod.Spec.NodeName == "" {
-				if !isOwner(pod.GetOwnerReferences(), "Daemonset") {
+				if !isOwner(pod.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
 					mon.meta.Summary.ClusterState.After.UnscheduledNonDaemonSetPods++
 				}
 			} else {

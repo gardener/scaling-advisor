@@ -159,8 +159,8 @@ type ScalingEvent struct {
 type TimingBreakdown struct {
 	FirstFailedScheduling time.Time `json:"firstFailedScheduling,omitzero"`
 	FirstNodeCreated      time.Time `json:"firstNodeCreated,omitzero"`
-	LastScaleInTime       time.Time `json:"lastScaleOutTime,omitzero"`
-	LastScaleOutTime      time.Time `json:"lastScaleInTime,omitzero"`
+	LastScaleOutTime      time.Time `json:"lastScaleOutTime,omitzero"`
+	LastScaleInTime       time.Time `json:"lastScaleInTime,omitzero"`
 	LastPodResolved       time.Time `json:"lastPodResolved,omitzero"`
 
 	ReactionTime   string `json:"reactionTime"`

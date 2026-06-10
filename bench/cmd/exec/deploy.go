@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gardener/scaling-advisor/api/planner"
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	appsv1 "k8s.io/api/apps/v1"
@@ -87,7 +88,7 @@ func deployPods(ctx context.Context, cfg *envconf.Config, pods []planner.PodInfo
 func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo, daemonSetPodCount int) {
 	for _, podInfo := range pods {
 		if podInfo.NodeName == "" {
-			if isOwner(podInfo.GetOwnerReferences(), "DaemonSet") {
+			if isOwner(podInfo.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
 				daemonSetPodCount++
 			}
 			unscheduled = append(unscheduled, podInfo)
@@ -125,15 +126,15 @@ func deployPodOwners(
 			return err
 		}
 		switch owner.Kind {
-		case "StatefulSet":
+		case benchutil.OwnerStatefulSet:
 			if err := createSS(ctx, cfg, owner); err != nil {
 				return err
 			}
-		case "ReplicaSet":
+		case benchutil.OwnerReplicaSet:
 			if err := createRS(ctx, cfg, owner); err != nil {
 				return err
 			}
-		case "Job":
+		case benchutil.OwnerJob:
 			if err := createJob(ctx, cfg, owner); err != nil {
 				return err
 			}

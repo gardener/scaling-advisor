@@ -159,7 +159,7 @@ func (ec *EventCollector) processScalerEvent(ctx context.Context, eCfg ScalerEve
 			return
 		}
 		// If its a daemonset pod, then its not tracked
-		if !isOwner(pod.GetOwnerReferences(), "DaemonSet") {
+		if !isOwner(pod.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
 			ec.podUnschedulable(key)
 		}
 	}
@@ -262,7 +262,7 @@ func (ec *EventCollector) watchPods(ctx context.Context) error {
 			return
 		}
 		// If a pod is deleted and its a daemonset or a job pod, then its not re-created
-		if isOwner(pod.GetOwnerReferences(), "Daemonset") || isOwner(pod.GetOwnerReferences(), "Job") {
+		if isOwner(pod.GetOwnerReferences(), benchutil.OwnerDaemonSet) || isOwner(pod.GetOwnerReferences(), benchutil.OwnerJob) {
 			return
 		}
 
@@ -426,7 +426,10 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 		TimeToSchedule: scheduledTime.Sub(pod.CreationTimestamp.UTC()),
 	})
 
-	ec.scheduledCount++
+	// Only increment counter for non daemonset pods
+	if !isOwner(pod.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
+		ec.scheduledCount++
+	}
 	// log.Printf("DEBUG: Sched counter: %d\n", ec.scheduledCount)
 	PodsScheduledTotal.Inc()
 

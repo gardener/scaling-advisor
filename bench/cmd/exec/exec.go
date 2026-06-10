@@ -52,7 +52,7 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 			// Only the scaler is passed as an argument to the command, rest are all flags
 			execArgs.Scaler = cmdArgs[0]
 
-			clusterName := envconf.RandomName("cluster", 17)
+			clusterName := execArgs.Scaler + "-" + time.Now().UTC().Format("20060102T150405Z")
 			execCtx := benchutil.SetupSignalHandler()
 			_, err = Run(execCtx, execArgs, clusterName)
 			if err != nil {
