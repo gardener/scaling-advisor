@@ -102,7 +102,7 @@ func createBaseView(ctx context.Context, viewArgs *minkapi.ViewArgs) (minkapi.Vi
 		ObjectMeta: metav1.ObjectMeta{
 			Name: metav1.NamespaceDefault,
 		},
-	})
+	}, minkapi.ObjectOptions{})
 	if err != nil {
 		return nil, err
 	}

@@ -131,8 +131,8 @@ func (v *sandboxView) GetEventSink() minkapi.EventSink {
 	return v.eventSink
 }
 
-func (v *sandboxView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error) {
-	return storeObject(ctx, v, gvk, obj, &v.changeCount)
+func (v *sandboxView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) (metav1.Object, error) {
+	return storeObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
 func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
@@ -145,27 +145,34 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 	return
 }
 
-func (v *sandboxView) getSandboxObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
-	s, err := v.GetResourceStore(gvk)
-	if err != nil {
-		return
-	}
-	obj, err = s.GetByKey(ctx, objName.String())
-	return
-}
-
-func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) error {
+func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
 	objName := objutil.CacheName(obj)
 	sandboxObj, err := v.getSandboxObject(ctx, gvk, objName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	if sandboxObj != nil { //sandbox object is being updated.
-		return updateObject(ctx, v, gvk, obj, &v.changeCount)
+		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 	}
-	// The object is in base view and should not be modified - store in sandbox view now.
-	_, err = v.CreateObject(ctx, gvk, obj)
-	return err
+	// The object lives only in the delegate. Materialize a deep-copy of the current delegate
+	// state into the sandbox without broadcasting (consumers already saw the original via the
+	// delegate's initial-list, so this materialization is plumbing). Then run the normal
+	// update path against the sandbox copy so the broadcast carries the user-visible change.
+	// WatchObjects' filter suppresses the delegate watcher's events for this object name from
+	// here on, so the sandbox broadcast is the single observable event.
+	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
+	if err != nil {
+		return err
+	}
+	materialized := delegateObj.DeepCopyObject()
+	asMeta, ok := materialized.(metav1.Object)
+	if !ok {
+		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, materialized)
+	}
+	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
+		return err
+	}
+	return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
@@ -198,7 +205,7 @@ func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.Ob
 	}
 	// found in base so lets make a copy and store in sandbox
 	sandboxPod := pod.DeepCopy()
-	_, err = v.CreateObject(ctx, gvk, sandboxPod)
+	_, err = v.CreateObject(ctx, gvk, sandboxPod, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		return
 	}
@@ -258,7 +265,18 @@ func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionK
 	})
 	eg.Go(func() error {
 		log.Info("watching delegateView objects", "gvk", gvk, "startVersion", startVersion, "namespace", namespace, "labelSelector", labelSelector)
-		return v.delegateView.WatchObjects(ctx, gvk, startVersion, namespace, labelSelector, eventCallback)
+		return v.delegateView.WatchObjects(ctx, gvk, startVersion, namespace, labelSelector, func(event watch.Event) error {
+			evObj, err := objutil.AsMeta(event.Object)
+			if err != nil {
+				return err
+			}
+			objFullName := objutil.CacheName(evObj)
+			sandboxObj, _ := v.getSandboxObject(ctx, gvk, objFullName)
+			if sandboxObj != nil { // already covered by other watch, omit
+				return nil
+			}
+			return eventCallback(event)
+		})
 	})
 	return eg.Wait()
 }
@@ -350,4 +368,13 @@ func (v *sandboxView) ListEvents(ctx context.Context, namespace string) (events 
 
 func (v *sandboxView) GetKubeConfigPath() string {
 	return v.args.KubeConfigPath
+}
+
+func (v *sandboxView) getSandboxObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	obj, err = s.GetByKey(ctx, objName.String())
+	return
 }

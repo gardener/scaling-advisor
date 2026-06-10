@@ -144,8 +144,8 @@ func (v *baseView) GetResourceStore(gvk schema.GroupVersionKind) (minkapi.Resour
 	return s, nil
 }
 
-func (v *baseView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) (metav1.Object, error) {
-	return storeObject(ctx, v, gvk, obj, &v.changeCount)
+func (v *baseView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) (metav1.Object, error) {
+	return storeObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
 func (v *baseView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
@@ -158,8 +158,8 @@ func (v *baseView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, o
 	return
 }
 
-func (v *baseView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object) error {
-	return updateObject(ctx, v, gvk, obj, &v.changeCount)
+func (v *baseView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
+	return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
 func (v *baseView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (*corev1.Pod, error) {
@@ -289,7 +289,7 @@ func (v *baseView) GetKubeConfigPath() string {
 	return v.args.KubeConfigPath
 }
 
-func storeObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, counter *atomic.Int64) (metav1.Object, error) {
+func storeObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions, counter *atomic.Int64) (metav1.Object, error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return nil, err
@@ -316,7 +316,7 @@ func storeObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKin
 
 	objutil.SetMetaObjectGVK(obj, gvk)
 
-	err = s.Add(ctx, obj)
+	err = s.Add(ctx, obj, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -324,12 +324,12 @@ func storeObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKin
 	return obj, nil
 }
 
-func updateObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, changeCount *atomic.Int64) error {
+func updateObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions, changeCount *atomic.Int64) error {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return err
 	}
-	err = s.Update(ctx, obj)
+	err = s.Update(ctx, obj, opts)
 	if err != nil {
 		return err
 	}
@@ -338,6 +338,7 @@ func updateObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKi
 }
 
 func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, binding corev1.Binding) (*corev1.Pod, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	// Make a copy of the pod to avoid modifying the original object in the store.
 	pod = pod.DeepCopy()
 	pod.Spec.NodeName = binding.Target.Name
@@ -345,10 +346,21 @@ func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, 
 		Type:   corev1.PodScheduled,
 		Status: corev1.ConditionTrue,
 	})
-	err := v.UpdateObject(ctx, typeinfo.PodsDescriptor.GVK, pod)
+	existingObj, err := v.GetObject(ctx, typeinfo.PodsDescriptor.GVK, objutil.CacheName(pod))
 	if err != nil {
 		return nil, err
 	}
+	existingPod := existingObj.(*corev1.Pod)
+	if existingPod.Spec.NodeName != "" { // FIXME:  remove this block after problem diagnosis/fix
+		err = fmt.Errorf("pod %q was already bound to %q", pod.Name, existingPod.Spec.NodeName)
+		log.Error(err, "pod already bound", "podName", pod.Name, "existingNodeName", existingPod.Spec.NodeName, "newNodeName", pod.Spec.NodeName)
+		return nil, err
+	}
+	err = v.UpdateObject(ctx, typeinfo.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	log.V(3).Info("updatePodNodeBinding completed", "podKey", objutil.CacheName(pod), "podNodeName", pod.Spec.NodeName, "podResourceVersion", pod.ResourceVersion)
 	return pod, nil
 }
 
@@ -388,7 +400,7 @@ func patchObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKin
 		return
 	}
 
-	err = v.UpdateObject(ctx, gvk, mo)
+	err = v.UpdateObject(ctx, gvk, mo, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -412,7 +424,7 @@ func patchObjectStatus(ctx context.Context, v minkapi.View, gvk schema.GroupVers
 		err = fmt.Errorf("stored object with key %q is not metav1.Object: %w", objName, err)
 		return
 	}
-	err = v.UpdateObject(ctx, gvk, mo)
+	err = v.UpdateObject(ctx, gvk, mo, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}

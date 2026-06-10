@@ -40,6 +40,7 @@ func TestAdd(t *testing.T) {
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
 		typeMeta                         metav1.TypeMeta
+		opts                             mkapi.ObjectOptions
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -47,11 +48,13 @@ func TestAdd(t *testing.T) {
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
 			retErr:                           nil,
 			expectedNumberOfObjects:          1,
+			opts:                             mkapi.ObjectOptions{},
 		},
 		"missing version in typeMeta": {
 			typeMeta:                metav1.TypeMeta{Kind: "Pod"},
 			retErr:                  fmt.Errorf("does not match expected objGVK"),
 			expectedNumberOfObjects: 0,
+			opts:                    mkapi.ObjectOptions{},
 		},
 	}
 
@@ -63,7 +66,7 @@ func TestAdd(t *testing.T) {
 			t.Cleanup(func() { s.Close() })
 
 			obj1 := metav1.Object(p.DeepCopy())
-			if err := s.Add(t.Context(), obj1); err != nil {
+			if err := s.Add(t.Context(), obj1, tc.opts); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 				testutil.AssertError(t, err, tc.retErr)
 				return
@@ -91,17 +94,20 @@ func TestUpdate(t *testing.T) {
 		typeMeta                         metav1.TypeMeta
 		name                             string
 		expectedNumberOfObjects          int
+		opts                             mkapi.ObjectOptions
 	}{
 		"correct typeMeta": {
 			typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
 			retErr:                           nil,
 			expectedNumberOfObjects:          1,
+			opts:                             mkapi.ObjectOptions{},
 		},
 		"missing version in typeMeta": {
 			typeMeta:                metav1.TypeMeta{Kind: "Pod"},
 			retErr:                  fmt.Errorf("does not match expected objGVK"),
 			expectedNumberOfObjects: 1,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		//"update non-existent object": { // If object doesn't exist, it creates one
 		//	name:                             "abcd",
@@ -120,7 +126,7 @@ func TestUpdate(t *testing.T) {
 
 			createdPod := testPod.DeepCopy()
 			createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-			if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
+			if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
 				t.Errorf("Error adding object to store")
 				return
 			}
@@ -131,7 +137,7 @@ func TestUpdate(t *testing.T) {
 				p.Name = tc.name
 			}
 			obj1 := metav1.Object(p.DeepCopy())
-			if err := s.Update(t.Context(), obj1); err != nil {
+			if err := s.Update(t.Context(), obj1, tc.opts); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 				testutil.AssertError(t, err, tc.retErr)
 				return
@@ -172,24 +178,28 @@ func TestDelete(t *testing.T) {
 		name                      string
 		expectedNumberOfObjects   int
 		createObjectBeforeTesting bool
+		opts                      mkapi.ObjectOptions
 	}{
 		"correct deletion": {
 			name:                      testPod.Name,
 			createObjectBeforeTesting: true,
 			expectedNumberOfObjects:   0,
 			retErr:                    nil,
+			opts:                      mkapi.ObjectOptions{},
 		},
 		"delete non-existent object": {
 			name:                      testPod.Name,
 			createObjectBeforeTesting: false,
 			expectedNumberOfObjects:   0,
 			retErr:                    fmt.Errorf("not found"),
+			opts:                      mkapi.ObjectOptions{},
 		},
 		"delete object with wrong key": {
 			name:                      "abcd",
 			createObjectBeforeTesting: true,
 			expectedNumberOfObjects:   1,
 			retErr:                    fmt.Errorf("not found"),
+			opts:                      mkapi.ObjectOptions{},
 		},
 	}
 
@@ -201,7 +211,7 @@ func TestDelete(t *testing.T) {
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
 				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-				if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
+				if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
 					t.Errorf("Error adding object to store")
 					return
 				}
@@ -231,23 +241,27 @@ func TestGetByKey(t *testing.T) {
 		key                       string
 		objectFound               bool
 		createObjectBeforeTesting bool
+		opts                      mkapi.ObjectOptions
 	}{
 		"fetch existing object": {
 			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
 			objectFound:               true,
 			createObjectBeforeTesting: true,
+			opts:                      mkapi.ObjectOptions{},
 		},
 		"fetch non-existent object": {
 			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
 			objectFound:               false,
 			createObjectBeforeTesting: false,
 			errorCheckFunc:            apierrors.IsNotFound,
+			opts:                      mkapi.ObjectOptions{},
 		},
 		"fetch object with wrong key": {
 			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, "abcd"),
 			objectFound:               false,
 			createObjectBeforeTesting: true,
 			errorCheckFunc:            apierrors.IsNotFound,
+			opts:                      mkapi.ObjectOptions{},
 		},
 	}
 
@@ -259,7 +273,7 @@ func TestGetByKey(t *testing.T) {
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
 				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-				if err := s.Add(t.Context(), metav1.Object(createdPod)); err != nil {
+				if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
 					t.Errorf("Error adding object to store")
 					return
 				}
@@ -281,7 +295,7 @@ func TestGetByKey(t *testing.T) {
 
 func TestList(t *testing.T) {
 	s := createStoreForTesting(typeinfo.PodsDescriptor)
-	_, _ = createPodsForTesting(t, s)
+	_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
 
 	tests := map[string]struct {
 		labelSelector           labels.Selector
@@ -342,7 +356,7 @@ func TestList(t *testing.T) {
 
 func TestBuildPendingWatchEvents(t *testing.T) {
 	s := createStoreForTesting(typeinfo.PodsDescriptor)
-	_, _ = createPodsForTesting(t, s)
+	_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
 
 	tests := map[string]struct {
 		labelSelector           labels.Selector
@@ -433,6 +447,7 @@ func TestWatch(t *testing.T) {
 		startVersion            int64
 		expectedNumberOfObjects int
 		modifyObjectAfterWatch  bool
+		opts                    mkapi.ObjectOptions
 	}{
 		"base": {
 			namespace:               testPod.Namespace,
@@ -440,6 +455,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            0,
 			expectedNumberOfObjects: 3,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"high resource version": {
 			namespace:               testPod.Namespace,
@@ -447,6 +463,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            1000,
 			expectedNumberOfObjects: 0,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"resource version that doesn't match all objects": {
 			namespace:               testPod.Namespace,
@@ -454,6 +471,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            2,
 			expectedNumberOfObjects: 1,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"labels that don't match all objects": {
 			namespace:               testPod.Namespace,
@@ -461,6 +479,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            0,
 			expectedNumberOfObjects: 2,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"empty labelSelector": {
 			namespace:               testPod.Namespace,
@@ -468,6 +487,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            0,
 			expectedNumberOfObjects: 3,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"non-matching namespace": {
 			namespace:               "abcd",
@@ -475,6 +495,7 @@ func TestWatch(t *testing.T) {
 			retErr:                  nil,
 			startVersion:            0,
 			expectedNumberOfObjects: 0,
+			opts:                    mkapi.ObjectOptions{},
 		},
 		"modify object after watch starts": {
 			namespace:               testPod.Namespace,
@@ -483,6 +504,7 @@ func TestWatch(t *testing.T) {
 			startVersion:            0,
 			expectedNumberOfObjects: 4,
 			modifyObjectAfterWatch:  true,
+			opts:                    mkapi.ObjectOptions{},
 		},
 	}
 
@@ -491,7 +513,7 @@ func TestWatch(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
-			createdPods, _ := createPodsForTesting(t, s)
+			createdPods, _ := createPodsForTesting(t, s, tc.opts)
 			var (
 				receivedEvents []watch.Event
 				eventsMutex    sync.Mutex
@@ -528,7 +550,7 @@ func TestWatch(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 				modifiedPod := createdPods[0].DeepCopy()
 				modifiedPod.Labels["modified"] = "true"
-				if err := s.Update(t.Context(), metav1.Object(modifiedPod)); err != nil {
+				if err := s.Update(t.Context(), metav1.Object(modifiedPod), tc.opts); err != nil {
 					t.Errorf("Error updating object in store: %v", err)
 					cancel()
 					wg.Wait()
@@ -572,7 +594,7 @@ func createStoreForTesting(d typeinfo.Descriptor) *InMemResourceStore {
 	})
 }
 
-func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, error) {
+func createPodsForTesting(t *testing.T, s *InMemResourceStore, opts mkapi.ObjectOptions) ([]corev1.Pod, error) {
 	t.Helper()
 	createdPods := make([]corev1.Pod, 3)
 	for i := range 3 {
@@ -585,7 +607,7 @@ func createPodsForTesting(t *testing.T, s *InMemResourceStore) ([]corev1.Pod, er
 			createdPods[i].Labels[fmt.Sprintf("k%d", j)] = fmt.Sprintf("v%d", j)
 		}
 
-		if err := s.Add(t.Context(), metav1.Object(&createdPods[i])); err != nil {
+		if err := s.Add(t.Context(), metav1.Object(&createdPods[i]), opts); err != nil {
 			t.Errorf("Error adding object to store")
 			return nil, err
 		}

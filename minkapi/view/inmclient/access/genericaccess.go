@@ -31,7 +31,7 @@ type GenericResourceAccess[T metav1.Object, L metav1.ListInterface] struct {
 
 // CreateObject creates an object corresponding to inputObj of type T through the backing minkapi View and returns the stored object.
 func (a *GenericResourceAccess[T, L]) CreateObject(ctx context.Context, _ metav1.CreateOptions, inputObj T) (storedObj T, err error) {
-	o, err := a.View.CreateObject(ctx, a.GVK, inputObj)
+	o, err := a.View.CreateObject(ctx, a.GVK, inputObj, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -44,7 +44,7 @@ func (a *GenericResourceAccess[T, L]) CreateObjectWithAccessNamespace(ctx contex
 	if inputObj.GetNamespace() != a.Namespace {
 		inputObj.SetNamespace(a.Namespace)
 	}
-	o, err := a.View.CreateObject(ctx, a.GVK, inputObj)
+	o, err := a.View.CreateObject(ctx, a.GVK, inputObj, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -54,7 +54,7 @@ func (a *GenericResourceAccess[T, L]) CreateObjectWithAccessNamespace(ctx contex
 
 // UpdateObject updates an object of type T in the backing minkapi View and returns the updated object.
 func (a *GenericResourceAccess[T, L]) UpdateObject(ctx context.Context, _ metav1.UpdateOptions, obj T) (updatedObj T, err error) {
-	err = a.View.UpdateObject(ctx, a.GVK, obj)
+	err = a.View.UpdateObject(ctx, a.GVK, obj, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}

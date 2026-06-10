@@ -393,7 +393,7 @@ func handleCreate(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
 		}
-		mo, err = view.CreateObject(r.Context(), d.GVK, mo)
+		mo, err = view.CreateObject(r.Context(), d.GVK, mo, minkapi.ObjectOptions{})
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -416,7 +416,7 @@ func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 			return
 		}
 		metaObj := obj.(metav1.Object)
-		err = view.UpdateObject(r.Context(), d.GVK, metaObj)
+		err = view.UpdateObject(r.Context(), d.GVK, metaObj, minkapi.ObjectOptions{})
 		if err != nil {
 			handleError(w, r, err)
 			return
