@@ -14,6 +14,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ plannerapi.ScaleInCandidateSelector = (*scaleInCandidateSelector)(nil)
@@ -81,7 +82,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 		poolName := node.Labels[commonconstants.LabelNodePoolName]
 
 		// Skip if NodePool.Min has been reached.
-		if pool, ok := poolByName[poolName]; ok && pool.Min > 0 {
+		if pool, ok := poolByName[poolName]; ok {
 			if nodesPerPool[poolName] <= pool.Min {
 				log.V(5).Info("Skipping node: pool has reached minimum node count",
 					"node", nodeName, "pool", poolName, "min", pool.Min, "current", nodesPerPool[poolName], "requestID", ctx.Value("requestID"), "correlationID", ctx.Value("correlationID"))
@@ -90,7 +91,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 		}
 
 		// Skip if node is marked with ScaleInDisabledKey.
-		if _, disabled := node.Annotations[commonconstants.AnnotationScaleInDisabled]; disabled {
+		if metav1.HasAnnotation(node.ObjectMeta, commonconstants.AnnotationScaleInDisabled) {
 			log.V(5).Info("Skipping node: scale-in disabled via annotation",
 				"node", nodeName, "annotation", commonconstants.AnnotationScaleInDisabled, "requestID", ctx.Value("requestID"), "correlationID", ctx.Value("correlationID"))
 			continue
@@ -111,7 +112,7 @@ func (s *scaleInCandidateSelector) Init(ctx context.Context, args plannerapi.Sca
 	return nil
 }
 
-func (s *scaleInCandidateSelector) NextCandidate(ctx context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (s *scaleInCandidateSelector) Next(ctx context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	// Get all pods for SafeToEvict check.

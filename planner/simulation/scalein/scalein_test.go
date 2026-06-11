@@ -35,7 +35,7 @@ func TestUnbindPodVolumes_SimulatedPV_DeletedAndPVCReset(t *testing.T) {
 
 	pod := testutil.MakePodWithPVC("pod-a", "default", "node-a", "pvc-a")
 
-	if err := volutil.UnbindPodVolumes(ctx, v, pod); err != nil {
+	if err := volutil.PrepareVolumesForReschedule(ctx, v, pod); err != nil {
 		t.Fatalf("UnbindPodVolumes: %v", err)
 	}
 
@@ -83,7 +83,7 @@ func TestUnbindPodVolumes_RealPV_KeptOnlySelectedNodeCleared(t *testing.T) {
 
 	pod := testutil.MakePodWithPVC("pod-b", "default", "node-a", "pvc-b")
 
-	if err := volutil.UnbindPodVolumes(ctx, v, pod); err != nil {
+	if err := volutil.PrepareVolumesForReschedule(ctx, v, pod); err != nil {
 		t.Fatalf("UnbindPodVolumes: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestUnbindPodVolumes_NoPVCVolumes_NoOp(t *testing.T) {
 		},
 	}
 
-	if err := volutil.UnbindPodVolumes(ctx, v, pod); err != nil {
+	if err := volutil.PrepareVolumesForReschedule(ctx, v, pod); err != nil {
 		t.Fatalf("expected no error for pod with no PVC volumes, got: %v", err)
 	}
 }
@@ -169,7 +169,7 @@ func TestUnbindPodVolumes_MultiplePVCs_EachHandledCorrectly(t *testing.T) {
 		},
 	}
 
-	if err := volutil.UnbindPodVolumes(ctx, v, pod); err != nil {
+	if err := volutil.PrepareVolumesForReschedule(ctx, v, pod); err != nil {
 		t.Fatalf("UnbindPodVolumes: %v", err)
 	}
 

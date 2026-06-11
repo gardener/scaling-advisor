@@ -15,6 +15,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 )
@@ -154,7 +155,7 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 			continue
 		}
 
-		if err = volutil.UnbindPodVolumes(r.ctx, r.view, &pod); err != nil {
+		if err = volutil.PrepareVolumesForReschedule(r.ctx, r.view, &pod); err != nil {
 			return err
 		}
 
@@ -296,7 +297,7 @@ func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 		r.pendingPods.Insert(podNsName)
 		return
 	}
-	if !podutil.HasControllerOwner(originalSpec) {
+	if metav1.GetControllerOf(originalSpec) != nil {
 		// Bare pods are not recreated by any controller in real clusters; they are simply gone
 		// after preemption. Don't add to pendingPods — there is no future scheduling event to
 		// observe, and pretending otherwise would deadlock IsSimulationSuccess.

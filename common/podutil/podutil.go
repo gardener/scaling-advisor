@@ -216,23 +216,6 @@ func HasNonEvictablePod(pods []corev1.Pod) bool {
 // IsDaemonSetPod reports whether pod is owned by a DaemonSet (i.e. has an OwnerReference of
 // kind "DaemonSet" with Controller=true).
 func IsDaemonSetPod(pod corev1.Pod) bool {
-	for _, ref := range pod.OwnerReferences {
-		if ref.Kind == "DaemonSet" && ref.Controller != nil && *ref.Controller {
-			return true
-		}
-	}
-	return false
-}
-
-// HasControllerOwner reports whether pod has at least one OwnerReference with Controller=true.
-// In real clusters such a controller (Deployment/ReplicaSet, StatefulSet, DaemonSet, Job, ...)
-// is responsible for re-creating the pod after eviction or preemption; bare pods (no controller
-// owner) are not recreated.
-func HasControllerOwner(pod *corev1.Pod) bool {
-	for _, ref := range pod.OwnerReferences {
-		if ref.Controller != nil && *ref.Controller {
-			return true
-		}
-	}
-	return false
+	controllerRef := metav1.GetControllerOf(&pod)
+	return controllerRef != nil && controllerRef.Kind == "DaemonSet"
 }

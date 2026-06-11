@@ -35,7 +35,7 @@ type ScaleInCandidateSelector interface {
 	Init(ctx context.Context, args ScaleInCandidateSelectorArgs) error
 	// NextCandidate returns the next candidate node, or (nil, nil) when none remain. args may
 	// carry an updated view reflecting prior accepted candidates.
-	NextCandidate(ctx context.Context, args ScaleInCandidateSelectorArgs) (*corev1.Node, error)
+	Next(ctx context.Context, args ScaleInCandidateSelectorArgs) (*corev1.Node, error)
 	// RemoveCandidateNode drops nodeName from the internal candidate pool so subsequent
 	// NextCandidate calls do not return it.
 	RemoveCandidateNode(nodeName string)

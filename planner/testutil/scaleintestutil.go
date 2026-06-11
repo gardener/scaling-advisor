@@ -328,7 +328,7 @@ func (f *FixedCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCan
 }
 
 // NextCandidate implements plannerapi.ScaleInCandidateSelector.
-func (f *FixedCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (f *FixedCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if f.Idx >= len(f.Nodes) {
 		return nil, nil
 	}
@@ -349,7 +349,7 @@ func (e *ErrCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandi
 }
 
 // NextCandidate implements plannerapi.ScaleInCandidateSelector.
-func (e *ErrCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (e *ErrCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	return nil, e.Err
 }
 
@@ -368,7 +368,7 @@ func (a *AlwaysCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCa
 }
 
 // NextCandidate implements plannerapi.ScaleInCandidateSelector.
-func (a *AlwaysCandidateSelector) NextCandidate(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (a *AlwaysCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if a.removed {
 		return nil, nil
 	}
@@ -393,7 +393,7 @@ func (p *PDBAwareCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleIn
 }
 
 // NextCandidate implements plannerapi.ScaleInCandidateSelector.
-func (p *PDBAwareCandidateSelector) NextCandidate(_ context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
+func (p *PDBAwareCandidateSelector) Next(_ context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	for p.Idx < len(p.Nodes) {
 		n := p.Nodes[p.Idx]
 		p.Idx++

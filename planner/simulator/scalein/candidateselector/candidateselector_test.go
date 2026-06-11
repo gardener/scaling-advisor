@@ -19,7 +19,7 @@ func TestNextCandidate_NoNodes(t *testing.T) {
 	if err := sel.Init(context.Background(), args); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNextCandidate_SingleEligibleNode(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestNextCandidate_SkipNodesRespected(t *testing.T) {
 	}
 	sel.RemoveCandidateNode("node-a")
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestNextCandidate_AllNodesSkipped(t *testing.T) {
 	}
 	sel.RemoveCandidateNode("node-a")
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestNextCandidate_PoolMinReached(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestNextCandidate_PoolMinNotReached(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestNextCandidate_ScaleInDisabledAnnotation(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestNextCandidate_NonEvictablePodBlocksNode(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestNextCandidate_HighUtilizationSkipsNode(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestNextCandidate_PicksLowestPriorityPool(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestNextCandidate_PicksLowestPriorityTemplate(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestNextCandidate_PDB_BlocksNodeWhenBudgetExhausted(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestNextCandidate_PDB_AllowsNodeWhenBudgetSufficient(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestNextCandidate_PDB_MultiplePodsExceedBudget(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestNextCandidate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestNextCandidate_PDB_LabelMismatchDoesNotBlock(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestNextCandidate_PDB_BlockedNodeSkippedOtherNodeSelected(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestNextCandidate_PDB_MultiplePDBsAllMustAllow(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestNextCandidate_PDB_NoPDBsConfiguredAllowsAll(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -469,7 +469,7 @@ func TestNextCandidate_PDB_NodeWithNoPodsNotBlocked(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got, err := sel.NextCandidate(context.Background(), args)
+	got, err := sel.Next(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

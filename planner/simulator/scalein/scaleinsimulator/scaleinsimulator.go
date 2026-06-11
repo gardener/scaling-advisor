@@ -97,7 +97,7 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 			return ctx.Err()
 		default:
 			// Select the next scale-in candidate.
-			nextCandidate, err := d.scaleInCandidateSelector.NextCandidate(ctx, plannerapi.ScaleInCandidateSelectorArgs{
+			nextCandidate, err := d.scaleInCandidateSelector.Next(ctx, plannerapi.ScaleInCandidateSelectorArgs{
 				Constraint:            d.state.Request.Constraint.Spec,
 				View:                  d.state.RequestView(),
 				PDBTracker:            d.state.PdbTracker,
