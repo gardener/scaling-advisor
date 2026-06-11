@@ -466,3 +466,52 @@ func TestSimulate_PDB_NamespaceMismatchDoesNotBlock(t *testing.T) {
 		t.Fatal("expected a ScaleInPlan (PDB namespace mismatch), got nil")
 	}
 }
+
+// ---- View-isolation tests ---------------------------------------------------
+
+// TestSimulate_FailedRunMustNotMutateRequestView asserts that mutations made by a candidate
+// simulation Run that ultimately reports IsSimulationSuccess=false do not persist on the
+// request view. The simulator must isolate per-candidate runs so a rejected candidate's
+// view changes do not leak into subsequent candidates' runs.
+//
+// Setup: the request view is populated with node-a and node-b; the simulator is configured
+// with FixedCandidateSelector returning just node-a and a MutatingFailingSimulation that
+// deletes node-a from the view it received and then reports the run as failed. After Simulate
+// returns, the request view must still contain node-a — otherwise the next candidate's run
+// would observe a corrupted state.
+func TestSimulate_FailedRunMustNotMutateRequestView(t *testing.T) {
+	requestView := testutil.NewTestView(t)
+	testutil.AddNode(t, requestView, "node-a")
+	testutil.AddNode(t, requestView, "node-b")
+
+	mut := &testutil.MutatingFailingSimulation{}
+	sel := &testutil.FixedCandidateSelector{Nodes: []*corev1.Node{testutil.Node("node-a")}}
+	sim := newSimulator(t, sel, testutil.MakeSimulatorConfig(0), &testutil.StubSimulationFactory{Sim: mut})
+
+	_ = testutil.DrainResult(t, sim.Simulate(t.Context(), testutil.MakeRequest("failed-run-isolation"), requestView))
+
+	if mut.LastNode != "node-a" {
+		t.Fatalf("expected MutatingFailingSimulation to have processed node-a, got %q", mut.LastNode)
+	}
+
+	nodes, err := requestView.ListNodes(t.Context())
+	if err != nil {
+		t.Fatalf("ListNodes on requestView failed: %v", err)
+	}
+	names := make([]string, 0, len(nodes))
+	for i := range nodes {
+		names = append(names, nodes[i].Name)
+	}
+	hasNodeA := false
+	for _, n := range names {
+		if n == "node-a" {
+			hasNodeA = true
+			break
+		}
+	}
+	if !hasNodeA {
+		t.Errorf("requestView is missing node-a after a failed candidate run (have %v); the "+
+			"simulator must isolate failed-run mutations from the request view so subsequent "+
+			"candidate runs see the original cluster state.", names)
+	}
+}

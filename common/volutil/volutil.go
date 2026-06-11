@@ -423,7 +423,7 @@ func UnbindPodVolumes(ctx context.Context, view minkapi.View, pod *corev1.Pod) e
 			delete(pvc.Annotations, storagevolume.AnnSelectedNode)
 		}
 
-		if err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+		if err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 			return fmt.Errorf("failed to update PVC %q/%q after unbind: %w", pod.Namespace, pvcName, err)
 		}
 	}

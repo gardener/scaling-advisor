@@ -5,6 +5,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/testutil"
 
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	corev1 "k8s.io/api/core/v1"
@@ -22,13 +23,13 @@ func TestUnbindPodVolumes_SimulatedPV_DeletedAndPVCReset(t *testing.T) {
 	pvc := testutil.MakeBoundPVC("pvc-a", "default", "simVol-default-pvc-a", map[string]string{
 		storagevolume.AnnSelectedNode: "node-a",
 	})
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PVC: %v", err)
 	}
 
 	claimRef := &corev1.ObjectReference{Kind: "PersistentVolumeClaim", Namespace: "default", Name: "pvc-a"}
 	pv := testutil.MakePV("simVol-default-pvc-a", claimRef, true)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PV: %v", err)
 	}
 
@@ -70,13 +71,13 @@ func TestUnbindPodVolumes_RealPV_KeptOnlySelectedNodeCleared(t *testing.T) {
 	pvc := testutil.MakeBoundPVC("pvc-b", "default", "real-pv", map[string]string{
 		storagevolume.AnnSelectedNode: "node-a",
 	})
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PVC: %v", err)
 	}
 
 	claimRef := &corev1.ObjectReference{Kind: "PersistentVolumeClaim", Namespace: "default", Name: "pvc-b"}
 	pv := testutil.MakePV("real-pv", claimRef, false)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PV: %v", err)
 	}
 
@@ -137,11 +138,11 @@ func TestUnbindPodVolumes_MultiplePVCs_EachHandledCorrectly(t *testing.T) {
 
 	// pvc-sim: bound to simulated PV
 	pvcSim := testutil.MakeBoundPVC("pvc-sim", "default", "simVol-default-pvc-sim", nil)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvcSim); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvcSim, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create pvc-sim: %v", err)
 	}
 	simPV := testutil.MakePV("simVol-default-pvc-sim", &corev1.ObjectReference{Namespace: "default", Name: "pvc-sim"}, true)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, simPV); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, simPV, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create sim PV: %v", err)
 	}
 
@@ -149,11 +150,11 @@ func TestUnbindPodVolumes_MultiplePVCs_EachHandledCorrectly(t *testing.T) {
 	pvcReal := testutil.MakeBoundPVC("pvc-real", "default", "real-pv-2", map[string]string{
 		storagevolume.AnnSelectedNode: "node-a",
 	})
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvcReal); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvcReal, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create pvc-real: %v", err)
 	}
 	realPV := testutil.MakePV("real-pv-2", &corev1.ObjectReference{Namespace: "default", Name: "pvc-real"}, false)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, realPV); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, realPV, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create real PV: %v", err)
 	}
 
@@ -215,11 +216,11 @@ func TestRemoveNodeAndUnbindPods_SimulatedPVDeletedAndPVCReset(t *testing.T) {
 	pvc := testutil.MakeBoundPVC("pvc-a", "default", "simVol-default-pvc-a", map[string]string{
 		storagevolume.AnnSelectedNode: "node-a",
 	})
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PVC: %v", err)
 	}
 	pv := testutil.MakePV("simVol-default-pvc-a", &corev1.ObjectReference{Namespace: "default", Name: "pvc-a"}, true)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PV: %v", err)
 	}
 
@@ -233,7 +234,7 @@ func TestRemoveNodeAndUnbindPods_SimulatedPVDeletedAndPVCReset(t *testing.T) {
 			Containers: []corev1.Container{{Name: "c", Image: "img"}},
 		},
 	}
-	if _, err := v.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, pod); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create pod: %v", err)
 	}
 
@@ -277,11 +278,11 @@ func TestRemoveNodeAndUnbindPods_RealPVKept(t *testing.T) {
 	pvc := testutil.MakeBoundPVC("pvc-b", "default", "real-pv", map[string]string{
 		storagevolume.AnnSelectedNode: "node-a",
 	})
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PVC: %v", err)
 	}
 	pv := testutil.MakePV("real-pv", &corev1.ObjectReference{Namespace: "default", Name: "pvc-b"}, false)
-	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create PV: %v", err)
 	}
 
@@ -295,7 +296,7 @@ func TestRemoveNodeAndUnbindPods_RealPVKept(t *testing.T) {
 			Containers: []corev1.Container{{Name: "c", Image: "img"}},
 		},
 	}
-	if _, err := v.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, pod); err != nil {
+	if _, err := v.CreateObject(ctx, typeinfo.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("create pod: %v", err)
 	}
 

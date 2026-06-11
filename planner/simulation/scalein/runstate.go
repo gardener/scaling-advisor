@@ -160,7 +160,7 @@ func (r *RunState) RemoveNodeAndUnbindPods(nodeName string) error {
 
 		log.V(2).Info("Unbinding pod from node", "pod", pod.Name, "node", nodeName)
 		pod.Spec.NodeName = ""
-		if err = r.view.UpdateObject(r.ctx, typeinfo.PodsDescriptor.GVK, &pod); err != nil {
+		if err = r.view.UpdateObject(r.ctx, typeinfo.PodsDescriptor.GVK, &pod, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 
@@ -312,7 +312,7 @@ func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 	replacement.UID = ""
 	replacement.ResourceVersion = ""
 	replacement.Status = corev1.PodStatus{}
-	if _, err := r.view.CreateObject(r.ctx, typeinfo.PodsDescriptor.GVK, replacement); err != nil {
+	if _, err := r.view.CreateObject(r.ctx, typeinfo.PodsDescriptor.GVK, replacement, minkapi.ObjectOptions{}); err != nil {
 		// If the pod is already present in the view (the kube-scheduler hasn't actually deleted
 		// it yet, or it raced with our recreation), update it to clear NodeName instead.
 		log.V(4).Info("CreateObject for preempted pod failed; falling back to clearing NodeName via UpdateObject",
@@ -320,7 +320,7 @@ func (r *RunState) handlePreemptedPodEvent(ev eventsv1.Event) {
 		if existingObj, gerr := r.view.GetObject(r.ctx, typeinfo.PodsDescriptor.GVK, podNsName.AsObjectName()); gerr == nil {
 			if existingPod, isPod := existingObj.(*corev1.Pod); isPod {
 				existingPod.Spec.NodeName = ""
-				if uerr := r.view.UpdateObject(r.ctx, typeinfo.PodsDescriptor.GVK, existingPod); uerr != nil {
+				if uerr := r.view.UpdateObject(r.ctx, typeinfo.PodsDescriptor.GVK, existingPod, minkapi.ObjectOptions{}); uerr != nil {
 					log.V(2).Info("UpdateObject fallback for preempted pod also failed",
 						"podNamespacedName", podNsName, "err", uerr)
 				}

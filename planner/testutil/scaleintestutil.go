@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/cache"
 	storagevolume "k8s.io/component-helpers/storage/volume"
 )
 
@@ -96,7 +97,7 @@ func AddNode(t *testing.T, v minkapi.View, name string, opts ...NodeOpts) {
 			corev1.ResourceMemory: resource.MustParse("8Gi"),
 		}
 	}
-	if _, err := v.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, node); err != nil {
+	if _, err := v.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, node, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("failed to add node %q: %v", name, err)
 	}
 }
@@ -136,7 +137,7 @@ func AddPod(t *testing.T, v minkapi.View, name, namespace, nodeName string, opts
 			},
 		},
 	}
-	if _, err := v.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, pod); err != nil {
+	if _, err := v.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("failed to add pod %q: %v", name, err)
 	}
 }
@@ -145,7 +146,7 @@ func AddPod(t *testing.T, v minkapi.View, name, namespace, nodeName string, opts
 func AddPDBToView(t *testing.T, v minkapi.View, name, namespace string, matchLabels map[string]string, disruptionsAllowed int32) {
 	t.Helper()
 	pdb := MakePDB(name, namespace, matchLabels, disruptionsAllowed)
-	if _, err := v.CreateObject(t.Context(), typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb); err != nil {
+	if _, err := v.CreateObject(t.Context(), typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb, minkapi.ObjectOptions{}); err != nil {
 		t.Fatalf("failed to add PDB %q: %v", name, err)
 	}
 }
@@ -442,7 +443,11 @@ func (s *SuccessSimulation) Status() plannerapi.ActivityStatus {
 func (s *SuccessSimulation) Priority() commontypes.Priority { return commontypes.Priority{} }
 
 // Run implements plannerapi.ScaleInSimulation.
-func (s *SuccessSimulation) Run(_ context.Context, v minkapi.View, node *corev1.Node) error {
+func (s *SuccessSimulation) Run(ctx context.Context, getViewFn minkapi.GetViewFunc, node *corev1.Node) error {
+	v, err := getViewFn(ctx, "stub-success")
+	if err != nil {
+		return err
+	}
 	s.SimView = v
 	if s.NodeName == "" {
 		s.NodeName = node.Name
@@ -482,7 +487,11 @@ func (p *PendingPodsSimulation) Priority() commontypes.Priority {
 }
 
 // Run implements plannerapi.ScaleInSimulation.
-func (p *PendingPodsSimulation) Run(_ context.Context, v minkapi.View, _ *corev1.Node) error {
+func (p *PendingPodsSimulation) Run(ctx context.Context, getViewFn minkapi.GetViewFunc, _ *corev1.Node) error {
+	v, err := getViewFn(ctx, "stub-pending")
+	if err != nil {
+		return err
+	}
 	p.SimView = v
 	return nil
 }
@@ -515,13 +524,62 @@ func (f *FailingSimulation) Status() plannerapi.ActivityStatus {
 func (f *FailingSimulation) Priority() commontypes.Priority { return commontypes.Priority{} }
 
 // Run implements plannerapi.ScaleInSimulation.
-func (f *FailingSimulation) Run(_ context.Context, _ minkapi.View, _ *corev1.Node) error {
+func (f *FailingSimulation) Run(_ context.Context, _ minkapi.GetViewFunc, _ *corev1.Node) error {
 	return f.Err
 }
 
 // Result implements plannerapi.ScaleInSimulation.
 func (f *FailingSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
 	return plannerapi.ScaleInSimRunResult{}, f.Err
+}
+
+// MutatingFailingSimulation is a stub ScaleInSimulation that, on each Run, deletes the candidate
+// node from the view it received and then reports IsSimulationSuccess=false. It is used to
+// observe whether mutations performed during a failed simulation run persist on the view that
+// the simulator passed in. Each Run records the view it was given so tests can identify the
+// view object after the simulator returns.
+type MutatingFailingSimulation struct {
+	// LastView is the view received by the most recent Run call.
+	LastView minkapi.View
+	// LastNode is the candidate node passed to the most recent Run call.
+	LastNode string
+}
+
+// Reset implements plannerapi.ScaleInSimulation.
+func (m *MutatingFailingSimulation) Reset() error { return nil }
+
+// Name implements plannerapi.ScaleInSimulation.
+func (m *MutatingFailingSimulation) Name() string { return "stub-mutating-failing" }
+
+// Status implements plannerapi.ScaleInSimulation.
+func (m *MutatingFailingSimulation) Status() plannerapi.ActivityStatus {
+	return plannerapi.ActivityStatusSuccess
+}
+
+// Priority implements plannerapi.ScaleInSimulation.
+func (m *MutatingFailingSimulation) Priority() commontypes.Priority { return commontypes.Priority{} }
+
+// Run implements plannerapi.ScaleInSimulation. It deletes the candidate node from the
+// retrieved view and records the view+node so the caller can inspect afterwards.
+func (m *MutatingFailingSimulation) Run(ctx context.Context, getViewFn minkapi.GetViewFunc, node *corev1.Node) error {
+	v, err := getViewFn(ctx, "stub-mutating-failing")
+	if err != nil {
+		return err
+	}
+	m.LastView = v
+	m.LastNode = node.Name
+	return v.DeleteObject(ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", node.Name))
+}
+
+// Result implements plannerapi.ScaleInSimulation. Reports the run as a failure so the
+// orchestration treats it as a rejected candidate.
+func (m *MutatingFailingSimulation) Result() (plannerapi.ScaleInSimRunResult, error) {
+	return plannerapi.ScaleInSimRunResult{
+		Name:                "stub-mutating-failing",
+		View:                m.LastView,
+		Item:                sacorev1alpha1.ScaleInItem{NodeName: m.LastNode},
+		IsSimulationSuccess: false,
+	}, nil
 }
 
 // StubSimulationFactory is a SimulationFactory that returns pre-configured simulation instances.

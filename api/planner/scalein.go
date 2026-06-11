@@ -104,7 +104,7 @@ type ScaleInSimulation interface {
 	Priority() commontypes.Priority
 	// Run executes one simulation pass for node against view. Blocks until the run stabilizes,
 	// errors, or ctx is cancelled. Not safe for concurrent invocation on the same receiver.
-	Run(ctx context.Context, view minkapi.View, node *corev1.Node) error
+	Run(ctx context.Context, getViewFn minkapi.GetViewFunc, node *corev1.Node) error
 	// Result returns the most recent run's outcome:
 	//   - the result when status is [ActivityStatusSuccess];
 	//   - a sentinel error when still [ActivityStatusPending] or [ActivityStatusRunning];

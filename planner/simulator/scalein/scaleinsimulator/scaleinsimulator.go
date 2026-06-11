@@ -47,7 +47,7 @@ func (d *scaleInSimulator) Close() error {
 // in the final [plannerapi.ScaleInPlanResult] if it has been continuously identified as unneeded across invocations
 // for at least the configured UnderutilizedDuration (tracked via the [plannerapi.ScaleInMemento]).
 func (d *scaleInSimulator) Simulate(ctx context.Context, request *plannerapi.Request, requestView minkapi.View) <-chan plannerapi.ScaleInPlanResult {
-	d.state = scalein.NewSimulatorState(request, d.simulatorConfig, d.simulationFactory, requestView)
+	d.state = scalein.NewSimulatorState(request, d.simulatorConfig, d.simulationFactory, d.viewAccess, requestView)
 	go func() {
 		defer close(d.state.ResultCh)
 		if err := d.doSimulate(ctx); err != nil {
@@ -122,8 +122,13 @@ func (d *scaleInSimulator) doSimulate(ctx context.Context) (err error) {
 			candidateName := nextCandidate.Name
 			log.V(3).Info("Running scale-in simulation for candidate", "node", candidateName)
 
-			// Run the simulation for this candidate against the current simView.
-			if err = scaleInSim.Run(ctx, d.state.RequestView(), nextCandidate); err != nil {
+			// Run the simulation for this candidate against the current simView. The
+			// GetViewFunc here returns the shared request view; once per-candidate sandboxing
+			// is wired up, this should switch to d.state.CreateSandboxView(ctx, name, d.state.RequestView()).
+			getViewFn := func(_ context.Context, _ string) (minkapi.View, error) {
+				return d.state.RequestView(), nil
+			}
+			if err = scaleInSim.Run(ctx, getViewFn, nextCandidate); err != nil {
 				return fmt.Errorf("%w: failed for node %q: %w", plannerapi.ErrRunSimulation, candidateName, err)
 			}
 			result, err := scaleInSim.Result()

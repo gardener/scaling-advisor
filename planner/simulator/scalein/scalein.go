@@ -1,6 +1,7 @@
 package scalein
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
@@ -14,6 +15,7 @@ import (
 
 // SimulatorState holds the internal request-scoped state of a ScaleInSimulator.
 type SimulatorState struct {
+	viewAccess minkapi.ViewAccess
 	// SimulationFactory is used to create `ScaleInSimulation`s
 	SimulationFactory plannerapi.SimulationFactory
 	// Request is the planner request being currently satisfied.
@@ -31,7 +33,7 @@ type SimulatorState struct {
 
 // NewSimulatorState constructs a fresh SimulatorState with the given planner Request and parameters.
 func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig,
-	simulationFactory plannerapi.SimulationFactory, requestView minkapi.View) SimulatorState {
+	simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess, requestView minkapi.View) SimulatorState {
 	return SimulatorState{
 		Request:             request,
 		ResultCh:            make(chan plannerapi.ScaleInPlanResult),
@@ -41,6 +43,7 @@ func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.Simulat
 		PdbTracker:          pdbtracker.New(),
 		ScaleInNomineeNodes: make(map[string]sacorev1alpha1.ScaleInItem),
 		Memento:             request.Memento.ScaleIn,
+		viewAccess:          viewAccess,
 		view:                requestView,
 	}
 }
@@ -56,6 +59,17 @@ func (s *SimulatorState) SetRequestView(view minkapi.View) {
 // cluster snapshot populated within them along with any initialization done by InitializeRequestView.
 func (s *SimulatorState) RequestView() minkapi.View {
 	return s.view
+}
+
+// CreateSandboxView creates a sandbox view with the given name from the given delegate view.
+func (d *SimulatorState) CreateSandboxView(ctx context.Context, name string, delegate minkapi.View) (minkapi.View, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	sandboxView, err := d.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegate)
+	if err != nil {
+		return nil, err
+	}
+	return sandboxView, nil
 }
 
 // Reset clears and resets this RequestState

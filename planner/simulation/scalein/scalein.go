@@ -56,7 +56,7 @@ func (d *defaultSimulation) Priority() commontypes.Priority {
 	panic("implement me")
 }
 
-func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *corev1.Node) (err error) {
+func (d *defaultSimulation) Run(ctx context.Context, getViewFn minkapi.GetViewFunc, node *corev1.Node) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot run %q, runNum %d: %w", plannerapi.ErrRunSimulation, d.args.Name, d.runNum(), err)
@@ -64,6 +64,11 @@ func (d *defaultSimulation) Run(ctx context.Context, view minkapi.View, node *co
 			d.state.status = plannerapi.ActivityStatusFailure
 		}
 	}()
+
+	view, err := getViewFn(ctx, d.Name())
+	if err != nil {
+		return
+	}
 
 	if ctx, err = d.state.Init(ctx, d.args.Name, d.incRunNum(), view, d.args.TraceDir); err != nil {
 		return

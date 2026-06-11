@@ -90,7 +90,7 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 		}
 	}
 	for _, pdb := range cs.PDBs {
-		if _, err := view.CreateObject(ctx, typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb); err != nil {
+		if _, err := view.CreateObject(ctx, typeinfo.PodDisruptionBudgetDescriptor.GVK, &pdb, minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
