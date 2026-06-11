@@ -327,7 +327,7 @@ func (f *FixedCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCan
 	return nil
 }
 
-// NextCandidate implements plannerapi.ScaleInCandidateSelector.
+// Next implements plannerapi.ScaleInCandidateSelector.
 func (f *FixedCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if f.Idx >= len(f.Nodes) {
 		return nil, nil
@@ -340,7 +340,7 @@ func (f *FixedCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCan
 // RemoveCandidateNode implements plannerapi.ScaleInCandidateSelector.
 func (f *FixedCandidateSelector) RemoveCandidateNode(_ string) {}
 
-// ErrCandidateSelector always returns an error from NextCandidate.
+// ErrCandidateSelector always returns an error from Next.
 type ErrCandidateSelector struct{ Err error }
 
 // Init implements plannerapi.ScaleInCandidateSelector.
@@ -348,7 +348,7 @@ func (e *ErrCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCandi
 	return nil
 }
 
-// NextCandidate implements plannerapi.ScaleInCandidateSelector.
+// Next implements plannerapi.ScaleInCandidateSelector.
 func (e *ErrCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	return nil, e.Err
 }
@@ -367,7 +367,7 @@ func (a *AlwaysCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleInCa
 	return nil
 }
 
-// NextCandidate implements plannerapi.ScaleInCandidateSelector.
+// Next implements plannerapi.ScaleInCandidateSelector.
 func (a *AlwaysCandidateSelector) Next(_ context.Context, _ plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	if a.removed {
 		return nil, nil
@@ -392,7 +392,7 @@ func (p *PDBAwareCandidateSelector) Init(_ context.Context, _ plannerapi.ScaleIn
 	return nil
 }
 
-// NextCandidate implements plannerapi.ScaleInCandidateSelector.
+// Next implements plannerapi.ScaleInCandidateSelector.
 func (p *PDBAwareCandidateSelector) Next(_ context.Context, args plannerapi.ScaleInCandidateSelectorArgs) (*corev1.Node, error) {
 	for p.Idx < len(p.Nodes) {
 		n := p.Nodes[p.Idx]

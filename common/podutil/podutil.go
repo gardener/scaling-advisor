@@ -213,8 +213,7 @@ func HasNonEvictablePod(pods []corev1.Pod) bool {
 	return false
 }
 
-// IsDaemonSetPod reports whether pod is owned by a DaemonSet (i.e. has an OwnerReference of
-// kind "DaemonSet" with Controller=true).
+// IsDaemonSetPod reports whether pod is owned by a DaemonSet (i.e. has an OwnerReference of kind "DaemonSet").
 func IsDaemonSetPod(pod corev1.Pod) bool {
 	controllerRef := metav1.GetControllerOf(&pod)
 	return controllerRef != nil && controllerRef.Kind == "DaemonSet"
