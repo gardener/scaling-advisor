@@ -19,6 +19,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,6 +53,8 @@ type RequestRef struct {
 type Request struct {
 	// CreationTime is the time at which request was created
 	CreationTime time.Time `json:"creationTime,omitzero"`
+	// Memento defines a memento produced by the previous [planner.Plan] invocation if any
+	Memento Memento
 	// Constraint represents the constraints using which the scaling advice is generated.
 	Constraint *sacorev1alpha1.ScalingConstraint `json:"constraint,omitempty"`
 	RequestRef
@@ -137,6 +140,8 @@ type ClusterSnapshot struct {
 	PriorityClasses []schedulingv1.PriorityClass `json:"priorityClasses,omitempty"`
 	// RuntimeClasses are the runtime classes that are present in the cluster.
 	RuntimeClasses []nodev1.RuntimeClass `json:"runtimeClasses,omitempty"`
+	// PDBs are the pod disruption budgets that are present in the cluster.
+	PDBs []policyv1.PodDisruptionBudget `json:"pdbs,omitempty"`
 }
 
 // GetUnscheduledPods returns all pods in the cluster snapshot that are not scheduled to any node.
@@ -370,6 +375,11 @@ type NodeResourceInfo struct {
 
 // SimulatorConfig holds the configuration for the internal simulator used by the scaling advisor planner.
 type SimulatorConfig struct {
+	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
+	// a candidate for scale in.
+	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
+	// utilization thresholds expressed as fractions from 0 to 1.
+	UtilizationThresholds map[corev1.ResourceName]float64
 	// MaxParallelSimulations is the maximum number of parallel simulations that can be run by the scaling advisor planner.
 	MaxParallelSimulations int
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulator.
@@ -377,6 +387,9 @@ type SimulatorConfig struct {
 	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
 	// considered as stabilized.
 	MaxUnchangedTrackAttempts int
+	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
+	// considered a candidate for scale in.
+	UnderutilizedDuration time.Duration
 	// BindVolumeClaimsForImmediateMode should be set if simulator is expected to bind unbound PVC<->PV for
 	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
 	BindVolumeClaimsForImmediateMode bool
@@ -398,6 +411,9 @@ type ScalingPlannerArgs struct {
 	SimulatorFactory SimulatorFactory
 	// SimulationFactory is the factory facade to create simulations.
 	SimulationFactory SimulationFactory
+	// ScaleInCandidateSelector enumerates the next scale-in candidate node for the simulator
+	// to evaluate.
+	ScaleInCandidateSelector ScaleInCandidateSelector
 	// TraceDir is the directory for storing traces when diagnostics are enabled.
 	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
@@ -441,14 +457,15 @@ type ScalingPlannerFactory interface {
 // SimulatorFactory is a factory facade for constructing various kinds of simulators.
 type SimulatorFactory interface {
 	GetScaleOutSimulator(args SimulatorArgs) (ScaleOutSimulator, error)
-	// TODO: Add GetScaleInSimulator here.
+	GetScaleInSimulator(args SimulatorArgs) (ScaleInSimulator, error)
 }
 
 // SimulationFactory is a factory facade for creating Simulation objects
 type SimulationFactory interface {
 	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
 	NewScaleOut(args ScaleOutSimArgs) (ScaleOutSimulation, error)
-	// TODO: Add NewScaleIn method here.
+	// NewScaleIn creates a ScaleInSimulation instance with the given name and arguments.
+	NewScaleIn(args ScaleInSimArgs) (ScaleInSimulation, error)
 }
 
 // SimulatorArgs is an encapsulation of the arguments used to create a ScaleOutSimulator or ScaleInSimulator.
@@ -462,6 +479,10 @@ type SimulatorArgs struct {
 	StorageMetaAccess StorageMetaAccess
 	// NodeScorer holds the facade to compute NodeScores for simulated scaled nodes.
 	NodeScorer NodeScorer
+	// ScaleInCandidateSelector holds the facade to select scale-in candidate nodes for scale-in simulations. This is needed for constructing scale-in simulations inside the planner which are used for both scale-out and scale-in planning.
+	ScaleInCandidateSelector ScaleInCandidateSelector
+	// SimulationFactory is a factory facade for creating Simulation objects
+	SimulationFactory SimulationFactory
 	// Strategy holds the simulator strategy which customizes simulator implementation and behaviorchanges simulator implementation and behavior
 	Strategy commontypes.SimulatorStrategy
 	// TraceDir is the base directory for storing trace logs and other dump data by the simulator
@@ -479,6 +500,8 @@ type ScalingPlannerService interface {
 
 // ScalingPlannerServiceConfig holds the service configuration for the scaling planner microservice.
 type ScalingPlannerServiceConfig struct {
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig
 	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider commontypes.CloudProvider
 	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
@@ -489,14 +512,31 @@ type ScalingPlannerServiceConfig struct {
 	MinKAPIConfig minkapi.Config
 	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
 	ClientConfig commontypes.QPSBurst
-	// SimulatorConfig holds the configuration used by the internal simulator.
-	SimulatorConfig SimulatorConfig
 }
 
 // Factories is a struct that holds all planner factories.
 type Factories struct {
-	Planner         ScalingPlannerFactory
-	Simulator       SimulatorFactory
-	Simulation      SimulationFactory
-	ResourceWeigher ResourceWeigher
+	Planner                   ScalingPlannerFactory
+	Simulator                 SimulatorFactory
+	Simulation                SimulationFactory
+	ResourceWeigher           ResourceWeigher
+	NodeUtilizationCalculator NodeUtilizationCalculator
+	ScaleInCandidateSelector  ScaleInCandidateSelector
+}
+
+// Memento is an encapsulation of partial details of a completed simulation that can be used by subsequent simulations to optimize their execution.
+type Memento struct {
+	// ScaleInMemento holds the `LastIdentifiedUnneededNodes` and `LastUnderutilizedSinceNodes` maps used for scale-in decisions.
+	ScaleIn ScaleInMemento
+}
+
+// PDBTracker is responsible for tracking the PDBs
+type PDBTracker interface {
+	commontypes.Resettable
+	// SetPDBs sets PDBs of the remaining PDB tracker.
+	SetPDBs(pdbs []policyv1.PodDisruptionBudget) error
+	// GetPDBs returns the current remaining PDBs.
+	GetPDBs() []policyv1.PodDisruptionBudget
+	// CanRemovePods checks if the set of pods can be removed.
+	CanRemovePods(pods []corev1.Pod) (canRemove bool, blockingPodName string)
 }

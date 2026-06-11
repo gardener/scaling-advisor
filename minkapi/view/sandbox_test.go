@@ -7,6 +7,7 @@ package view
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
@@ -16,6 +17,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -458,4 +461,176 @@ func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) {
 	if diff != "" {
 		t.Errorf("From view %q, expected node spec for %q to be same, got diff: %s", v.GetName(), n.GetName(), diff)
 	}
+}
+
+// ---- Watch duplicate-event tests --------------------------------------------
+
+// TestSandboxWatchObjects_NoDuplicateOnCopyOnWriteUpdate verifies that the callback-style
+// WatchObjects API delivers exactly one event per logical update, even when the update is on a
+// delegate-only object (which triggers the sandbox's copy-on-write path). The expected sequence:
+//
+//   - One ADD on watcher attach (initial-list replay).
+//   - One MODIFIED for each subsequent UpdateObject call.
+//
+// In particular, no second ADD or MODIFIED is delivered as a side-effect of the materialize step
+// because materialize uses NoBroadcast=true, and the delegate watcher's events are filtered by
+// WatchObjects' shadowing wrapper once the sandbox holds a local copy.
+func TestSandboxWatchObjects_NoDuplicateOnCopyOnWriteUpdate(t *testing.T) {
+	b, s, err := setup(t)
+	if err != nil {
+		return
+	}
+
+	// Pre-populate a node in the BASE view (so an Update on the sandbox triggers copy-on-write).
+	nA := testNodes[0]
+	if err = storeNode(t, b, &nA, mkapi.ObjectOptions{}); err != nil {
+		return
+	}
+
+	events := startWatchObjects(t, s)
+
+	// Drain the initial ADD that arrives on watcher attach.
+	expectEvent(t, events, watch.Added, nA.Name)
+
+	// Update the node via the sandbox: copy-on-write into sandbox, then update.
+	nAv2 := *nA.DeepCopy()
+	if nAv2.Annotations == nil {
+		nAv2.Annotations = map[string]string{}
+	}
+	nAv2.Annotations["v"] = "2"
+	if err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAv2, mkapi.ObjectOptions{}); err != nil {
+		t.Fatalf("UpdateObject failed: %v", err)
+	}
+	expectEvent(t, events, watch.Modified, nA.Name)
+	expectNoMoreEvents(t, events)
+
+	// Second update: object is now sandbox-local, no copy-on-write.
+	nAv3 := *nAv2.DeepCopy()
+	nAv3.Annotations["v"] = "3"
+	if err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAv3, mkapi.ObjectOptions{}); err != nil {
+		t.Fatalf("second UpdateObject failed: %v", err)
+	}
+	expectEvent(t, events, watch.Modified, nA.Name)
+	expectNoMoreEvents(t, events)
+}
+
+// TestSandboxGetWatcher_NoDuplicateOnCopyOnWriteUpdate verifies the same property for the
+// channel-style GetWatcher API. Unlike WatchObjects, GetWatcher does not filter delegate events
+// — it merges sandbox+delegate watch streams via watchutil.CombineTwoWatchers. So this test is
+// the more pessimistic of the two: if duplicate events were a real problem in the kube-scheduler
+// path (which uses GetWatcher via inmclient), this is where they would surface.
+//
+// We expect no duplicates because in the copy-on-write Update flow, the materialize step uses
+// NoBroadcast=true (so the sandbox watcher does not fire) and the delegate watcher only fires
+// when the delegate's data actually changes — it does not, since UpdateObject only touches the
+// sandbox copy. So the consumer sees one ADD on attach and one MODIFIED per Update.
+func TestSandboxGetWatcher_NoDuplicateOnCopyOnWriteUpdate(t *testing.T) {
+	b, s, err := setup(t)
+	if err != nil {
+		return
+	}
+
+	nA := testNodes[0]
+	if err = storeNode(t, b, &nA, mkapi.ObjectOptions{}); err != nil {
+		return
+	}
+
+	w, err := s.GetWatcher(t.Context(), typeinfo.NodesDescriptor.GVK, "", metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("GetWatcher failed: %v", err)
+	}
+	t.Cleanup(w.Stop)
+	events := w.ResultChan()
+
+	expectEventFromChan(t, events, watch.Added, nA.Name)
+
+	nAv2 := *nA.DeepCopy()
+	if nAv2.Annotations == nil {
+		nAv2.Annotations = map[string]string{}
+	}
+	nAv2.Annotations["v"] = "2"
+	if err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAv2, mkapi.ObjectOptions{}); err != nil {
+		t.Fatalf("UpdateObject failed: %v", err)
+	}
+	expectEventFromChan(t, events, watch.Modified, nA.Name)
+	expectNoMoreEventsFromChan(t, events)
+
+	nAv3 := *nAv2.DeepCopy()
+	nAv3.Annotations["v"] = "3"
+	if err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAv3, mkapi.ObjectOptions{}); err != nil {
+		t.Fatalf("second UpdateObject failed: %v", err)
+	}
+	expectEventFromChan(t, events, watch.Modified, nA.Name)
+	expectNoMoreEventsFromChan(t, events)
+}
+
+// startWatchObjects spawns the sandbox view's blocking WatchObjects in a goroutine and returns
+// a channel onto which received events are forwarded. The watch is bound to the test context so
+// it terminates with the test.
+func startWatchObjects(t *testing.T, v mkapi.View) chan watch.Event {
+	t.Helper()
+	ch := make(chan watch.Event, 16)
+	go func() {
+		_ = v.WatchObjects(t.Context(), typeinfo.NodesDescriptor.GVK, 0, "", labels.Everything(), func(ev watch.Event) error {
+			ch <- ev
+			return nil
+		})
+		close(ch)
+	}()
+	return ch
+}
+
+// expectEvent reads one event from ch within a short timeout and verifies its type and the
+// affected object's name. Fails the test if nothing arrives in time or the event is wrong.
+func expectEvent(t *testing.T, ch <-chan watch.Event, wantType watch.EventType, wantName string) {
+	t.Helper()
+	select {
+	case ev, ok := <-ch:
+		if !ok {
+			t.Fatalf("watch channel closed; expected %s event for %q", wantType, wantName)
+		}
+		if ev.Type != wantType {
+			t.Fatalf("expected event type %s, got %s", wantType, ev.Type)
+		}
+		gotName, _ := objutil.AsMeta(ev.Object)
+		if gotName != nil && gotName.GetName() != wantName {
+			t.Fatalf("expected event for %q, got %q", wantName, gotName.GetName())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s event for %q", wantType, wantName)
+	}
+}
+
+// expectNoMoreEvents asserts that no further event arrives within a short window. The window is
+// short enough to keep the test fast but long enough to surface a duplicate that's already been
+// queued by an alternate watcher.
+func expectNoMoreEvents(t *testing.T, ch <-chan watch.Event) {
+	t.Helper()
+	select {
+	case ev, ok := <-ch:
+		if !ok {
+			return
+		}
+		gotName, _ := objutil.AsMeta(ev.Object)
+		name := ""
+		if gotName != nil {
+			name = gotName.GetName()
+		}
+		t.Fatalf("unexpected duplicate event: type=%s name=%q", ev.Type, name)
+	case <-time.After(150 * time.Millisecond):
+		// no event — pass
+	}
+}
+
+// expectEventFromChan / expectNoMoreEventsFromChan are the GetWatcher-channel equivalents of
+// the WatchObjects-channel helpers. They are split out only because watch.Interface returns a
+// receive-only channel via ResultChan.
+func expectEventFromChan(t *testing.T, ch <-chan watch.Event, wantType watch.EventType, wantName string) {
+	t.Helper()
+	expectEvent(t, ch, wantType, wantName)
+}
+
+func expectNoMoreEventsFromChan(t *testing.T, ch <-chan watch.Event) {
+	t.Helper()
+	expectNoMoreEvents(t, ch)
 }

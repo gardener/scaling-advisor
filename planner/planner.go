@@ -6,14 +6,18 @@ package planner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"path/filepath"
 
 	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/simulator"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
@@ -62,9 +66,75 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
+	requestView, err := simulator.InitializeRequestView(planCtx, req, p.args.ViewAccess, p.args.SimulatorConfig)
+	if err != nil {
+		return err
+	}
+	defer ioutil.CloseQuietly(requestView)
+
+	response := plannerapi.Response{
+		RequestRef: req.RequestRef,
+		ID:         objutil.GenerateName("scaling-plan-"),
+		Labels:     make(map[string]string),
+	}
+
+	scaleInResult, err := p.doScaleIn(planCtx, req, requestView)
+	if err != nil {
+		return err
+	}
+	maps.Copy(response.Labels, scaleInResult.Labels)
+	response.ScaleInPlan = scaleInResult.ScaleInPlan
+
+	// Use the post-scale-in view as the starting point for scale-out.
+	// If scale-in produced no usable view, fall back to the original request view.
+	scaleOutView := scaleInResult.View
+	if scaleOutView == nil {
+		scaleOutView = requestView
+	}
+
+	scaleOutResult, err := p.doScaleOut(planCtx, req, scaleOutView)
+	if err != nil {
+		return err
+	}
+	maps.Copy(response.Labels, scaleOutResult.Labels)
+	response.ScaleOutPlan = scaleOutResult.ScaleOutPlan
+
+	responseCh <- response
+	return nil
+}
+
+func (p *defaultPlanner) doScaleIn(ctx context.Context, req *plannerapi.Request, requestView minkapi.View) (plannerapi.ScaleInPlanResult, error) {
+	scaleInSimulator, err := p.args.SimulatorFactory.GetScaleInSimulator(plannerapi.SimulatorArgs{
+		ScaleInCandidateSelector: p.args.ScaleInCandidateSelector,
+		Config:                   p.args.SimulatorConfig,
+		ViewAccess:               p.args.ViewAccess,
+		SchedulerLauncher:        p.args.SchedulerLauncher,
+		TraceDir:                 p.args.TraceDir,
+		SimulationFactory:        p.args.SimulationFactory,
+	})
+	if err != nil {
+		return plannerapi.ScaleInPlanResult{}, err
+	}
+	defer ioutil.CloseQuietly(scaleInSimulator)
+
+	select {
+	case <-ctx.Done():
+		return plannerapi.ScaleInPlanResult{}, ctx.Err()
+	case r, ok := <-scaleInSimulator.Simulate(ctx, req, requestView):
+		if !ok {
+			return plannerapi.ScaleInPlanResult{}, nil
+		}
+		if r.Error != nil && !errors.Is(r.Error, plannerapi.ErrNoScaleInPlan) {
+			return plannerapi.ScaleInPlanResult{}, r.Error
+		}
+		return r, nil
+	}
+}
+
+func (p *defaultPlanner) doScaleOut(ctx context.Context, req *plannerapi.Request, requestView minkapi.View) (plannerapi.ScaleOutPlanResult, error) {
 	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
 	if err != nil {
-		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
+		return plannerapi.ScaleOutPlanResult{}, fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 	}
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
@@ -74,30 +144,24 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		StorageMetaAccess: p.args.StorageMetaAccess,
 		NodeScorer:        nodeScorer,
 		TraceDir:          p.args.TraceDir,
+		SimulationFactory: p.args.SimulationFactory,
 	})
 	if err != nil {
-		return err
+		return plannerapi.ScaleOutPlanResult{}, err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	planResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case planResult, ok := <-planResultCh:
-			if !ok {
-				return nil // planResultCh closed by ScaleOutSimulator.Simulate
-			}
-			response := plannerapi.Response{
-				RequestRef:   req.RequestRef,
-				Error:        planResult.Error,
-				Labels:       planResult.Labels,
-				ScaleOutPlan: planResult.ScaleOutPlan,
-				ScaleInPlan:  nil,
-				ID:           objutil.GenerateName("scaling-plan-"),
-			}
-			responseCh <- response
+
+	select {
+	case <-ctx.Done():
+		return plannerapi.ScaleOutPlanResult{}, ctx.Err()
+	case r, ok := <-scaleOutSimulator.Simulate(ctx, req, requestView):
+		if !ok {
+			return plannerapi.ScaleOutPlanResult{}, nil
 		}
+		if r.Error != nil && !errors.Is(r.Error, plannerapi.ErrNoScaleOutPlan) {
+			return plannerapi.ScaleOutPlanResult{}, r.Error
+		}
+		return r, nil
 	}
 }
 

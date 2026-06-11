@@ -6,6 +6,7 @@ package volutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -36,7 +37,6 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 		AccessModes:      pv.Spec.AccessModes,
 		Capacity:         pv.Spec.Capacity,
 		ObjectMeta:       pv.ObjectMeta,
-		NodeAffinity:     pv.Spec.NodeAffinity.Required,
 		StorageClassName: pv.Spec.StorageClassName,
 		Phase:            pv.Status.Phase,
 	}
@@ -49,6 +49,9 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 		pvi.VolumeMode = *pv.Spec.VolumeMode
 	} else {
 		pvi.VolumeMode = corev1.PersistentVolumeFilesystem // default according to k8s
+	}
+	if pv.Spec.NodeAffinity != nil {
+		pvi.NodeAffinity = pv.Spec.NodeAffinity.Required
 	}
 	return pvi
 }
@@ -365,6 +368,47 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 	return
 }
 
+// PrepareVolumesForReschedule - prepares the pod's volumes for rescheduling: simulated PVs are unbound and reset to Pending;
+// real PVs only have their selected-node hint cleared.
+func PrepareVolumesForReschedule(ctx context.Context, view minkapi.View, pod *corev1.Pod) error {
+	var errs []error
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+		pvc, pv, err := loadBoundClaim(ctx, view, pod.Namespace, vol.PersistentVolumeClaim.ClaimName)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if pvc == nil {
+			continue
+		}
+
+		pvc = pvc.DeepCopy()
+		if isSimulatedPV(pv) {
+			if err := view.DeleteObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pv.Name)); err != nil {
+				errs = append(errs, fmt.Errorf("failed to delete simulated PV %q: %w", pv.Name, err))
+				continue
+			}
+			pvc.Spec.VolumeName = ""
+			pvc.Status.Phase = corev1.ClaimPending
+			delete(pvc.Annotations, storagevolume.AnnBindCompleted)
+			delete(pvc.Annotations, storagevolume.AnnBoundByController)
+			delete(pvc.Annotations, storagevolume.AnnSelectedNode)
+		} else {
+			if _, ok := pvc.Annotations[storagevolume.AnnSelectedNode]; !ok {
+				continue
+			}
+			delete(pvc.Annotations, storagevolume.AnnSelectedNode)
+		}
+		if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
+			errs = append(errs, fmt.Errorf("failed to update PVC %q/%q after unbind: %w", pod.Namespace, pvc.Name, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // BindClaimAndVolume performs end to end binding between the given PVC and PV via the given minkapi view or returns an error with sentinel plannerapi.ErrBindClaimVolume
 func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.PersistentVolumeClaim, pv *corev1.PersistentVolume) error {
 	log := logr.FromContextOrDiscard(ctx)
@@ -376,7 +420,6 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pvc.Status.Phase = corev1.ClaimBound
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
@@ -484,4 +527,54 @@ func pickZoneFromAllowedTopologies(sc *storagev1.StorageClass) (string, error) {
 	return "", fmt.Errorf("allowedTopologies specified but no %q found", corev1.LabelTopologyZone)
 }
 
+// loadBoundClaim fetches the PVC named ns/name from view and, if the PVC is
+// Bound to a PV, also fetches that PV. The returned pointers reference the
+// view's cached objects directly; callers that intend to mutate must DeepCopy
+// before writing back.
+func loadBoundClaim(ctx context.Context, view minkapi.View, ns, name string) (
+	*corev1.PersistentVolumeClaim, *corev1.PersistentVolume, error,
+) {
+	pvcObj, err := view.GetObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(ns, name))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get PVC %q/%q: %w", ns, name, err)
+	}
+	pvc, ok := pvcObj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return nil, nil, fmt.Errorf("object at %q/%q is not a PersistentVolumeClaim, got %T", ns, name, pvcObj)
+	}
+
+	if pvc.Status.Phase != corev1.ClaimBound || pvc.Spec.VolumeName == "" {
+		return nil, nil, nil
+	}
+
+	pvObj, err := view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pvc.Spec.VolumeName))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get PV %q for PVC %q/%q: %w", pvc.Spec.VolumeName, ns, name, err)
+	}
+	pv, ok := pvObj.(*corev1.PersistentVolume)
+	if !ok {
+		return nil, nil, fmt.Errorf("object at %q is not a PersistentVolume, got %T", pvc.Spec.VolumeName, pvObj)
+	}
+
+	return pvc, pv, nil
+}
+
+// isSimulatedPV reports whether pv was provisioned by the scaling-advisor's
+// simulator (as opposed to a real static or dynamically-provisioned PV in the
+// caller's snapshot). The check uses two independent signals so a real PV that
+// happens to share one of them does not get treated as simulated:
+//   - the AnnDynamicallyProvisioned annotation value, and
+//   - the simVol- name prefix the simulator stamps when creating the PV.
+//
+// A PV is considered simulated only when both signals agree.
+func isSimulatedPV(pv *corev1.PersistentVolume) bool {
+	return pv != nil && pv.Annotations[storagevolume.AnnDynamicallyProvisioned] == SimulatedProvisioner
+}
+
 const simulatedVolumeNamePrefix = "simVol-"
+
+// SimulatedProvisioner is the value the scaling-advisor sets as the value of
+// AnnDynamicallyProvisioned annotation on PVs it provisions during simulation.
+// It is also the discriminant that distinguishes a simulator-owned PV from a
+// real (statically- or dynamically-provisioned) one.
+const SimulatedProvisioner = "scaling-advisor"

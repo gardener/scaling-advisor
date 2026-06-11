@@ -47,8 +47,8 @@ func (s *defaultSimulation) Reset() error {
 	return nil
 }
 
-func (s *defaultSimulation) PriorityKey() commontypes.PriorityKey {
-	return s.args.NodeTemplates[0].PriorityKey
+func (s *defaultSimulation) Priority() commontypes.Priority {
+	return s.args.NodeTemplates[0].Priority
 }
 
 func (s *defaultSimulation) Name() string {
@@ -196,7 +196,7 @@ func validateSimArgs(args *plannerapi.ScaleOutSimArgs) error {
 	if args.SchedulerLauncher == nil {
 		return fmt.Errorf("scheduler launcher must not be nil for simulation %q", args.Name)
 	}
-	pk := args.NodeTemplates[0].PriorityKey
+	pk := args.NodeTemplates[0].Priority
 	for _, t := range args.NodeTemplates {
 		if strings.TrimSpace(t.Region) == "" {
 			return fmt.Errorf("region unset for scale-out node template %q for simulation %q", t.TemplateName, args.Name)
@@ -216,8 +216,8 @@ func validateSimArgs(args *plannerapi.ScaleOutSimArgs) error {
 		if strings.TrimSpace(t.Architecture) == "" {
 			return fmt.Errorf("architecture unset for scale-out node template %q for simulation %q", t.TemplateName, args.Name)
 		}
-		if t.PriorityKey != pk {
-			return fmt.Errorf("priorityKey of all scale-out node templates must be same for simulation %q", args.Name)
+		if t.Priority != pk {
+			return fmt.Errorf("priority of all scale-out node templates must be same for simulation %q", args.Name)
 		}
 	}
 	return nil

@@ -22,11 +22,11 @@ type simGroup struct {
 	requestRef  plannerapi.RequestRef
 	name        string
 	simulations []plannerapi.ScaleOutSimulation
-	key         commontypes.PriorityKey
+	key         commontypes.Priority
 }
 
 // NewGroup creates a new ScaleOutSimGroup with the given name and simulation group key.
-func NewGroup(name string, key commontypes.PriorityKey, requestRef plannerapi.RequestRef) plannerapi.ScaleOutSimGroup {
+func NewGroup(name string, key commontypes.Priority, requestRef plannerapi.RequestRef) plannerapi.ScaleOutSimGroup {
 	return &simGroup{
 		name:       name,
 		key:        key,
@@ -38,7 +38,7 @@ func (g *simGroup) Name() string {
 	return g.name
 }
 
-func (g *simGroup) PriorityKey() commontypes.PriorityKey {
+func (g *simGroup) Priority() commontypes.Priority {
 	return g.key
 }
 
@@ -98,10 +98,10 @@ func asResettable(simulations []plannerapi.ScaleOutSimulation) []commontypes.Res
 
 // CreateScaleOutSimGroups groups the given ScaleOutSimulation instances into one or more SimulationGroups
 func CreateScaleOutSimGroups(requestRef plannerapi.RequestRef, simulations []plannerapi.ScaleOutSimulation) ([]plannerapi.ScaleOutSimGroup, error) {
-	groupsByKey := make(map[commontypes.PriorityKey]plannerapi.ScaleOutSimGroup)
+	groupsByKey := make(map[commontypes.Priority]plannerapi.ScaleOutSimGroup)
 	groupCount := 0
 	for _, sim := range simulations {
-		pk := sim.PriorityKey()
+		pk := sim.Priority()
 		g, ok := groupsByKey[pk]
 		if !ok {
 			groupCount++

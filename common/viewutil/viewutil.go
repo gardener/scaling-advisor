@@ -173,3 +173,18 @@ func GetPersistentVolume(ctx context.Context, name string, view minkapi.View) (*
 	}
 	return obj.(*corev1.PersistentVolume), err
 }
+
+// ListPodsOfNode returns the pods assigned to the given node in the view.
+func ListPodsOfNode(ctx context.Context, view minkapi.View, nodeName string) ([]corev1.Pod, error) {
+	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods for node %q: %w", nodeName, err)
+	}
+	var nodePods []corev1.Pod
+	for i := range allPods {
+		if allPods[i].Spec.NodeName == nodeName {
+			nodePods = append(nodePods, allPods[i])
+		}
+	}
+	return nodePods, nil
+}

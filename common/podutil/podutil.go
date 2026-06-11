@@ -9,6 +9,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/common/objutil"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
@@ -200,4 +201,20 @@ func CountUnscheduledPods(pods []corev1.Pod) (count int) {
 // IsUnscheduledPod determines if a given pod is unscheduled by checking if the NodeName in its spec is empty.
 func IsUnscheduledPod(pod *corev1.Pod) bool {
 	return pod.Spec.NodeName == ""
+}
+
+// HasNonEvictablePod returns true if any pod in the slice has the `sa.gardener.cloud/safe-to-evict` annotation set to "false".
+func HasNonEvictablePod(pods []corev1.Pod) bool {
+	for _, pod := range pods {
+		if val, ok := pod.GetAnnotations()[commonconstants.AnnotationSafeToEvict]; ok && val == "false" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsDaemonSetPod reports whether pod is owned by a DaemonSet (i.e. has an OwnerReference of kind "DaemonSet").
+func IsDaemonSetPod(pod corev1.Pod) bool {
+	controllerRef := metav1.GetControllerOf(&pod)
+	return controllerRef != nil && controllerRef.Kind == "DaemonSet"
 }

@@ -16,53 +16,52 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ScaleOutSimulator is a facade that executes [ScaleOutSimulation]'s to generate one or more [ScaleOutPlanResult]'s sent
-// on a result channel.
-// Implementations vary depending on the [commontypes.SimulatorStrategy] used.
+// ScaleOutSimulator is a facade that executes [ScaleOutSimulation]s and emits one or more
+// [ScaleOutPlanResult]s on a channel returned from Simulate. Implementations vary by
+// [commontypes.SimulatorStrategy] and differ in how they create and organize simulations into
+// [ScaleOutSimGroup]s.
 //
-// Depending upon the implementation creates and organizes [ScaleOutSimulation]'s into [ScaleOutSimGroup]'s differently.
+// Example grouping for the constraint set
 //
-//	ScalingConstraints (Legend: pa -> "Pool-A", "ta" -> "Node Template A", "zx" -> "Zone X"
-//		{pa:1, {ta: 1, tb: 2, tc: 1}, {zx, zy}}
-//		{pb:2, {tq: 2, tr: 1, ts: 1}, {zz}}
-//	groups
-//		g1: PriorityKey(2,2): [ {pb, tq, zz} ]
-//		g2: PriorityKey(2,1): [ {pb, tr, zz}, {pb, ts, zz}]
-//		g3: PriorityKey(1,2): [ {pa, tb, zx}, {pa, tb, zy}]
-//		g1: PriorityKey(1,1): [ {pa, ta, zx}, {pa, ta, zy}, {pa, tc, zx}, {pa, tc, zy} ]
+//	ScalingConstraints (legend: pa -> "Pool-A", ta -> "Node Template A", zx -> "Zone X")
+//	  {pa:1, {ta:1, tb:2, tc:1}, {zx, zy}}
+//	  {pb:2, {tq:2, tr:1, ts:1}, {zz}}
 //
-// An [ScaleOutSimulator] implementation created, will do the
-// following when Simulate is invoked:
-//   - Creates [ScaleOutSimulation]'s using the [SimulationFactory] given as parameter
-//   - Organizes [ScaleOutSimulation]'s into [ScaleOutSimGroup]'s according to [PriorityKey] and [commontypes.SimulatorStrategy]
-//   - Executes each ScaleOutSimGroup until stabilization, collecting ScaleOutSimResult's and aggregating them into SimulationGroupRunResult
-//   - The SimulationGroupRunResult is c
-//   - invoke the NodeScorer to determine a winner NodeScore
+// produces the following groups, ordered by [PriorityKey]:
 //
-// ill run the different
-// [ScaleOutSimulation]'s of a [ScaleOutSimGroup] concurrently where each simulation Run virtually scales ONE one node in
-// its MinKAPI overlay View for a [ScaleOutNodeTemplate] triple. The configured SchedulerLauncher is used to launch embedded
-// `kube-scheduler` which does pod binding to the virtual scale-up node. This concludes one "Run" of the
+//	g1: Priority(2,2): [ {pb, tq, zz} ]
+//	g2: Priority(2,1): [ {pb, tr, zz}, {pb, ts, zz} ]
+//	g3: Priority(1,2): [ {pa, tb, zx}, {pa, tb, zy} ]
+//	g4: Priority(1,1): [ {pa, ta, zx}, {pa, ta, zy}, {pa, tc, zx}, {pa, tc, zy} ]
 //
-// simulation.
+// On Simulate, an implementation:
 //
-// The scaled node which is the "winner" of this pass
+//   - Creates [ScaleOutSimulation]s using the [SimulationFactory] supplied via [SimulatorArgs]
+//     at construction.
+//   - Organizes them into [ScaleOutSimGroup]s by [Priority].
+//   - Executes each group in priority order until it stabilizes, runs the [NodeScorer] over the
+//     group's [ScaleOutSimResult]s to pick a winner, and only proceeds to the next (lower
+//     priority) group if unscheduled pods remain.
 //
-// the simulator specific SimulatorStrategy to generate one or more ScaleOutPlan's each encapsulated within a
-// ScaleOutPlanResult that is offered on the resultCh channel.
+// Implementations differ in how they execute the simulations *within* a group:
 //
-// Or may run a single
-// simulation by scaling
-// multiple nodes for a given
-// group for all combinations of NodePool, NodeTemplate and AvailabilityZone. Simulations for a group are run before moving
-// to the group at the next priority level. Moving to the next group is only done if there are leftover unscheduled pods after
-// running all simulations in the current group.
+//   - The single-node strategy runs one [ScaleOutSimulation] per [ScaleOutNodeTemplate]
+//     concurrently, scaling one virtual node per simulation; the highest-scoring simulation in
+//     the group is the winner.
+//   - A multi-node strategy may run a single simulation that scales nodes for every
+//     [ScaleOutNodeTemplate] in the group in one pass and harvests winners from the resulting
+//     pod-to-node assignment.
+//
+// The configured [SchedulerLauncher] launches an embedded kube-scheduler bound to each
+// simulation's sandbox view; that scheduler is responsible for the actual pod-to-node binding.
 type ScaleOutSimulator interface {
 	io.Closer
 
-	// Simulate is the high level activity that runs [ScaleOutSimulation] created from given
-	// [SimulationFactory] with the given planner [Request].
-	Simulate(ctx context.Context, request *Request, simulationFactory SimulationFactory) (planResult <-chan ScaleOutPlanResult)
+	// Simulate runs scale-out simulations against requestView for the given Request and
+	// returns a channel that delivers one or more [ScaleOutPlanResult]s and is closed when no
+	// more will follow. The caller must populate requestView with the request snapshot
+	// before invoking; the simulator only mutates sandbox views derived from requestView.
+	Simulate(ctx context.Context, request *Request, requestView minkapi.View) (planResult <-chan ScaleOutPlanResult)
 }
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
@@ -87,9 +86,9 @@ type ScaleOutSimulation interface {
 	Name() string
 	// Status returns the current ActivityStatus of the simulation
 	Status() ActivityStatus
-	// PriorityKey returns the PriorityKey for the simulation which is the key by which simulations are grouped and determines
+	// Priority returns the Priority for the simulation which is the key by which simulations are grouped and determines
 	// the order in which simulations are run.
-	PriorityKey() commontypes.PriorityKey
+	Priority() commontypes.Priority
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and ScaleOutSimResult consumption.
 	Run(ctx context.Context, view minkapi.View) error
@@ -147,8 +146,8 @@ type ScaleOutNodeTemplate struct {
 	Architecture string `json:"architecture"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
 	Taints []corev1.Taint `json:"taints,omitempty"`
-	// PriorityKey is the priority key for this ScaleOutNodeTemplate.
-	PriorityKey commontypes.PriorityKey
+	// Priority is the priority for this ScaleOutNodeTemplate.
+	Priority commontypes.Priority
 }
 
 // ScaleOutSimResult contains the results of a completed simulation run.
@@ -175,8 +174,8 @@ type ScaleOutSimGroup interface {
 	commontypes.Resettable
 	// Name returns the name of the simulation group.
 	Name() string
-	// GetKey returns the simulation group key.
-	PriorityKey() commontypes.PriorityKey
+	// Priority returns the simulation group key.
+	Priority() commontypes.Priority
 	// GetSimulations returns all simulations in this group.
 	GetSimulations() []ScaleOutSimulation
 	// AddSimulation adds a simulation to the group.
@@ -212,17 +211,17 @@ type ScaleOutSimGroupCycleResult struct {
 	PassNum int
 }
 
-// CmpScaleOutSimulationDecreasingPriority is a cmp function for [ScaleOutSimulation] that compares by decreasing PriorityKey.
+// CmpScaleOutSimulationDecreasingPriority is a cmp function for [ScaleOutSimulation] that compares by decreasing Priority.
 func CmpScaleOutSimulationDecreasingPriority(s1, s2 ScaleOutSimulation) int {
-	return commontypes.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+	return commontypes.CmpPriorityDecreasing(s1.Priority(), s2.Priority())
 }
 
-// CmpScaleOutSimGroup is a cmp function for [ScaleOutSimGroup] that compares by decreasing PriorityKey.
+// CmpScaleOutSimGroup is a cmp function for [ScaleOutSimGroup] that compares by decreasing Priority.
 func CmpScaleOutSimGroup(s1, s2 ScaleOutSimGroup) int {
-	return commontypes.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+	return commontypes.CmpPriorityDecreasing(s1.Priority(), s2.Priority())
 }
 
-// CmpScaleOutNodeTemplate is a cmp function for [ScaleOutNodeTemplate] that compares by decreasing PriorityKey.
+// CmpScaleOutNodeTemplate is a cmp function for [ScaleOutNodeTemplate] that compares by decreasing Priority.
 func CmpScaleOutNodeTemplate(a, b ScaleOutNodeTemplate) int {
-	return commontypes.CmpPriorityKeyDecreasing(a.PriorityKey, b.PriorityKey)
+	return commontypes.CmpPriorityDecreasing(a.Priority, b.Priority)
 }

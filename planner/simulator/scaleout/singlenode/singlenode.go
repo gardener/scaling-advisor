@@ -31,6 +31,7 @@ type simulatorMultiSim struct {
 	schedulerLauncher plannerapi.SchedulerLauncher
 	storageMetaAccess plannerapi.StorageMetaAccess
 	nodeScorer        plannerapi.NodeScorer
+	simulationFactory plannerapi.SimulationFactory
 	state             *scaleout.SimulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
 }
@@ -46,6 +47,7 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 		schedulerLauncher: args.SchedulerLauncher,
 		storageMetaAccess: args.StorageMetaAccess,
 		nodeScorer:        args.NodeScorer,
+		simulationFactory: args.SimulationFactory,
 	}, nil
 }
 
@@ -56,8 +58,8 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 // If the ScalingAdviceGenerationMode is Incremental, a ScaleOutPlanResult is produced from this one-cycle result and
 // sent on the planResultCh, otherwise the cycle result is stored until all cycles are finished. Following which, a
 // cumulative ScaleOutPlanResult is determined from all ScaleOutSimGroupCycleResult's obtained so far and sent on the planResultCh.
-func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleOutPlanResult {
-	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, simulationFactory, s.viewAccess)
+func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, requestView minkapi.View) <-chan plannerapi.ScaleOutPlanResult {
+	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, s.simulationFactory, s.viewAccess, requestView)
 	go func() {
 		defer close(s.state.ResultCh)
 		if err := s.doSimulate(ctx); err != nil {
@@ -68,8 +70,8 @@ func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Re
 }
 
 func (s *simulatorMultiSim) doSimulate(ctx context.Context) (err error) {
-	if err = s.state.InitializeRequestView(ctx); err != nil {
-		return
+	if len(s.state.Request.Snapshot.GetUnscheduledPods()) == 0 {
+		return plannerapi.ErrNoScaleOutPlan
 	}
 	s.state.SimulationGroups, err = s.createAndGroupSimulations()
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gardener/scaling-advisor/planner/scheduler"
 
+	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/api/minkapi"
@@ -28,6 +29,8 @@ import (
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -190,6 +193,43 @@ func ObtainAndAssertScaleOutPlan(t *testing.T, planner plannerapi.ScalingPlanner
 	return AssertExactScaleOutPlan(t, wantPlan, response.ScaleOutPlan)
 }
 
+// AssertExactScaleInPlan asserts that the wanted ScaleInPlan matches the gotten ScaleInPlan.
+func AssertExactScaleInPlan(t *testing.T, want, got *sacorev1alpha1.ScaleInPlan) bool {
+	if want == nil {
+		if got != nil {
+			t.Errorf("expected nil ScaleInPlan, got %+v", got)
+			return false
+		}
+		return true
+	}
+	if got == nil {
+		t.Fatalf("got nil ScaleInPlan, want not nil ScaleInPlan")
+		return false
+	}
+	slices.SortFunc(want.Items, func(a, b sacorev1alpha1.ScaleInItem) int {
+		return strings.Compare(a.NodeName, b.NodeName)
+	})
+	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleInItem) int {
+		return strings.Compare(a.NodeName, b.NodeName)
+	})
+	if diff := gocmp.Diff(want, got); diff != "" {
+		t.Errorf("ScaleInPlan mismatch (-want +got):\n%s", diff)
+		return false
+	}
+	return true
+}
+
+// ObtainAndAssertScaleInPlan executes the given planner with the context and request within testData, obtains the plannerapi.Response
+// logs the same, and asserts that the embedded ScaleInPlan within the Response matches the wanted ScaleInPlan.
+// Returns true if all assertions succeeded or false if assertion failed or on any error.
+func ObtainAndAssertScaleInPlan(t *testing.T, planner plannerapi.ScalingPlanner, testData *Data, wantPlan *sacorev1alpha1.ScaleInPlan) bool {
+	response, ok := ObtainPlannerResponse(t, planner, testData)
+	if !ok {
+		return false
+	}
+	return AssertExactScaleInPlan(t, wantPlan, response.ScaleInPlan)
+}
+
 // ObtainPlannerResponse executes the given planner with the context and request within testData, obtains the
 // plannerapi.Response logs and returns the same if successful. Returns false in case of any error and also fails the
 // test state.
@@ -197,7 +237,7 @@ func ObtainPlannerResponse(t *testing.T, planner plannerapi.ScalingPlanner, test
 	responseCh := planner.Plan(testData.RunContext, testData.Request)
 	response = <-responseCh
 	if response.Error != nil {
-		t.Fatalf("failed to generate scale-out plan: %v", response.Error)
+		t.Fatalf("failed to generate scaling plan: %v", response.Error)
 		return
 	}
 	planResultJson, err := json.MarshalIndent(response, "", "  ")
@@ -258,19 +298,17 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		t.Fatalf("failed to load scheduler config: %v", err)
 		return
 	}
-	var simulatorConfig plannerapi.SimulatorConfig
+	simulatorConfig := plannerapi.SimulatorConfig{
+		MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+		UnderutilizedDuration:  5 * time.Minute,
+		UtilizationThresholds:  map[corev1.ResourceName]float64{corev1.ResourceCPU: 0.5, corev1.ResourceMemory: 0.5},
+	}
 	if os.Getenv("DEBUG") == "" {
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
+		simulatorConfig.TrackPollInterval = plannerapi.DefaultTrackPollInterval
+		simulatorConfig.MaxUnchangedTrackAttempts = plannerapi.DefaultMaxUnchangedTrackAttempts
 	} else { // allow comfortable time for debugging
-		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
-		}
+		simulatorConfig.TrackPollInterval = 100 * plannerapi.DefaultTrackPollInterval
+		simulatorConfig.MaxUnchangedTrackAttempts = 10 * plannerapi.DefaultMaxUnchangedTrackAttempts
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true
 	schedulerLauncher, err := scheduler.NewLauncherFromConfig(schedulerConfigBytes, simulatorConfig.MaxParallelSimulations)
@@ -280,15 +318,16 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 	}
 	storageMetaAccess := &testStorageMetaAccess{provider: args.VolGenInput.Provider}
 	scalePlannerArgs := plannerapi.ScalingPlannerArgs{
-		ViewAccess:        viewAccess,
-		ResourceWeigher:   args.Factories.ResourceWeigher,
-		PricingAccess:     pricingAccess,
-		SchedulerLauncher: schedulerLauncher,
-		StorageMetaAccess: storageMetaAccess,
-		SimulatorConfig:   simulatorConfig,
-		SimulatorFactory:  args.Factories.Simulator,
-		SimulationFactory: args.Factories.Simulation,
-		TraceDir:          traceDir,
+		ViewAccess:               viewAccess,
+		ResourceWeigher:          args.Factories.ResourceWeigher,
+		PricingAccess:            pricingAccess,
+		SchedulerLauncher:        schedulerLauncher,
+		StorageMetaAccess:        storageMetaAccess,
+		SimulatorConfig:          simulatorConfig,
+		SimulatorFactory:         args.Factories.Simulator,
+		SimulationFactory:        args.Factories.Simulation,
+		TraceDir:                 traceDir,
+		ScaleInCandidateSelector: args.Factories.ScaleInCandidateSelector,
 	}
 	planr, err = args.Factories.Planner.NewPlanner(scalePlannerArgs)
 	if err != nil {
@@ -300,10 +339,6 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 }
 
 func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
-	if len(args.NumUnscheduledPodsPerResourcePreset) == 0 {
-		t.Fatal("args.NumUnscheduledPodsPerResourcePreset mandatory")
-		return false
-	}
 	d.Request.CreationTime = time.Now()
 	if d.Request.DiagnosticVerbosity <= 0 {
 		d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
@@ -335,4 +370,92 @@ func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []
 		placements = append(placements, p.GetNodePlacements()...)
 	}
 	return placements
+}
+
+// ---- Scale-in helpers -------------------------------------------------------
+
+// NodeInfoOpts configures a test NodeInfo for scale-in planner tests.
+type NodeInfoOpts struct {
+	Allocatable  corev1.ResourceList
+	Capacity     corev1.ResourceList
+	Pool         string
+	Template     string
+	InstanceType string
+	Region       string
+	Zone         string
+	Arch         string
+}
+
+// MakeNodeInfo creates a plannerapi.NodeInfo with all required labels populated.
+// Zero-value opts gives a node in pool "a", template "m5l", m5.large in eu-west-1c.
+func MakeNodeInfo(name string, opts ...NodeInfoOpts) plannerapi.NodeInfo {
+	var o NodeInfoOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	if o.Pool == "" {
+		o.Pool = "a"
+	}
+	if o.Template == "" {
+		o.Template = "m5l"
+	}
+	if o.InstanceType == "" {
+		o.InstanceType = "m5.large"
+	}
+	if o.Region == "" {
+		o.Region = "eu-west-1"
+	}
+	if o.Zone == "" {
+		o.Zone = "eu-west-1c"
+	}
+	if o.Arch == "" {
+		o.Arch = "amd64"
+	}
+	if o.Allocatable == nil {
+		o.Allocatable = corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1920m"),
+			corev1.ResourceMemory: resource.MustParse("7Gi"),
+			corev1.ResourcePods:   resource.MustParse("110"),
+		}
+	}
+	if o.Capacity == nil {
+		o.Capacity = corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("8Gi"),
+			corev1.ResourcePods:   resource.MustParse("110"),
+		}
+	}
+	return plannerapi.NodeInfo{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				commonconstants.LabelNodePoolName:     o.Pool,
+				commonconstants.LabelNodeTemplateName: o.Template,
+				corev1.LabelTopologyRegion:            o.Region,
+				corev1.LabelTopologyZone:              o.Zone,
+				corev1.LabelInstanceTypeStable:        o.InstanceType,
+				corev1.LabelArchStable:                o.Arch,
+				corev1.LabelHostname:                  name,
+			},
+		},
+		InstanceType: o.InstanceType,
+		Allocatable:  o.Allocatable,
+		Capacity:     o.Capacity,
+	}
+}
+
+// MakeScheduledPodInfo creates a plannerapi.PodInfo bound to the given node with specified resource requests.
+func MakeScheduledPodInfo(name, nodeName string, cpu, memory string) plannerapi.PodInfo {
+	return plannerapi.PodInfo{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		NodeName:      nodeName,
+		SchedulerName: "bin-packing-scheduler",
+		AggregatedRequests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse(cpu),
+			corev1.ResourceMemory: resource.MustParse(memory),
+		},
+	}
 }
