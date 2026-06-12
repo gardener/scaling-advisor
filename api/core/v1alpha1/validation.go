@@ -18,13 +18,16 @@ func ValidateNodePool(np *NodePool, fldPath *field.Path) (allErrs field.ErrorLis
 	if len(np.AvailabilityZones) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("availabilityZones"), "availabilityZone must not be empty"))
 	}
-	if len(np.NodeTemplates) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("nodeTemplates"), "at least one nodeTemplate must be specified"))
-	}
 	if np.Priority < 0 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("priority"), np.Priority, "priority must be non-negative"))
 	}
 	// TODO add checks for Quota
+	return allErrs
+}
+
+// ValidateNodeTemplate validates a NodeTemplate object.
+func ValidateNodeTemplate(_ *NodeTemplate, _ *field.Path) (allErrs field.ErrorList) {
+	//TODO: add validation for NodeTemplate
 	return allErrs
 }
 

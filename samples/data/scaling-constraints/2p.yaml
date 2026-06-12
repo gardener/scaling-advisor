@@ -5,9 +5,7 @@ metadata:
   namespace: default
 spec:
   nodePools:
-    - availabilityZones:
-        - eu-west-1a
-      labels:
+    - labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
         node.kubernetes.io/role: node
@@ -16,24 +14,17 @@ spec:
         worker.gardener.cloud/pool: p
         worker.gardener.cloud/system-components: "true"
       name: a
-      nodeTemplates:
-        - architecture: amd64
-          capacity:
-            cpu: "2"
-            gpu: "0"
-            memory: 8Gi
-          instanceType: m5.large
-          kubeReservedCapacity:
-            cpu: 80m
-            memory: 1Gi
-            pid: 20k
-          name: m5l
-          priority: 0
-      priority: 1
       region: eu-west-1
-    - availabilityZones:
+      availabilityZones:
         - eu-west-1a
-      labels:
+      priority: 1
+      requirements:
+        - key: "node.kubernetes.io/instance-type"
+          operator: In
+          values:
+            - m5.large
+          priority: 0
+    - labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
         node.kubernetes.io/role: node
@@ -41,18 +32,36 @@ spec:
         worker.gardener.cloud/cri-name: containerd
         worker.gardener.cloud/pool: q
       name: b
-      nodeTemplates:
-        - architecture: amd64
-          capacity:
-            cpu: "4"
-            gpu: "0"
-            memory: 16Gi
-          instanceType: m5.xlarge
-          kubeReservedCapacity:
-            cpu: 80m
-            memory: 1Gi
-            pid: 20k
-          name: m5xl
-          priority: 0
-      priority: 0
       region: eu-west-1
+      availabilityZones:
+        - eu-west-1a
+      priority: 0
+      requirements:
+        - key: "node.kubernetes.io/instance-type"
+          operator: In
+          values:
+            - m5.xlarge
+          priority: 0
+  nodeTemplates:
+    - name: m5l
+      instanceType: m5.large
+      architecture: amd64
+      capacity:
+        cpu: "2"
+        gpu: "0"
+        memory: 8Gi
+      kubeReservedCapacity:
+        cpu: 80m
+        memory: 1Gi
+        pid: 20k
+    - name: m5xl
+      instanceType: m5.xlarge
+      architecture: amd64
+      capacity:
+        cpu: "4"
+        gpu: "0"
+        memory: 16Gi
+      kubeReservedCapacity:
+        cpu: 80m
+        memory: 1Gi
+        pid: 20k

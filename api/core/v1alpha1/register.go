@@ -31,7 +31,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ScalingAdviceList{},
 		&ScalingConstraint{},
 		&ScalingConstraintList{},
-		&ScalingFeedback{},
 	)
 	return nil
 }

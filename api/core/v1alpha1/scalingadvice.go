@@ -16,6 +16,8 @@ import (
 // +kubebuilder:resource:shortName={sa}
 
 // ScalingAdvice is the schema to define cluster scaling advice for a cluster.
+//
+//nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type ScalingAdvice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
