@@ -9,7 +9,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -24,13 +23,4 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}).
 		For(&corev1alpha1.ScalingConstraint{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
-}
-
-func clusterScalingFeedbackPredicate() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc:  func(_ event.CreateEvent) bool { return true },
-		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
-		UpdateFunc:  func(_ event.UpdateEvent) bool { return true },
-		GenericFunc: func(_ event.GenericEvent) bool { return false },
-	}
 }

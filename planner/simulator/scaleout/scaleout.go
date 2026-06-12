@@ -177,6 +177,7 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
+// CreateAllNodeTemplates creates and returns a slice of [plannerapi.ScaleOutNodeTemplate] for all the possible combinations of NodePools, NodeTemplates and availability zones
 func CreateAllNodeTemplates(sc *sacorev1alpha1.ScalingConstraint) []plannerapi.ScaleOutNodeTemplate {
 	npToTemplates := scalingconstraintutil.NodePoolToNodeTemplates(sc)
 	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0)
