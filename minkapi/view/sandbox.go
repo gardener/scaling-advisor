@@ -339,66 +339,9 @@ func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKin
 		return nil, err
 	}
 	log.V(4).Info("got watcher for delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
-	// Wrap the delegate watcher with the same shadow/tombstone filter that WatchObjects' inner
-	// closure applies, so consumers of GetWatcher see exactly one event per logical change and
-	// no events for names this sandbox has tombstoned.
-	w2Filtered := v.filterDelegateWatcher(ctx, gvk, w2)
-	eventWatcher := watchutil.CombineTwoWatchers(ctx, w1, w2Filtered)
+	eventWatcher := watchutil.CombineTwoWatchers(ctx, w1, w2)
 	log.Info("returning combined watcher for sandboxView+delegateView objects", "gvk", gvk, "namespace", namespace, "opts", opts, "delegateViewName", v.delegateView.GetName())
 	return eventWatcher, nil
-}
-
-// filterDelegateWatcher wraps w with a proxy watcher whose result channel drops events whose
-// object name is either shadowed by a sandbox-local copy or tombstoned in this sandbox. Used
-// by GetWatcher so its consumers see the same de-duplicated stream that WatchObjects delivers.
-func (v *sandboxView) filterDelegateWatcher(ctx context.Context, gvk schema.GroupVersionKind, w watch.Interface) watch.Interface {
-	out := make(chan watch.Event)
-	proxy := watch.NewProxyWatcher(out)
-	go func() {
-		defer close(out)
-		for {
-			select {
-			case ev, ok := <-w.ResultChan():
-				if !ok {
-					return
-				}
-				evObj, err := objutil.AsMeta(ev.Object)
-				if err != nil {
-					// can't extract a name — forward the event rather than swallow it.
-					select {
-					case out <- ev:
-					case <-ctx.Done():
-						return
-					case <-proxy.StopChan():
-						return
-					}
-					continue
-				}
-				objFullName := objutil.CacheName(evObj)
-				sandboxObj, gerr := v.getSandboxObject(ctx, gvk, objFullName)
-				if sandboxObj != nil {
-					// already covered by sandbox watcher's own event
-					continue
-				}
-				if gerr != nil && errors.Is(gerr, minkapi.ErrObjectDeleted) {
-					// tombstoned in this sandbox: hide delegate's events for this name
-					continue
-				}
-				select {
-				case out <- ev:
-				case <-ctx.Done():
-					return
-				case <-proxy.StopChan():
-					return
-				}
-			case <-ctx.Done():
-				return
-			case <-proxy.StopChan():
-				return
-			}
-		}
-	}()
-	return proxy
 }
 
 // DeleteObject removes an object from the sandbox's perspective. It NEVER mutates the delegate
