@@ -14,8 +14,9 @@ import (
 	"sync"
 	"time"
 
-	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
+
+	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
@@ -142,7 +143,7 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	fmt.Printf("Total benchmarking run time: %s\n", mon.meta.TotalRunDuration)
 
 	logsDir := path.Join(mon.scenarioDir, "logs", "kwok-"+mon.clusterName)
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
+	if err := os.MkdirAll(logsDir, 0750); err != nil {
 		log.Printf("Failed to create logs directory: %v\n", err)
 	} else {
 		writeReports(logsDir, *mon.meta, events)

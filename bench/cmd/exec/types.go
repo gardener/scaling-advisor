@@ -50,7 +50,6 @@ type ExecArgs struct {
 	SnapshotFile  string
 	ConfigFile    string
 	ScalerVersion string
-	PricingFile   string
 	SkipCleanup   bool
 	WaitForCancel bool
 }

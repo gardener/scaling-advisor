@@ -39,6 +39,18 @@ const (
 	// FileNameKarpenterNodeClasses is used for storing the KWOKNodeClasses
 	FileNameKarpenterNodeClasses = "node_classes.yaml"
 
+	// FileNamePricingData is the name to which the provided pricing file is linked to
+	FileNamePricingData = "pricing-data.json"
+
+	// OwnerDaemonSet is a constant denoting that the pod owner kind is a daemonset
+	OwnerDaemonSet = "DaemonSet"
+	// OwnerReplicaSet is a constant denoting that the pod owner kind is a replicaset
+	OwnerReplicaSet = "ReplicaSet"
+	// OwnerStatefulSet is a constant denoting that the pod owner kind is a statefulset
+	OwnerStatefulSet = "StatefulSet"
+	// OwnerJob is a constant denoting that the pod owner kind is a job
+	OwnerJob = "Job"
+
 	caReleaseAssetsPrefix        = "https://github.com/kubernetes/autoscaler/"
 	karpenterReleaseAssetsPrefix = "https://github.com/kubernetes-sigs/karpenter/"
 )

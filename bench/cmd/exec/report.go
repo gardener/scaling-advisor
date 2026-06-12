@@ -52,7 +52,7 @@ func writeJSON(filePath string, v any) error {
 }
 
 func writeMetricsCSV(dir string, metrics map[string][]ContainerStats) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		log.Printf("Failed to create metrics directory: %v\n", err)
 		return
 	}

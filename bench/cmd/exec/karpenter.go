@@ -108,13 +108,13 @@ func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Conf
 		return err
 	}
 
-	poolsFilePath := path.Join(scenarioDir, benchutil.FileNameKarpenterNodePools)
+	poolsFilePath := path.Join(scenarioDir, "gen", benchutil.FileNameKarpenterNodePools)
 	err = deployKarpenterPools(ctx, cfg, poolsFilePath)
 	if err != nil {
 		return
 	}
 
-	classesFilePath := path.Join(scenarioDir, benchutil.FileNameKarpenterNodeClasses)
+	classesFilePath := path.Join(scenarioDir, "gen", benchutil.FileNameKarpenterNodeClasses)
 	err = deployKarpenterClasses(ctx, cfg, classesFilePath)
 	if err != nil {
 		return

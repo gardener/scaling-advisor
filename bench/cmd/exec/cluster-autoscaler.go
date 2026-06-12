@@ -62,7 +62,7 @@ func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, sc
 		return fmt.Errorf("failed to create %s: %w", providerConfigMap.Name, err)
 	}
 
-	templateFilePath := path.Join(scenarioDir, benchutil.FileNameCAKwokProviderTemplate)
+	templateFilePath := path.Join(scenarioDir, "gen", benchutil.FileNameCAKwokProviderTemplate)
 	templatesConfigMap, err := benchutil.LoadYAMLFromFile[corev1.ConfigMap](templateFilePath)
 	if err != nil {
 		return fmt.Errorf("cannot load %q: %w", templateFilePath, err)

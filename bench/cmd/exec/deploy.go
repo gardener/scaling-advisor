@@ -12,8 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gardener/scaling-advisor/api/planner"
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
+
+	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	appsv1 "k8s.io/api/apps/v1"

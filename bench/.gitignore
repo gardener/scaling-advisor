@@ -2,6 +2,7 @@
 
 # Harness generated files
 cmd/scenarios/**/logs/
+cmd/scenarios/**/gen/
 kwok-config.yaml
 node_classes.yaml
 node_pools.yaml

@@ -38,7 +38,7 @@ components:
       - hostPath: "{{.HomeDir}}/.kwok/clusters/{{.ClusterName}}/pki"
         mountPath: /etc/kubernetes/pki
         readOnly: true
-      - hostPath: "{{.ScenarioDirectory}}/instance_types.json"
+      - hostPath: "{{.ScenarioDirectory}}/gen/instance_types.json"
         mountPath: /etc/instance_types.json
         readOnly: true
     networks:

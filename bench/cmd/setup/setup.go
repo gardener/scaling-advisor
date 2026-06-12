@@ -66,14 +66,15 @@ func NewSetupCommand(_ context.Context) *cobra.Command {
 	setupCmd.PersistentFlags().StringVarP(
 		&setupArgs.PricingFile,
 		"pricing-data", "p", "",
-		"pricing data file (required for karpenter)",
+		"pricing data file (required)",
 	)
+	_ = setupCmd.MarkFlagRequired("pricing-data")
 	_ = setupCmd.MarkFlagFilename("pricing-data", "json")
 
 	setupCmd.PersistentFlags().StringVarP(
 		&setupArgs.Version,
 		"scaler-version", "v", "main",
-		"version of the scaler to fetch",
+		"version of the scaler to fetch (can specify tags or commitID)",
 	)
 
 	return setupCmd
@@ -93,7 +94,15 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 
 	// Derive the output directory from the constraints file location so
 	// that all generated artefacts live next to the input data.
-	outputDir := path.Dir(args.ConstraintsFile)
+	outputDir := path.Join(path.Dir(args.ConstraintsFile), "gen")
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
+		return fmt.Errorf("could not create the output directory (%s): %v", outputDir, err)
+	}
+	// Link the pricing file in the generated directory, to allow for usage
+	// during harness execution
+	if err := os.Link(args.PricingFile, path.Join(outputDir, benchutil.FileNamePricingData)); err != nil {
+		return fmt.Errorf("could not link pricing file to output directory: %v", err)
+	}
 
 	if err := scaler.GenerateKwokData(ctx, args.ConstraintsFile, outputDir); err != nil {
 		return fmt.Errorf("error generating kwok data for %s: %v", args.Scaler, err)

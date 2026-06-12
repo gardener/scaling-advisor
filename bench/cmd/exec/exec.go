@@ -67,7 +67,7 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 	execCmd.PersistentFlags().StringVar(
 		&execArgs.SnapshotFile,
 		"snap", "",
-		"cluster snapshot file",
+		"cluster snapshot file (required)",
 	)
 	_ = execCmd.MarkFlagRequired("snap")
 	_ = execCmd.MarkFlagFilename("snap", "json")
@@ -97,13 +97,6 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 		"version of the scaler to fetch",
 	)
 
-	execCmd.PersistentFlags().StringVarP(
-		&execArgs.PricingFile,
-		"pricing-data", "p", "",
-		"pricing data file",
-	)
-	_ = execCmd.MarkFlagRequired("pricing-data")
-
 	return execCmd
 }
 
@@ -132,7 +125,8 @@ func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, e
 		return summary, fmt.Errorf("docker is not running: %v", err)
 	}
 
-	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", args.PricingFile)
+	pricingFile := path.Join(scenarioDir, "gen", benchutil.FileNamePricingData)
+	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", pricingFile)
 	if err != nil {
 		return summary, fmt.Errorf("error parsing pricing data: %v", err)
 	}
