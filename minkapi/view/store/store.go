@@ -55,7 +55,7 @@ func (s *InMemResourceStore) GetObjAndListGVK() (objKind schema.GroupVersionKind
 func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore {
 	s := InMemResourceStore{
 		args:           args,
-		cache:          cache.NewStore(cache.MetaNamespaceKeyFunc),
+		cache:          cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc),
 		broadcaster:    watch.NewBroadcaster(args.WatchConfig.QueueSize, watch.WaitIfChannelFull),
 		versionCounter: args.VersionCounter,
 	}
@@ -65,15 +65,19 @@ func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore 
 	return &s
 }
 
-// Reset resets the backing cache for this story and re-initializes the watch broadcasters.
+// Reset resets the backing cache (clearing both live entries and tombstones) and the watch
+// broadcaster for this store.
 func (s *InMemResourceStore) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.cache = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	s.cache = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
 	return nil
 }
 
-// Add adds the given metav1 Object to this store, setting the right resource version, updating the resource version counter and broadcasting the Add event to any watchers.
+// Add adds the given metav1 Object to this store, setting the right resource version, updating
+// the resource version counter and broadcasting the Add event to any watchers. If a tombstone
+// (a [cache.DeletedFinalStateUnknown] entry) was previously left at this key by MarkForDelete,
+// it is implicitly cleared by the cache.Add call (the wrapper is replaced by the new object).
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object, opts minkapi.ObjectOptions) error {
 	s.mu.Lock()
@@ -165,7 +169,13 @@ func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectNam
 	return s.DeleteByKey(ctx, objName.String())
 }
 
-// GetByKey gets the object identified by the given key from the store and returns the same as a runtime.Object.
+// GetByKey gets the object identified by the given key from the store and returns the same as
+// a runtime.Object. Three outcomes:
+//   - The key holds a live object → returns the typed runtime.Object, nil error.
+//   - The key was previously deleted via MarkForDelete (a [cache.DeletedFinalStateUnknown]
+//     marker is parked at this key) → returns nil and a wrapped [minkapi.ErrObjectDeleted] so
+//     callers can distinguish "tombstoned" from "never existed."
+//   - The key was never created → returns nil and a standard apierrors.NotFound.
 func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtime.Object, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -180,6 +190,11 @@ func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtim
 	if !exists {
 		log.V(6).Info("did not find object by key", "key", key)
 		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+		return
+	}
+	if isTombstone(obj) {
+		log.V(6).Info("found tombstone for key", "key", key)
+		err = fmt.Errorf("%w: %s/%s", minkapi.ErrObjectDeleted, s.args.ObjectGVK.Kind, key)
 		return
 	}
 	o, ok := obj.(runtime.Object)
@@ -197,13 +212,15 @@ func (s *InMemResourceStore) Get(ctx context.Context, objName cache.ObjectName) 
 	return s.GetByKey(ctx, objName.String())
 }
 
-// List queries the store according to the given MatchCriteria, gets objects and creates and returns the List object wrapping individual objects.
+// List queries the store according to the given MatchCriteria, gets objects and creates and
+// returns the List object wrapping individual objects. Tombstoned entries
+// ([cache.DeletedFinalStateUnknown] wrappers in the cache) are skipped.
 func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) (listObj runtime.Object, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log := logr.FromContextOrDiscard(ctx)
-	items := s.cache.List()
+	items := filterTombstones(s.cache.List())
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
 	typesMap := typeinfo.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
 	listType, ok := typesMap[s.args.ObjectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
@@ -263,12 +280,14 @@ func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) 
 	return listObj, nil
 }
 
-// ListMetaObjects queries the store according to the given MatchCriteria, gets objects and returns them as a slice, including the maximum resource version found in the returned objects.
+// ListMetaObjects queries the store according to the given MatchCriteria, gets objects and
+// returns them as a slice, including the maximum resource version found in the returned
+// objects. Tombstoned entries are skipped.
 func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.cache.List()
+	items := filterTombstones(s.cache.List())
 	sliceSize := int(math.Min(float64(len(items)), float64(100)))
 	metaObjs = make([]metav1.Object, 0, sliceSize)
 	var mo metav1.Object
@@ -299,8 +318,9 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 
 // DeleteObjects deletes objects from the store that match the provided MatchCriteria.
 // It returns the number of deleted objects and an error if one occurs during deletion.
+// Tombstoned entries are skipped.
 func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria) (delCount int, err error) {
-	items := s.cache.List()
+	items := filterTombstones(s.cache.List())
 	var mo metav1.Object
 	for _, item := range items {
 		if err = ctx.Err(); err != nil {
@@ -336,6 +356,93 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 	return
 }
 
+// MarkForDelete records a tombstone for the given key. If a live object existed at the key it
+// is removed from the cache, a Deleted watch event is broadcast (carrying the typed object as
+// its payload, NOT the wrapper, to match real apiserver watch semantics), and a
+// [cache.DeletedFinalStateUnknown] marker is parked at the same key in the underlying
+// cache.Store. Subsequent Get/List/Watch operations treat the key as absent (Get returns
+// [minkapi.ErrObjectDeleted]; List/Watch initial-list skip the entry). Re-Add of the same key
+// implicitly clears the tombstone (the wrapper is replaced by the new object).
+//
+// MarkForDelete returns apierrors.NotFound when the key is already tombstoned or never existed.
+func (s *InMemResourceStore) MarkForDelete(ctx context.Context, key string) error {
+	s.mu.Lock()
+	log := logr.FromContextOrDiscard(ctx)
+	obj, exists, err := s.cache.GetByKey(key)
+	if err != nil {
+		s.mu.Unlock()
+		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
+	}
+	if !exists || isTombstone(obj) {
+		s.mu.Unlock()
+		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+	}
+	mo, err := objutil.AsMeta(obj)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	mo.SetDeletionTimestamp(&metav1.Time{Time: time.Time{}})
+	// Replace the live entry with a DeletedFinalStateUnknown marker. cache.Store's keyFunc is
+	// DeletionHandlingMetaNamespaceKeyFunc so this entry is keyed correctly.
+	tombstone := cache.DeletedFinalStateUnknown{Key: key, Obj: obj}
+	if updErr := s.cache.Update(tombstone); updErr != nil {
+		s.mu.Unlock()
+		return apierrors.NewInternalError(fmt.Errorf("cannot tombstone object with key %q: %w", key, updErr))
+	}
+	log.V(4).Info("tombstoned object", "kind", s.args.ObjectGVK.Kind, "key", key)
+	// Snapshot the typed object so the broadcast can deliver it without holding the lock.
+	broadcastObj, _ := obj.(runtime.Object)
+	if broadcastObj != nil {
+		broadcastObj = broadcastObj.DeepCopyObject()
+	}
+	s.mu.Unlock()
+	if broadcastObj != nil {
+		go func() {
+			if berr := s.broadcaster.Action(watch.Deleted, broadcastObj); berr != nil {
+				log.Error(berr, "failed to broadcast object delete", "key", key)
+			}
+		}()
+	}
+	return nil
+}
+
+// IsMarkedForDelete reports whether the given key is currently tombstoned. Safe to call
+// concurrently.
+func (s *InMemResourceStore) IsMarkedForDelete(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	obj, exists, err := s.cache.GetByKey(key)
+	if err != nil || !exists {
+		return false
+	}
+	return isTombstone(obj)
+}
+
+// isTombstone reports whether obj is a [cache.DeletedFinalStateUnknown] marker placed by
+// MarkForDelete. Accepts both value and pointer forms for robustness.
+func isTombstone(obj any) bool {
+	switch obj.(type) {
+	case cache.DeletedFinalStateUnknown, *cache.DeletedFinalStateUnknown:
+		return true
+	}
+	return false
+}
+
+// filterTombstones returns a new slice containing only the entries from items that are not
+// tombstones. Used by List/ListMetaObjects/buildPendingWatchEvents/DeleteObjects to hide
+// tombstoned entries from callers.
+func filterTombstones(items []any) []any {
+	out := make([]any, 0, len(items))
+	for _, it := range items {
+		if isTombstone(it) {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out
+}
+
 func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Object, err error) {
 	key := objutil.CacheName(mo)
 	o, ok := mo.(runtime.Object)
@@ -355,7 +462,7 @@ func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespa
 	defer s.mu.Unlock()
 
 	var skip bool
-	allItems := s.cache.List()
+	allItems := filterTombstones(s.cache.List())
 	objs, err := objutil.SliceOfAnyToRuntimeObj(allItems)
 	if err != nil {
 		return

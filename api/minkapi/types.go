@@ -92,6 +92,15 @@ type ResourceStore interface {
 	GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (watch.Interface, error)
 	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
 	GetVersionCounter() *atomic.Int64
+	// MarkForDelete records a tombstone for the given key: any prior live object at that key is
+	// removed from the store, a Deleted watch event is broadcast (carrying the typed object as
+	// payload, not the wrapper), and a [k8s.io/client-go/tools/cache.DeletedFinalStateUnknown]
+	// marker is left at the same key so subsequent Get/List/Watch operations treat the name as
+	// absent. Re-Add of the same key clears the tombstone (object resurrected). Returns
+	// apierrors.NotFound when the key is already tombstoned or never existed.
+	MarkForDelete(ctx context.Context, key string) error
+	// IsMarkedForDelete reports whether the given key is currently tombstoned in this store.
+	IsMarkedForDelete(key string) bool
 }
 
 // ObjectOptions represents options when storing or querying an object.
