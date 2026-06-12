@@ -13,13 +13,13 @@ import (
 // ScalingFeedback provides scale-in and scale-out feedback from the lifecycle manager.
 // Scaling advisor can refine its future scaling advice based on this feedback.
 type ScalingFeedback struct {
-	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 	// ScaleOut is the scale-out feedback from the lifecycle manager when applying [ScaleOutPlan]
 	// [ScalingAdviceSpec].
 	ScaleOut *ScaleOutFeedback `json:"scaleOut,omitempty"`
 	// ScaleIn is the scale-in feedback from life-cycle manager when applying [ScaleInPlan]
 	ScaleIn *ScaleInFeedback `json:"scaleIn,omitempty"`
+	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
+	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
 
 // ScalingErrorType defines the type of scaling error.
@@ -40,9 +40,6 @@ type ScaleOutFeedback struct {
 
 // ScaleOutItemFeedback is the feedback from the life cycle manager when applying an individual [ScaleOutItem]
 type ScaleOutItemFeedback struct {
-	// Index represents the item index in [ScaleOutPlan.Items]
-	// +required
-	Index int32 `json:"index"`
 	// CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available
 	// for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,
 	// this field is mandatory to be set inside all [ScaleOutItemFeedback]
@@ -55,6 +52,9 @@ type ScaleOutItemFeedback struct {
 	// ErrorType is the type of error that occurred during scale-out.
 	// +optional
 	ErrorType ScalingErrorType `json:"errorType,omitempty"`
+	// Index represents the item index in [ScaleOutPlan.Items]
+	// +required
+	Index int32 `json:"index"`
 	// FailCount is the number of nodes that have failed creation.
 	// +optional
 	FailCount int32 `json:"failCount,omitzero"`

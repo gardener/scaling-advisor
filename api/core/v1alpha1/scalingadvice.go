@@ -56,11 +56,11 @@ type ScalingAdviceStatus struct {
 	// set on the corresponding ScalingConstraint resource.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
-	// Conditions represents additional information
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// Feedback represents the [ScalingFeedback] from the lifecycle manager applying the [ScalingAdvice]
 	// +optional
 	Feedback *ScalingFeedback `json:"feedback,omitempty"`
+	// Conditions represents additional information
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // ScaleOutPlan is the plan for scaling out a node pool.

@@ -85,20 +85,17 @@ type NodePool struct {
 	Taints []corev1.Taint `json:"taints,omitempty"`
 	// AvailabilityZones is a list of availability zones for the node pool.
 	AvailabilityZones []string `json:"availabilityZones"`
-	// Priority is the priority of the node pool.
-	// +optional
-	Priority int32 `json:"priority,omitzero"`
 	// Requirements encapsulates the slice of requirement selectors for this NodePool
 	// +optional
 	Requirements []NodePoolRequirement `json:"requirements,omitempty"`
+	// Priority is the priority of the node pool.
+	// +optional
+	Priority int32 `json:"priority,omitzero"`
 }
 
 // NodePoolRequirement is a requirement selector that encapsulates values, a key, and an operator
 // that relates the key and values.
 type NodePoolRequirement struct {
-	// Priority represents the priority of this requirement. Higher values have greater priority.
-	// +optional
-	Priority int32 `json:"priority,omitzero"`
 	// Key is the label key that the selector applies to.
 	// +required
 	Key string `json:"key"`
@@ -114,6 +111,9 @@ type NodePoolRequirement struct {
 	// +optional
 	// +listType=atomic
 	Values []string `json:"values,omitempty"`
+	// Priority represents the priority of this requirement. Higher values have greater priority.
+	// +optional
+	Priority int32 `json:"priority,omitzero"`
 }
 
 // NodePoolRequirementOperator is the set of operators that can be used in a [NodePoolRequirement]
