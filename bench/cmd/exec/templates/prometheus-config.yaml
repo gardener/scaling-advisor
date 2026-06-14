@@ -5,3 +5,6 @@ scrape_configs:
   - job_name: 'scalebench'
     static_configs:
       - targets: ['{{.HostIP}}:{{.Port}}']
+  - job_name: '{{.ScalerName}}'
+    static_configs:
+      - targets: ['kwok-{{.ClusterName}}-{{.ScalerName}}:{{.ScalerMetricsPort}}']

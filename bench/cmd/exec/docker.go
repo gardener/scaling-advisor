@@ -69,7 +69,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 
 	if id, err := m.findContainerIDByPrefix(ctx, m.containerNamePrefix); err == nil && id != "" {
 		m.containerID = id
-		log.Printf("Found container: %s\n", m.containerNamePrefix)
+		// log.Printf("Found container: %s\n", m.containerNamePrefix)
 		return nil
 	}
 
@@ -100,7 +100,7 @@ func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics)
 		return fmt.Errorf("container ID not set")
 	}
 
-	log.Printf("Streaming metrics for container %s\n", m.containerNamePrefix)
+	// log.Printf("Streaming metrics for container %s\n", m.containerNamePrefix)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://unix/containers/%s/stats?stream=true", m.containerID), nil)
 	if err != nil {

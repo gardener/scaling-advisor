@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
@@ -45,7 +44,8 @@ func NewSetupCommand(_ context.Context) *cobra.Command {
 		Use:   "setup <scaler> <options>",
 		Short: "Setup the scaler by fetching the required version",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, cmdArgs []string) (err error) {
+		RunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
+			cmd.SilenceUsage = true
 			// Only the scaler is passed as an argument to the command, rest are all flags
 			setupArgs.Scaler = cmdArgs[0]
 			setupCtx := benchutil.SetupSignalHandler()
@@ -55,7 +55,7 @@ func NewSetupCommand(_ context.Context) *cobra.Command {
 
 	// Initialise the setup args with the passed flag values,
 	// falling back to default if nothing specified
-	setupCmd.PersistentFlags().StringVarP(
+	setupCmd.Flags().StringVarP(
 		&setupArgs.ConstraintsFile,
 		"constraints", "c", "",
 		"constraints file path (required)",
@@ -63,7 +63,7 @@ func NewSetupCommand(_ context.Context) *cobra.Command {
 	_ = setupCmd.MarkFlagRequired("constraints")
 	_ = setupCmd.MarkFlagFilename("constraints", "json")
 
-	setupCmd.PersistentFlags().StringVarP(
+	setupCmd.Flags().StringVarP(
 		&setupArgs.PricingFile,
 		"pricing-data", "p", "",
 		"pricing data file (required)",
@@ -71,7 +71,7 @@ func NewSetupCommand(_ context.Context) *cobra.Command {
 	_ = setupCmd.MarkFlagRequired("pricing-data")
 	_ = setupCmd.MarkFlagFilename("pricing-data", "json")
 
-	setupCmd.PersistentFlags().StringVarP(
+	setupCmd.Flags().StringVarP(
 		&setupArgs.Version,
 		"scaler-version", "v", "main",
 		"version of the scaler to fetch (can specify tags or commitID)",
@@ -99,8 +99,10 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 		return fmt.Errorf("could not create the output directory (%s): %v", outputDir, err)
 	}
 	// Link the pricing file in the generated directory, to allow for usage
-	// during harness execution
-	if err := os.Link(args.PricingFile, path.Join(outputDir, benchutil.FileNamePricingData)); err != nil {
+	// during harness execution. Remove any existing link so re-runs succeed.
+	pricingDst := path.Join(outputDir, benchutil.FileNamePricingData)
+	_ = os.Remove(pricingDst)
+	if err := os.Link(args.PricingFile, pricingDst); err != nil {
 		return fmt.Errorf("could not link pricing file to output directory: %v", err)
 	}
 
@@ -110,7 +112,8 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 	if err := scaler.BuildScaler(ctx, args.Version); err != nil {
 		return fmt.Errorf("error building %s source: %v", args.Scaler, err)
 	}
-	if err := pullPrometheusImage(); err != nil {
+
+	if err := benchutil.PullDockerImage("prom/prometheus:latest"); err != nil {
 		return fmt.Errorf("error pulling prometheus image: %v", err)
 	}
 
@@ -120,28 +123,10 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 func getScaler(scalerName, pricingFile string) (SetupScaler, error) {
 	switch scalerName {
 	case benchutil.ScalerKarpenter:
-		if pricingFile == "" {
-			return nil, fmt.Errorf("pricing data needed for karpenter: run `scadctl genprice` to get the data")
-		}
 		return &karpenterSetup{pricingFile: pricingFile}, nil
 	case benchutil.ScalerClusterAutoscaler:
 		return &caSetup{}, nil
 	default:
 		return nil, fmt.Errorf("unknown scaler %q", scalerName)
 	}
-}
-
-func pullPrometheusImage() error {
-	image := "prom/prometheus:latest"
-	if exists := benchutil.CheckIfImageExists(image); exists {
-		return nil
-	}
-	fmt.Printf("Pulling %s...\n", image)
-	pull := exec.Command("docker", "pull", image)
-	pull.Stdout = os.Stdout
-	pull.Stderr = os.Stderr
-	if err := pull.Run(); err != nil {
-		return fmt.Errorf("docker pull %s: %w", image, err)
-	}
-	return nil
 }

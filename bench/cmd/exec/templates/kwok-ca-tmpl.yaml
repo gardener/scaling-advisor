@@ -58,5 +58,7 @@ components:
       - hostPath: "{{.PrometheusConfigPath}}"
         mountPath: /etc/prometheus/prometheus.yml
         readOnly: true
+      - hostPath: "{{.PrometheusDataPath}}"
+        mountPath: /prometheus
     networks:
       - kwok-{{.ClusterName}}

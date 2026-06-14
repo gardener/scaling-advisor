@@ -24,6 +24,9 @@ import (
 )
 
 const (
+	// PrometheusPort is the port used to serve scalebench container metrics
+	PrometheusPort = 2112
+
 	// ScalerClusterAutoscaler specifies that the scaler being invoked is CA
 	ScalerClusterAutoscaler = "cluster-autoscaler"
 	// ScalerKarpenter specifies that the scaler being invoked is karpenter
@@ -131,6 +134,20 @@ func CheckIfImageExists(imageName string) (skipBuild bool) {
 		return true
 	}
 	return false
+}
+
+func PullDockerImage(image string) error {
+	if exists := CheckIfImageExists(image); exists {
+		return nil
+	}
+	fmt.Printf("Pulling %s...\n", image)
+	pull := exec.Command("docker", "pull", image)
+	pull.Stdout = os.Stdout
+	pull.Stderr = os.Stderr
+	if err := pull.Run(); err != nil {
+		return fmt.Errorf("docker pull %s: %w", image, err)
+	}
+	return nil
 }
 
 // GetAssets fetches the specified scaler version archive into the dataDir and then unzips it

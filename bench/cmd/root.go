@@ -5,7 +5,6 @@
 package bench
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/gardener/scaling-advisor/bench/cmd/exec"
@@ -28,9 +27,7 @@ func Execute() {
 	RootCmd.AddCommand(setup.NewSetupCommand(ctx))
 	RootCmd.AddCommand(exec.NewExecCommand(ctx))
 
-	err := RootCmd.Execute()
-	if err != nil {
-		fmt.Println(err)
+	if err := RootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }

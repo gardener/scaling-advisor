@@ -7,6 +7,7 @@ package exec
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -19,6 +20,11 @@ import (
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
+)
+
+const (
+	reportFileName = "scaler-report.json"
+	eventsFileName = "scaler-events.json"
 )
 
 // newMonitor creates a monitorState by discovering Docker containers and
@@ -54,7 +60,7 @@ func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clu
 // start begins Docker stats streaming, serves Prometheus metrics, and
 // starts the EventCollector. It should be called after newMonitor.
 func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfig) error {
-	mon.server = ServeMetrics(prometheusPort)
+	mon.server = ServeMetrics(benchutil.PrometheusPort)
 
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	mon.cancelStream = cancelStream
@@ -142,12 +148,11 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	mon.meta.TotalRunDuration = mon.meta.EndTime.Sub(mon.meta.StartTime).String()
 	fmt.Printf("Total benchmarking run time: %s\n", mon.meta.TotalRunDuration)
 
-	logsDir := path.Join(mon.scenarioDir, "logs", "kwok-"+mon.clusterName)
+	logsDir := path.Join(mon.scenarioDir, "out", "kwok-"+mon.clusterName)
 	if err := os.MkdirAll(logsDir, 0750); err != nil {
 		log.Printf("Failed to create logs directory: %v\n", err)
 	} else {
 		writeReports(logsDir, *mon.meta, events)
-		writeMetricsCSV(path.Join(logsDir, "metrics"), mon.metrics)
 	}
 }
 
@@ -169,4 +174,28 @@ func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func writeReports(dir string, meta RunMetadata, events []ScalingEvent) {
+	if err := writeJSON(path.Join(dir, reportFileName), meta); err != nil {
+		log.Printf("Failed to write report: %v\n", err)
+	}
+	if err := writeJSON(path.Join(dir, eventsFileName), events); err != nil {
+		log.Printf("Failed to write events: %v\n", err)
+	}
+}
+
+func writeJSON(filePath string, v any) error {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("cannot create %s: %w", filePath, err)
+	}
+	defer f.Close()
+
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return fmt.Errorf("cannot encode %s: %w", filePath, err)
+	}
+	return nil
 }

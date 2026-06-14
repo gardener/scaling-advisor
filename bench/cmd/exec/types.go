@@ -30,24 +30,28 @@ type ExecScaler interface {
 	// ConfigMaps, NodePools, etc.) in the KWOK cluster.
 	DeployScalerData(ctx context.Context, cfg *envconf.Config, scenarioDir string) error
 
-	// GetScalerKWOKTemplatePath returns the embedded-FS path to the
+	// GetKWOKTemplatePath returns the embedded-FS path to the
 	// kwokctl configuration template for this scaler.
-	GetScalerKWOKTemplatePath() string
+	GetKWOKTemplatePath() string
+
+	// GetPrometheusPort returns the port used to serve scaler metrics
+	GetPrometheusPort() int
 
 	// CheckRequiredDataPresent verifies that everything produced by
 	// "setup" (files + Docker images) is available before the cluster
 	// is created.
-	CheckRequiredDataPresent(scenarioDir, version string) error
+	CheckRequiredDataPresent(generatedDir, version string) error
 
 	// EventConfig returns the scaler-specific event configuration.
 	EventConfig() ScalerEventConfig
 }
 
-// ExecArgs has the flag variables — bound by cobra, read once in execCmd.RunE, then
+// ExecArgs has the flag variables — and additional common variables, then
 // passed explicitly to all callees so that no other function touches these globals.
 type ExecArgs struct {
 	Scaler        string
 	SnapshotFile  string
+	ScenarioDir   string
 	ConfigFile    string
 	ScalerVersion string
 	SkipCleanup   bool
@@ -75,6 +79,7 @@ type KwokctlConfigTemplateParams struct {
 	ScenarioDirectory       string
 	ImageTag                string
 	PrometheusConfigPath    string
+	PrometheusDataPath      string
 }
 
 // monitorState groups the resources needed for metrics collection and
@@ -95,9 +100,12 @@ type monitorState struct {
 
 // PrometheusConfigParams holds the parameters for the prometheus configuration template.
 type prometheusConfigParams struct {
-	HostIP         string
-	ScrapeInterval string
-	Port           int
+	HostIP            string
+	ScrapeInterval    string
+	Port              int
+	ClusterName       string
+	ScalerName        string
+	ScalerMetricsPort int
 }
 
 // ---------------------------------------------------------------------------

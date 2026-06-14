@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -34,10 +35,6 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
-var temporaryFiles []string
-
-const prometheusPort = 2112
-
 // NewExecCommand runs a scaler inside a KWOK cluster populated with data
 // from the cluster snapshot. It is the counterpart to "setup", which prepares
 // the resources and deploys the scaler image that this command consumes.
@@ -47,24 +44,74 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 		Use:   "exec <scaler> <options>",
 		Short: "Run the scaler by utilizing the data and produce the report",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
+		PreRunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
 			cmd.SilenceUsage = true
 			// Only the scaler is passed as an argument to the command, rest are all flags
 			execArgs.Scaler = cmdArgs[0]
 
+			scaler, err := getScaler(execArgs.Scaler)
+			if err != nil {
+				return fmt.Errorf("cannot get scaler: %w", err)
+			}
+
+			err = benchutil.CheckIfDockerRunning()
+			if err != nil {
+				return fmt.Errorf("docker is not running: %v", err)
+			}
+
+			execArgs.ScenarioDir, err = filepath.Abs(path.Dir(execArgs.SnapshotFile))
+			if err != nil {
+				return fmt.Errorf("cannot resolve scenario directory: %w", err)
+			}
+
+			// Check if required data is present
+			genDir := path.Join(execArgs.ScenarioDir, "gen")
+			_, err = os.Stat(genDir)
+			if errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("required directory %q not found", genDir)
+			}
+			_, err = os.Stat(path.Join(genDir, benchutil.FileNamePricingData))
+			if errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("pricing file not found in %q", genDir)
+			}
+
+			err = scaler.CheckRequiredDataPresent(genDir, execArgs.ScalerVersion)
+			if err != nil {
+				return fmt.Errorf("run 'setup' before running 'exec': %v", err)
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
+			cmd.SilenceUsage = true
+
 			clusterName := execArgs.Scaler + "-" + time.Now().UTC().Format("20060102T150405Z")
 			execCtx := benchutil.SetupSignalHandler()
-			_, err = Run(execCtx, execArgs, clusterName)
+
+			execCtx, cfg, err := setupCluster(execCtx, execArgs, clusterName)
 			if err != nil {
-				return
+				return err
 			}
+			defer cleanupCluster(execCtx, cfg, execArgs, clusterName)
+
+			scaler, err := getScaler(execArgs.Scaler)
+			if err != nil {
+				return fmt.Errorf("cannot get scaler: %w", err)
+			}
+			_, err = Run(execCtx, cfg, scaler, execArgs, clusterName)
 			return
 		},
 	}
 
+	initArgs(execCmd, &execArgs)
+
+	return execCmd
+}
+
+func initArgs(execCmd *cobra.Command, execArgs *ExecArgs) {
 	// Initialise the exec args with the passed flag values,
 	// falling back to default if nothing specified
-	execCmd.PersistentFlags().StringVar(
+	execCmd.Flags().StringVar(
 		&execArgs.SnapshotFile,
 		"snap", "",
 		"cluster snapshot file (required)",
@@ -72,77 +119,47 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 	_ = execCmd.MarkFlagRequired("snap")
 	_ = execCmd.MarkFlagFilename("snap", "json")
 
-	execCmd.PersistentFlags().StringVarP(
+	execCmd.Flags().StringVarP(
 		&execArgs.ConfigFile,
 		"config", "c", "",
 		"kwokctl configuration file, fall back to embedded config (optional)",
 	)
 	_ = execCmd.MarkFlagFilename("config", "yaml")
 
-	execCmd.PersistentFlags().BoolVarP(
+	execCmd.Flags().BoolVarP(
 		&execArgs.SkipCleanup,
 		"skip-cleanup", "s", false,
 		"skip deleting cluster with all data upon finishing",
 	)
 
-	execCmd.PersistentFlags().BoolVarP(
+	execCmd.Flags().BoolVarP(
 		&execArgs.WaitForCancel,
 		"wait-for-cancel", "w", false,
 		"wait for cancel signal after scaling completes before writing report",
 	)
 
-	execCmd.PersistentFlags().StringVarP(
+	execCmd.Flags().StringVarP(
 		&execArgs.ScalerVersion,
 		"scaler-version", "v", "main",
 		"version of the scaler to fetch",
 	)
-
-	return execCmd
 }
 
 // Run sets up the cluster for executing the benchmarking operation by creating a docker
 // runtime cluster using 'kwokctl' (this includes control plane components and the scaler).
 // Then it deploys all the objects present in the snapshot in the cluster alongwith the
 // artefacts produced by the "setup" subcommand.
-func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, error) {
+func Run(
+	execCtx context.Context,
+	cfg *envconf.Config,
+	scaler ExecScaler,
+	args ExecArgs,
+	clusterName string,
+) (Summary, error) {
 	summary := Summary{}
 	// Set the log entry prefix time to UTC so that it matches the container
 	// log times and the metric timestamps
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC | log.Lshortfile)
-
-	scenarioDir, err := filepath.Abs(path.Dir(args.SnapshotFile))
-	if err != nil {
-		return summary, fmt.Errorf("cannot resolve scenario directory: %w", err)
-	}
-
-	scaler, err := getScaler(args.Scaler)
-	if err != nil {
-		return summary, fmt.Errorf("cannot get scaler: %w", err)
-	}
-
-	err = benchutil.CheckIfDockerRunning()
-	if err != nil {
-		return summary, fmt.Errorf("docker is not running: %v", err)
-	}
-
-	pricingFile := path.Join(scenarioDir, "gen", benchutil.FileNamePricingData)
-	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", pricingFile)
-	if err != nil {
-		return summary, fmt.Errorf("error parsing pricing data: %v", err)
-	}
-
-	err = scaler.CheckRequiredDataPresent(scenarioDir, args.ScalerVersion)
-	if err != nil {
-		return summary, fmt.Errorf("please run 'setup' before running 'exec': %v", err)
-	}
-
-	// Consider moving clusterSetup and cleanup outside of run. Would require doing the above
-	// checks also separately
-	execCtx, cfg, err := setupCluster(execCtx, scaler, clusterName, scenarioDir, args.ConfigFile, args.ScalerVersion)
-	if err != nil {
-		return summary, err
-	}
-	defer cleanupCluster(execCtx, cfg, clusterName, scenarioDir, args.SkipCleanup)
 
 	clusterSnapshot, err := benchutil.LoadJSONFromFile[planner.ClusterSnapshot](args.SnapshotFile)
 	if err != nil {
@@ -152,7 +169,7 @@ func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, e
 	if err := deployObjects(execCtx, cfg, clusterSnapshot); err != nil {
 		return summary, fmt.Errorf("error running KWOK cluster: %v", err)
 	}
-	if err := scaler.DeployScalerData(execCtx, cfg, scenarioDir); err != nil {
+	if err := scaler.DeployScalerData(execCtx, cfg, args.ScenarioDir); err != nil {
 		return summary, fmt.Errorf("error deploying the scaler data: %v", err)
 	}
 	if err := scaler.DeployNodes(execCtx, cfg, &clusterSnapshot); err != nil {
@@ -174,14 +191,12 @@ func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, e
 		SnapshotFile:  args.SnapshotFile,
 	}
 	meta.Summary.ClusterState.Before = ClusterStats{
-		NodeCount:     len(clusterSnapshot.Nodes),
-		ScheduledPods: len(scheduled),
-		// FIXME: need to do this for all events as well
-		// CA doesn't emit events for DS pods not triggering scale up
+		NodeCount:                   len(clusterSnapshot.Nodes),
+		ScheduledPods:               len(scheduled),
 		UnscheduledNonDaemonSetPods: len(unscheduled) - daemonSetPodCount,
 	}
 
-	mon, err := newMonitor(execCtx, cfg, &meta, clusterName, scenarioDir)
+	mon, err := newMonitor(execCtx, cfg, &meta, clusterName, args.ScenarioDir)
 	if err != nil {
 		return summary, fmt.Errorf("monitoring setup failed: %v", err)
 	}
@@ -201,17 +216,19 @@ func Run(execCtx context.Context, args ExecArgs, clusterName string) (Summary, e
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
+	pricingFile := path.Join(args.ScenarioDir, "gen", benchutil.FileNamePricingData)
+	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", pricingFile)
+	if err != nil {
+		return summary, fmt.Errorf("error parsing pricing data: %v", err)
+	}
 	mon.stop(execCtx, pricingData)
 
-	log.Println("Successfully completed!")
-
+	// log.Println("Successfully completed!")
 	return mon.meta.Summary, nil
 }
 
 func init() {
-	// Register apiextensionsv1 types (CustomResourceDefinition) with the
-	// global client-go scheme so that the e2e-framework client can create
-	// CRD objects.
+	// Register apiextensionsv1 so that client can create CRD objects.
 	_ = apiextensionsv1.AddToScheme(scheme.Scheme)
 }
 
@@ -229,53 +246,32 @@ func getScaler(scalerName string) (ExecScaler, error) {
 // setupCluster creates a fresh KWOK cluster configured for the given scaler.
 func setupCluster(
 	ctx context.Context,
-	scaler ExecScaler,
+	args ExecArgs,
 	clusterName string,
-	scenarioDir string,
-	configFile string,
-	imageTag string,
 ) (context.Context, *envconf.Config, error) {
 	log.Printf("Setting up KWOK cluster %q...\n", clusterName)
 
-	kubeSchedulerConfigPath, err := writeEmbeddedKubeSchedulerConfig()
+	// Check if generated directory is present, create output directory if not present
+	genDir := path.Join(args.ScenarioDir, "gen")
+	outputDir := path.Join(args.ScenarioDir, "out")
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
+		return ctx, nil, fmt.Errorf("cannot create output data directory: %w", err)
+	}
+
+	outputKwokCfgFile, err := generateAllConfigs(args, genDir, outputDir, clusterName)
 	if err != nil {
-		return ctx, nil, fmt.Errorf("cannot write kube-scheduler config: %w", err)
-	}
-	temporaryFiles = append(temporaryFiles, kubeSchedulerConfigPath)
-
-	promConfigPath, err := writePrometheusConfig(prometheusPort)
-	if err != nil {
-		return ctx, nil, fmt.Errorf("cannot write prometheus config: %w", err)
-	}
-	temporaryFiles = append(temporaryFiles, promConfigPath)
-
-	outputKwokCfgFile := path.Join(scenarioDir, "kwok-config.yaml")
-	templateParams := KwokctlConfigTemplateParams{
-		HomeDir:                 os.Getenv("HOME"),
-		ClusterName:             clusterName,
-		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
-		OutputPath:              outputKwokCfgFile,
-		ScenarioDirectory:       scenarioDir,
-		ImageTag:                imageTag,
-		PrometheusConfigPath:    promConfigPath,
+		return ctx, nil, err
 	}
 
-	err = generateKwokctlConfig(templateParams, scaler, configFile)
-	if err != nil {
-		return ctx, nil, fmt.Errorf("cannot create kwok config: %w", err)
-	}
-	log.Printf("Wrote kwok config template to %q\n", templateParams.OutputPath)
-
-	testenv := env.New()
 	createClusterFunc := envfuncs.CreateClusterWithConfig(kwok.NewProvider(), clusterName, outputKwokCfgFile)
-	cfg := testenv.EnvConf()
 
-	ctx, err = createClusterFunc(ctx, cfg)
+	envCfg := env.New().EnvConf()
+	ctx, err = createClusterFunc(ctx, envCfg)
 	if err != nil {
 		return ctx, nil, fmt.Errorf("failed to create cluster: %w", err)
 	}
 
-	restCfg := cfg.Client().RESTConfig()
+	restCfg := envCfg.Client().RESTConfig()
 	// Create a client with API server warnings suppressed (otherwise there's a
 	// lot of noise e.g. due to pod names exceeding the 63-char DNS label limit).
 	restCfg.WarningHandler = rest.NoWarnings{}
@@ -285,9 +281,9 @@ func setupCluster(
 	if err != nil {
 		return ctx, nil, fmt.Errorf("failed to create client: %w", err)
 	}
-	cfg.WithClient(client)
+	envCfg.WithClient(client)
 
-	return ctx, cfg, nil
+	return ctx, envCfg, nil
 }
 
 // cleanupCluster exports pod/container logs and (unless --skip-cleanup is set)
@@ -295,29 +291,24 @@ func setupCluster(
 func cleanupCluster(
 	ctx context.Context,
 	cfg *envconf.Config,
+	args ExecArgs,
 	clusterName string,
-	scenarioDir string,
-	skipCleanup bool,
 ) {
-	for _, file := range temporaryFiles {
-		os.Remove(file)
-	}
+	outputDir := path.Join(args.ScenarioDir, "out")
 
-	logsDir := path.Join(scenarioDir, "logs")
-
-	if err := os.MkdirAll(logsDir, 0750); err != nil {
-		fmt.Printf("Warning: Failed to create logs directory %q: %v\n", logsDir, err)
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
+		fmt.Printf("Warning: Failed to create logs directory %q: %v\n", outputDir, err)
 	} else {
-		exportLogsFunc := envfuncs.ExportClusterLogs(clusterName, logsDir)
+		exportLogsFunc := envfuncs.ExportClusterLogs(clusterName, outputDir)
 		if _, err := exportLogsFunc(ctx, cfg); err != nil {
 			fmt.Printf("Warning: Failed to export logs: %v\n", err)
 		} else {
-			fmt.Printf("\nExported logs to %q\n", path.Join(logsDir, clusterName))
+			fmt.Printf("\nExported logs, reports and metrics to %q\n", path.Join(outputDir, "kwok-"+clusterName))
 		}
 	}
 
-	if !skipCleanup {
-		log.Println("Cleaning up...")
+	if !args.SkipCleanup {
+		log.Println("Cleaning up the cluster...")
 		destroyClusterFunc := envfuncs.DestroyCluster(clusterName)
 		if _, err := destroyClusterFunc(ctx, cfg); err != nil {
 			fmt.Printf("Warning: Failed to destroy cluster: %v\n", err)
@@ -328,6 +319,45 @@ func cleanupCluster(
 // ---------------------------------------------------------------------------
 // Template & config helpers
 // ---------------------------------------------------------------------------
+
+func generateAllConfigs(args ExecArgs, genDir, outputDir, clusterName string) (string, error) {
+	scaler, _ := getScaler(args.Scaler)
+
+	kubeSchedulerConfigPath := path.Join(genDir, "kube-scheduler-config.yaml")
+	if err := writeEmbeddedKubeSchedulerConfig(kubeSchedulerConfigPath); err != nil {
+		return "", fmt.Errorf("cannot write kube-scheduler config: %w", err)
+	}
+
+	promConfigPath := path.Join(genDir, "prometheus-config.yaml")
+	scalerPort := scaler.GetPrometheusPort()
+	if err := writePrometheusConfig(promConfigPath, clusterName, args.Scaler, scalerPort); err != nil {
+		return "", fmt.Errorf("cannot write prometheus config: %w", err)
+	}
+
+	prometheusDataPath := path.Join(outputDir, "kwok-"+clusterName)
+	if err := os.MkdirAll(prometheusDataPath, 0750); err != nil {
+		return "", fmt.Errorf("cannot create prometheus data directory: %w", err)
+	}
+
+	outputKwokCfgFile := path.Join(genDir, "kwok-config.yaml")
+	templateParams := KwokctlConfigTemplateParams{
+		HomeDir:                 os.Getenv("HOME"),
+		ClusterName:             clusterName,
+		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
+		OutputPath:              outputKwokCfgFile,
+		ScenarioDirectory:       args.ScenarioDir,
+		ImageTag:                args.ScalerVersion,
+		PrometheusConfigPath:    promConfigPath,
+		PrometheusDataPath:      prometheusDataPath,
+	}
+
+	err := generateKwokctlConfig(templateParams, scaler, args.ConfigFile)
+	if err != nil {
+		return "", fmt.Errorf("cannot create kwok config: %w", err)
+	}
+	log.Printf("Wrote kwok config template to %q\n", templateParams.OutputPath)
+	return outputKwokCfgFile, nil
+}
 
 func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler, configPath string) error {
 	var (
@@ -342,7 +372,7 @@ func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler
 			return fmt.Errorf("cannot read %s from filesystem: %w", templateConfigPath, err)
 		}
 	} else {
-		templateConfigPath = scaler.GetScalerKWOKTemplatePath()
+		templateConfigPath = scaler.GetKWOKTemplatePath()
 		data, err = content.ReadFile(templateConfigPath)
 		if err != nil {
 			return fmt.Errorf("cannot read %s from content FS: %w", templateConfigPath, err)
@@ -364,22 +394,13 @@ func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler
 	return nil
 }
 
-func writeEmbeddedKubeSchedulerConfig() (string, error) {
+func writeEmbeddedKubeSchedulerConfig(destPath string) error {
 	kubeSchedulerConfigData, err := content.ReadFile("templates/kube-scheduler-config.yaml")
 	if err != nil {
-		return "", fmt.Errorf("cannot read kube-scheduler-config.yaml from embedded FS: %w", err)
+		return fmt.Errorf("cannot read kube-scheduler-config.yaml from embedded FS: %w", err)
 	}
-
-	tempFile, err := os.CreateTemp("", "kube-scheduler-config.yaml")
-	if err != nil {
-		return "", fmt.Errorf("cannot create temporary file: %w", err)
+	if err := os.WriteFile(destPath, kubeSchedulerConfigData, 0600); err != nil {
+		return fmt.Errorf("cannot write kube-scheduler config to %q: %w", destPath, err)
 	}
-	defer tempFile.Close()
-
-	if _, err := tempFile.Write(kubeSchedulerConfigData); err != nil {
-		_ = os.Remove(tempFile.Name())
-		return "", fmt.Errorf("cannot write to temporary file: %w", err)
-	}
-
-	return tempFile.Name(), nil
+	return nil
 }

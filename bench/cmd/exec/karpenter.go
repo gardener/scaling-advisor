@@ -31,7 +31,10 @@ var _ ExecScaler = (*karpenterExec)(nil)
 
 type karpenterExec struct{}
 
-const karpKwokTemplatePath = "templates/kwok-karpenter-tmpl.yaml"
+const (
+	karpenterKwokTemplatePath = "templates/kwok-karpenter-tmpl.yaml"
+	karpenterPrometheusPort   = 8080
+)
 
 // In case of karpenter, the snapshot.Pods are mutated before deployment to update
 // the nodeNames with the names created by the kwok cloudprovider using the NodeClaim
@@ -60,10 +63,6 @@ func (ke *karpenterExec) DeployNodes(ctx context.Context, cfg *envconf.Config, s
 		if node.Labels == nil {
 			node.Labels = make(map[string]string)
 		}
-		// node.Labels["kwok.x-k8s.io/node"] = "fake"
-		// node.Labels["karpenter.sh/capacity-type"] = "on-demand"
-		// node.Labels["karpenter.sh/initialized"] = "true"
-		// node.Labels["karpenter.sh/registered"] = "true"
 		node.Labels["karpenter.sh/nodepool"] = node.Labels["worker.gardener.cloud/pool"]
 
 		nodePool, err := findNodePoolForNode(node, nodePools.Items)
@@ -123,8 +122,12 @@ func (ke *karpenterExec) DeployScalerData(ctx context.Context, cfg *envconf.Conf
 	return
 }
 
-func (ke *karpenterExec) GetScalerKWOKTemplatePath() string {
-	return karpKwokTemplatePath
+func (ke *karpenterExec) GetKWOKTemplatePath() string {
+	return karpenterKwokTemplatePath
+}
+
+func (ke *karpenterExec) GetPrometheusPort() int {
+	return karpenterPrometheusPort
 }
 
 func (ke *karpenterExec) EventConfig() ScalerEventConfig {
@@ -138,16 +141,16 @@ func (ke *karpenterExec) EventConfig() ScalerEventConfig {
 	}
 }
 
-func (ke *karpenterExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
+func (ke *karpenterExec) CheckRequiredDataPresent(genDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("karpenter.local/kwok:%s", scalerVersion)
 	if exists := benchutil.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
 	}
 
 	requiredFiles := []string{
-		path.Join(scenarioDir, benchutil.FileNameKarpenterInstanceTypes),
-		path.Join(scenarioDir, benchutil.FileNameKarpenterNodePools),
-		path.Join(scenarioDir, benchutil.FileNameKarpenterNodeClasses),
+		path.Join(genDir, benchutil.FileNameKarpenterInstanceTypes),
+		path.Join(genDir, benchutil.FileNameKarpenterNodePools),
+		path.Join(genDir, benchutil.FileNameKarpenterNodeClasses),
 	}
 	for _, filePath := range requiredFiles {
 		if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {

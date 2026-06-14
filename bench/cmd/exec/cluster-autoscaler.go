@@ -28,6 +28,7 @@ type caExec struct{}
 const (
 	caKwokTemplatePath       = "templates/kwok-ca-tmpl.yaml"
 	caKwokProviderConfigPath = "templates/ca-kwok-provider-config.yaml"
+	caPrometheusPort         = 8085
 )
 
 func (cae *caExec) DeployNodes(ctx context.Context, cfg *envconf.Config, snapshot *planner.ClusterSnapshot) error {
@@ -74,8 +75,12 @@ func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, sc
 	return
 }
 
-func (cae *caExec) GetScalerKWOKTemplatePath() string {
+func (cae *caExec) GetKWOKTemplatePath() string {
 	return caKwokTemplatePath
+}
+
+func (cae *caExec) GetPrometheusPort() int {
+	return caPrometheusPort
 }
 
 func (cae *caExec) EventConfig() ScalerEventConfig {
@@ -88,13 +93,13 @@ func (cae *caExec) EventConfig() ScalerEventConfig {
 	}
 }
 
-func (cae *caExec) CheckRequiredDataPresent(scenarioDir, scalerVersion string) error {
+func (cae *caExec) CheckRequiredDataPresent(generatedDir, scalerVersion string) error {
 	imageName := fmt.Sprintf("gcr.io/k8s-staging-autoscaling/cluster-autoscaler-arm64:%s", scalerVersion)
 	if exists := benchutil.CheckIfImageExists(imageName); !exists {
 		return fmt.Errorf("required image %q not found", imageName)
 	}
 
-	templateFilePath := path.Join(scenarioDir, benchutil.FileNameCAKwokProviderTemplate)
+	templateFilePath := path.Join(generatedDir, benchutil.FileNameCAKwokProviderTemplate)
 	if _, err := os.Stat(templateFilePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("required file %q not found", templateFilePath)
 	}

@@ -6,8 +6,7 @@ require (
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/common v0.0.0
 	github.com/gardener/scaling-advisor/pricing v0.0.0
-	github.com/gardener/scaling-advisor/samples v0.0.0
-	github.com/google/go-cmp v0.7.0
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
 	k8s.io/api v0.35.0
@@ -107,7 +106,6 @@ replace (
 	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/common => ../common
 	github.com/gardener/scaling-advisor/pricing => ../pricing
-	github.com/gardener/scaling-advisor/samples => ../samples
 )
 
 replace (

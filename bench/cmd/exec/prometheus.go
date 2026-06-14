@@ -12,6 +12,7 @@ import (
 	"os"
 	"text/template"
 
+	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -20,6 +21,12 @@ const (
 	scrapeInterval = "1s"
 	dockerHostIP   = "host.docker.internal"
 )
+
+// These container resource usage metrics are defined here and not captured via
+// an external tool like 'cadvisor' since it needs priviledged access when running
+// in a docker-compose project which 'kwokctl' docker runtime relies on.
+// Without those permissions, the metrics scraped by 'cadvisor' don't have the
+// proper container name labels added to them.
 
 var (
 	// ContainerCPUUsage tracks current CPU usage in millicores per container.
@@ -141,40 +148,36 @@ func init() {
 	prometheus.MustRegister(PodsScheduledTotal)
 }
 
-func writePrometheusConfig(port int) (string, error) {
+func writePrometheusConfig(destPath string, clusterName string, scalerName string, scalerPort int) error {
 	params := prometheusConfigParams{
-		HostIP:         dockerHostIP,
-		Port:           port,
-		ScrapeInterval: scrapeInterval,
+		HostIP:            dockerHostIP,
+		Port:              benchutil.PrometheusPort,
+		ScrapeInterval:    scrapeInterval,
+		ClusterName:       clusterName,
+		ScalerName:        scalerName,
+		ScalerMetricsPort: scalerPort,
 	}
 
 	data, err := content.ReadFile("templates/prometheus-config.yaml")
 	if err != nil {
-		return "", fmt.Errorf("cannot read templates/prometheus-config.yaml: %w", err)
+		return fmt.Errorf("cannot read templates/prometheus-config.yaml: %w", err)
 	}
 
 	tmpl, err := template.New("prometheus-config.yaml").Parse(string(data))
 	if err != nil {
-		return "", fmt.Errorf("cannot parse prometheus-config.yaml template: %w", err)
+		return fmt.Errorf("cannot parse prometheus-config.yaml template: %w", err)
 	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, params); err != nil {
-		return "", fmt.Errorf("cannot execute prometheus-config template: %w", err)
+		return fmt.Errorf("cannot execute prometheus-config template: %w", err)
 	}
 
-	tempFile, err := os.CreateTemp("", "prometheus.yaml")
-	if err != nil {
-		return "", fmt.Errorf("cannot create temporary file: %w", err)
-	}
-	defer tempFile.Close()
-
-	if _, err := tempFile.Write(buf.Bytes()); err != nil {
-		os.Remove(tempFile.Name())
-		return "", fmt.Errorf("cannot write to temporary file: %w", err)
+	if err := os.WriteFile(destPath, buf.Bytes(), 0600); err != nil {
+		return fmt.Errorf("cannot write prometheus config to %q: %w", destPath, err)
 	}
 
-	return tempFile.Name(), nil
+	return nil
 }
 
 // ServeMetrics starts a prometheus metrics server and returns the server
