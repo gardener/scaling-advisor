@@ -63,6 +63,12 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Initialise LastEventTime to now so that we always wait at least one
+	// full waitTime period, even if no events have arrived yet.
+	if ec.timing.LastEventTime.IsZero() {
+		ec.timing.LastEventTime = time.Now().UTC()
+	}
+
 	log.Printf("Watchers started: watching for %d pods to be scheduled\n", ec.unscheduledCounter)
 	return nil
 }
@@ -95,18 +101,17 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 		// Capture the first 'FailedScheduling' event from the scheduler
 		// used for time tracking purposes
 		if event.Reason == "FailedScheduling" &&
-			(source != "cluster-autoscaler" && source != "karpenter") {
-			if ec.timing.FirstFailedScheduling.IsZero() {
-				ec.timing.FirstFailedScheduling = event.CreationTimestamp.UTC()
-				ec.events = append(ec.events, ScalingEvent{
-					Timestamp: event.CreationTimestamp.UTC(),
-					Type:      event.Reason,
-					Source:    source,
-					Name:      event.InvolvedObject.Name,
-					Namespace: event.InvolvedObject.Namespace,
-					Details:   event.Message,
-				})
-			}
+			(source != "cluster-autoscaler" && source != "karpenter") &&
+			ec.timing.FirstFailedScheduling.IsZero() {
+			ec.timing.FirstFailedScheduling = event.CreationTimestamp.UTC()
+			ec.events = append(ec.events, ScalingEvent{
+				Timestamp: event.CreationTimestamp.UTC(),
+				Type:      event.Reason,
+				Source:    source,
+				Name:      event.InvolvedObject.Name,
+				Namespace: event.InvolvedObject.Namespace,
+				Details:   event.Message,
+			})
 		} else if event.Reason == "Preempted" {
 			ec.events = append(ec.events, ScalingEvent{
 				Timestamp: event.CreationTimestamp.UTC(),
@@ -119,8 +124,10 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
 		} else if source == cfg.Source && slices.Contains(cfg.WatchedEvents, event.Reason) {
 			ec.processScalerEvent(ctx, cfg, source, event)
+			ec.timing.LastEventTime = event.CreationTimestamp.UTC()
 		} else if event.Reason == "Scheduled" {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
+			ec.timing.LastEventTime = event.CreationTimestamp.UTC()
 		}
 	})
 	if err := ew.Start(ctx); err != nil {
@@ -192,6 +199,7 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 			Region:    node.Labels[corev1.LabelTopologyRegion],
 		})
 		ec.timing.LastScaleOutTime = node.CreationTimestamp.UTC()
+		ec.timing.LastEventTime = node.CreationTimestamp.UTC()
 
 		if ec.timing.FirstNodeCreated.IsZero() {
 			ec.timing.FirstNodeCreated = node.CreationTimestamp.UTC()
@@ -220,6 +228,7 @@ func (ec *EventCollector) watchNodes(ctx context.Context, existingNodeNames map[
 		} else {
 			ec.timing.LastScaleInTime = time.Now().UTC()
 		}
+		ec.timing.LastEventTime = ec.timing.LastScaleInTime
 		NodesDeletedTotal.Inc()
 	})
 
@@ -293,13 +302,34 @@ func (ec *EventCollector) watchPods(ctx context.Context) error {
 	return nil
 }
 
-// Wait blocks until all unscheduled pods are scheduled or the context is cancelled.
-func (ec *EventCollector) Wait(ctx context.Context) error {
-	select {
-	case <-ec.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+// Poll blocks until the context is cancelled or
+// 'CurrentTime - LastEventTime' becomes more than the 'waitPeriod'
+// i.e. there hasn't been any scaling/scheduling activity for atleast 'waitPeriod'
+func (ec *EventCollector) Poll(ctx context.Context, waitPeriod time.Duration) error {
+	pollInterval := max(waitPeriod/4, time.Second)
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			elapsed := time.Now().UTC().Sub(ec.timing.LastEventTime)
+			if elapsed < waitPeriod {
+				continue
+			}
+			log.Printf("LastEventTime was %q and no events emitted for %v, stopping.",
+				ec.timing.LastEventTime, waitPeriod,
+			)
+			ec.mu.Lock()
+			ec.computeScalingTimes()
+			ec.computeSchedulingTime()
+			ec.mu.Unlock()
+			ec.finish()
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 
@@ -378,12 +408,6 @@ func (ec *EventCollector) Results(pricingData pricingapi.InstancePricingAccess) 
 	return timeline, ec.timing, summary
 }
 
-// exitCriteriaMet checks if the sum of number of unschedulable pods (that couldn't trigger scale up)
-// and scheduled pods meets or exceeds the total number of unscheduled pods we are waiting for
-func (ec *EventCollector) exitCriteriaMet() bool {
-	return ec.unschedulablePods.Len()+ec.scheduledCount >= ec.unscheduledCounter
-}
-
 func (ec *EventCollector) podUnschedulable(podName string) {
 	if ec.unschedulablePods.Has(podName) {
 		return
@@ -391,13 +415,6 @@ func (ec *EventCollector) podUnschedulable(podName string) {
 	ec.unschedulablePods.Insert(podName)
 	log.Printf("Pod %q marked unschedulable\n", podName)
 	// log.Printf("DEBUG: Unschedulable: %d\n", len(ec.unschedulablePods))
-
-	if ec.exitCriteriaMet() {
-		ec.timing.LastPodResolved = time.Now().UTC()
-		ec.computeScalingTimes()
-		ec.computeSchedulingTime()
-		ec.finish()
-	}
 }
 
 func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
@@ -431,13 +448,6 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 	}
 	// log.Printf("DEBUG: Sched counter: %d\n", ec.scheduledCount)
 	PodsScheduledTotal.Inc()
-
-	if ec.exitCriteriaMet() {
-		ec.timing.LastPodResolved = scheduledTime
-		ec.computeScalingTimes()
-		ec.computeSchedulingTime()
-		ec.finish()
-	}
 }
 
 func (ec *EventCollector) finish() {
@@ -506,10 +516,10 @@ func (ec *EventCollector) computeScalingTimes() {
 }
 
 func (ec *EventCollector) computeSchedulingTime() {
-	if ec.timing.FirstNodeCreated.IsZero() || ec.timing.LastPodResolved.IsZero() {
+	if ec.timing.FirstNodeCreated.IsZero() || ec.timing.LastEventTime.IsZero() {
 		return
 	}
-	duration := ec.timing.LastPodResolved.Sub(ec.timing.FirstNodeCreated)
+	duration := ec.timing.LastEventTime.Sub(ec.timing.FirstNodeCreated)
 	ec.timing.SchedulingTime = duration.String()
 }
 

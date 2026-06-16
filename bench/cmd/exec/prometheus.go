@@ -48,24 +48,6 @@ var (
 		[]string{"container_name"},
 	)
 
-	// ContainerMemoryRSS tracks current RSS memory in megabytes per container.
-	ContainerMemoryRSS = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "container_memory_rss_megabytes",
-			Help: "Current RSS memory in megabytes",
-		},
-		[]string{"container_name"},
-	)
-
-	// ContainerMemoryMaxUsage tracks peak memory usage in megabytes per container.
-	ContainerMemoryMaxUsage = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "container_memory_max_usage_megabytes",
-			Help: "Peak memory usage in megabytes",
-		},
-		[]string{"container_name"},
-	)
-
 	// ContainerMemoryLimit tracks memory limit in megabytes per container.
 	ContainerMemoryLimit = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -205,8 +187,6 @@ func ServeMetrics(port int) *http.Server {
 func SetContainerMetrics(containerName string, s ContainerStats) {
 	ContainerCPUUsage.WithLabelValues(containerName).Set(float64(s.CPUMillicores))
 	ContainerMemoryUsage.WithLabelValues(containerName).Set(float64(s.MemoryMi))
-	ContainerMemoryRSS.WithLabelValues(containerName).Set(float64(s.MemoryRSSMi))
-	ContainerMemoryMaxUsage.WithLabelValues(containerName).Set(float64(s.MemoryMaxUsageMi))
 	ContainerMemoryLimit.WithLabelValues(containerName).Set(float64(s.MemoryLimitMi))
 	ContainerCPUThrottledPeriods.WithLabelValues(containerName).Set(float64(s.CPUThrottledPeriods))
 	ContainerCPUTotalPeriods.WithLabelValues(containerName).Set(float64(s.CPUTotalPeriods))
@@ -218,8 +198,6 @@ func SetContainerMetrics(containerName string, s ContainerStats) {
 func ResetContainerMetrics(containerName string) {
 	ContainerCPUUsage.WithLabelValues(containerName).Set(0)
 	ContainerMemoryUsage.WithLabelValues(containerName).Set(0)
-	ContainerMemoryRSS.WithLabelValues(containerName).Set(0)
-	ContainerMemoryMaxUsage.WithLabelValues(containerName).Set(0)
 	ContainerMemoryLimit.WithLabelValues(containerName).Set(0)
 	ContainerCPUThrottledPeriods.WithLabelValues(containerName).Set(0)
 	ContainerCPUTotalPeriods.WithLabelValues(containerName).Set(0)

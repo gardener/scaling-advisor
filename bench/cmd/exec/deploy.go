@@ -97,7 +97,9 @@ func deployPodsAndOwners(ctx context.Context, cfg *envconf.Config, pods []planne
 		}
 
 		// Ensures that CA considers this as a replicated pod
-		p.OwnerReferences[0].Controller = ptr.To(true)
+		if p.GetOwnerReferences() != nil {
+			p.OwnerReferences[0].Controller = ptr.To(true)
+		}
 		p.ResourceVersion = ""
 
 		if err := createPodOwner(ctx, cfg, p); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -204,7 +206,8 @@ func deployVolumesAndClaims(
 ) error {
 	log.Println("Deploying PVs, PVCs and StorageClasses...")
 	for _, storageClass := range clusterSnapshot.StorageClasses {
-		if err := cfg.Client().Resources().Create(ctx, &storageClass); err != nil {
+		err := cfg.Client().Resources().Create(ctx, &storageClass)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create storage class: %w", err)
 		}
 	}
@@ -212,7 +215,8 @@ func deployVolumesAndClaims(
 		if err := createNamespaceAndDefaultSA(ctx, cfg, pvcInfo.Namespace); err != nil {
 			return err
 		}
-		if err := cfg.Client().Resources().Create(ctx, volutil.AsPVC(pvcInfo)); err != nil {
+		err := cfg.Client().Resources().Create(ctx, volutil.AsPVC(pvcInfo))
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create persistent volume claim: %w", err)
 		}
 	}
@@ -241,7 +245,7 @@ func createReplicaSet(ctx context.Context, cfg *envconf.Config, owner ownerMeta)
 	rs.Spec.Template.Spec.Containers = dummyContainers
 	err := cfg.Client().Resources().Create(ctx, &rs)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed to create statefulset \"%s/%s\": %w", owner.Namespace, owner.Name, err)
+		return fmt.Errorf("failed to create replicaset \"%s/%s\": %w", owner.Namespace, owner.Name, err)
 	}
 	return nil
 }

@@ -106,18 +106,9 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 
 // stop waits for scaling to complete, then writes the final report
 // and shuts down the metrics server.
-func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.InstancePricingAccess) {
-	err := mon.ec.Wait(ctx)
-	if err != nil {
-		log.Printf("Event collector wait interrupted: %v", err)
-	}
-
-	if mon.waitForCancel {
-		for _, m := range mon.monitors {
-			ResetContainerMetrics(m.containerNamePrefix)
-		}
-		log.Println("Waiting for Ctrl+C...")
-		<-ctx.Done()
+func (mon *monitorState) stop(pricingData pricingapi.InstancePricingAccess) {
+	for _, m := range mon.monitors {
+		ResetContainerMetrics(m.containerNamePrefix)
 	}
 
 	events, timing, eventsSummary := mon.ec.Results(pricingData)
@@ -126,10 +117,9 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 	mon.meta.EndTime = time.Now().UTC()
 	log.Println("Scaling complete")
 	fmt.Printf(
-		"Reaction time: %s, ScaleIn time: %s, ScaleOut time: %s, Scheduling time: %s, Total time: %s\n",
+		"Reaction time: %s, ScaleIn time: %s, ScaleOut time: %s, Scheduling time: %s\n",
 		cmp.Or(timing.ReactionTime, "N/A"), cmp.Or(timing.ScaleInTime, "N/A"),
 		cmp.Or(timing.ScaleOutTime, "N/A"), cmp.Or(timing.SchedulingTime, "N/A"),
-		cmp.Or(mon.meta.TotalRunDuration, "N/A"),
 	)
 
 	mon.clusterStateAfter(context.Background())

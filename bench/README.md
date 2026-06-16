@@ -54,7 +54,7 @@ Available flags for `exec`:
 | `--config` | `-c` | embedded | Path to the custom kwokctl config file |
 | `--scaler-version` | `-v` | `main` | Version of the scaler to fetch |
 | `--skip-cleanup` | `-s` | `false` | Skip deleting cluster upon finishing |
-| `--wait-for-cancel` | `-w` | `false` | Wait for cancel signal after scaling completes before writing report |
+| `--wait` | `-w` | `1m` | Wait for this long for any scaling activing before finishing |
 
 While the `exec` subcommand cleans up the kwok cluster on a `SIGINT` signal, if that somehow fails then to manually stop the kwok cluster run:
 ```

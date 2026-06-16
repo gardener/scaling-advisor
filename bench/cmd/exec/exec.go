@@ -35,6 +35,18 @@ import (
 //go:embed templates/*.yaml
 var content embed.FS
 
+// ExecArgs has the flag variables and additional common variables required
+// by various methods/functions during harness run.
+type ExecArgs struct {
+	Scaler        string
+	SnapshotFile  string
+	ScenarioDir   string
+	ConfigFile    string
+	ScalerVersion string
+	WaitPeriod    string
+	SkipCleanup   bool
+}
+
 // NewExecCommand runs a scaler inside a KWOK cluster populated with data
 // from the cluster snapshot. It is the counterpart to "setup", which prepares
 // the resources and deploys the scaler image that this command consumes.
@@ -52,6 +64,11 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 			scaler, err := getScaler(execArgs.Scaler)
 			if err != nil {
 				return fmt.Errorf("cannot get scaler: %w", err)
+			}
+
+			_, err = time.ParseDuration(execArgs.WaitPeriod)
+			if err != nil {
+				return fmt.Errorf("wait time %q cannot be parsed: %v", execArgs.WaitPeriod, err)
 			}
 
 			err = benchutil.CheckIfDockerRunning()
@@ -132,10 +149,10 @@ func initArgs(execCmd *cobra.Command, execArgs *ExecArgs) {
 		"skip deleting cluster with all data upon finishing",
 	)
 
-	execCmd.Flags().BoolVarP(
-		&execArgs.WaitForCancel,
-		"wait-for-cancel", "w", false,
-		"wait for cancel signal after scaling completes before writing report",
+	execCmd.Flags().StringVarP(
+		&execArgs.WaitPeriod,
+		"wait", "w", "1m",
+		"wait for this long for any scaling activity before finishing",
 	)
 
 	execCmd.Flags().StringVarP(
@@ -200,7 +217,6 @@ func Run(
 	if err != nil {
 		return summary, fmt.Errorf("monitoring setup failed: %v", err)
 	}
-	mon.waitForCancel = args.WaitForCancel
 
 	if err := mon.start(execCtx, scaler.EventConfig()); err != nil {
 		return summary, fmt.Errorf("monitoring start failed: %v", err)
@@ -216,12 +232,18 @@ func Run(
 	}
 	log.Printf("Deployed all %d unscheduled pods", len(unscheduled))
 
+	waitPeriod, _ := time.ParseDuration(args.WaitPeriod)
+	err = mon.ec.Poll(execCtx, waitPeriod)
+	if err != nil {
+		log.Printf("Event collector wait interrupted: %v", err)
+	}
+
 	pricingFile := path.Join(args.ScenarioDir, "gen", benchutil.FileNamePricingData)
 	pricingData, err := pricing.GetInstancePricingAccess("dummy-provider", pricingFile)
 	if err != nil {
 		return summary, fmt.Errorf("error parsing pricing data: %v", err)
 	}
-	mon.stop(execCtx, pricingData)
+	mon.stop(pricingData)
 
 	// log.Println("Successfully completed!")
 	return mon.meta.Summary, nil

@@ -202,7 +202,10 @@ func buildNodePoolAndClass(
 	// This is required since karpenter has a hard validation on the pool weight
 	// being in the range 1-100. Karpenter forbids 'zero' weight so offset by 1
 	// to ensure that pools with no explicit priority still get a valid value.
-	normalisedPoolPriority := int32(math.Round(float64(nodePool.Priority*99)/float64(maxPoolPriority))) + 1
+	normalisedPoolPriority := int32(1)
+	if maxPoolPriority != 0 {
+		normalisedPoolPriority = int32(math.Round(float64(nodePool.Priority*99)/float64(maxPoolPriority))) + 1
+	}
 
 	pool := karpenterv1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{

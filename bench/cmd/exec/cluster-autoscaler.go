@@ -59,7 +59,7 @@ func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, sc
 	if err = sigyaml.Unmarshal(caKwokConfigData, &providerConfigMap); err != nil {
 		return
 	}
-	if err := cfg.Client().Resources().Create(ctx, &providerConfigMap); err != nil {
+	if err = cfg.Client().Resources().Create(ctx, &providerConfigMap); err != nil {
 		return fmt.Errorf("failed to create %s: %w", providerConfigMap.Name, err)
 	}
 
@@ -68,7 +68,7 @@ func (cae *caExec) DeployScalerData(ctx context.Context, cfg *envconf.Config, sc
 	if err != nil {
 		return fmt.Errorf("cannot load %q: %w", templateFilePath, err)
 	}
-	if err := cfg.Client().Resources().Create(ctx, &templatesConfigMap); err != nil {
+	if err = cfg.Client().Resources().Create(ctx, &templatesConfigMap); err != nil {
 		return fmt.Errorf("failed to create %s: %w", templatesConfigMap.Name, err)
 	}
 

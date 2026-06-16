@@ -46,18 +46,6 @@ type ExecScaler interface {
 	EventConfig() ScalerEventConfig
 }
 
-// ExecArgs has the flag variables — and additional common variables, then
-// passed explicitly to all callees so that no other function touches these globals.
-type ExecArgs struct {
-	Scaler        string
-	SnapshotFile  string
-	ScenarioDir   string
-	ConfigFile    string
-	ScalerVersion string
-	SkipCleanup   bool
-	WaitForCancel bool
-}
-
 // ScalerEventConfig describes the events a scaler emits and which ones
 // indicate a pod has been deemed unschedulable.
 type ScalerEventConfig struct {
@@ -85,17 +73,16 @@ type KwokctlConfigTemplateParams struct {
 // monitorState groups the resources needed for metrics collection and
 // event watching during a benchmark run.
 type monitorState struct {
-	metrics       map[string][]ContainerStats
-	ec            *EventCollector
-	wg            *sync.WaitGroup
-	server        *http.Server
-	cfg           *envconf.Config
-	meta          *RunMetadata
-	cancelStream  context.CancelFunc
-	clusterName   string
-	scenarioDir   string
-	monitors      []DockerMonitor
-	waitForCancel bool
+	metrics      map[string][]ContainerStats
+	ec           *EventCollector
+	wg           *sync.WaitGroup
+	server       *http.Server
+	cfg          *envconf.Config
+	meta         *RunMetadata
+	cancelStream context.CancelFunc
+	clusterName  string
+	scenarioDir  string
+	monitors     []DockerMonitor
 }
 
 // PrometheusConfigParams holds the parameters for the prometheus configuration template.
@@ -164,15 +151,32 @@ type ScalingEvent struct {
 
 // TimingBreakdown captures the different durations during scaling.
 type TimingBreakdown struct {
+	// Timestamp for the first 'failedScheduling' event emitted by the scheduler
+	// This is used for computing subsequent time periods such as ReactionTime,
+	// ScaleIn/OutTime and SchedulingTime
 	FirstFailedScheduling time.Time `json:"firstFailedScheduling,omitzero"`
-	FirstNodeCreated      time.Time `json:"firstNodeCreated,omitzero"`
-	LastScaleOutTime      time.Time `json:"lastScaleOutTime,omitzero"`
-	LastScaleInTime       time.Time `json:"lastScaleInTime,omitzero"`
-	LastPodResolved       time.Time `json:"lastPodResolved,omitzero"`
+	// Timestamp for the node NodeCreation to be observed, its used to compute
+	// the reaction time of the scaler
+	FirstNodeCreated time.Time `json:"firstNodeCreated,omitzero"`
+	// Timestamp when the last NodeCreated event was captured, this is used in
+	// place of scaler specific events since scalers such as cluster-autoscaler
+	// emit 'ScaleUp' events very late in comparison to the time it takes for the
+	// kwok provider to actually bring up a node.
+	LastScaleOutTime time.Time `json:"lastScaleOutTime,omitzero"`
+	// Timestamp when the last NodeDeleted event was captured
+	LastScaleInTime time.Time `json:"lastScaleInTime,omitzero"`
+	// Timestamp when any scaling relevant event was most recently raised
+	// Used to see if the harness execution (and thereby the scaler and the
+	// scheduler) is in an idle state and hence can be stopped.
+	LastEventTime time.Time `json:"lastEventTime,omitzero"`
 
-	ReactionTime   string `json:"reactionTime"`
-	ScaleOutTime   string `json:"scaleOutTime"`
-	ScaleInTime    string `json:"scaleInTime"`
+	// FirstNodeCreated - FirstFailedScheduling
+	ReactionTime string `json:"reactionTime"`
+	// LastScaleOutTime - FirstFailedScheduling
+	ScaleOutTime string `json:"scaleOutTime"`
+	// LastScaleInTime - FirstFailedScheduling
+	ScaleInTime string `json:"scaleInTime"`
+	// LastEventTime - FirstNodeCreated
 	SchedulingTime string `json:"schedulingTime"`
 }
 
@@ -222,8 +226,6 @@ type ContainerStats struct {
 	Timestamp           time.Time
 	CPUMillicores       uint64
 	MemoryMi            uint64
-	MemoryRSSMi         uint64
-	MemoryMaxUsageMi    uint64
 	MemoryLimitMi       uint64
 	CPUThrottledPeriods uint64
 	CPUTotalPeriods     uint64
@@ -286,7 +288,10 @@ type NodesSummary struct {
 	TotalHourlyPrice float64                    `json:"totalHourlyPrice"`
 }
 
-// Summary holds the structured summary of the benchmark run.
+// Summary holds the structured summary of the benchmark run detailing
+// the timeline for scaling and scheduling events during the run, summary
+// for various scaler and pod/node events, alongwith a before/after comparison
+// of the cluster state.
 type Summary struct {
 	ScalingTimeline TimingBreakdown `json:"scalingTimeline"`
 	Events          EventsSummary   `json:"events"`
