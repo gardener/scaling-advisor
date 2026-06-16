@@ -19,6 +19,7 @@ import (
 
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
@@ -59,7 +60,7 @@ func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clu
 
 // start begins Docker stats streaming, serves Prometheus metrics, and
 // starts the EventCollector. It should be called after newMonitor.
-func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfig) error {
+func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfig, dsPods sets.Set[string]) error {
 	mon.server = ServeMetrics(benchutil.PrometheusPort)
 
 	streamCtx, cancelStream := context.WithCancel(ctx)
@@ -97,7 +98,7 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 	}()
 
 	log.Println("Starting event collection and measuring scaling timeline...")
-	mon.ec = NewEventCollector(mon.cfg.Client().Resources(), mon.meta.Summary.ClusterState.Before.UnscheduledNonDaemonSetPods, eventConfig)
+	mon.ec = NewEventCollector(mon.cfg.Client().Resources(), eventConfig, dsPods)
 	if err := mon.ec.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start event collector: %w", err)
 	}

@@ -193,7 +193,7 @@ func Run(
 		return summary, fmt.Errorf("error deploying nodes: %v", err)
 	}
 
-	scheduled, unscheduled, daemonSetPodCount := partitionPods(clusterSnapshot.Pods)
+	scheduled, unscheduled, daemonSetPods := partitionPods(clusterSnapshot.Pods)
 
 	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
 	if err := deployPodsAndOwners(execCtx, cfg, scheduled); err != nil {
@@ -210,7 +210,7 @@ func Run(
 	meta.Summary.ClusterState.Before = ClusterStats{
 		NodeCount:                   len(clusterSnapshot.Nodes),
 		ScheduledPods:               len(scheduled),
-		UnscheduledNonDaemonSetPods: len(unscheduled) - daemonSetPodCount,
+		UnscheduledNonDaemonSetPods: len(unscheduled) - len(daemonSetPods),
 	}
 
 	mon, err := newMonitor(execCtx, cfg, &meta, clusterName, args.ScenarioDir)
@@ -218,7 +218,7 @@ func Run(
 		return summary, fmt.Errorf("monitoring setup failed: %v", err)
 	}
 
-	if err := mon.start(execCtx, scaler.EventConfig()); err != nil {
+	if err := mon.start(execCtx, scaler.EventConfig(), daemonSetPods); err != nil {
 		return summary, fmt.Errorf("monitoring start failed: %v", err)
 	}
 	defer mon.ec.Stop()

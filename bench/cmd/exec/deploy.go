@@ -20,6 +20,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
@@ -146,11 +147,12 @@ func createPodOwner(ctx context.Context, cfg *envconf.Config, pod *corev1.Pod) e
 	return nil
 }
 
-func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo, daemonSetPodCount int) {
+func partitionPods(pods []planner.PodInfo) (scheduled, unscheduled []planner.PodInfo, daemonSetPods sets.Set[string]) {
+	daemonSetPods = sets.New[string]()
 	for _, podInfo := range pods {
 		if podInfo.NodeName == "" {
 			if isOwner(podInfo.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
-				daemonSetPodCount++
+				daemonSetPods.Insert(podInfo.Namespace + "/" + podInfo.Name)
 			}
 			unscheduled = append(unscheduled, podInfo)
 		} else {

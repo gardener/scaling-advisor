@@ -200,7 +200,10 @@ type EventCollector struct {
 	timing                 TimingBreakdown
 	eventConfig            ScalerEventConfig
 	watchers               []*watcher.EventHandlerFuncs
-	events                 []ScalingEvent
+	// Set of NamespacedName for DaemonSet Pods is cached for quick check whether an
+	// event was raised for a daemonset pod
+	daemonSetPods sets.Set[string]
+	events        []ScalingEvent
 	// unscheduledCounter is initialised with the count of unscheduled non-daemonset
 	// pods, the counter is updated for recreated pre-empted pods or pods that were
 	// deleted due to node deletion.

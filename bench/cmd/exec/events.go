@@ -22,13 +22,18 @@ import (
 )
 
 // NewEventCollector creates an EventCollector that watches for scaling events.
-func NewEventCollector(res *resources.Resources, unscheduledCount int, eventConfig ScalerEventConfig) *EventCollector {
+func NewEventCollector(
+	res *resources.Resources,
+	eventConfig ScalerEventConfig,
+	dsPods sets.Set[string],
+) *EventCollector {
 	// log.Printf("DEBUG: Unsched counter initial: %d\n", unscheduledCount)
 	return &EventCollector{
 		res:                res,
-		unscheduledCounter: unscheduledCount,
+		unscheduledCounter: len(dsPods),
 		eventConfig:        eventConfig,
 		done:               make(chan struct{}),
+		daemonSetPods:      dsPods,
 	}
 }
 
@@ -117,7 +122,7 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 			})
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
 		} else if source == cfg.Source && slices.Contains(cfg.WatchedEvents, event.Reason) {
-			ec.processScalerEvent(ctx, cfg, source, event)
+			ec.processScalerEvent(cfg, source, event)
 			ec.timing.LastEventTime = event.CreationTimestamp.UTC()
 		} else if event.Reason == "Scheduled" {
 			log.Printf("%s | %s : %s", event.Reason, event.InvolvedObject.Name, event.Message)
@@ -131,7 +136,7 @@ func (ec *EventCollector) watchEvents(ctx context.Context) error {
 	return nil
 }
 
-func (ec *EventCollector) processScalerEvent(ctx context.Context, eCfg ScalerEventConfig, source string, event *corev1.Event) {
+func (ec *EventCollector) processScalerEvent(eCfg ScalerEventConfig, source string, event *corev1.Event) {
 	// Karpenter produces a very hefty message for its 'FailedScheduling' events
 	// detailing out all the constraints that failed, this can bloat up the events
 	// file. If this information is needed, logs can be checked.
@@ -153,14 +158,8 @@ func (ec *EventCollector) processScalerEvent(ctx context.Context, eCfg ScalerEve
 
 	if slices.Contains(eCfg.MarksPodUnschedulable, event.Reason) {
 		key := event.InvolvedObject.Namespace + "/" + event.InvolvedObject.Name
-		var pod corev1.Pod
-		err := ec.res.Get(ctx, event.InvolvedObject.Name, event.InvolvedObject.Namespace, &pod)
-		if err != nil {
-			log.Printf("ERR: could not fetch pod %q: %s", key, err.Error())
-			return
-		}
 		// If its a daemonset pod, then its not tracked
-		if !isOwner(pod.GetOwnerReferences(), benchutil.OwnerDaemonSet) {
+		if !ec.daemonSetPods.Has(key) {
 			ec.podUnschedulable(key)
 		}
 	}
