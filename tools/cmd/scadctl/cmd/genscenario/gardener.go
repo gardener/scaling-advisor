@@ -32,8 +32,6 @@ import (
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v2"
-	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -73,8 +71,6 @@ type ShootAccess interface {
 	ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) ([]corev1.Node, error)
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
 	ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeSystemComponents bool) ([]corev1.Pod, error)
-	// ListPodOwners fetches the pod owners on a shoot cluster having more than 0 desired replicas.
-	ListPodOwners(ctx context.Context, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error)
 	// ListPVs fetches the persistent volumes on a shoot cluster.
 	ListPVs(ctx context.Context) ([]planner.PVInfo, error)
 	// ListPVCs fetches the persistent volume claims on a shoot cluster.
@@ -427,80 +423,6 @@ func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, e
 	return
 }
 
-func (a *access) ListPodOwners(ctx context.Context, excludeSystemComponents bool) ([]planner.PodOwnerInfo, error) {
-	var (
-		replicaSetList  appsv1.ReplicaSetList
-		statefulSetList appsv1.StatefulSetList
-		jobList         batchv1.JobList
-	)
-	listOpts := &client.ListOptions{}
-	if excludeSystemComponents {
-		listOpts.FieldSelector = fields.OneTermNotEqualSelector("metadata.namespace", metav1.NamespaceSystem)
-	}
-
-	err := a.shootClient.List(ctx, &replicaSetList, listOpts)
-	if err != nil {
-		return nil, err
-	}
-	err = a.shootClient.List(ctx, &statefulSetList, listOpts)
-	if err != nil {
-		return nil, err
-	}
-	err = a.shootClient.List(ctx, &jobList, listOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	owners := make([]planner.PodOwnerInfo,
-		0,
-		len(replicaSetList.Items)+len(statefulSetList.Items)+len(jobList.Items),
-	)
-
-	for _, rSet := range replicaSetList.Items {
-		if ptr.Deref(rSet.Spec.Replicas, 0) == 0 && rSet.Status.Replicas == 0 {
-			continue
-		}
-		owners = append(owners, planner.PodOwnerInfo{
-			Name:            rSet.Name,
-			Namespace:       rSet.Namespace,
-			Kind:            "ReplicaSet",
-			Selector:        rSet.Spec.Selector,
-			TargetReplicas:  rSet.Spec.Replicas,
-			CurrentReplicas: rSet.Status.Replicas,
-		})
-	}
-
-	for _, sSet := range statefulSetList.Items {
-		if ptr.Deref(sSet.Spec.Replicas, 0) == 0 && sSet.Status.Replicas == 0 {
-			continue
-		}
-		owners = append(owners, planner.PodOwnerInfo{
-			Name:            sSet.Name,
-			Namespace:       sSet.Namespace,
-			Kind:            "StatefulSet",
-			Selector:        sSet.Spec.Selector,
-			TargetReplicas:  sSet.Spec.Replicas,
-			CurrentReplicas: sSet.Status.Replicas,
-		})
-	}
-
-	for _, j := range jobList.Items {
-		if ptr.Deref(j.Spec.Completions, 0) == 0 && j.Status.Active == 0 {
-			continue
-		}
-		owners = append(owners, planner.PodOwnerInfo{
-			Name:           j.Name,
-			Namespace:      j.Namespace,
-			Kind:           "Job",
-			Selector:       j.Spec.Selector,
-			TargetReplicas: j.Spec.Completions,
-			// TODO: check this
-			CurrentReplicas: j.Status.Active,
-		})
-	}
-	return owners, nil
-}
-
 func (a *access) ListPVs(ctx context.Context) ([]planner.PVInfo, error) {
 	var pvList corev1.PersistentVolumeList
 	err := a.shootClient.List(ctx, &pvList)
@@ -607,11 +529,6 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
-	snap.PodOwners, err = a.ListPodOwners(ctx, excludeSystemComponents)
-	if err != nil {
-		return snap, fmt.Errorf("failed to list pod owners: %w", err)
-	}
-
 	snap.PVs, err = a.ListPVs(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pvs: %w", err)

@@ -126,9 +126,6 @@ type ClusterSnapshot struct {
 	Pods []PodInfo `json:"pods,omitempty"`
 	// Nodes are the nodes that are present in the cluster.
 	Nodes []NodeInfo `json:"nodes,omitempty"`
-	// PodOwners contain the metadata and the replica count for each kind of pod ownerReference.
-	// Currently includes ReplicaSet, StatefulSet and Jobs.
-	PodOwners []PodOwnerInfo `json:"podOwners,omitempty"`
 	// PVs are the information about PersistentVolumes in the cluster. Should not contain deleted PVs.
 	// Should only contain *bound* PVs ie those with populated claimRef.
 	PVs []PVInfo `json:"pvs,omitempty"`
@@ -262,20 +259,6 @@ func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, e
 		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],
 	}
 	return
-}
-
-// PodOwnerInfo encapsulates the different owners for a pod object with the minimal
-// metadata necessary for reconstruction of the owner object. This includes owners such
-// as 'ReplicaSet', 'StatefulSet', 'Job' etc.
-// This data is currently used by the benchmarking harness to reconstruct the
-// pod owners, allowing cluster-autoscaler to perform scale-in correctly.
-type PodOwnerInfo struct {
-	Selector        *metav1.LabelSelector `json:"selector,omitzero"`
-	TargetReplicas  *int32                `json:"targetReplicas,omitzero"`
-	Name            string                `json:"name"`
-	Namespace       string                `json:"namespace"`
-	Kind            string                `json:"kind"`
-	CurrentReplicas int32                 `json:"currentReplicas,omitzero"`
 }
 
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
