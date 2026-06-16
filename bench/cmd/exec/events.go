@@ -396,7 +396,6 @@ func (ec *EventCollector) podUnschedulable(podName string) {
 		ec.timing.LastPodResolved = time.Now().UTC()
 		ec.computeScalingTimes()
 		ec.computeSchedulingTime()
-		ec.computeTotalDuration()
 		ec.finish()
 	}
 }
@@ -437,7 +436,6 @@ func (ec *EventCollector) podScheduled(pod *corev1.Pod) {
 		ec.timing.LastPodResolved = scheduledTime
 		ec.computeScalingTimes()
 		ec.computeSchedulingTime()
-		ec.computeTotalDuration()
 		ec.finish()
 	}
 }
@@ -513,14 +511,6 @@ func (ec *EventCollector) computeSchedulingTime() {
 	}
 	duration := ec.timing.LastPodResolved.Sub(ec.timing.FirstNodeCreated)
 	ec.timing.SchedulingTime = duration.String()
-}
-
-func (ec *EventCollector) computeTotalDuration() {
-	if ec.timing.FirstFailedScheduling.IsZero() || ec.timing.LastPodResolved.IsZero() {
-		return
-	}
-	duration := ec.timing.LastPodResolved.Sub(ec.timing.FirstFailedScheduling)
-	ec.timing.TotalDuration = duration.String()
 }
 
 func isOwner(owners []metav1.OwnerReference, kind string) bool {

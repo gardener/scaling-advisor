@@ -232,7 +232,6 @@ func constructNodeClaimForNode(
 
 // deployKarpenterPools loads a NodePoolList from a YAML file and creates each
 // NodePool in the cluster.
-// TODO: clean up the kubernetes.io related labels
 func deployKarpenterPools(ctx context.Context, cfg *envconf.Config, poolsFilePath string) error {
 	log.Printf("Deploying karpenter nodePools %q...\n", poolsFilePath)
 

@@ -129,7 +129,7 @@ func (mon *monitorState) stop(ctx context.Context, pricingData pricingapi.Instan
 		"Reaction time: %s, ScaleIn time: %s, ScaleOut time: %s, Scheduling time: %s, Total time: %s\n",
 		cmp.Or(timing.ReactionTime, "N/A"), cmp.Or(timing.ScaleInTime, "N/A"),
 		cmp.Or(timing.ScaleOutTime, "N/A"), cmp.Or(timing.SchedulingTime, "N/A"),
-		cmp.Or(timing.TotalDuration, "N/A"),
+		cmp.Or(mon.meta.TotalRunDuration, "N/A"),
 	)
 
 	mon.clusterStateAfter(context.Background())

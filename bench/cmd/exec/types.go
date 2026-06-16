@@ -174,7 +174,6 @@ type TimingBreakdown struct {
 	ScaleOutTime   string `json:"scaleOutTime"`
 	ScaleInTime    string `json:"scaleInTime"`
 	SchedulingTime string `json:"schedulingTime"`
-	TotalDuration  string `json:"totalDuration"`
 }
 
 type podSchedulingDuration struct {
