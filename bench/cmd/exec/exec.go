@@ -179,7 +179,7 @@ func Run(
 	scheduled, unscheduled, daemonSetPodCount := partitionPods(clusterSnapshot.Pods)
 
 	log.Printf("Deploying scheduled pods, count %d...", len(scheduled))
-	if err := deployPods(execCtx, cfg, scheduled); err != nil {
+	if err := deployPodsAndOwners(execCtx, cfg, scheduled); err != nil {
 		return summary, fmt.Errorf("error deploying scheduled pods: %v", err)
 	}
 	log.Printf("Deployed all %d scheduled pods", len(scheduled))
@@ -208,7 +208,7 @@ func Run(
 	defer mon.ec.Stop()
 
 	log.Printf("Deploying unscheduled pods, count %d...", len(unscheduled))
-	if err := deployPods(execCtx, cfg, unscheduled); err != nil {
+	if err := deployPodsAndOwners(execCtx, cfg, unscheduled); err != nil {
 		return summary, fmt.Errorf("error deploying unscheduled pods: %v", err)
 	}
 	for _, p := range unscheduled {
