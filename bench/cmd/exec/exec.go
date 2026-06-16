@@ -82,7 +82,7 @@ func NewExecCommand(_ context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, cmdArgs []string) (err error) {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			cmd.SilenceUsage = true
 
 			clusterName := execArgs.Scaler + "-" + time.Now().UTC().Format("20060102T150405Z")

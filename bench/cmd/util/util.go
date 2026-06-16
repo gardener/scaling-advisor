@@ -136,6 +136,8 @@ func CheckIfImageExists(imageName string) (skipBuild bool) {
 	return false
 }
 
+// PullDockerImage checks if the specified image with the tag already exists,
+// if not it fetches it by running 'docker pull'.
 func PullDockerImage(image string) error {
 	if exists := CheckIfImageExists(image); exists {
 		return nil

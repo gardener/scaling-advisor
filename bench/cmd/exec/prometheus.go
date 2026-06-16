@@ -13,6 +13,7 @@ import (
 	"text/template"
 
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

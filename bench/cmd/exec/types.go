@@ -102,9 +102,9 @@ type monitorState struct {
 type prometheusConfigParams struct {
 	HostIP            string
 	ScrapeInterval    string
-	Port              int
 	ClusterName       string
 	ScalerName        string
+	Port              int
 	ScalerMetricsPort int
 }
 
