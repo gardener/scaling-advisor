@@ -35,12 +35,6 @@ func NewEventCollector(res *resources.Resources, unscheduledCount int, eventConf
 // Start begins three watches: Events, Nodes (Add/Update/Delete) and
 // Pods (Scheduled/Deleted).
 func (ec *EventCollector) Start(ctx context.Context) error {
-	// FIXME: this breaks scale-in testing
-	// if ec.unscheduledCounter <= 0 {
-	// 	ec.finish()
-	// 	return nil
-	// }
-
 	existingNodes := &corev1.NodeList{}
 	if err := ec.res.List(ctx, existingNodes); err != nil {
 		return err
@@ -328,6 +322,11 @@ func (ec *EventCollector) Poll(ctx context.Context, waitPeriod time.Duration) er
 			ec.finish()
 			return nil
 		case <-ctx.Done():
+			ec.mu.Lock()
+			ec.computeScalingTimes()
+			ec.computeSchedulingTime()
+			ec.mu.Unlock()
+			ec.finish()
 			return ctx.Err()
 		}
 	}

@@ -80,7 +80,7 @@ func (ke *karpenterExec) DeployNodes(ctx context.Context, cfg *envconf.Config, s
 		}
 	}
 	// Wait until len(NodeClaimList.Items) == len(NodeList.Items) or for 5s?
-	// TODO: check if this can be done with the nodeList (owner gives the old name)?
+	// TODO/FIXME/HACK: check if this can be done with the nodeList (owner gives the old name)?
 	nodeMultDuration := time.Duration(50*len(snapshot.Nodes)) * time.Millisecond
 	time.Sleep(max(nodeMultDuration, 5*time.Second))
 	err = cfg.Client().Resources().List(ctx, &nodeClaimList)
