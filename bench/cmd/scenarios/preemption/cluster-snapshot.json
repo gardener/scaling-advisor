@@ -241,19 +241,5 @@
                 }
             ]
         }
-    ],
-    "podOwners": [
-        {
-            "selector": {
-                "matchLabels": {
-                    "app.kubernetes.io/name": "test"
-                }
-            },
-            "targetReplicas": 6,
-            "name": "owner-replica-set",
-            "namespace": "default",
-            "kind": "ReplicaSet",
-            "currentReplicas": 6
-        }
     ]
 }

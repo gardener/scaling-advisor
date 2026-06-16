@@ -271,6 +271,7 @@ func createJob(ctx context.Context, cfg *envconf.Config, owner ownerMeta) error 
 	job.Namespace = owner.Namespace
 	job.UID = owner.UID
 	job.Spec.Template.Spec.Containers = dummyContainers
+	job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 	err := cfg.Client().Resources().Create(ctx, &job)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create job \"%s/%s\": %w", owner.Namespace, owner.Name, err)
