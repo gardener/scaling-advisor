@@ -13,7 +13,6 @@ spec:
           values:
             - m5.large
           priority: 0
-      priority: 0
   nodeTemplates:
     - architecture: amd64
       capacity:

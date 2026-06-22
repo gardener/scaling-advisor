@@ -292,7 +292,7 @@ spec:
                     description: ScaleIn is the scale-in feedback from life-cycle
                       manager when applying [ScaleInPlan]
                     properties:
-                      acceptedNodesNames:
+                      acceptedNodeNames:
                         description: |-
                           AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
                           Required to be specified, since if empty, the ScaleInFeedback itself should not be populated.
@@ -300,7 +300,7 @@ spec:
                           type: string
                         type: array
                     required:
-                    - acceptedNodesNames
+                    - acceptedNodeNames
                     type: object
                   scaleOut:
                     description: |-
@@ -314,7 +314,7 @@ spec:
                           properties:
                             backoffUntil:
                               description: |-
-                                BackoffUtil if populated, represents the time until the scaling-advisor will not consider the corresponding
+                                BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding
                                 [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s
                               format: date-time
                               type: string

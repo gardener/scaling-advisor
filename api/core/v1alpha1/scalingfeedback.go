@@ -39,13 +39,14 @@ type ScaleOutFeedback struct {
 }
 
 // ScaleOutItemFeedback is the feedback from the life cycle manager when applying an individual [ScaleOutItem]
+// TODO: elaborate on various stages of processing of the [ScaleOutItem] by the lifecycle manager and how it relates to [ScaleOutItemFeedback]
 type ScaleOutItemFeedback struct {
 	// CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available
 	// for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,
 	// this field is mandatory to be set inside all [ScaleOutItemFeedback]
 	// +required
 	CreationDeadline metav1.Time `json:"creationDeadline"`
-	// BackoffUtil if populated, represents the time until the scaling-advisor will not consider the corresponding
+	// BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding
 	// [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s
 	// +optional
 	BackoffUntil *metav1.Time `json:"backoffUntil,omitempty"`
@@ -65,5 +66,5 @@ type ScaleInFeedback struct {
 	// AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
 	// Required to be specified, since if empty, the ScaleInFeedback itself should not be populated.
 	// +required
-	AcceptedNodesNames []string `json:"acceptedNodesNames"`
+	AcceptedNodeNames []string `json:"acceptedNodeNames"`
 }

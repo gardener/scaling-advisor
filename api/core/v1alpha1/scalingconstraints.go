@@ -42,7 +42,7 @@ type ScalingConstraintList struct {
 type ScalingConstraintSpec struct {
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	NodePools []NodePool `json:"nodePools,omitempty"`
-	// NodeTemplates is the slice of all NodeTemplates used within the scaling constraint spec.
+	// NodeTemplates is the slice of all NodeTemplates that can be used for selecting instances associated with each NodePool.
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 }
 
@@ -104,7 +104,7 @@ type NodePoolRequirement struct {
 	// +required
 	Operator NodePoolRequirementOperator `json:"operator"`
 	// Values is an array of string values. If the operator is "In" or "NotIn",
-	// the values array must be non-empty. If the operator is "Exists" or "DoesNotExist:,
+	// the values array must be non-empty. If the operator is "Exists" or "DoesNotExist",
 	// the values array must be empty. If the operator is "Gt" or "Lt", the values
 	// array must have a single element, which will be interpreted as an integer.
 	// This array is replaced during a strategic merge patch.

@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -179,14 +178,17 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 
 // CreateAllNodeTemplates creates and returns a slice of [plannerapi.ScaleOutNodeTemplate] for all the possible combinations of NodePools, NodeTemplates and availability zones
 func CreateAllNodeTemplates(sc *sacorev1alpha1.ScalingConstraint) []plannerapi.ScaleOutNodeTemplate {
-	npToTemplates := scalingconstraintutil.NodePoolToNodeTemplates(sc)
+	npToTemplates := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec)
 	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0)
 	for _, np := range sc.Spec.NodePools {
 		if len(np.AvailabilityZones) == 0 {
 			continue
 		}
 		for _, nt := range npToTemplates[np.Name] {
-			matchingReq, _ := findMatchingRequirement(nt, np.Requirements) //Needed to extract the priority of the matching requirement for the node template to be used in the ScaleOutNodeTemplate's PriorityKey.Second
+			matchingReq, found := findHighestPrioMatchingRequirement(nt, np.Requirements) //Needed to extract the priority of the matching requirement for the node template to be used in the ScaleOutNodeTemplate's PriorityKey.Second
+			if !found {
+				continue
+			}
 			for _, az := range np.AvailabilityZones {
 				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az, matchingReq.Priority))
 			}
@@ -195,43 +197,18 @@ func CreateAllNodeTemplates(sc *sacorev1alpha1.ScalingConstraint) []plannerapi.S
 	return allNodeTemplates
 }
 
-func findMatchingRequirement(nt sacorev1alpha1.NodeTemplate, requirements []sacorev1alpha1.NodePoolRequirement) (sacorev1alpha1.NodePoolRequirement, bool) {
+func findHighestPrioMatchingRequirement(nt sacorev1alpha1.NodeTemplate, requirements []sacorev1alpha1.NodePoolRequirement) (sacorev1alpha1.NodePoolRequirement, bool) {
 	var best sacorev1alpha1.NodePoolRequirement
 	found := false
 	for _, req := range requirements {
-		if nodeTemplateMatchesRequirement(nt, req) {
-			if !found || req.Priority > best.Priority {
+		if scalingconstraintutil.NodeTemplateMatchesRequirement(nt, req) {
+			if !false || req.Priority >= best.Priority {
 				best = req
 				found = true
 			}
 		}
 	}
 	return best, found
-}
-
-func nodeTemplateMatchesRequirement(nt sacorev1alpha1.NodeTemplate, req sacorev1alpha1.NodePoolRequirement) bool {
-	var val string
-	switch req.Key {
-	case "node.kubernetes.io/instance-type":
-		val = nt.InstanceType
-	case "kubernetes.io/arch":
-		val = nt.Architecture
-	default:
-		return false
-	}
-
-	switch req.Operator {
-	case sacorev1alpha1.NodePoolRequirementOpIn:
-		return slices.Contains(req.Values, val)
-	case sacorev1alpha1.NodePoolRequirementOpNotIn:
-		return !slices.Contains(req.Values, val)
-	case sacorev1alpha1.NodePoolRequirementOpExists:
-		return val != ""
-	case sacorev1alpha1.NodePoolRequirementOpDoesNotExist:
-		return val == ""
-	default:
-		return false
-	}
 }
 
 // GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
@@ -243,8 +220,9 @@ func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTem
 		group, ok := templatesByPriority[pk]
 		if !ok {
 			group = []plannerapi.ScaleOutNodeTemplate{t}
+		} else {
+			group = append(group, t)
 		}
-		group = append(group, t)
 		templatesByPriority[pk] = group
 	}
 	return templatesByPriority
