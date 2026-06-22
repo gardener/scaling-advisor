@@ -443,7 +443,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
-	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(sc)
+	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec)
 
 	for _, node := range nodes {
 		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]

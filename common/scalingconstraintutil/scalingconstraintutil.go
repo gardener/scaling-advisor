@@ -8,37 +8,39 @@ import (
 	"slices"
 
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // NodePoolToNodeTemplates returns a map of NodePool.Name to the matching NodeTemplates
 // from sc.Spec.NodeTemplates, based on each pool's Requirements.
-func NodePoolToNodeTemplates(sc *sacorev1alpha1.ScalingConstraint) map[string][]sacorev1alpha1.NodeTemplate {
-	result := make(map[string][]sacorev1alpha1.NodeTemplate, len(sc.Spec.NodePools))
-	for _, np := range sc.Spec.NodePools {
-		for _, nt := range sc.Spec.NodeTemplates {
+func NodePoolToNodeTemplates(sc *sacorev1alpha1.ScalingConstraintSpec) map[string][]sacorev1alpha1.NodeTemplate {
+	poolTemplateMap := make(map[string][]sacorev1alpha1.NodeTemplate, len(sc.NodePools))
+	for _, np := range sc.NodePools {
+		for _, nt := range sc.NodeTemplates {
 			if nodeTemplateMatchesRequirements(nt, np.Requirements) {
-				result[np.Name] = append(result[np.Name], nt)
+				poolTemplateMap[np.Name] = append(poolTemplateMap[np.Name], nt)
 			}
 		}
 	}
-	return result
+	return poolTemplateMap
 }
 
 func nodeTemplateMatchesRequirements(nt sacorev1alpha1.NodeTemplate, requirements []sacorev1alpha1.NodePoolRequirement) bool {
 	for _, req := range requirements {
-		if !nodeTemplateMatchesRequirement(nt, req) {
+		if !NodeTemplateMatchesRequirement(nt, req) {
 			return false
 		}
 	}
 	return true
 }
 
-func nodeTemplateMatchesRequirement(nt sacorev1alpha1.NodeTemplate, req sacorev1alpha1.NodePoolRequirement) bool {
+// NodeTemplateMatchesRequirement checks if a given NodeTemplate matches a NodePoolRequirement.
+func NodeTemplateMatchesRequirement(nt sacorev1alpha1.NodeTemplate, req sacorev1alpha1.NodePoolRequirement) bool {
 	var val string
 	switch req.Key {
-	case "node.kubernetes.io/instance-type":
+	case corev1.LabelInstanceTypeStable:
 		val = nt.InstanceType
-	case "kubernetes.io/arch":
+	case corev1.LabelArchStable:
 		val = nt.Architecture
 	default:
 		return false
@@ -60,8 +62,8 @@ func nodeTemplateMatchesRequirement(nt sacorev1alpha1.NodeTemplate, req sacorev1
 
 // GetNodePlacements computes and returns all the possible `NodePlacement`s for this NodePool.
 func GetNodePlacements(sc sacorev1alpha1.ScalingConstraint) map[string][]sacorev1alpha1.NodePlacement {
-	result := make(map[string][]sacorev1alpha1.NodePlacement, len(sc.Spec.NodePools))
-	npToNodeTemplate := NodePoolToNodeTemplates(&sc)
+	poolPlacementMap := make(map[string][]sacorev1alpha1.NodePlacement, len(sc.Spec.NodePools))
+	npToNodeTemplate := NodePoolToNodeTemplates(&sc.Spec)
 	for _, np := range sc.Spec.NodePools {
 		placements := make([]sacorev1alpha1.NodePlacement, 0, len(npToNodeTemplate[np.Name])*len(np.AvailabilityZones))
 		for _, nt := range npToNodeTemplate[np.Name] {
@@ -75,7 +77,7 @@ func GetNodePlacements(sc sacorev1alpha1.ScalingConstraint) map[string][]sacorev
 				})
 			}
 		}
-		result[np.Name] = placements
+		poolPlacementMap[np.Name] = placements
 	}
-	return result
+	return poolPlacementMap
 }
