@@ -35,8 +35,6 @@ var (
 	// ErrCreateView is a sentinel error indicating that view creation failed.
 	ErrCreateView = errors.New("cannot create view")
 	// ErrObjectDeleted is an internal sentinel returned by sandbox views to indicate that the
-	// requested object has been tombstoned (deleted from the sandbox's perspective). Public
-	// View methods translate this into the standard apierrors.NewNotFound error so callers
-	// observe normal Kubernetes "object not found" semantics.
+	// requested object has been tombstoned.
 	ErrObjectDeleted = errors.New("object was deleted from this view")
 )

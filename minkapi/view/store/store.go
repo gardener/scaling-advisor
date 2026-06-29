@@ -76,8 +76,7 @@ func (s *InMemResourceStore) Reset() error {
 
 // Add adds the given metav1 Object to this store, setting the right resource version, updating
 // the resource version counter and broadcasting the Add event to any watchers. If a tombstone
-// (a [cache.DeletedFinalStateUnknown] entry) was previously left at this key by MarkForDelete,
-// it is implicitly cleared by the cache.Add call (the wrapper is replaced by the new object).
+// (a [cache.DeletedFinalStateUnknown] entry) was previously left at this key, it is implicitly cleared.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object, opts minkapi.ObjectOptions) error {
 	s.mu.Lock()
@@ -175,9 +174,8 @@ func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectNam
 // GetByKey gets the object identified by the given key from the store and returns the same as
 // a runtime.Object. Three outcomes:
 //   - The key holds a live object → returns the typed runtime.Object, nil error.
-//   - The key was previously deleted via MarkForDelete (a [cache.DeletedFinalStateUnknown]
-//     marker is parked at this key) → returns nil and a wrapped [minkapi.ErrObjectDeleted] so
-//     callers can distinguish "tombstoned" from "never existed."
+//   - The key was previously deleted → returns nil and a wrapped [minkapi.ErrObjectDeleted]
+//     so callers can distinguish "tombstoned" from "never existed."
 //   - The key was never created → returns nil and a standard apierrors.NotFound.
 func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtime.Object, err error) {
 	s.mu.Lock()
@@ -367,7 +365,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 // [minkapi.ErrObjectDeleted]; List/Watch initial-list skip the entry). Re-Add of the same key
 // implicitly clears the tombstone (the wrapper is replaced by the new object).
 //
-// MarkForDelete returns apierrors.NotFound when the key is already tombstoned or never existed.
+// markForDelete returns apierrors.NotFound when the key is already tombstoned or never existed.
 func (s *InMemResourceStore) markForDelete(ctx context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -406,8 +404,8 @@ func (s *InMemResourceStore) markForDelete(ctx context.Context, key string) erro
 	return nil
 }
 
-// isTombstone reports whether obj is a [cache.DeletedFinalStateUnknown] marker placed by
-// MarkForDelete. Accepts both value and pointer forms for robustness.
+// isTombstone reports whether obj is a [cache.DeletedFinalStateUnknown] marker.
+// Accepts both value and pointer forms for robustness.
 func isTombstone(obj any) bool {
 	switch obj.(type) {
 	case cache.DeletedFinalStateUnknown, *cache.DeletedFinalStateUnknown:

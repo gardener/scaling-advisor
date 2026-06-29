@@ -67,19 +67,20 @@ type ResourceStore interface {
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
-	// Add adds a new object to the store using the given opts.
+	// Add adds a new object to the store using the given [ObjectOptions].
 	Add(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// GetByKey retrieves an object from the store by its key.
 	GetByKey(ctx context.Context, key string) (o runtime.Object, err error)
 	// Get retrieves an object from the store by its name.
 	Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error)
-	// Update updates an existing object in the store using the given opts.
+	// Update updates an existing object in the store using the given [ObjectOptions].
 	Update(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// DeleteByKey deletes an object from the store by its key.
 	DeleteByKey(ctx context.Context, key string) error
-	// Delete deletes an object from the store by its name.
+	// Delete deletes an object from the store by its name using the given [ObjectOptions].
 	Delete(ctx context.Context, objName cache.ObjectName, opts ObjectOptions) error
-	// DeleteObjects deletes objects matching the given criteria and returns the count of deleted objects.
+	// DeleteObjects deletes objects matching the given criteria, using given [ObjectOptions]
+	// and returns the count of deleted objects.
 	DeleteObjects(ctx context.Context, c MatchCriteria, opts ObjectOptions) (delCount int, err error)
 	// List lists objects matching the given criteria.
 	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
