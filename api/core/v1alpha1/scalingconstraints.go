@@ -41,8 +41,10 @@ type ScalingConstraintList struct {
 // ScalingConstraintSpec defines the specification of the ScalingConstraint.
 type ScalingConstraintSpec struct {
 	// NodePools is the list of node pools to choose from when creating scaling advice.
+	// +required
 	NodePools []NodePool `json:"nodePools,omitempty"`
 	// NodeTemplates is the slice of all NodeTemplates that can be used for selecting instances associated with each NodePool.
+	// +required
 	NodeTemplates []NodeTemplate `json:"nodeTemplates"`
 }
 
@@ -86,8 +88,8 @@ type NodePool struct {
 	// AvailabilityZones is a list of availability zones for the node pool.
 	AvailabilityZones []string `json:"availabilityZones"`
 	// Requirements encapsulates the slice of requirement selectors for this NodePool
-	// +optional
-	Requirements []NodePoolRequirement `json:"requirements,omitempty"`
+	// +required
+	Requirements []NodePoolRequirement `json:"requirements"`
 	// Priority is the priority of the node pool.
 	// +optional
 	Priority int32 `json:"priority,omitzero"`
