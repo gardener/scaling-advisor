@@ -5,19 +5,16 @@
 package view
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -31,26 +28,26 @@ func TestNodeCreation(t *testing.T) {
 		opts     minkapi.ObjectOptions
 	}{
 		"No error": {
-			fileName: "testdata/node-a.json",
+			fileName: viewtestutil.NodeA,
 			gvk:      typeinfo.NodesDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   nil,
 		},
 		"Incorrect gvk": {
-			fileName: "testdata/node-a.json",
+			fileName: viewtestutil.NodeA,
 			gvk:      typeinfo.PodsDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   fmt.Errorf("does not match expected objGVK"),
 		},
 		"Missing name and generateName in file": {
-			fileName: "testdata/name-node-a.json",
+			fileName: viewtestutil.NameNodeA,
 			gvk:      typeinfo.NodesDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   minkapi.ErrCreateObject,
 		},
 	}
 
-	baseView, err := createTestBaseView(t)
+	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
 	if err != nil {
 		t.Errorf("Can not create baseView: %v", err)
 		return
@@ -65,7 +62,11 @@ func TestNodeCreation(t *testing.T) {
 				return
 			}
 			t.Logf("Number of Nodes before creation is %d", len(nodes))
-			_, err = createObjectFromFileName[corev1.Node](t, baseView, tc.fileName, tc.gvk, tc.opts)
+			obj, ok := viewtestutil.GetObject(tc.fileName)
+			if !ok {
+				t.Fatalf("test object %q not found", tc.fileName)
+			}
+			_, err = baseView.CreateObject(t.Context(), tc.gvk, obj, tc.opts)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)
 				return
@@ -92,15 +93,29 @@ func TestPodListing(t *testing.T) {
 		"random namespace":         {namespace: "mnbvcxz", retErr: nil},
 		"default ns with pod name": {namespace: metav1.NamespaceDefault, names: []string{"pod-default"}, retErr: nil},
 	}
-	baseView, err := createTestBaseView(t)
+	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
 	if err != nil {
 		t.Errorf("Can not create base view: %v", err)
 		return
 	}
 	t.Cleanup(func() { baseView.Close() })
-	if err := createTestObjects(t, &baseView, minkapi.ObjectOptions{}); err != nil {
-		t.Errorf("Can not create test objects: %v", err)
+	nodeA, ok := viewtestutil.GetObject(viewtestutil.NodeA)
+	if !ok {
+		t.Fatalf("test object %q not found", viewtestutil.NodeA)
+	}
+	_, err = baseView.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nodeA, minkapi.ObjectOptions{})
+	if err != nil {
 		return
+	}
+	for _, file := range []string{viewtestutil.PodA, viewtestutil.PodDefaultNS, viewtestutil.PodTestNS} {
+		obj, ok := viewtestutil.GetObject(file)
+		if !ok {
+			t.Fatalf("test object %q not found", file)
+		}
+		_, err = baseView.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, obj, minkapi.ObjectOptions{})
+		if err != nil {
+			return
+		}
 	}
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
@@ -166,7 +181,7 @@ func TestEventDeletion(t *testing.T) {
 			retErr: nil,
 		},
 	}
-	baseView, err := createTestBaseView(t)
+	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
 	if err != nil {
 		t.Errorf("Can not create baseView: %v", err)
 		return
@@ -174,7 +189,11 @@ func TestEventDeletion(t *testing.T) {
 	t.Cleanup(func() { baseView.Close() })
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			_, err = createObjectFromFileName[eventsv1.Event](t, baseView, "testdata/event-a.json", typeinfo.EventsDescriptor.GVK, tc.opts)
+			eventA, ok := viewtestutil.GetObject(viewtestutil.EventA)
+			if !ok {
+				t.Fatalf("test object %q not found", viewtestutil.EventA)
+			}
+			baseView.CreateObject(t.Context(), tc.gvk, eventA, tc.opts)
 			if err != nil {
 				t.Error(err)
 				return
@@ -295,69 +314,4 @@ func TestCombinePrimarySecondary(t *testing.T) {
 	if nodeCCategory != "secondary" {
 		t.Errorf("Expected node-c to have category secondary, got %s", nodeCCategory)
 	}
-}
-
-func createTestBaseView(t *testing.T) (minkapi.View, error) {
-	t.Helper()
-	viewArgs := minkapi.ViewArgs{
-
-		Name:           minkapi.DefaultBasePrefix,
-		KubeConfigPath: "/tmp/minkapi-test.yaml",
-		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: minkapi.WatchConfig{
-			QueueSize: 100,
-			Timeout:   500 * time.Millisecond,
-		},
-	}
-	return NewBase(&viewArgs)
-}
-
-func createTestObjects(t *testing.T, view *minkapi.View, opts minkapi.ObjectOptions) (err error) {
-	_, err = createObjectFromFileName[corev1.Node](t, *view, "testdata/node-a.json", typeinfo.NodesDescriptor.GVK, opts)
-	if err != nil {
-		return
-	}
-	for _, file := range []string{"testdata/pod-a.json", "testdata/pod-defaultns.json", "testdata/pod-testns.json"} {
-		_, err = createObjectFromFileName[corev1.Pod](t, *view, file, typeinfo.PodsDescriptor.GVK, opts)
-		if err != nil {
-			return
-		}
-	}
-	return
-}
-
-func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
-	t.Helper()
-	var obj T
-	if err := json.Unmarshal(data, &obj); err != nil {
-		t.Errorf("error unmarshalling JSON: %v", err)
-		return obj, err
-	}
-	return obj, nil
-}
-
-func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName string, gvk schema.GroupVersionKind, opts minkapi.ObjectOptions) (T, error) {
-	var (
-		jsonData []byte
-		obj      T
-		err      error
-	)
-	jsonData, err = os.ReadFile(fileName)
-	if err != nil {
-		return obj, err
-	}
-	obj, err = convertJSONtoObject[T](t, jsonData)
-	if err != nil {
-		return obj, err
-	}
-	metaObj, ok := any(&obj).(metav1.Object)
-	if !ok {
-		return obj, err
-	}
-	_, err = view.CreateObject(t.Context(), gvk, metaObj, opts)
-	if err != nil {
-		return obj, err
-	}
-	t.Logf("Created %s %q", gvk.Kind, objutil.CacheName(metaObj))
-	return obj, nil
 }

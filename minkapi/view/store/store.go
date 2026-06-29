@@ -165,7 +165,10 @@ func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error 
 }
 
 // Delete deletes the object identified by its fully qualified cache name from the store. It delegates to DeleteByKey
-func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectName) error {
+func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectName, opts minkapi.ObjectOptions) error {
+	if opts.LogicalDelete {
+		return s.markForDelete(ctx, objName.String())
+	}
 	return s.DeleteByKey(ctx, objName.String())
 }
 
@@ -319,7 +322,7 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 // DeleteObjects deletes objects from the store that match the provided MatchCriteria.
 // It returns the number of deleted objects and an error if one occurs during deletion.
 // Tombstoned entries are skipped.
-func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria) (delCount int, err error) {
+func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria, opts minkapi.ObjectOptions) (delCount int, err error) {
 	items := filterTombstones(s.cache.List())
 	var mo metav1.Object
 	for _, item := range items {
@@ -343,7 +346,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
 			return
 		}
-		err = s.Delete(ctx, objName)
+		err = s.Delete(ctx, objName, opts)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -356,7 +359,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 	return
 }
 
-// MarkForDelete records a tombstone for the given key. If a live object existed at the key it
+// markForDelete records a tombstone for the given key. If a live object existed at the key it
 // is removed from the cache, a Deleted watch event is broadcast (carrying the typed object as
 // its payload, NOT the wrapper, to match real apiserver watch semantics), and a
 // [cache.DeletedFinalStateUnknown] marker is parked at the same key in the underlying
@@ -365,21 +368,19 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 // implicitly clears the tombstone (the wrapper is replaced by the new object).
 //
 // MarkForDelete returns apierrors.NotFound when the key is already tombstoned or never existed.
-func (s *InMemResourceStore) MarkForDelete(ctx context.Context, key string) error {
+func (s *InMemResourceStore) markForDelete(ctx context.Context, key string) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	log := logr.FromContextOrDiscard(ctx)
 	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
-		s.mu.Unlock()
-		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
+		return err
 	}
 	if !exists || isTombstone(obj) {
-		s.mu.Unlock()
 		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
 	}
 	mo, err := objutil.AsMeta(obj)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
 	mo.SetDeletionTimestamp(&metav1.Time{Time: time.Time{}})
@@ -387,16 +388,14 @@ func (s *InMemResourceStore) MarkForDelete(ctx context.Context, key string) erro
 	// DeletionHandlingMetaNamespaceKeyFunc so this entry is keyed correctly.
 	tombstone := cache.DeletedFinalStateUnknown{Key: key, Obj: obj}
 	if updErr := s.cache.Update(tombstone); updErr != nil {
-		s.mu.Unlock()
-		return apierrors.NewInternalError(fmt.Errorf("cannot tombstone object with key %q: %w", key, updErr))
+		return updErr
 	}
-	log.V(4).Info("tombstoned object", "kind", s.args.ObjectGVK.Kind, "key", key)
-	// Snapshot the typed object so the broadcast can deliver it without holding the lock.
+	log.V(4).Info("tombstoned object", "kind", s.args.ObjectGVK.Kind, "key", key, "storeName", s.args.Name)
+	// Snapshot the typed object so the broadcast can deliver it.
 	broadcastObj, _ := obj.(runtime.Object)
 	if broadcastObj != nil {
 		broadcastObj = broadcastObj.DeepCopyObject()
 	}
-	s.mu.Unlock()
 	if broadcastObj != nil {
 		go func() {
 			if berr := s.broadcaster.Action(watch.Deleted, broadcastObj); berr != nil {
@@ -405,18 +404,6 @@ func (s *InMemResourceStore) MarkForDelete(ctx context.Context, key string) erro
 		}()
 	}
 	return nil
-}
-
-// IsMarkedForDelete reports whether the given key is currently tombstoned. Safe to call
-// concurrently.
-func (s *InMemResourceStore) IsMarkedForDelete(key string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	obj, exists, err := s.cache.GetByKey(key)
-	if err != nil || !exists {
-		return false
-	}
-	return isTombstone(obj)
 }
 
 // isTombstone reports whether obj is a [cache.DeletedFinalStateUnknown] marker placed by

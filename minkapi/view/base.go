@@ -223,7 +223,7 @@ func (v *baseView) DeleteObject(ctx context.Context, gvk schema.GroupVersionKind
 	if err != nil {
 		return err
 	}
-	err = s.Delete(ctx, objName)
+	err = s.Delete(ctx, objName, minkapi.ObjectOptions{})
 	if err != nil {
 		return err
 	}
@@ -445,7 +445,7 @@ func deleteObjects(ctx context.Context, v minkapi.View, gvk schema.GroupVersionK
 	if err != nil {
 		return err
 	}
-	delCount, err := s.DeleteObjects(ctx, criteria)
+	delCount, err := s.DeleteObjects(ctx, criteria, minkapi.ObjectOptions{})
 	if err != nil {
 		return err
 	}

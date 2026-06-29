@@ -78,9 +78,9 @@ type ResourceStore interface {
 	// DeleteByKey deletes an object from the store by its key.
 	DeleteByKey(ctx context.Context, key string) error
 	// Delete deletes an object from the store by its name.
-	Delete(ctx context.Context, objName cache.ObjectName) error
+	Delete(ctx context.Context, objName cache.ObjectName, opts ObjectOptions) error
 	// DeleteObjects deletes objects matching the given criteria and returns the count of deleted objects.
-	DeleteObjects(ctx context.Context, c MatchCriteria) (delCount int, err error)
+	DeleteObjects(ctx context.Context, c MatchCriteria, opts ObjectOptions) (delCount int, err error)
 	// List lists objects matching the given criteria.
 	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
 	// ListMetaObjects lists metadata objects matching the given criteria.
@@ -92,21 +92,14 @@ type ResourceStore interface {
 	GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (watch.Interface, error)
 	// GetVersionCounter returns the atomic counter for generating monotonically increasing resource versions
 	GetVersionCounter() *atomic.Int64
-	// MarkForDelete records a tombstone for the given key: any prior live object at that key is
-	// removed from the store, a Deleted watch event is broadcast (carrying the typed object as
-	// payload, not the wrapper), and a [k8s.io/client-go/tools/cache.DeletedFinalStateUnknown]
-	// marker is left at the same key so subsequent Get/List/Watch operations treat the name as
-	// absent. Re-Add of the same key clears the tombstone (object resurrected). Returns
-	// apierrors.NotFound when the key is already tombstoned or never existed.
-	MarkForDelete(ctx context.Context, key string) error
-	// IsMarkedForDelete reports whether the given key is currently tombstoned in this store.
-	IsMarkedForDelete(key string) bool
 }
 
 // ObjectOptions represents options when storing or querying an object.
 type ObjectOptions struct {
 	// NoBroadcast means there will be no watch event broadcasted when this object is created or updated.
 	NoBroadcast bool
+	// LogicalDelete means that the object would be replaced by tombstone; else we delete the object from view.
+	LogicalDelete bool
 }
 
 // ResourceStoreArgs contains arguments for creating a ResourceStore.

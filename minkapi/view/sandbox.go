@@ -247,7 +247,7 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	if serr == nil && len(delegateItems) > 0 {
 		filtered := delegateItems[:0]
 		for _, it := range delegateItems {
-			if s.IsMarkedForDelete(objutil.CacheName(it).String()) {
+			if _, gerr := s.GetByKey(ctx, objutil.CacheName(it).String()); errors.Is(gerr, minkapi.ErrObjectDeleted) {
 				continue
 			}
 			filtered = append(filtered, it)
@@ -354,7 +354,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	// Already tombstoned or sandbox-local? MarkForDelete handles both cleanly.
 	if _, gerr := s.GetByKey(ctx, objName.String()); gerr == nil {
 		// Sandbox-local: tombstone directly.
-		if err = s.MarkForDelete(ctx, objName.String()); err != nil {
+		if err = s.Delete(ctx, objName, minkapi.ObjectOptions{LogicalDelete: true}); err != nil {
 			return err
 		}
 		v.changeCount.Add(1)
@@ -382,7 +382,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
 		return err
 	}
-	if err = s.MarkForDelete(ctx, objName.String()); err != nil {
+	if err = s.Delete(ctx, objName, minkapi.ObjectOptions{LogicalDelete: true}); err != nil {
 		return err
 	}
 	v.changeCount.Add(1)
