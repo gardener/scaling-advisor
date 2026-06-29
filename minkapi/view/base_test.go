@@ -194,7 +194,7 @@ func TestEventDeletion(t *testing.T) {
 			if !ok {
 				t.Fatalf("test object %q not found", viewtestutil.EventA)
 			}
-			_, err = baseView.CreateObject(t.Context(), tc.gvk, eventA, tc.opts)
+			_, err = baseView.CreateObject(t.Context(), typeinfo.EventsDescriptor.GVK, eventA, tc.opts)
 			if err != nil {
 				t.Error(err)
 				return

@@ -664,8 +664,8 @@ func TestTombstone_GetWatcherDeliversDeletedThenSilence(t *testing.T) {
 	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
-	expectEventFromChan(t, events, watch.Deleted, nA.Name)
-	expectNoMoreEventsFromChan(t, events)
+	expectEvent(t, events, watch.Deleted, nA.Name)
+	expectNoMoreEvents(t, events)
 }
 
 // drainAdded reads ADDED events from ch until none arrive within a short window. Used after
@@ -753,16 +753,4 @@ func expectNoMoreEvents(t *testing.T, ch <-chan watch.Event) {
 	case <-time.After(150 * time.Millisecond):
 		// no event — pass
 	}
-}
-
-// expectEventFromChan / expectNoMoreEventsFromChan are the GetWatcher-channel equivalents of
-// the WatchObjects helpers. Split out to keep the test bodies symmetric across both APIs.
-func expectEventFromChan(t *testing.T, ch <-chan watch.Event, wantType watch.EventType, wantName string) {
-	t.Helper()
-	expectEvent(t, ch, wantType, wantName)
-}
-
-func expectNoMoreEventsFromChan(t *testing.T, ch <-chan watch.Event) {
-	t.Helper()
-	expectNoMoreEvents(t, ch)
 }
