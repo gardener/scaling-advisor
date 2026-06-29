@@ -66,7 +66,7 @@ func init() {
 			continue
 		}
 		name := entry.Name()
-		data, err := os.ReadFile(filepath.Join(testdataPath, name))
+		data, err := os.ReadFile(filepath.Join(testdataPath, name)) // #nosec G304 -- path is constructed from os.ReadDir entries within a known testdata directory
 		if err != nil {
 			continue
 		}
