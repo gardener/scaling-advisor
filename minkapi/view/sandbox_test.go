@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
+
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

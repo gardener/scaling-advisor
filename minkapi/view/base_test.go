@@ -9,11 +9,12 @@ import (
 	"slices"
 	"testing"
 
+	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
+
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
-	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -193,7 +194,7 @@ func TestEventDeletion(t *testing.T) {
 			if !ok {
 				t.Fatalf("test object %q not found", viewtestutil.EventA)
 			}
-			baseView.CreateObject(t.Context(), tc.gvk, eventA, tc.opts)
+			_, err = baseView.CreateObject(t.Context(), tc.gvk, eventA, tc.opts)
 			if err != nil {
 				t.Error(err)
 				return

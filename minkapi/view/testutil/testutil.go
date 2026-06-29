@@ -14,8 +14,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
+const testdataPath = "testutil/testdata"
+
+// Testdata filenames to load objects.
 const (
-	testdataPath = "testutil/testdata"
 	BindingPodA  = "binding-pod-a.json"
 	CorruptPodA  = "corrupt-pod-a.json"
 	EventA       = "event-a.json"
@@ -80,10 +82,12 @@ func init() {
 	}
 }
 
+// GetDefaultBaseViewArgs returns the default ViewArgs for a base view.
 func GetDefaultBaseViewArgs() *mkapi.ViewArgs {
 	return defaultBaseViewArgs
 }
 
+// GetDefaultSandboxViewArgs returns the default ViewArgs for a sandbox view.
 func GetDefaultSandboxViewArgs() *mkapi.ViewArgs {
 	return defaultSandboxViewArgs
 }
