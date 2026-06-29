@@ -333,8 +333,8 @@ func (s *testStorageMetaAccess) GetFallbackCSINodeSpec(instanceType string) (csi
 func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []sacorev1alpha1.NodePlacement) {
 	placements = make([]sacorev1alpha1.NodePlacement, 0, len(c.NodePools)*len(c.GetAllAvailabilityZones()))
 	allNodePlacements := scalingconstraintutil.GetNodePlacements(sacorev1alpha1.ScalingConstraint{Spec: c})
-	for _, p := range allNodePlacements {
-		placements = append(placements, p...)
+	for _, p := range c.NodePools {
+		placements = append(placements, allNodePlacements[p.Name]...)
 	}
 	return placements
 }
