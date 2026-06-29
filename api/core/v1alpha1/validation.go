@@ -34,28 +34,6 @@ func ValidateNodePool(np *NodePool, fieldPath *field.Path) (allErrs field.ErrorL
 }
 
 // ValidateNodeTemplate validates a NodeTemplate object.
-//
-//	type NodeTemplate struct {
-//		// Capacity defines the capacity of resources that are available for this instance type.
-//		Capacity corev1.ResourceList `json:"capacity"`
-//		// KubeReserved defines the capacity for kube reserved resources.
-//		// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
-//		// +optional
-//		KubeReserved corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
-//		// SystemReserved defines the capacity for system reserved resources.
-//		// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
-//		// Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
-//		// +optional
-//		SystemReserved corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
-//		// Name is the name of the node template. Name is unique within a particular [ScalingConstraintSpec]
-//		Name string `json:"name"`
-//		// Architecture is the architecture of the instance type.
-//		Architecture string `json:"architecture"`
-//		// InstanceType is the instance type of the node template.
-//		InstanceType string `json:"instanceType"`
-//		// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
-//		MaxVolumes int32 `json:"maxVolumes,omitzero"`
-//	}
 func ValidateNodeTemplate(nt *NodeTemplate, fieldPath *field.Path) (allErrs field.ErrorList) {
 	if strings.TrimSpace(nt.Name) == "" {
 		allErrs = append(allErrs, field.Required(fieldPath.Child("name"), "name must not be empty"))
@@ -81,6 +59,7 @@ func ValidateClusterScalingConstraint(constraint *ScalingConstraint, fieldPath *
 	return allErrs
 }
 
+// ValidateClusterScalingConstraintSpec validates the given scaling constraint spec
 func ValidateClusterScalingConstraintSpec(spec *ScalingConstraintSpec, fieldPath *field.Path) (allErrs field.ErrorList) {
 	if len(spec.NodePools) == 0 {
 		allErrs = append(allErrs, field.Required(fieldPath.Child("nodePools"), "nodePools must not be empty"))
@@ -102,6 +81,7 @@ func ValidateClusterScalingConstraintSpec(spec *ScalingConstraintSpec, fieldPath
 	return allErrs
 }
 
+// ValidateNodePoolRequirements validates node pool requirements by ensuring each requirement points to a node template
 func ValidateNodePoolRequirements(reqs []NodePoolRequirement, ntList []NodeTemplate, fieldPath *field.Path) (allErrs field.ErrorList) {
 	for i, req := range reqs {
 		matched := false
