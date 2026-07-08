@@ -99,8 +99,8 @@ type ResourceStore interface {
 type ObjectOptions struct {
 	// NoBroadcast means there will be no watch event broadcasted when this object is created or updated.
 	NoBroadcast bool
-	// LogicalDelete means that the object would be replaced by tombstone; else we delete the object from view.
-	LogicalDelete bool
+	// MarkAsDeleted means that the object would be replaced by tombstone; else we delete the object from view.
+	MarkAsDeleted bool
 }
 
 // ResourceStoreArgs contains arguments for creating a ResourceStore.

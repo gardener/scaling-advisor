@@ -134,7 +134,7 @@ func (v *sandboxView) GetEventSink() minkapi.EventSink {
 
 func (v *sandboxView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) (metav1.Object, error) {
 	// A successful Create resurrects a tombstoned name; the underlying store's Add replaces
-	// any DeletedFinalStateUnknown wrapper at the same key with the new object.
+	// any DeletedFinalStateUnknown wrapper for the same key with the new object.
 	return storeObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
@@ -142,7 +142,7 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 	obj, err = v.getSandboxObject(ctx, gvk, objName)
 	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
 		// Tombstoned: surface as the standard Kubernetes "not found" error and do not fall
-		// through to the delegate (the sandbox has explicitly deleted this name).
+		// through to the delegate (the sandbox has explicitly deleted this object).
 		return nil, apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
 	}
 	if obj != nil || !apierrors.IsNotFound(err) {
@@ -167,7 +167,7 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 	}
 	// Materialize a deep-copy of the delegate's object into the sandbox store (no broadcast,
-	// since consumers already saw the original via the delegate's initial-list), then update it.
+	// since consumers already saw the original), then update it.
 	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
 	if err != nil {
 		return err
@@ -186,6 +186,10 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
 	gvk := typeinfo.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
+	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
+		err = apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, podName.String())
+		return
+	}
 	if err != nil && !apierrors.IsNotFound(err) {
 		return
 	}
@@ -242,19 +246,15 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	s, _ := v.GetResourceStore(gvk)
 	if len(delegateItems) > 0 {
 		filtered := delegateItems[:0]
-		for _, it := range delegateItems {
-			if _, gerr := s.GetByKey(ctx, objutil.CacheName(it).String()); errors.Is(gerr, minkapi.ErrObjectDeleted) {
+		for _, item := range delegateItems {
+			if _, gerr := s.GetByKey(ctx, objutil.CacheName(item).String()); errors.Is(gerr, minkapi.ErrObjectDeleted) {
 				continue
 			}
-			filtered = append(filtered, it)
+			filtered = append(filtered, item)
 		}
 		delegateItems = filtered
 	}
-	if myMax >= delegateMax {
-		maxVersion = myMax
-	} else {
-		maxVersion = delegateMax
-	}
+	maxVersion = max(myMax, delegateMax)
 	items = combinePrimarySecondary(sandboxItems, delegateItems)
 	return
 }
@@ -346,7 +346,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	}
 	if _, gerr := s.GetByKey(ctx, objName.String()); gerr == nil {
 		// Sandbox-local: tombstone directly.
-		if err = s.Delete(ctx, objName, minkapi.ObjectOptions{LogicalDelete: true}); err != nil {
+		if err = s.Delete(ctx, objName, minkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
 			return err
 		}
 		v.changeCount.Add(1)
@@ -354,6 +354,8 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	} else if errors.Is(gerr, minkapi.ErrObjectDeleted) {
 		// Already tombstoned: NotFound, mirroring K8s API server behavior for repeated delete.
 		return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
+	} else if !apierrors.IsNotFound(gerr) {
+		return gerr
 	}
 	// Sandbox doesn't have it; consult delegate.
 	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
@@ -370,7 +372,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
 		return err
 	}
-	if err = s.Delete(ctx, objName, minkapi.ObjectOptions{LogicalDelete: true}); err != nil {
+	if err = s.Delete(ctx, objName, minkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
 		return err
 	}
 	v.changeCount.Add(1)

@@ -16,35 +16,46 @@ import (
 
 const testdataPath = "testutil/testdata"
 
-// Testdata filenames to load objects.
 const (
-	BindingPodA  = "binding-pod-a.json"
-	CorruptPodA  = "corrupt-pod-a.json"
-	EventA       = "event-a.json"
+	// BindingPodA is a Binding object targeting a node.
+	BindingPodA = "binding-pod-a.json"
+	// CorruptPodA is a Pod with a syntax error in the metadata block.
+	CorruptPodA = "corrupt-pod-a.json"
+	// EventA is a scheduling Event (events.k8s.io/v1) reporting `FailedScheduling` for a pod.
+	EventA = "event-a.json"
+	// NameMissPodA is a Pod whose metadata has no name and no generateName.
 	NameMissPodA = "name-miss-pod-a.json"
-	NameNodeA    = "name-node-a.json"
-	NodeA        = "node-a.json"
-	PatchPodA    = "patch-pod-a.json"
-	PodA         = "pod-a.json"
+	// NameNodeA is a Node with no generateName, used to test name-only (non-generated) node lookups.
+	NameNodeA = "name-node-a.json"
+	// NodeA is a well-formed Node with generateName, used as the standard node fixture.
+	NodeA = "node-a.json"
+	// PatchPodA is a partial Pod payload (status.conditions with `PodScheduled` set to `False`).
+	PatchPodA = "patch-pod-a.json"
+	// PodA is the primary well-formed Pod fixture in the default namespace with a stable UID.
+	PodA = "pod-a.json"
+	// PodDefaultNS is a Pod in the "default" namespace.
 	PodDefaultNS = "pod-defaultns.json"
-	PodTestNS    = "pod-testns.json"
-	UidTSPodA    = "uid-ts-pod-a.json"
-	UpdatePodA   = "update-pod-a.json"
+	// PodTestNS is a Pod in the "test" namespace.
+	PodTestNS = "pod-testns.json"
+	// UidTSPodA is a Pod that lacks a UID and creationTimestamp.
+	UidTSPodA = "uid-ts-pod-a.json"
+	// UpdatePodA is a Pod based on PodA with a modified instanceType label.
+	UpdatePodA = "update-pod-a.json"
 )
 
 var (
-	defaultBaseViewArgs = &mkapi.ViewArgs{
+	DefaultBaseViewArgs = mkapi.ViewArgs{
 		Name:           mkapi.DefaultBasePrefix,
-		KubeConfigPath: "/tmp/minkapi-test.yaml",
+		KubeConfigPath: "/tmp/minkapi-base-test.yaml",
 		Scheme:         typeinfo.SupportedScheme,
 		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
 			Timeout:   mkapi.DefaultWatchTimeout,
 		},
 	}
-	defaultSandboxViewArgs = &mkapi.ViewArgs{
+	DefaultSandboxViewArgs = mkapi.ViewArgs{
 		Name:           "sandbox",
-		KubeConfigPath: "sandbox",
+		KubeConfigPath: "/tmp/minkapi-sandbox-test.yaml",
 		Scheme:         typeinfo.SupportedScheme,
 		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
@@ -80,16 +91,6 @@ func init() {
 		}
 		testObjects[name] = mo
 	}
-}
-
-// GetDefaultBaseViewArgs returns the default ViewArgs for a base view.
-func GetDefaultBaseViewArgs() *mkapi.ViewArgs {
-	return defaultBaseViewArgs
-}
-
-// GetDefaultSandboxViewArgs returns the default ViewArgs for a sandbox view.
-func GetDefaultSandboxViewArgs() *mkapi.ViewArgs {
-	return defaultSandboxViewArgs
 }
 
 // GetObject returns the object stored under the given filename and whether it was found.

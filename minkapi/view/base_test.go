@@ -48,7 +48,7 @@ func TestNodeCreation(t *testing.T) {
 		},
 	}
 
-	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
+	baseView, err := NewBase(&viewtestutil.DefaultBaseViewArgs)
 	if err != nil {
 		t.Errorf("Can not create baseView: %v", err)
 		return
@@ -94,7 +94,7 @@ func TestPodListing(t *testing.T) {
 		"random namespace":         {namespace: "mnbvcxz", retErr: nil},
 		"default ns with pod name": {namespace: metav1.NamespaceDefault, names: []string{"pod-default"}, retErr: nil},
 	}
-	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
+	baseView, err := NewBase(&viewtestutil.DefaultBaseViewArgs)
 	if err != nil {
 		t.Errorf("Can not create base view: %v", err)
 		return
@@ -182,7 +182,7 @@ func TestEventDeletion(t *testing.T) {
 			retErr: nil,
 		},
 	}
-	baseView, err := NewBase(viewtestutil.GetDefaultBaseViewArgs())
+	baseView, err := NewBase(&viewtestutil.DefaultBaseViewArgs)
 	if err != nil {
 		t.Errorf("Can not create baseView: %v", err)
 		return

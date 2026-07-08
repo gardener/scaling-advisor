@@ -316,12 +316,12 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 
 func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
 	t.Helper()
-	b, err = NewBase(viewtestutil.GetDefaultBaseViewArgs())
+	b, err = NewBase(&viewtestutil.DefaultBaseViewArgs)
 	if err != nil {
 		t.Fatalf("failed to create base view: %v", err)
 		return
 	}
-	s, err = NewSandbox(b, viewtestutil.GetDefaultSandboxViewArgs())
+	s, err = NewSandbox(b, &viewtestutil.DefaultSandboxViewArgs)
 	if err != nil {
 		t.Fatalf("failed to create sandbox view: %v", err)
 		return
@@ -511,16 +511,13 @@ func TestTombstone_ListExcludesTombstoned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListNodes failed: %v", err)
 	}
+	hasB := false
 	for _, n := range nodes {
 		if n.Name == nA.Name {
 			t.Errorf("expected sandbox ListNodes to exclude tombstoned node %q, got %v", nA.Name, nodeNames(nodes))
 		}
-	}
-	hasB := false
-	for _, n := range nodes {
 		if n.Name == nB.Name {
 			hasB = true
-			break
 		}
 	}
 	if !hasB {

@@ -7,7 +7,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"sync"
 	"testing"
@@ -227,7 +226,7 @@ func TestDelete(t *testing.T) {
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 
 			mo, _ := objutil.AsMeta(gotObj)
-			if !reflect.DeepEqual(mo.GetDeletionTimestamp().Time, time.Time{}) { // FIXME
+			if mo.GetDeletionTimestamp() == nil {
 				t.Errorf("Expected deletionTimestamp to be set for object that's successfully deleted, got: %v", mo.GetDeletionTimestamp())
 				return
 			}
