@@ -44,6 +44,7 @@ const (
 )
 
 var (
+	// DefaultBaseViewArgs holds the default ViewArgs used in tests for the base view.
 	DefaultBaseViewArgs = mkapi.ViewArgs{
 		Name:           mkapi.DefaultBasePrefix,
 		KubeConfigPath: "/tmp/minkapi-base-test.yaml",
@@ -53,6 +54,7 @@ var (
 			Timeout:   mkapi.DefaultWatchTimeout,
 		},
 	}
+	// DefaultSandboxViewArgs holds the default ViewArgs used in tests for the sandbox view.
 	DefaultSandboxViewArgs = mkapi.ViewArgs{
 		Name:           "sandbox",
 		KubeConfigPath: "/tmp/minkapi-sandbox-test.yaml",

@@ -5,6 +5,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -13,8 +14,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"context"
 
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
