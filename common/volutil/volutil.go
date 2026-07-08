@@ -376,7 +376,10 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pvc.Status.Phase = corev1.ClaimBound
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
+	// AnnSelectedNode is intentionally kept: checkBindings in kube-scheduler's VolumeBinding plugin
+	// validates that AnnSelectedNode still matches the pod's node name before checking Spec.VolumeName.
+	// Removing it here would cause checkBindings to report "provisioning failed". Re-provisioning is
+	// prevented by the ClaimBound status check in ProvisionAndBindVolumesFoSelectedClaimsInWFFC.
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
