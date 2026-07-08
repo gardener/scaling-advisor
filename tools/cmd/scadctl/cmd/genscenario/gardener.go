@@ -608,6 +608,8 @@ func (a *access) createNodePoolsAndNodeTemplates() (nodePools []sacorev1alpha1.N
 		}
 		nodePool.AvailabilityZones = worker.Zones
 
+		nodePool.Requirements = buildNodePoolRequirements(worker)
+
 		// TODO nP.Quota, nP.ScaleInPolicy, nP.BackoffPolicy
 
 		nodePools = append(nodePools, nodePool)
@@ -616,6 +618,26 @@ func (a *access) createNodePoolsAndNodeTemplates() (nodePools []sacorev1alpha1.N
 		nodeTemplates = append(nodeTemplates, nodeTemplate)
 	}
 	return
+}
+
+func buildNodePoolRequirements(worker gardenercorev1beta1.Worker) []sacorev1alpha1.NodePoolRequirement {
+	reqs := []sacorev1alpha1.NodePoolRequirement{
+		{
+			Key:      corev1.LabelInstanceTypeStable,
+			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
+			Values:   []string{worker.Machine.Type},
+		},
+	}
+
+	if arch := ptr.Deref(worker.Machine.Architecture, ""); arch != "" {
+		reqs = append(reqs, sacorev1alpha1.NodePoolRequirement{
+			Key:      corev1.LabelArchStable,
+			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
+			Values:   []string{arch},
+		})
+	}
+
+	return reqs
 }
 
 func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacorev1alpha1.NodeTemplate {
