@@ -275,19 +275,6 @@ spec:
                 description: Feedback represents the [ScalingFeedback] from the lifecycle
                   manager applying the [ScalingAdvice]
                 properties:
-                  constraintRef:
-                    description: ConstraintRef is a reference to the ScalingConstraint
-                      that this advice is based on.
-                    properties:
-                      name:
-                        description: Name is the name of the object.
-                        type: string
-                      namespace:
-                        description: Namespace is the namespace of the object.
-                        type: string
-                    required:
-                    - name
-                    type: object
                   scaleIn:
                     description: ScaleIn is the scale-in feedback from life-cycle
                       manager when applying [ScaleInPlan]
@@ -344,8 +331,6 @@ spec:
                           type: object
                         type: array
                     type: object
-                required:
-                - constraintRef
                 type: object
             type: object
         required:

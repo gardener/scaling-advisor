@@ -160,6 +160,7 @@ spec:
                   - availabilityZones
                   - name
                   - region
+                  - requirements
                   type: object
                 type: array
               nodeTemplates:
@@ -229,6 +230,7 @@ spec:
                   type: object
                 type: array
             required:
+            - nodePools
             - nodeTemplates
             type: object
           status:

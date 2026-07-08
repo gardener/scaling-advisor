@@ -587,7 +587,6 @@ func (in *ScalingFeedback) DeepCopyInto(out *ScalingFeedback) {
 		*out = new(ScaleInFeedback)
 		(*in).DeepCopyInto(*out)
 	}
-	out.ConstraintRef = in.ConstraintRef
 	return
 }
 
