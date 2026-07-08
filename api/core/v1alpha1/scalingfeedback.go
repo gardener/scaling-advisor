@@ -5,8 +5,6 @@
 package v1alpha1
 
 import (
-	apicommon "github.com/gardener/scaling-advisor/api/common/types"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,8 +16,6 @@ type ScalingFeedback struct {
 	ScaleOut *ScaleOutFeedback `json:"scaleOut,omitempty"`
 	// ScaleIn is the scale-in feedback from life-cycle manager when applying [ScaleInPlan]
 	ScaleIn *ScaleInFeedback `json:"scaleIn,omitempty"`
-	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
-	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
 
 // ScalingErrorType defines the type of scaling error.
