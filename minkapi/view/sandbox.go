@@ -238,24 +238,16 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	if err != nil {
 		return
 	}
+	sandboxTombstonedKeys, err := listTombstonedKeys(ctx, v, gvk)
+	if err != nil {
+		return
+	}
 	delegateItems, delegateMax, err := v.delegateView.ListMetaObjects(ctx, gvk, criteria)
 	if err != nil {
 		return
 	}
-	// Filter out delegate items whose name has been tombstoned in this sandbox's store.
-	s, _ := v.GetResourceStore(gvk)
-	if len(delegateItems) > 0 {
-		filtered := delegateItems[:0]
-		for _, item := range delegateItems {
-			if _, gerr := s.GetByKey(ctx, objutil.CacheName(item).String()); errors.Is(gerr, minkapi.ErrObjectDeleted) {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		delegateItems = filtered
-	}
 	maxVersion = max(myMax, delegateMax)
-	items = combinePrimarySecondary(sandboxItems, delegateItems)
+	items = combinePrimarySecondary(sandboxItems, delegateItems, sandboxTombstonedKeys)
 	return
 }
 

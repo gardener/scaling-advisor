@@ -440,6 +440,14 @@ func listMetaObjects(ctx context.Context, v minkapi.View, gvk schema.GroupVersio
 	return s.ListMetaObjects(ctx, criteria)
 }
 
+func listTombstonedKeys(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind) (tombstoneKeys sets.Set[string], err error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	return s.ListTombstonedKeys(ctx)
+}
+
 func deleteObjects(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria, changeCount *atomic.Int64) error {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
@@ -534,13 +542,13 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 }
 
 // combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over the same obj in secondary
-func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object) (combined []metav1.Object) {
+func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object, sandboxTombstoneKeys sets.Set[string]) (combined []metav1.Object) {
 	found := make(map[cache.ObjectName]bool, len(primary))
 	for _, o := range primary {
 		found[objutil.CacheName(o)] = true
 	}
 	for _, o := range secondary {
-		if found[objutil.CacheName(o)] {
+		if sandboxTombstoneKeys.Has(objutil.CacheName(o).String()) || found[objutil.CacheName(o)] {
 			continue
 		}
 		combined = append(combined, o)

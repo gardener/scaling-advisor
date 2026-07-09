@@ -86,6 +86,8 @@ type ResourceStore interface {
 	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
 	// ListMetaObjects lists metadata objects matching the given criteria.
 	ListMetaObjects(ctx context.Context, c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	// ListTombstonedKeys lists the keys of tombstoned objects.
+	ListTombstonedKeys(ctx context.Context) (tombstoneKeys sets.Set[string], err error)
 	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
@@ -246,9 +248,12 @@ type App struct {
 }
 
 // MatchCriteria defines criteria for matching Kubernetes objects.
+// ExcludeNames takes precedence over Names.
 type MatchCriteria struct {
 	// LabelSelector specifies the label selector for matching objects.
 	LabelSelector labels.Selector
+	// ExcludeNames specifies the set of object names to not match. Empty means exclude none.
+	ExcludeNames sets.Set[string]
 	// Names specifies the set of object names to match. Empty means all names.
 	Names sets.Set[string]
 	// Namespace specifies the namespace to match. Empty means all namespaces.
@@ -261,6 +266,9 @@ var MatchAllCriteria = MatchCriteria{}
 // Matches returns true if the given object matches the criteria.
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {
+		return false
+	}
+	if c.ExcludeNames.Len() > 0 && c.ExcludeNames.Has(obj.GetName()) {
 		return false
 	}
 	if c.Names.Len() > 0 && !c.Names.Has(obj.GetName()) {

@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
@@ -201,7 +202,8 @@ func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtim
 	}
 	if isTombstone(obj) {
 		log.V(6).Info("found tombstone for key", "key", key)
-		err = fmt.Errorf("%w: %s/%s", minkapi.ErrObjectDeleted, s.args.ObjectGVK.Kind, key)
+		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+		err = fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
 		return
 	}
 	o, ok := obj.(runtime.Object)
@@ -318,6 +320,27 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 		metaObjs = append(metaObjs, mo)
 		if version > maxVersion {
 			maxVersion = version
+		}
+	}
+	return
+}
+
+// ListTombstonedKeys queries the store, gets objects and returns the [cache.DeletedFinalStateUnknown.Key]
+// for the tombstoned objects.
+func (s *InMemResourceStore) ListTombstonedKeys(ctx context.Context) (tombstoneKeys sets.Set[string], err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tombstoneKeys = sets.New[string]()
+	items := s.cache.List()
+	for _, item := range items {
+		if err = ctx.Err(); err != nil {
+			return
+		}
+		if ts, ok := item.(cache.DeletedFinalStateUnknown); ok {
+			tombstoneKeys.Insert(ts.Key)
+		} else if ts, ok := item.(*cache.DeletedFinalStateUnknown); ok {
+			tombstoneKeys.Insert(ts.Key)
 		}
 	}
 	return
