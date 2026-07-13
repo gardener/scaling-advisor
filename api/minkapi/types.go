@@ -79,7 +79,7 @@ type ResourceStore interface {
 	DeleteByKey(ctx context.Context, key string) error
 	// Delete deletes an object from the store by its name using the given [ObjectOptions].
 	Delete(ctx context.Context, objName cache.ObjectName, opts ObjectOptions) error
-	// DeleteObjects deletes objects matching the given criteria, using given [ObjectOptions]
+	// DeleteObjects deletes a list of objects matching the given criteria, using given [ObjectOptions]
 	// and returns the count of deleted objects.
 	DeleteObjects(ctx context.Context, c MatchCriteria, opts ObjectOptions) (delCount int, err error)
 	// List lists objects matching the given criteria.

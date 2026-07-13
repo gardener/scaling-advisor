@@ -6,7 +6,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -67,8 +66,7 @@ func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore 
 	return &s
 }
 
-// Reset resets the backing cache (clearing both live entries and tombstones) and the watch
-// broadcaster for this store.
+// Reset resets the backing cache (clearing both live entries and tombstones).
 func (s *InMemResourceStore) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,17 +96,18 @@ func (s *InMemResourceStore) Add(ctx context.Context, mo metav1.Object, opts min
 	log.V(4).Info("added object to store", "kind", s.args.ObjectGVK.Kind, "key", key, "resourceVersion", mo.GetResourceVersion())
 
 	if !opts.NoBroadcast {
-		go func(broadcastObj runtime.Object) {
-			err = s.broadcaster.Action(watch.Added, broadcastObj)
+		go func() {
+			err = s.broadcaster.Action(watch.Added, o)
 			if err != nil {
 				log.Error(err, "failed to broadcast object add", "key", key)
 			}
-		}(o.DeepCopyObject())
+		}()
 	}
 	return nil
 }
 
 // Update updates the given metav1.Object in the store, setting the next resource version and broadcasting a Modified event.
+// Returns [minkapi.ErrObjectDeleted] if the key is tombstoned, and apierrors.NotFound if the key never existed.
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts minkapi.ObjectOptions) error {
 	s.mu.Lock()
@@ -119,7 +118,21 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts 
 	if err != nil {
 		return err
 	}
-	key := objutil.CacheName(mo)
+	key := objutil.CacheName(mo).String()
+	obj, exists, err := s.cache.GetByKey(key)
+	if err != nil {
+		log.Error(err, "failed to find object with key", "key", key)
+		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
+	}
+	if !exists {
+		log.V(6).Info("did not find object by key", "key", key)
+		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+	}
+	if isTombstone(obj) {
+		log.V(6).Info("found tombstone for key", "key", key)
+		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
+	}
 	mo.SetResourceVersion(s.nextResourceVersionAsString())
 	err = s.cache.Update(o)
 	if err != nil {
@@ -141,14 +154,25 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts 
 // TODO think on how to handle context cancellation
 func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error {
 	log := logr.FromContextOrDiscard(ctx)
-	o, err := s.GetByKey(ctx, key)
+	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
-		if errors.Is(err, minkapi.ErrObjectDeleted) {
-			return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-		}
+		log.Error(err, "failed to find object with key", "key", key)
+		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
+	}
+	if !exists {
+		log.V(6).Info("did not find object by key", "key", key)
+		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+	}
+	if isTombstone(obj) {
+		log.V(6).Info("found tombstone for key", "key", key)
+		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
+	}
+	mo, err := objutil.AsMeta(obj)
+	if err != nil {
 		return err
 	}
-	mo, err := objutil.AsMeta(o)
+	o, err := s.validateRuntimeObj(mo)
 	if err != nil {
 		return err
 	}
@@ -339,8 +363,6 @@ func (s *InMemResourceStore) ListTombstonedKeys(ctx context.Context) (tombstoneK
 		}
 		if ts, ok := item.(cache.DeletedFinalStateUnknown); ok {
 			tombstoneKeys.Insert(ts.Key)
-		} else if ts, ok := item.(*cache.DeletedFinalStateUnknown); ok {
-			tombstoneKeys.Insert(ts.Key)
 		}
 	}
 	return
@@ -397,10 +419,17 @@ func (s *InMemResourceStore) markDeleted(ctx context.Context, key string) error 
 	log := logr.FromContextOrDiscard(ctx)
 	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
-		return err
+		log.Error(err, "failed to find object with key", "key", key)
+		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
 	}
-	if !exists || isTombstone(obj) {
+	if !exists {
+		log.V(6).Info("did not find object by key", "key", key)
 		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+	}
+	if isTombstone(obj) {
+		log.V(6).Info("found tombstone for key", "key", key)
+		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
+		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
 	}
 	mo, err := objutil.AsMeta(obj)
 	if err != nil {
@@ -430,7 +459,7 @@ func (s *InMemResourceStore) markDeleted(ctx context.Context, key string) error 
 // Accepts both value and pointer forms for robustness.
 func isTombstone(obj any) bool {
 	switch obj.(type) {
-	case cache.DeletedFinalStateUnknown, *cache.DeletedFinalStateUnknown:
+	case cache.DeletedFinalStateUnknown:
 		return true
 	}
 	return false
@@ -463,6 +492,8 @@ func (s *InMemResourceStore) validateRuntimeObj(mo metav1.Object) (o runtime.Obj
 	return
 }
 
+// buildPendingWatchEvents returns synthetic Added events for live objects with a resourceVersion
+// greater than startVersion, matching namespace and labelSelector. Tombstones are excluded.
 func (s *InMemResourceStore) buildPendingWatchEvents(startVersion int64, namespace string, labelSelector labels.Selector) (watchEvents []watch.Event, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
