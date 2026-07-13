@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"text/template"
+	"time"
 
 	benchutil "github.com/gardener/scaling-advisor/bench/cmd/util"
 
@@ -169,7 +170,13 @@ func ServeMetrics(port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	addr := fmt.Sprintf(":%d", port)
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+		// G112 (CWE-400): Potential Slowloris Attack: kept it same as the one defined for http server started in the actual kube-apiserver.
+		// See: https://github.com/kubernetes/kubernetes/blob/ad82c3d39f5e9f21e173ffeb8aa57953a0da4601/staging/src/k8s.io/apiserver/pkg/server/secure_serving.go#L172
+		ReadHeaderTimeout: 32 * time.Second,
+	}
 	log.Printf("Serving metrics on %s\n", addr)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

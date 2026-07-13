@@ -41,8 +41,10 @@ test-unit:
 
 .PHONY: sast
 sast: $(GOSEC)
-	@$(REPO_HACK_DIR)/sast.sh
+	@$(REPO_HACK_DIR)/sast.sh --exclude-dirs "hack,bench"
+	$(MAKE) -C $(REPO_ROOT)/bench sast # since `bench` module is not part of workspace, needs explicit check
 
 .PHONY: sast-report
 sast-report: $(GOSEC)
-	@$(REPO_HACK_DIR)/sast.sh --gosec-report true
+	@$(REPO_HACK_DIR)/sast.sh --exclude-dirs "hack,bench"  --gosec-report true
+	$(MAKE) -C $(REPO_ROOT)/bench sast-report # since `bench` module is not part of workspace, needs explicit check

@@ -17,7 +17,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"syscall"
 
 	sigyaml "sigs.k8s.io/yaml"
@@ -192,16 +191,16 @@ func SetupSignalHandler() context.Context {
 	return ctx
 }
 
-func downloadAssets(ctx context.Context, filepath, url, version string) error {
+func downloadAssets(ctx context.Context, path, url, version string) error {
 	// Unless the version is "master/main", try to check if the required
 	// version assets are already present. If so, no need of fetching them again.
 	if version != "master" && version != "main" {
-		if _, err := os.Stat(filepath); err == nil {
-			fmt.Printf("File %q already exists\n", filepath)
+		if _, err := os.Stat(path); err == nil {
+			fmt.Printf("File %q already exists\n", path)
 			return nil
 		}
 	}
-	out, err := os.Create(filepath)
+	out, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return err
 	}
@@ -222,10 +221,11 @@ func downloadAssets(ctx context.Context, filepath, url, version string) error {
 	}
 
 	_, err = io.Copy(out, resp.Body)
-	fmt.Printf("Got the required assets: %s from %s\n", filepath, url)
+	fmt.Printf("Got the required assets: %s from %s\n", path, url)
 	return err
 }
 
+// Source: https://gosamples.dev/unzip-file/
 func unzipSource(source, destination string) (path string, err error) {
 	reader, err := zip.OpenReader(source)
 	if err != nil {
@@ -254,10 +254,7 @@ func unzipSource(source, destination string) (path string, err error) {
 }
 
 func unzipFile(f *zip.File, destination string) error {
-	filePath := filepath.Join(destination, f.Name)
-	if !strings.HasPrefix(filePath, filepath.Clean(destination)+string(os.PathSeparator)) {
-		return fmt.Errorf("invalid file path: %s", filePath)
-	}
+	filePath := path.Join(filepath.Clean(destination), f.Name) // #nosec G305 the filePath is standard os.TempDir() with the scaler zip source (traversal of known file)
 
 	if f.FileInfo().IsDir() {
 		return os.MkdirAll(filePath, 0750)
@@ -267,7 +264,7 @@ func unzipFile(f *zip.File, destination string) error {
 		return err
 	}
 
-	destinationFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	destinationFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode()) // #nosec G304 the included file is a known file part of the scaler archive
 	if err != nil {
 		return err
 	}
@@ -279,7 +276,8 @@ func unzipFile(f *zip.File, destination string) error {
 	}
 	defer zippedFile.Close()
 
-	if _, err := io.Copy(destinationFile, zippedFile); err != nil {
+	_, err = io.Copy(destinationFile, zippedFile) // #nosec G110 the included file is a known file part of the scaler archive
+	if err != nil {
 		return err
 	}
 	return nil

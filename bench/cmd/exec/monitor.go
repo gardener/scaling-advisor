@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -177,7 +178,7 @@ func writeReports(dir string, meta RunMetadata, events []ScalingEvent) {
 }
 
 func writeJSON(filePath string, v any) error {
-	f, err := os.Create(filePath)
+	f, err := os.Create(filepath.Clean(filePath))
 	if err != nil {
 		return fmt.Errorf("cannot create %s: %w", filePath, err)
 	}

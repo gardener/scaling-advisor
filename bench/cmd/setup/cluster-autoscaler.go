@@ -62,7 +62,7 @@ func (cas *caSetup) GenerateKwokData(_ context.Context, constraintsFile, outputD
 // buildCAImage runs `make make-image` inside the CA source tree to produce the
 // Docker image used by the KWOK cluster.
 func buildCAImage(ctx context.Context, sourceDir, version string) error {
-	cmd := exec.CommandContext(ctx, "make", "make-image", fmt.Sprintf("TAG=%s", version))
+	cmd := exec.CommandContext(ctx, "make", "make-image", fmt.Sprintf("TAG=%s", version)) // #nosec G204 the cmd argument is a verified, supported make target
 	cmd.Dir = path.Join(sourceDir, benchutil.ScalerClusterAutoscaler)
 
 	var stderr, stdout bytes.Buffer

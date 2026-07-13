@@ -389,7 +389,7 @@ func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler
 	)
 	if configPath != "" {
 		templateConfigPath = configPath
-		data, err = os.ReadFile(templateConfigPath)
+		data, err = os.ReadFile(filepath.Clean(templateConfigPath))
 		if err != nil {
 			return fmt.Errorf("cannot read %s from filesystem: %w", templateConfigPath, err)
 		}
