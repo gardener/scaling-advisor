@@ -542,13 +542,13 @@ func asEvents(metaObjects []metav1.Object) (events []eventsv1.Event, maxVersion 
 }
 
 // combinePrimarySecondary gets a combined slice of metav1.Objects preferring objects in primary over the same obj in secondary
-func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object, sandboxTombstoneKeys sets.Set[string]) (combined []metav1.Object) {
+func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object) (combined []metav1.Object) {
 	found := make(map[cache.ObjectName]bool, len(primary))
 	for _, o := range primary {
 		found[objutil.CacheName(o)] = true
 	}
 	for _, o := range secondary {
-		if sandboxTombstoneKeys.Has(objutil.CacheName(o).String()) || found[objutil.CacheName(o)] {
+		if found[objutil.CacheName(o)] {
 			continue
 		}
 		combined = append(combined, o)

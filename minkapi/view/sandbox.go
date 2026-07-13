@@ -242,12 +242,14 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	if err != nil {
 		return
 	}
+	// Pass the tombstoned keys to be excluded from the list call.
+	criteria.ExcludeNames = sandboxTombstonedKeys
 	delegateItems, delegateMax, err := v.delegateView.ListMetaObjects(ctx, gvk, criteria)
 	if err != nil {
 		return
 	}
 	maxVersion = max(myMax, delegateMax)
-	items = combinePrimarySecondary(sandboxItems, delegateItems, sandboxTombstonedKeys)
+	items = combinePrimarySecondary(sandboxItems, delegateItems)
 	return
 }
 

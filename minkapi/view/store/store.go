@@ -456,13 +456,9 @@ func (s *InMemResourceStore) markDeleted(ctx context.Context, key string) error 
 }
 
 // isTombstone reports whether obj is a [cache.DeletedFinalStateUnknown] marker.
-// Accepts both value and pointer forms for robustness.
 func isTombstone(obj any) bool {
-	switch obj.(type) {
-	case cache.DeletedFinalStateUnknown:
-		return true
-	}
-	return false
+	_, ok := obj.(cache.DeletedFinalStateUnknown)
+	return ok
 }
 
 // filterOutTombstones returns a new slice containing only the entries from items that are not tombstones.

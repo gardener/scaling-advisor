@@ -268,8 +268,7 @@ func TestCombinePrimarySecondary(t *testing.T) {
 			},
 		},
 	}
-	tombtoneKeys := sets.Set[string]{}
-	combined := combinePrimarySecondary(primary, secondary, tombtoneKeys)
+	combined := combinePrimarySecondary(primary, secondary)
 	combinedNames := make([]string, len(combined))
 	for i, obj := range combined {
 		combinedNames[i] = objutil.CacheName(obj).String()

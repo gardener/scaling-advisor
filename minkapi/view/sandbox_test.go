@@ -416,8 +416,6 @@ func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) {
 	}
 }
 
-// ---- Tombstone tests --------------------------------------------------------
-
 // TestTombstone_GetReturnsNotFound verifies that after deleting a delegate-only object via the
 // sandbox, GetObject on the sandbox returns the standard apierrors NotFound — the tombstone
 // hides the delegate's copy from the sandbox's perspective.
