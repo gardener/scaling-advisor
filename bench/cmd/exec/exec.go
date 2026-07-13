@@ -172,8 +172,8 @@ func Run(
 	scaler ExecScaler,
 	args ExecArgs,
 	clusterName string,
-) (Summary, error) {
-	summary := Summary{}
+) (summary, error) {
+	summary := summary{}
 	// Set the log entry prefix time to UTC so that it matches the container
 	// log times and the metric timestamps
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC | log.Lshortfile)
@@ -201,13 +201,13 @@ func Run(
 	}
 	log.Printf("Deployed all %d scheduled pods", len(scheduled))
 
-	meta := RunMetadata{
+	meta := runMetadata{
 		StartTime:     time.Now().UTC(),
 		ScalerName:    args.Scaler,
 		ScalerVersion: args.ScalerVersion,
 		SnapshotFile:  args.SnapshotFile,
 	}
-	meta.Summary.ClusterState.Before = ClusterStats{
+	meta.Summary.ClusterState.Before = clusterStats{
 		NodeCount:                   len(clusterSnapshot.Nodes),
 		ScheduledPods:               len(scheduled),
 		UnscheduledNonDaemonSetPods: len(unscheduled) - len(daemonSetPods),
@@ -362,7 +362,7 @@ func generateAllConfigs(args ExecArgs, genDir, outputDir, clusterName string) (s
 	}
 
 	outputKwokCfgFile := path.Join(genDir, "kwok-config.yaml")
-	templateParams := KwokctlConfigTemplateParams{
+	templateParams := kwokctlConfigTemplateParams{
 		HomeDir:                 os.Getenv("HOME"),
 		ClusterName:             clusterName,
 		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
@@ -381,7 +381,7 @@ func generateAllConfigs(args ExecArgs, genDir, outputDir, clusterName string) (s
 	return outputKwokCfgFile, nil
 }
 
-func generateKwokctlConfig(params KwokctlConfigTemplateParams, scaler ExecScaler, configPath string) error {
+func generateKwokctlConfig(params kwokctlConfigTemplateParams, scaler ExecScaler, configPath string) error {
 	var (
 		data               []byte
 		templateConfigPath string

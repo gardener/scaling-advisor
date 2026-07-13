@@ -31,12 +31,12 @@ const (
 
 // newMonitor creates a monitorState by discovering Docker containers and
 // preparing the metrics infrastructure. Call start() to begin streaming.
-func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clusterName, scenarioDir string) (*monitorState, error) {
+func newMonitor(ctx context.Context, cfg *envconf.Config, meta *runMetadata, clusterName, scenarioDir string) (*monitorState, error) {
 	containersToMonitor := []string{
 		meta.ScalerName, "kube-apiserver", "etcd", "kube-scheduler", "kwok-controller",
 	}
 
-	var monitors []DockerMonitor
+	var monitors []dockerMonitor
 	for _, name := range containersToMonitor {
 		m := NewDockerMonitor(clusterName + "-" + name)
 		if err := m.WaitForReady(ctx); err != nil {
@@ -51,7 +51,7 @@ func newMonitor(ctx context.Context, cfg *envconf.Config, meta *RunMetadata, clu
 
 	return &monitorState{
 		monitors:    monitors,
-		metrics:     make(map[string][]ContainerStats),
+		metrics:     make(map[string][]containerStats),
 		cfg:         cfg,
 		meta:        meta,
 		clusterName: clusterName,
@@ -67,7 +67,7 @@ func (mon *monitorState) start(ctx context.Context, eventConfig ScalerEventConfi
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	mon.cancelStream = cancelStream
 
-	metricsChan := make(chan PodMetrics, 100)
+	metricsChan := make(chan podMetrics, 100)
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -168,7 +168,7 @@ func (mon *monitorState) clusterStateAfter(ctx context.Context) {
 	}
 }
 
-func writeReports(dir string, meta RunMetadata, events []ScalingEvent) {
+func writeReports(dir string, meta runMetadata, events []scalingEvent) {
 	if err := writeJSON(path.Join(dir, reportFileName), meta); err != nil {
 		log.Printf("Failed to write report: %v\n", err)
 	}

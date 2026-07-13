@@ -45,9 +45,9 @@ func dockerSocketPath() string {
 }
 
 // NewDockerMonitor creates a new DockerMonitor
-func NewDockerMonitor(containerNamePrefix string) DockerMonitor {
+func NewDockerMonitor(containerNamePrefix string) dockerMonitor {
 	sockPath := dockerSocketPath()
-	return DockerMonitor{
+	return dockerMonitor{
 		containerNamePrefix: containerNamePrefix,
 		httpClient:          newDialHTTPClient(sockPath),
 	}
@@ -63,7 +63,7 @@ func newDialHTTPClient(socketPath string) *http.Client {
 }
 
 // WaitForReady waits for the container to be running, polling every 500ms with a 20s timeout.
-func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
+func (m *dockerMonitor) WaitForReady(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -95,7 +95,7 @@ func (m *DockerMonitor) WaitForReady(ctx context.Context) error {
 }
 
 // StreamMetrics opens a streaming connection to Docker stats and sends metrics to the channel.
-func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics) error {
+func (m *dockerMonitor) StreamMetrics(ctx context.Context, ch chan<- podMetrics) error {
 	if m.containerID == "" {
 		return fmt.Errorf("container ID not set")
 	}
@@ -147,7 +147,7 @@ func (m *DockerMonitor) StreamMetrics(ctx context.Context, ch chan<- PodMetrics)
 	}
 }
 
-func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
+func (m *dockerMonitor) parseStats(stats *dockerStats) *podMetrics {
 	var cpuMilli uint64
 	if stats.PreCPUStats.SystemCPUUsage > 0 && stats.CPUStats.SystemCPUUsage > 0 {
 		cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
@@ -159,12 +159,12 @@ func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
 		}
 	}
 
-	return &PodMetrics{
+	return &podMetrics{
 		Timestamp: metav1.NewTime(time.Now().UTC()),
-		Containers: []ContainerMetrics{
+		Containers: []containerMetrics{
 			{
 				Name: m.containerNamePrefix,
-				Stats: ContainerStats{
+				Stats: containerStats{
 					CPUMillicores:       cpuMilli,
 					MemoryMi:            stats.MemoryStats.Usage / (1024 * 1024),
 					MemoryLimitMi:       stats.MemoryStats.Limit / (1024 * 1024),
@@ -178,7 +178,7 @@ func (m *DockerMonitor) parseStats(stats *dockerStats) *PodMetrics {
 	}
 }
 
-func (m *DockerMonitor) findContainerIDByPrefix(ctx context.Context, prefix string) (string, error) {
+func (m *dockerMonitor) findContainerIDByPrefix(ctx context.Context, prefix string) (string, error) {
 	filters := map[string][]string{"name": {prefix}}
 	filtJSON, err := json.Marshal(filters)
 	if err != nil {

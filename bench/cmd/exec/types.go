@@ -57,9 +57,9 @@ type ScalerEventConfig struct {
 	MarksPodUnschedulable []string
 }
 
-// KwokctlConfigTemplateParams stores all the parameters
+// kwokctlConfigTemplateParams stores all the parameters
 // needed for the kwokctl configuration template.
-type KwokctlConfigTemplateParams struct {
+type kwokctlConfigTemplateParams struct {
 	HomeDir                 string
 	ClusterName             string
 	KubeSchedulerConfigPath string
@@ -73,19 +73,19 @@ type KwokctlConfigTemplateParams struct {
 // monitorState groups the resources needed for metrics collection and
 // event watching during a benchmark run.
 type monitorState struct {
-	metrics      map[string][]ContainerStats
-	ec           *EventCollector
+	metrics      map[string][]containerStats
+	ec           *eventCollector
 	wg           *sync.WaitGroup
 	server       *http.Server
 	cfg          *envconf.Config
-	meta         *RunMetadata
+	meta         *runMetadata
 	cancelStream context.CancelFunc
 	clusterName  string
 	scenarioDir  string
-	monitors     []DockerMonitor
+	monitors     []dockerMonitor
 }
 
-// PrometheusConfigParams holds the parameters for the prometheus configuration template.
+// prometheusConfigParams holds the parameters for the prometheus configuration template.
 type prometheusConfigParams struct {
 	HostIP            string
 	ScrapeInterval    string
@@ -99,8 +99,8 @@ type prometheusConfigParams struct {
 // Docker
 // ---------------------------------------------------------------------------
 
-// DockerMonitor per docker container
-type DockerMonitor struct {
+// dockerMonitor per docker container
+type dockerMonitor struct {
 	httpClient          *http.Client
 	containerNamePrefix string
 	containerID         string
@@ -138,19 +138,42 @@ type dockerStats struct {
 // Events
 // ---------------------------------------------------------------------------
 
-// ScalingEvent represents a single event in the scaling timeline.
-type ScalingEvent struct {
-	Timestamp time.Time `json:"timestamp"`
-	Type      string    `json:"type"`
-	Source    string    `json:"source"`
-	Name      string    `json:"name"`
-	Namespace string    `json:"namespace,omitempty"`
-	Details   string    `json:"details,omitempty"`
-	Region    string    `json:"region,omitempty"`
+// eventCollector watches Kubernetes events, nodes, and pods to build
+// a timeline for scaling/scheduling and tracks unschedulablePods.
+type eventCollector struct {
+	res  *resources.Resources
+	done chan struct{}
+	// unschedulablePods is a set consisting of pods that could not trigger a scale
+	// up from the scaler
+	unschedulablePods sets.Set[string]
+	// The value is a slice since the same pod when deleted, is created with a different
+	// UID, hence the durations track the UID and the scheduling information for each
+	// lifetime of the pod.
+	podSchedulingDurations map[string][]podSchedulingDuration
+	timing                 timingBreakdown
+	eventConfig            ScalerEventConfig
+	watchers               []*watcher.EventHandlerFuncs
+	// Set of NamespacedName for DaemonSet Pods is cached for quick check whether an
+	// event was raised for a daemonset pod
+	daemonSetPods sets.Set[string]
+	events        []scalingEvent
+	// unscheduledCounter is initialised with the count of unscheduled non-daemonset
+	// pods, the counter is updated for recreated pre-empted pods or pods that were
+	// deleted due to node deletion.
+	unscheduledCounter int
+	// scheduledCount tracks pod scheduling, incremented when a 'PodScheduled'
+	// event is raised.
+	scheduledCount int
+	mu             sync.Mutex
 }
 
-// TimingBreakdown captures the different durations during scaling.
-type TimingBreakdown struct {
+type podSchedulingDuration struct {
+	UID            string
+	TimeToSchedule time.Duration `json:"timeToSchedule,inline"`
+}
+
+// timingBreakdown captures the different durations during scaling.
+type timingBreakdown struct {
 	// Timestamp for the first 'failedScheduling' event emitted by the scheduler
 	// This is used for computing subsequent time periods such as ReactionTime,
 	// ScaleIn/OutTime and SchedulingTime
@@ -180,52 +203,35 @@ type TimingBreakdown struct {
 	SchedulingTime string `json:"schedulingTime"`
 }
 
-type podSchedulingDuration struct {
-	UID            string
-	TimeToSchedule time.Duration `json:"timeToSchedule,inline"`
-}
-
-// EventCollector watches Kubernetes events, nodes, and pods to build
-// a timeline for scaling/scheduling and tracks unschedulablePods.
-type EventCollector struct {
-	res  *resources.Resources
-	done chan struct{}
-	// unschedulablePods is a set consisting of pods that could not trigger a scale
-	// up from the scaler
-	unschedulablePods sets.Set[string]
-	// The value is a slice since the same pod when deleted, is created with a different
-	// UID, hence the durations track the UID and the scheduling information for each
-	// lifetime of the pod.
-	podSchedulingDurations map[string][]podSchedulingDuration
-	timing                 TimingBreakdown
-	eventConfig            ScalerEventConfig
-	watchers               []*watcher.EventHandlerFuncs
-	// Set of NamespacedName for DaemonSet Pods is cached for quick check whether an
-	// event was raised for a daemonset pod
-	daemonSetPods sets.Set[string]
-	events        []ScalingEvent
-	// unscheduledCounter is initialised with the count of unscheduled non-daemonset
-	// pods, the counter is updated for recreated pre-empted pods or pods that were
-	// deleted due to node deletion.
-	unscheduledCounter int
-	// scheduledCount tracks pod scheduling, incremented when a 'PodScheduled'
-	// event is raised.
-	scheduledCount int
-	mu             sync.Mutex
+// scalingEvent represents a single event in the scaling timeline.
+type scalingEvent struct {
+	Timestamp time.Time `json:"timestamp"`
+	Type      string    `json:"type"`
+	Source    string    `json:"source"`
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace,omitempty"`
+	Details   string    `json:"details,omitempty"`
+	Region    string    `json:"region,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
 
-// PodMetrics represents the metrics of a pod at a point in time.
-type PodMetrics struct {
+// podMetrics represents the metrics of a pod at a point in time.
+type podMetrics struct {
 	Timestamp  metav1.Time
-	Containers []ContainerMetrics
+	Containers []containerMetrics
 }
 
-// ContainerStats holds all resource metrics for a container at a point in time.
-type ContainerStats struct {
+// containerMetrics represents the resource usage of a single container.
+type containerMetrics struct {
+	Name  string
+	Stats containerStats
+}
+
+// containerStats holds all resource metrics for a container at a point in time.
+type containerStats struct {
 	Timestamp           time.Time
 	CPUMillicores       uint64
 	MemoryMi            uint64
@@ -236,88 +242,82 @@ type ContainerStats struct {
 	PID                 uint32
 }
 
-// ContainerMetrics represents the resource usage of a single container.
-type ContainerMetrics struct {
-	Name  string
-	Stats ContainerStats
-}
-
-// SchedulingLatency captures per-pod scheduling latency percentiles.
-type SchedulingLatency struct {
-	P50 string `json:"p50"`
-	P90 string `json:"p90"`
-	P99 string `json:"p99"`
-	Max string `json:"max"`
-}
-
-// ScalingFailure represents a pod that could not be scheduled.
-type ScalingFailure struct {
-	PodName string `json:"podName"`
-	Reason  string `json:"reason"`
-	Details string `json:"details"`
-}
-
-// ClusterStats captures a point-in-time snapshot of cluster size.
-type ClusterStats struct {
-	NodeCount                   int `json:"nodeCount"`
-	ScheduledPods               int `json:"scheduledPods"`
-	UnscheduledNonDaemonSetPods int `json:"unscheduledNonDaemonSetPods"`
-}
-
-// ClusterState holds the cluster state before and after scaling.
-type ClusterState struct {
-	Before ClusterStats `json:"before"`
-	After  ClusterStats `json:"after"`
-}
-
-// EventsSummary holds event count information.
-type EventsSummary struct {
-	CountByType map[string]int `json:"countByType"`
-	TotalCount  int            `json:"totalCount"`
-}
-
-// InstanceDetails consists of information used to identify the
-// scaled instances and the associated pricing/region data
-type InstanceDetails struct {
-	Region string
-	Price  float64
-	Count  int
-}
-
-// NodesSummary holds node scaling information.
-type NodesSummary struct {
-	InstanceTypes    map[string]InstanceDetails `json:"instanceTypes"`
-	TotalCreated     int                        `json:"totalCreated"`
-	TotalHourlyPrice float64                    `json:"totalHourlyPrice"`
-}
-
-// Summary holds the structured summary of the benchmark run detailing
-// the timeline for scaling and scheduling events during the run, summary
-// for various scaler and pod/node events, alongwith a before/after comparison
-// of the cluster state.
-type Summary struct {
-	ScalingTimeline TimingBreakdown `json:"scalingTimeline"`
-	Events          EventsSummary   `json:"events"`
-	Nodes           NodesSummary    `json:"nodes"`
-	Pods            PodsSummary     `json:"pods"`
-	ClusterState    ClusterState    `json:"clusterState"`
-}
-
-// PodsSummary holds pod scheduling information.
-type PodsSummary struct {
-	SchedulingDurations map[string][]string `json:"schedulingDurations,omitempty"`
-	SchedulingLatency   SchedulingLatency   `json:"schedulingLatency,omitzero"`
-	Failures            []ScalingFailure    `json:"failures,omitempty"`
-	UnschedulablePods   int                 `json:"unschedulablePods"`
-}
-
-// RunMetadata holds static information about a benchmark run known before execution.
-type RunMetadata struct {
+// runMetadata holds static information about a benchmark run known before execution.
+type runMetadata struct {
 	StartTime        time.Time `json:"startTime"`
 	EndTime          time.Time `json:"endTime"`
 	TotalRunDuration string    `json:"totalRunDuration"`
 	ScalerName       string    `json:"scalerName"`
 	ScalerVersion    string    `json:"scalerVersion"`
 	SnapshotFile     string    `json:"snapshotFile"`
-	Summary          Summary   `json:"summary"`
+	Summary          summary   `json:"summary"`
+}
+
+// summary holds the structured summary of the benchmark run detailing
+// the timeline for scaling and scheduling events during the run, summary
+// for various scaler and pod/node events, alongwith a before/after comparison
+// of the cluster state.
+type summary struct {
+	ScalingTimeline timingBreakdown `json:"scalingTimeline"`
+	Events          eventsSummary   `json:"events"`
+	Nodes           nodesSummary    `json:"nodes"`
+	Pods            podsSummary     `json:"pods"`
+	ClusterState    clusterState    `json:"clusterState"`
+}
+
+// nodesSummary holds node scaling information.
+type nodesSummary struct {
+	InstanceTypes    map[string]instanceDetails `json:"instanceTypes"`
+	TotalCreated     int                        `json:"totalCreated"`
+	TotalHourlyPrice float64                    `json:"totalHourlyPrice"`
+}
+
+// eventsSummary holds event count information.
+type eventsSummary struct {
+	CountByType map[string]int `json:"countByType"`
+	TotalCount  int            `json:"totalCount"`
+}
+
+// podsSummary holds pod scheduling information.
+type podsSummary struct {
+	SchedulingDurations map[string][]string `json:"schedulingDurations,omitempty"`
+	SchedulingLatency   schedulingLatency   `json:"schedulingLatency,omitzero"`
+	Failures            []scalingFailure    `json:"failures,omitempty"`
+	UnschedulablePods   int                 `json:"unschedulablePods"`
+}
+
+// InstanceDetails consists of information used to identify the
+// scaled instances and the associated pricing/region data
+type instanceDetails struct {
+	Region string
+	Price  float64
+	Count  int
+}
+
+// schedulingLatency captures per-pod scheduling latency percentiles.
+type schedulingLatency struct {
+	P50 string `json:"p50"`
+	P90 string `json:"p90"`
+	P99 string `json:"p99"`
+	Max string `json:"max"`
+}
+
+// scalingFailure represents a pod that could not be scheduled.
+type scalingFailure struct {
+	PodName string `json:"podName"`
+	Reason  string `json:"reason"`
+	Details string `json:"details"`
+}
+
+// clusterStats captures a point-in-time snapshot of cluster size.
+type clusterStats struct {
+	NodeCount                   int `json:"nodeCount"`
+	ScheduledPods               int `json:"scheduledPods"`
+	UnscheduledNonDaemonSetPods int `json:"unscheduledNonDaemonSetPods"`
+}
+
+// clusterState holds the cluster state before and after scaling.
+type clusterState struct {
+	Before clusterStats `json:"before"`
+	After  clusterStats `json:"after"`
 }

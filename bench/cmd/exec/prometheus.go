@@ -191,7 +191,7 @@ func ServeMetrics(port int) *http.Server {
 // ---------------------------------------------------------------------------
 
 // SetContainerMetrics updates all prometheus gauges for the given container.
-func SetContainerMetrics(containerName string, s ContainerStats) {
+func SetContainerMetrics(containerName string, s containerStats) {
 	ContainerCPUUsage.WithLabelValues(containerName).Set(float64(s.CPUMillicores))
 	ContainerMemoryUsage.WithLabelValues(containerName).Set(float64(s.MemoryMi))
 	ContainerMemoryLimit.WithLabelValues(containerName).Set(float64(s.MemoryLimitMi))
