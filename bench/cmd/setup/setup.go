@@ -102,7 +102,7 @@ func Run(ctx context.Context, args SetupArgs) (err error) {
 	// during harness execution. Remove any existing link so re-runs succeed.
 	pricingDst := path.Join(outputDir, benchutil.FileNamePricingData)
 	_ = os.Remove(pricingDst)
-	if err := os.Link(args.PricingFile, pricingDst); err != nil {
+	if err := os.Symlink(args.PricingFile, pricingDst); err != nil {
 		return fmt.Errorf("could not link pricing file to output directory: %v", err)
 	}
 
