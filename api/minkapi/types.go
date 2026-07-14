@@ -87,7 +87,7 @@ type ResourceStore interface {
 	// ListMetaObjects lists metadata objects matching the given criteria.
 	ListMetaObjects(ctx context.Context, c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
 	// ListTombstonedKeys lists the keys of tombstoned objects.
-	ListTombstonedKeys(ctx context.Context) (tombstoneKeys sets.Set[string], err error)
+	ListTombstonedKeys(ctx context.Context) (tombstonedKeys sets.Set[string], err error)
 	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
@@ -237,7 +237,8 @@ type Server interface {
 }
 
 // App represents a MinKAPI application process that wraps a minkapi Server, an application context and application cancel func.
-// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp and shutdown applications via minkapi cli.ShutdownApp
+// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp
+// and shutdown applications via minkapi cli.ShutdownApp
 type App struct {
 	// Ctx is the application context.
 	Ctx context.Context
@@ -248,7 +249,8 @@ type App struct {
 }
 
 // MatchCriteria defines criteria for matching Kubernetes objects.
-// ExcludeNames takes precedence over Names.
+// The precedence of criteria for matching is as follows in the order of highest precedence to lowest:
+// Namespace, ExcludeNames, Names, LabelSelector
 type MatchCriteria struct {
 	// LabelSelector specifies the label selector for matching objects.
 	LabelSelector labels.Selector

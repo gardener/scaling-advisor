@@ -351,18 +351,18 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 
 // ListTombstonedKeys queries the store, gets objects and returns the [cache.DeletedFinalStateUnknown.Key]
 // for the tombstoned objects.
-func (s *InMemResourceStore) ListTombstonedKeys(ctx context.Context) (tombstoneKeys sets.Set[string], err error) {
+func (s *InMemResourceStore) ListTombstonedKeys(ctx context.Context) (tombstonedKeys sets.Set[string], err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tombstoneKeys = sets.New[string]()
+	tombstonedKeys = sets.New[string]()
 	items := s.cache.List()
 	for _, item := range items {
 		if err = ctx.Err(); err != nil {
 			return
 		}
 		if ts, ok := item.(cache.DeletedFinalStateUnknown); ok {
-			tombstoneKeys.Insert(ts.Key)
+			tombstonedKeys.Insert(ts.Key)
 		}
 	}
 	return
