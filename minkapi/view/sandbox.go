@@ -143,7 +143,7 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
 		// Tombstoned: surface as the standard Kubernetes "not found" error and do not fall
 		// through to the delegate (the sandbox has explicitly deleted this object).
-		return nil, apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
+		return nil, err
 	}
 	if obj != nil || !apierrors.IsNotFound(err) {
 		// return if the object is found or get an error other than not found error
@@ -159,7 +159,7 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 	if err != nil {
 		if errors.Is(err, minkapi.ErrObjectDeleted) {
 			// Tombstoned: caller is updating something that has been deleted from the sandbox.
-			return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
+			return err
 		} else if !apierrors.IsNotFound(err) {
 			return err
 		}
@@ -186,7 +186,6 @@ func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.Ob
 	gvk := typeinfo.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
 	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
-		err = apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, podName.String())
 		return
 	}
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -322,16 +321,14 @@ func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKin
 }
 
 // DeleteObject removes an object from the sandbox's perspective. It NEVER mutates the delegate
-// view; instead, it parks a [cache.DeletedFinalStateUnknown] tombstone in the sandbox's own
-// store so subsequent Get/List/Watch operations on this sandbox behave as if the object is gone.
+// view; instead, it parks a [cache.DeletedFinalStateUnknown] tombstone in the sandbox's own store.
 //
 // Three cases:
 //   - The object is in the sandbox local store: tombstone it directly and fire a Deleted broadcast.
 //   - The object is in the delegate only: materialize a deep-copy into the sandbox store with
-//     NoBroadcast=true (consumers already saw the original via the delegate's initial-list),
-//     tombstone the materialized copy and fire the Deleted broadcast.
-//   - The object exists in neither (or is already tombstoned): returns apierrors.NewNotFound,
-//     matching the Kubernetes API server's DELETE-on-missing behavior.
+//     NoBroadcast=true, tombstone the materialized copy and fire the Deleted broadcast.
+//   - The object exists in neither (or is already tombstoned): returns error which wraps
+//     apierrors.NewNotFound and minkapi.ErrObjectDeleted.
 func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) error {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
@@ -344,10 +341,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 		}
 		v.changeCount.Add(1)
 		return nil
-	} else if errors.Is(gerr, minkapi.ErrObjectDeleted) {
-		// Already tombstoned: NotFound, mirroring K8s API server behavior for repeated delete.
-		return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
-	} else if !apierrors.IsNotFound(gerr) {
+	} else if errors.Is(gerr, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(gerr) {
 		return gerr
 	}
 	// Sandbox doesn't have it; consult delegate.
