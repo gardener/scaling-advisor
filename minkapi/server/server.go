@@ -24,11 +24,9 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -42,24 +40,24 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ minkapi.Server = (*InMemServer)(nil)
+var _ api.Server = (*InMemServer)(nil)
 
-// InMemServer holds the in-memory stores, watch channels, and version tracking for simple implementation of minkapi.APIServer
+// InMemServer holds the in-memory stores, watch channels, and version tracking for simple implementation of api.APIServer
 type InMemServer struct {
 	listenerAddr net.Addr
-	viewAccess   minkapi.ViewAccess
+	viewAccess   api.ViewAccess
 	rootMux      *http.ServeMux
 	server       *http.Server
 	kapiURL      string
-	cfg          minkapi.Config
+	cfg          api.Config
 }
 
 // New constructs a KAPI server with default implementations of sub-components.
-func New(ctx context.Context, cfg minkapi.Config) (minkapi.Server, error) {
-	viewAccess, err := view.NewAccess(ctx, &minkapi.ViewArgs{
-		Name:           minkapi.DefaultBasePrefix,
-		KubeConfigPath: cfg.KubeConfigPath,
-		Scheme:         typeinfo.SupportedScheme,
+func New(ctx context.Context, cfg api.Config) (api.Server, error) {
+	viewAccess, err := view.NewAccess(ctx, &api.ViewArgs{
+		Name:           api.DefaultBasePrefix,
+		KubeConfigPath: cfg.ServerConfig.KubeConfigPath,
+		Scheme:         api.SupportedScheme,
 		WatchConfig:    cfg.WatchConfig,
 	})
 	if err != nil {
@@ -69,11 +67,11 @@ func New(ctx context.Context, cfg minkapi.Config) (minkapi.Server, error) {
 }
 
 // NewUsingViews constructs a KAPI server with the given base view.
-func NewUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess minkapi.ViewAccess) (k minkapi.Server, err error) {
+func NewUsingViews(ctx context.Context, cfg api.Config, viewAccess api.ViewAccess) (k api.Server, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrInitFailed, err)
+			err = fmt.Errorf("%w: %w", api.ErrInitFailed, err)
 		}
 	}()
 	setMinKAPIConfigDefaults(&cfg)
@@ -82,17 +80,17 @@ func NewUsingViews(ctx context.Context, cfg minkapi.Config, viewAccess minkapi.V
 		cfg:     cfg,
 		rootMux: rootMux,
 		server: &http.Server{
-			Addr: cfg.BindAddress,
+			Addr: cfg.ServerConfig.BindAddress,
 			// G112 (CWE-400): Potential Slowloris Attack: kept it same as the one defined for http server started in the actual kube-apiserver.
 			// See: https://github.com/kubernetes/kubernetes/blob/ad82c3d39f5e9f21e173ffeb8aa57953a0da4601/staging/src/k8s.io/apiserver/pkg/server/secure_serving.go#L172
 			ReadHeaderTimeout: 32 * time.Second,
 		},
-		kapiURL:    fmt.Sprintf("http://%s/%s", cfg.BindAddress, cfg.BasePrefix),
+		kapiURL:    fmt.Sprintf("http://%s/%s", cfg.ServerConfig.BindAddress, cfg.BasePrefix),
 		viewAccess: viewAccess,
 	}
 	// DO NOT REMOVE: Single route registration crap needed for kubectl compatibility as it ignores server path prefixes
 	// and always makes a call to http://localhost:8084/api/v1/?timeout=32s
-	rootMux.HandleFunc("GET /api/v1/", s.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
+	rootMux.HandleFunc("GET /api/v1/", s.handleAPIResources(api.SupportedCoreAPIResourceList))
 	rootMux.HandleFunc("POST /views/{name}", s.handleCreateSandboxView)
 	log.Info("initialized MinKAPI server", "address", s.server.Addr)
 	k = s
@@ -113,34 +111,34 @@ func (k *InMemServer) Start(ctx context.Context) error {
 	// We do this because we want the bind address
 	listener, err := net.Listen("tcp", k.server.Addr)
 	if err != nil {
-		return fmt.Errorf("%w: cannot listen on TCP Address %q: %w", minkapi.ErrStartFailed, k.server.Addr, err)
+		return fmt.Errorf("%w: cannot listen on TCP Address %q: %w", api.ErrStartFailed, k.server.Addr, err)
 	}
 	k.listenerAddr = listener.Addr()
 	err = configtmpl.GenKubeConfig(configtmpl.KubeConfigParams{
 		Name:           k.cfg.BasePrefix,
-		KubeConfigPath: k.cfg.KubeConfigPath,
+		KubeConfigPath: k.cfg.ServerConfig.KubeConfigPath,
 		URL:            k.kapiURL,
 	})
 	if err != nil {
-		return fmt.Errorf("%w: %w", minkapi.ErrStartFailed, err)
+		return fmt.Errorf("%w: %w", api.ErrStartFailed, err)
 	}
-	log.Info("baseView kubeconfig generated", "path", k.cfg.KubeConfigPath)
-	k.GetBaseView().SetKubeConfigPath(k.cfg.KubeConfigPath)
+	log.Info("baseView kubeconfig generated", "path", k.cfg.ServerConfig.KubeConfigPath)
+	k.GetBaseView().SetKubeConfigPath(k.cfg.ServerConfig.KubeConfigPath)
 
 	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
-		KubeConfigPath:          k.cfg.KubeConfigPath,
-		KubeSchedulerConfigPath: fmt.Sprintf("/tmp/%s-bin-packing-scheduler-config.yaml", minkapi.ProgramName),
+		KubeConfigPath:          k.cfg.ServerConfig.KubeConfigPath,
+		KubeSchedulerConfigPath: fmt.Sprintf("/tmp/%s-bin-packing-scheduler-config.yaml", api.ProgramName),
 		QPS:                     100,
 		Burst:                   50,
 	}
 	err = configtmpl.GenKubeSchedulerConfig(schedulerTmplParams)
 	if err != nil {
-		return fmt.Errorf("%w: %w", minkapi.ErrStartFailed, err)
+		return fmt.Errorf("%w: %w", api.ErrStartFailed, err)
 	}
 	log.Info("sample kube-scheduler-config generated", "path", schedulerTmplParams.KubeSchedulerConfigPath)
-	log.Info(fmt.Sprintf("%s core listening", minkapi.ProgramName), "address", k.server.Addr, "kapiURL", k.kapiURL)
+	log.Info(fmt.Sprintf("%s core listening", api.ProgramName), "address", k.server.Addr, "kapiURL", k.kapiURL)
 	if err = k.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("%w: %w", minkapi.ErrServiceFailed, err)
+		return fmt.Errorf("%w: %w", api.ErrServiceFailed, err)
 	}
 	return nil
 }
@@ -149,11 +147,11 @@ func (k *InMemServer) Start(ctx context.Context) error {
 func (k *InMemServer) Stop(ctx context.Context) (err error) {
 	var errs []error
 	var cancel context.CancelFunc
-	if k.cfg.GracefulShutdownTimeout.Duration > 0 {
+	if k.cfg.ServerConfig.GracefulShutdownTimeout.Duration > 0 {
 		// It is possible that ctx is already a shutdown context where minkapi is embedded intoa  higher-level core
 		// whose Stop has already created a shutdown context prior to invoking minkapi Stop
 		// In such a case, it is expected that cfg.GracefulShutdownTimeout for minkapi would not be explicitly specified.
-		ctx, cancel = context.WithTimeout(ctx, k.cfg.GracefulShutdownTimeout.Duration)
+		ctx, cancel = context.WithTimeout(ctx, k.cfg.ServerConfig.GracefulShutdownTimeout.Duration)
 		defer cancel()
 	}
 	err = k.server.Shutdown(ctx) // shutdown server first to avoid accepting new requests.
@@ -176,24 +174,24 @@ func (k *InMemServer) Close() error {
 }
 
 // GetBaseView returns the foundational View of the KAPI Server.
-func (k *InMemServer) GetBaseView() minkapi.View {
+func (k *InMemServer) GetBaseView() api.View {
 	return k.viewAccess.GetBaseView()
 }
 
 // GetSandboxView creates or returns a sandboxed KAPI View with the given name
-func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (minkapi.View, error) {
+func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (api.View, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	sv, err := k.viewAccess.GetSandboxView(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	kapiURL := fmt.Sprintf("http://%s/%s", k.cfg.BindAddress, name)
+	kapiURL := fmt.Sprintf("http://%s/%s", k.cfg.ServerConfig.BindAddress, name)
 	_, err = url.Parse(kapiURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid sandbox-kapi URI for view %q: %w", minkapi.ErrCreateView, name, err)
+		return nil, fmt.Errorf("%w: invalid sandbox-kapi URI for view %q: %w", api.ErrCreateView, name, err)
 	}
-	baseKubeConfigDir := filepath.Dir(k.cfg.KubeConfigPath)
-	kubeConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s.yaml", minkapi.ProgramName, name))
+	baseKubeConfigDir := filepath.Dir(k.cfg.ServerConfig.KubeConfigPath)
+	kubeConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s.yaml", api.ProgramName, name))
 	log.Info("generating kubeconfig for sandbox", "name", name, "path", kubeConfigPath)
 	err = configtmpl.GenKubeConfig(configtmpl.KubeConfigParams{
 		Name:           name,
@@ -201,12 +199,12 @@ func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (minkapi.
 		URL:            kapiURL,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot generate kubeconfig for view %q: %w", minkapi.ErrCreateView, name, err)
+		return nil, fmt.Errorf("%w: cannot generate kubeconfig for view %q: %w", api.ErrCreateView, name, err)
 	}
-	log.Info("sandbox kubeconfig generated for sandbox view", "name", name, "path", k.cfg.KubeConfigPath)
+	log.Info("sandbox kubeconfig generated for sandbox view", "name", name, "path", k.cfg.ServerConfig.KubeConfigPath)
 	sv.SetKubeConfigPath(kubeConfigPath)
 
-	kubeSchedulerConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s-bin-packing-scheduler-config.yaml", minkapi.ProgramName, name))
+	kubeSchedulerConfigPath := filepath.Join(baseKubeConfigDir, fmt.Sprintf("%s-%s-bin-packing-scheduler-config.yaml", api.ProgramName, name))
 	schedulerTmplParams := configtmpl.KubeSchedulerTmplParams{
 		KubeConfigPath:          kubeConfigPath,
 		KubeSchedulerConfigPath: kubeSchedulerConfigPath,
@@ -215,7 +213,7 @@ func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (minkapi.
 	}
 	err = configtmpl.GenKubeSchedulerConfig(schedulerTmplParams)
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot generate kube-scheduler config for view %q: %w", minkapi.ErrStartFailed, name, err)
+		return nil, fmt.Errorf("%w: cannot generate kube-scheduler config for view %q: %w", api.ErrStartFailed, name, err)
 	}
 
 	sandboxViewMux := http.NewServeMux()
@@ -223,16 +221,16 @@ func (k *InMemServer) GetSandboxView(ctx context.Context, name string) (minkapi.
 	return sv, nil
 }
 
-// GetSandboxViewOverDelegate is the minkapi server implementation for minkapi.ViewAccess.GetSandboxViewOverDelegate
+// GetSandboxViewOverDelegate is the minkapi server implementation for api.ViewAccess.GetSandboxViewOverDelegate
 // It delegates to underlying viewAccess.GetSandboxViewOverDelegate and also registers routes for the new sandbox View.
-func (k *InMemServer) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView minkapi.View) (minkapi.View, error) {
+func (k *InMemServer) GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView api.View) (api.View, error) {
 	return k.viewAccess.GetSandboxViewOverDelegate(ctx, name, delegateView)
 	// TODO: also register routes for sandbox view.
 }
 
-func (k *InMemServer) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view minkapi.View) {
+func (k *InMemServer) registerRoutes(log logr.Logger, viewMux *http.ServeMux, view api.View) {
 	// TODO: Design: Discuss this since this is not necessary when running as operator since operator has its own profiling enablement.
-	if k.cfg.ProfilingEnabled {
+	if k.cfg.ServerConfig.ProfilingEnabled {
 		log.Info("profiling enabled - registering /debug/pprof/* handlers")
 		viewMux.HandleFunc("/debug/pprof/", pprof.Index)
 		viewMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -252,7 +250,7 @@ func (k *InMemServer) registerRoutes(log logr.Logger, viewMux *http.ServeMux, vi
 	// Core API Group and Other API Groups
 	k.registerAPIGroups(viewMux)
 
-	for _, d := range typeinfo.SupportedDescriptors {
+	for _, d := range api.SupportedDescriptors {
 		k.registerResourceRoutes(viewMux, d, view)
 	}
 	// Register the view's mux under the pathPrefix, stripping the pathPrefix
@@ -261,16 +259,16 @@ func (k *InMemServer) registerRoutes(log logr.Logger, viewMux *http.ServeMux, vi
 
 func (k *InMemServer) registerAPIGroups(viewMux *http.ServeMux) {
 	// Core API
-	viewMux.HandleFunc("GET /api/v1/", k.handleAPIResources(typeinfo.SupportedCoreAPIResourceList))
+	viewMux.HandleFunc("GET /api/v1/", k.handleAPIResources(api.SupportedCoreAPIResourceList))
 
 	// API groups
-	for _, apiList := range typeinfo.SupportedGroupAPIResourceLists {
+	for _, apiList := range api.SupportedGroupAPIResourceLists {
 		route := fmt.Sprintf("GET /apis/%s/", apiList.APIResources[0].Group)
 		viewMux.HandleFunc(route, k.handleAPIResources(apiList))
 	}
 }
 
-func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.Descriptor, view minkapi.View) {
+func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d api.Descriptor, view api.View) {
 	g := d.GVK.Group
 	r := d.GVR.Resource
 	if d.GVK.Group == "" {
@@ -283,7 +281,7 @@ func (k *InMemServer) registerResourceRoutes(viewMux *http.ServeMux, d typeinfo.
 		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}", r), handlePut(d, view))        // Update
 		viewMux.HandleFunc(fmt.Sprintf("PUT /api/v1/namespaces/{namespace}/%s/{name}/status", r), handlePut(d, view)) // UpdateStatus
 
-		if d.GetKind() == typeinfo.PodsDescriptor.GetKind() {
+		if d.GetKind() == api.PodsDescriptor.GetKind() {
 			viewMux.HandleFunc("POST /api/v1/namespaces/{namespace}/pods/{name}/binding", handleCreatePodBinding(view))
 		}
 
@@ -315,7 +313,7 @@ func (k *InMemServer) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJsonResponse(w, r, &typeinfo.SupportedAPIGroups)
+	writeJsonResponse(w, r, &api.SupportedAPIGroups)
 }
 
 // handleAPIVersions returns the list of versions for the core API group
@@ -324,7 +322,7 @@ func (k *InMemServer) handleAPIVersions(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJsonResponse(w, r, &typeinfo.SupportedAPIVersions)
+	writeJsonResponse(w, r, &api.SupportedAPIVersions)
 }
 
 func (k *InMemServer) handleAPIResources(apiResourceList metav1.APIResourceList) http.HandlerFunc {
@@ -359,7 +357,7 @@ func (k *InMemServer) handleCreateSandboxView(w http.ResponseWriter, r *http.Req
 	writeJsonResponse(w, r, statusOK)
 }
 
-func handleGet(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleGet(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
 		obj, err := view.GetObject(r.Context(), d.GVK, name)
@@ -371,7 +369,7 @@ func handleGet(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleCreate(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleCreate(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			mo  metav1.Object
@@ -404,7 +402,7 @@ func handleCreate(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 
 // handlePut Ref: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#considerations-for-put-operations (TODO ensure handlePut follows this)
 // TODO: handlePut is not complete
-func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePut(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
 		obj, err := view.GetObject(r.Context(), d.GVK, name)
@@ -425,7 +423,7 @@ func handlePut(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleDelete(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleDelete(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		objName := GetObjectName(r, d)
 		obj, err := view.GetObject(r.Context(), d.GVK, objName)
@@ -459,7 +457,7 @@ func handleDelete(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handleListOrWatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handleListOrWatch(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		isWatch := query.Get("watch")
@@ -480,10 +478,10 @@ func handleListOrWatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 	}
 }
 
-func handleList(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.Selector) http.HandlerFunc {
+func handleList(d api.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		namespace := r.PathValue("namespace")
-		c := minkapi.MatchCriteria{Namespace: namespace, LabelSelector: labelSelector}
+		c := api.MatchCriteria{Namespace: namespace, LabelSelector: labelSelector}
 		listObj, err := view.ListObjects(r.Context(), d.GVK, c) //s.List(c)
 		if err != nil {
 			return
@@ -492,7 +490,7 @@ func handleList(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.S
 	}
 }
 
-func handlePatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePatch(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := GetObjectName(r, d)
 		contentType := r.Header.Get("Content-Type")
@@ -516,7 +514,7 @@ func handlePatch(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
 	}
 }
 
-func handlePatchStatus(d typeinfo.Descriptor, view minkapi.View) http.HandlerFunc {
+func handlePatchStatus(d api.Descriptor, view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		objName := GetObjectName(r, d)
 		contentType := r.Header.Get("Content-Type")
@@ -542,9 +540,9 @@ func handlePatchStatus(d typeinfo.Descriptor, view minkapi.View) http.HandlerFun
 	}
 }
 
-// handleWatch implements watch request/response handling. It delegates watch functionality to the given minkapi.View, only
+// handleWatch implements watch request/response handling. It delegates watch functionality to the given api.View, only
 // passing a callback which encodes the watch event and flushed it to the response stream.
-func handleWatch(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.Selector) http.HandlerFunc {
+func handleWatch(d api.Descriptor, view api.View, labelSelector labels.Selector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			ok           bool
@@ -593,10 +591,10 @@ func handleWatch(d typeinfo.Descriptor, view minkapi.View, labelSelector labels.
 //
 // Example Payload
 // {"kind":"Binding","apiVersion":"v1","metadata":{"name":"a-p4r2l","namespace":"default","uid":"b8124ee8-a0c7-4069-930d-fc5e901675d3"},"target":{"kind":"Node","name":"a-kl827"}}
-func handleCreatePodBinding(view minkapi.View) http.HandlerFunc {
+func handleCreatePodBinding(view api.View) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logr.FromContextOrDiscard(r.Context())
-		d := typeinfo.PodsDescriptor
+		d := api.PodsDescriptor
 		binding := corev1.Binding{}
 		if !readBodyIntoObj(w, r, &binding) {
 			return
@@ -676,7 +674,7 @@ func getFlusher(w http.ResponseWriter) http.Flusher {
 }
 
 func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
-	sch := typeinfo.SupportedScheme
+	sch := api.SupportedScheme
 	s := kjson.NewSerializerWithOptions(
 		kjson.DefaultMetaFactory, sch, sch,
 		kjson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
@@ -697,8 +695,8 @@ func buildWatchEventJson(log logr.Logger, ev *watch.Event) (string, error) {
 	return payload, nil
 }
 
-// GetObjectName returns constructs the cache.ObjectName for an object contained in the given request corresponding to the given typeinfo.Descriptor
-func GetObjectName(r *http.Request, d typeinfo.Descriptor) cache.ObjectName {
+// GetObjectName returns constructs the cache.ObjectName for an object contained in the given request corresponding to the given api.Descriptor
+func GetObjectName(r *http.Request, d api.Descriptor) cache.ObjectName {
 	namespace := r.PathValue("namespace")
 	if namespace == "" && d.APIResource.Namespaced {
 		namespace = "default"
@@ -715,21 +713,21 @@ func parseLabelSelector(req *http.Request) (labels.Selector, error) {
 	return labels.Parse(raw)
 }
 
-func setMinKAPIConfigDefaults(cfg *minkapi.Config) {
+func setMinKAPIConfigDefaults(cfg *api.Config) {
 	if cfg.WatchConfig.QueueSize <= 0 {
-		cfg.WatchConfig.QueueSize = minkapi.DefaultWatchQueueSize
+		cfg.WatchConfig.QueueSize = api.DefaultWatchQueueSize
 	}
 	if cfg.WatchConfig.Timeout <= 0 {
-		cfg.WatchConfig.Timeout = minkapi.DefaultWatchTimeout
+		cfg.WatchConfig.Timeout = api.DefaultWatchTimeout
 	}
 	if strings.TrimSpace(cfg.BasePrefix) == "" {
-		cfg.BasePrefix = minkapi.DefaultBasePrefix
+		cfg.BasePrefix = api.DefaultBasePrefix
 	}
-	if strings.TrimSpace(cfg.KubeConfigPath) == "" {
-		cfg.KubeConfigPath = minkapi.DefaultKubeConfigPath
+	if strings.TrimSpace(cfg.ServerConfig.KubeConfigPath) == "" {
+		cfg.ServerConfig.KubeConfigPath = api.DefaultKubeConfigPath
 	}
-	if strings.TrimSpace(cfg.BindAddress) == "" {
-		cfg.BindAddress = net.JoinHostPort("", strconv.Itoa(commonconstants.DefaultMinKAPIPort))
+	if strings.TrimSpace(cfg.ServerConfig.BindAddress) == "" {
+		cfg.ServerConfig.BindAddress = net.JoinHostPort("", strconv.Itoa(api.DefaultMinKAPIPort))
 	}
 }
 

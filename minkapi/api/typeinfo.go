@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package typeinfo
+package api
 
 import (
 	"crypto/sha256"
@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
@@ -322,7 +320,7 @@ var (
 		ServerAddressByClientCIDRs: []metav1.ServerAddressByClientCIDR{
 			{
 				ClientCIDR:    "0.0.0.0/0",
-				ServerAddress: fmt.Sprintf("127.0.0.1:%d/base", commonconstants.DefaultMinKAPIPort),
+				ServerAddress: fmt.Sprintf("127.0.0.1:%d/base", DefaultMinKAPIPort),
 			},
 		},
 	}
