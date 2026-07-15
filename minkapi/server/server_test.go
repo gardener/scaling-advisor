@@ -13,10 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
@@ -29,10 +28,10 @@ import (
 var state suiteState
 
 type suiteState struct {
-	app           minkapi.App
+	app           api.App
 	nodeA         corev1.Node
 	podA          corev1.Pod
-	clientFacades commontypes.ClientFacades
+	clientFacades api.ClientFacades
 }
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
@@ -185,7 +184,7 @@ func initSuite(ctx context.Context) (exitCode int) {
 	}
 	<-time.After(1 * time.Second) // give minimal time for startup
 
-	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, commontypes.ClientAccessModeNetwork)
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, api.ClientAccessModeNetwork)
 	if err != nil {
 		return
 	}

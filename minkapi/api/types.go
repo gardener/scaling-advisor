@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package minkapi
+package api
 
 import (
 	"context"
@@ -11,9 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 )
@@ -38,7 +39,22 @@ const (
 	DefaultKubeConfigPath = "/tmp/minkapi.yaml"
 	// DefaultBasePrefix is the default path prefix for the base minkapi server
 	DefaultBasePrefix = "base"
+	// DefaultMinKAPIPort is the default port for the MinKAPI core.
+	DefaultMinKAPIPort = 8091
+	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown for the MinKAPI server.
+	DefaultGracefulShutdownTimeout = 10 * time.Second
 )
+
+// Config holds the configuration for MinKAPI.
+type Config struct {
+	// BasePrefix is the path prefix at which the base View of the minkapi core is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
+	// Defaults to [DefaultBasePrefix]
+	BasePrefix string
+	// ServerConfig holds the server config parameters
+	ServerConfig ServerConfig
+	// WatchConfig holds config parameters relevant for watchers.
+	WatchConfig WatchConfig
+}
 
 // WatchConfig holds config parameters relevant for watchers.
 type WatchConfig struct {
@@ -48,22 +64,57 @@ type WatchConfig struct {
 	Timeout time.Duration
 }
 
-// Config holds the configuration for MinKAPI.
-type Config struct {
-	// BasePrefix is the path prefix at which the base View of the minkapi core is served. ie KAPI-Service at http://<MinKAPIHost>:<MinKAPIPort>/BasePrefix
-	// Defaults to [DefaultBasePrefix]
-	BasePrefix string
-	commontypes.ServerConfig
-	// WatchConfig holds config parameters relevant for watchers.
-	WatchConfig WatchConfig
+// ServerConfig is the common configuration for a server which can be used as standalone
+// or embedded within another process.
+type ServerConfig struct {
+	// KubeConfigPath is the path to master kube-config.
+	KubeConfigPath string `json:"kubeConfigPath"`
+	// BindAddress is the address(host:port) to bind the server to.
+	BindAddress string `json:"bindAddress"`
+	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
+	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
+	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
+	ProfilingEnabled bool `json:"profilingEnabled"`
+}
+
+// ClientAccessMode indicates the access mode of k8s client
+// +enum
+type ClientAccessMode string
+
+const (
+	// ClientAccessModeNetwork indicates the client accesses k8s api-server via a network call.
+	ClientAccessModeNetwork ClientAccessMode = "network"
+	// ClientAccessModeInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
+	// thus reducing the need for serialization and deserialization of requests and responses.
+	ClientAccessModeInMemory ClientAccessMode = "in-memory"
+)
+
+// ClientFacades is a holder for the primary k8s client and informer interfaces.
+type ClientFacades struct {
+	// Client is the standard Kubernetes clientset for accessing core APIs.
+	Client kubernetes.Interface
+	// DynClient is the dynamic client for accessing arbitrary Kubernetes resources.
+	DynClient dynamic.Interface
+	// InformerFactory provides shared informers for core Kubernetes resources.
+	InformerFactory informers.SharedInformerFactory
+	// DynInformerFactory provides shared informers for dynamic Kubernetes resources.
+	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	// Mode indicates the access mode of the Kubernetes client.
+	Mode ClientAccessMode
 }
 
 // WatchEventCallback is a function type for handling watch events from a ResourceStore.
 type WatchEventCallback func(watch.Event) (err error)
 
+// Resettable defines types that can reset their state to a default or initial configuration.
+type Resettable interface {
+	// Reset resets the state of the implementing type.
+	Reset() error
+}
+
 // ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	commontypes.Resettable
+	Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
@@ -94,6 +145,38 @@ type ResourceStore interface {
 	GetVersionCounter() *atomic.Int64
 }
 
+// MatchCriteria defines criteria for matching Kubernetes objects.
+type MatchCriteria struct {
+	// LabelSelector specifies the label selector for matching objects.
+	LabelSelector labels.Selector
+	// Names specifies the set of object names to match. Empty means all names.
+	Names sets.Set[string]
+	// Namespace specifies the namespace to match. Empty means all namespaces.
+	Namespace string
+}
+
+// MatchAllCriteria is a predefined criteria that matches all objects.
+var MatchAllCriteria = MatchCriteria{}
+
+// Matches returns true if the given object matches the criteria.
+func (c MatchCriteria) Matches(obj metav1.Object) bool {
+	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {
+		return false
+	}
+	if c.Names.Len() > 0 && !c.Names.Has(obj.GetName()) {
+		return false
+	}
+	if c.LabelSelector != nil && !c.LabelSelector.Matches(labels.Set(obj.GetLabels())) {
+		return false
+	}
+	return true
+}
+
+// String gets a human-readable string value for the MatchCriteria
+func (c MatchCriteria) String() string {
+	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
+}
+
 // ResourceStoreArgs contains arguments for creating a ResourceStore.
 type ResourceStoreArgs struct {
 	// Scheme is the runtime Scheme used by the KAPI objects storable in this store.
@@ -104,8 +187,6 @@ type ResourceStoreArgs struct {
 	ObjectGVK schema.GroupVersionKind
 	// ObjectListGVK is the GroupVersionKind for object lists from this store.
 	ObjectListGVK schema.GroupVersionKind
-	// Log is the logger instance for this store.
-	Log logr.Logger
 	// Name is the name of the resource store.
 	Name string
 	// WatchConfig contains configuration for watch operations.
@@ -114,16 +195,15 @@ type ResourceStoreArgs struct {
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	commontypes.Resettable
+	Resettable
 	events.EventSink
 	// List returns all events in the sink.
 	List() []eventsv1.Event
 }
 
 // View is the high-level facade to a repository of objects of different types (GVK).
-// TODO: Think of a better name. Rename this to ObjectRepository or something else, also add godoc ?
 type View interface {
-	commontypes.Resettable
+	Resettable
 	io.Closer
 	// GetName returns the name of this view.
 	GetName() string
@@ -133,7 +213,7 @@ type View interface {
 	SetKubeConfigPath(path string)
 	// GetClientFacades gets a ClientFacades populated according to the given accessMode that can be used by code to interact with this view
 	// via standard k8s client and informer interfaces
-	GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (commontypes.ClientFacades, error)
+	GetClientFacades(ctx context.Context, accessMode ClientAccessMode) (ClientFacades, error)
 	// GetResourceStore returns the resource store for the specified GroupVersionKind.
 	GetResourceStore(gvk schema.GroupVersionKind) (ResourceStore, error)
 	// GetEventSink returns the event sink for this view.
@@ -218,10 +298,19 @@ type ViewAccess interface {
 	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
 }
 
+// Service is a component that can be started and stopped.
+type Service interface {
+	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
+	// The context is expected to be populated with a logger.
+	Start(ctx context.Context) error
+	// Stop stops the core. Stop does not block.
+	Stop(ctx context.Context) error
+}
+
 // Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
-	commontypes.Service
+	Service
 	ViewAccess
 }
 
@@ -234,36 +323,4 @@ type App struct {
 	Cancel context.CancelFunc
 	// Server is the MinKAPI server instance.
 	Server Server
-}
-
-// MatchCriteria defines criteria for matching Kubernetes objects.
-type MatchCriteria struct {
-	// LabelSelector specifies the label selector for matching objects.
-	LabelSelector labels.Selector
-	// Names specifies the set of object names to match. Empty means all names.
-	Names sets.Set[string]
-	// Namespace specifies the namespace to match. Empty means all namespaces.
-	Namespace string
-}
-
-// MatchAllCriteria is a predefined criteria that matches all objects.
-var MatchAllCriteria = MatchCriteria{}
-
-// Matches returns true if the given object matches the criteria.
-func (c MatchCriteria) Matches(obj metav1.Object) bool {
-	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {
-		return false
-	}
-	if c.Names.Len() > 0 && !c.Names.Has(obj.GetName()) {
-		return false
-	}
-	if c.LabelSelector != nil && !c.LabelSelector.Matches(labels.Set(obj.GetLabels())) {
-		return false
-	}
-	return true
-}
-
-// String gets a human-readable string value for the MatchCriteria
-func (c MatchCriteria) String() string {
-	return fmt.Sprintf("(Namespace:%s, Names: %s, LabelSelector: %s)", c.Namespace, c.Names, c.LabelSelector)
 }

@@ -6,19 +6,13 @@ package types
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 
 	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -26,28 +20,6 @@ import (
 type Resettable interface {
 	// Reset resets the state of the implementing type.
 	Reset() error
-}
-
-// Service is a component that can be started and stopped.
-type Service interface {
-	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
-	// The context is expected to be populated with a logger.
-	Start(ctx context.Context) error
-	// Stop stops the core. Stop does not block.
-	Stop(ctx context.Context) error
-}
-
-// ServerConfig is the common configuration for a server which can be used as standalone
-// or embedded within another process.
-type ServerConfig struct {
-	// KubeConfigPath is the path to master kube-config.
-	KubeConfigPath string `json:"kubeConfigPath"`
-	// BindAddress is the address(host:port) to bind the server to.
-	BindAddress string `json:"bindAddress"`
-	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
-	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
-	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
-	ProfilingEnabled bool `json:"profilingEnabled"`
 }
 
 // QPSBurst is a simple encapsulation of client QPS and Burst settings.
@@ -185,32 +157,6 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	default:
 		return "", fmt.Errorf("%w: unknown %q", commonerrors.ErrUnsupportedCloudProvider, cloudProvider)
 	}
-}
-
-// ClientAccessMode indicates the access mode of k8s client
-// +enum
-type ClientAccessMode string
-
-const (
-	// ClientAccessModeNetwork indicates the client accesses k8s api-server via a network call.
-	ClientAccessModeNetwork ClientAccessMode = "network"
-	// ClientAccessModeInMemory indicates the client accesses k8s api-server via in-memory calls by passing network calls
-	// thus reducing the need for serialization and deserialization of requests and responses.
-	ClientAccessModeInMemory ClientAccessMode = "in-memory"
-)
-
-// ClientFacades is a holder for the primary k8s client and informer interfaces.
-type ClientFacades struct {
-	// Client is the standard Kubernetes clientset for accessing core APIs.
-	Client kubernetes.Interface
-	// DynClient is the dynamic client for accessing arbitrary Kubernetes resources.
-	DynClient dynamic.Interface
-	// InformerFactory provides shared informers for core Kubernetes resources.
-	InformerFactory informers.SharedInformerFactory
-	// DynInformerFactory provides shared informers for dynamic Kubernetes resources.
-	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
-	// Mode indicates the access mode of the Kubernetes client.
-	Mode ClientAccessMode
 }
 
 // ContextKey is the type alias for scaling advisor related context keys

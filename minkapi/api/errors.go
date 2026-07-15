@@ -2,20 +2,22 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package minkapi
+package api
 
 import (
 	"errors"
 	"fmt"
-
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 )
 
 var (
 	// ErrInitFailed is a sentinel error indicating that the minkapi program failed to initialize.
-	ErrInitFailed = fmt.Errorf(commonerrors.FmtInitFailed, ProgramName)
+	ErrInitFailed = fmt.Errorf("%q initialization failed", ProgramName)
 	// ErrStartFailed is a sentinel error indicating that the core failed to start.
-	ErrStartFailed = fmt.Errorf(commonerrors.FmtStartFailed, ProgramName)
+	ErrStartFailed = fmt.Errorf("%q start failed", ProgramName)
+	// ErrLoadTemplate is a sentinel error representing a problem loading a template file
+	ErrLoadTemplate = errors.New("failed to load template")
+	// ErrExecuteTemplate is a sentinel error indicating that template execution failed.
+	ErrExecuteTemplate = errors.New("cannot execute template")
 	// ErrClientFacadesFailed is a sentinel error indicating that client facades creation failed.
 	ErrClientFacadesFailed = errors.New("failed to create client facades")
 	// ErrServiceFailed is a sentinel error indicating that the core failed.

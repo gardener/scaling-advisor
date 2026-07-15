@@ -7,7 +7,6 @@ package constants
 import (
 	"net"
 	"strconv"
-	"time"
 )
 
 const (
@@ -72,11 +71,6 @@ const (
 	DefaultOperatorProfilingPort = 8083
 	// DefaultAdvisorServicePort is the default port for the scaling advisor service.
 	DefaultAdvisorServicePort = 8090
-	// DefaultMinKAPIPort is the default port for the MinKAPI core.
-	DefaultMinKAPIPort = 8091
-
-	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown of a server
-	DefaultGracefulShutdownTimeout = 10 * time.Second
 )
 
 var (

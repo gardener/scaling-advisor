@@ -13,12 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
@@ -26,7 +25,7 @@ import (
 
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
-	minkapi.Config
+	api.Config
 }
 
 // ParseProgramFlags parses the command line arguments and returns Opts.
@@ -50,8 +49,8 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 // and the Cancel func which callers are expected to defer in their main routines.
 //
 // On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
-func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
-	commoncli.PrintVersion(minkapi.ProgramName)
+func LaunchApp(ctx context.Context) (app api.App, exitCode int, err error) {
+	commoncli.PrintVersion(api.ProgramName)
 	var cliOpts *Opts
 	cliOpts, err = ParseProgramFlags(os.Args[1:])
 	if err != nil {
@@ -62,7 +61,7 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 		exitCode = commoncli.ExitErrParseOpts
 		return
 	}
-	app.Ctx, app.Cancel = commoncli.NewAppContext(ctx, minkapi.ProgramName)
+	app.Ctx, app.Cancel = commoncli.NewAppContext(ctx, api.ProgramName)
 	log := logr.FromContextOrDiscard(app.Ctx)
 	app.Server, err = server.New(ctx, cliOpts.Config)
 	if err != nil {
@@ -74,10 +73,10 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 	go func() {
 		err = app.Server.Start(app.Ctx)
 		if err != nil {
-			if errors.Is(err, minkapi.ErrStartFailed) {
+			if errors.Is(err, api.ErrStartFailed) {
 				log.Error(err, "failed to start core")
 			} else {
-				log.Error(err, fmt.Sprintf("%s start failed", minkapi.ProgramName))
+				log.Error(err, fmt.Sprintf("%s start failed", api.ProgramName))
 			}
 		}
 	}()
@@ -85,50 +84,50 @@ func LaunchApp(ctx context.Context) (app minkapi.App, exitCode int, err error) {
 }
 
 // ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
-func ShutdownApp(app *minkapi.App) (exitCode int) {
-	shutDownCtx, cancel := context.WithTimeout(context.Background(), commonconstants.DefaultGracefulShutdownTimeout)
+func ShutdownApp(app *api.App) (exitCode int) {
+	shutDownCtx, cancel := context.WithTimeout(context.Background(), api.DefaultGracefulShutdownTimeout)
 	defer cancel()
 	log := logr.FromContextOrDiscard(app.Ctx)
 
 	// Perform shutdown
 	if err := app.Server.Stop(shutDownCtx); err != nil {
-		log.Error(err, fmt.Sprintf(" %s shutdown failed", minkapi.ProgramName))
+		log.Error(err, fmt.Sprintf(" %s shutdown failed", api.ProgramName))
 		exitCode = commoncli.ExitErrShutdown
 		return
 	}
-	log.Info(fmt.Sprintf("%s shutdown gracefully.", minkapi.ProgramName))
+	log.Info(fmt.Sprintf("%s shutdown gracefully.", api.ProgramName))
 	exitCode = commoncli.ExitSuccess
 	return
 }
 
 func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	var opts Opts
-	flagSet := pflag.NewFlagSet(minkapi.ProgramName, pflag.ContinueOnError)
+	flagSet := pflag.NewFlagSet(api.ProgramName, pflag.ContinueOnError)
 
-	if opts.KubeConfigPath == "" {
-		opts.KubeConfigPath = minkapi.DefaultKubeConfigPath
+	if opts.ServerConfig.KubeConfigPath == "" {
+		opts.ServerConfig.KubeConfigPath = api.DefaultKubeConfigPath
 	}
-	if len(opts.BindAddress) == 0 {
-		opts.BindAddress = net.JoinHostPort("", strconv.Itoa(commonconstants.DefaultMinKAPIPort))
+	if len(opts.ServerConfig.BindAddress) == 0 {
+		opts.ServerConfig.BindAddress = net.JoinHostPort("", strconv.Itoa(api.DefaultMinKAPIPort))
 	}
 	// TODO: Change opts.KubeConfigPath to opts.KubeConfigGenDir later
-	flagSet.StringVarP(&opts.KubeConfigPath, clientcmd.RecommendedConfigPathFlag, "k", opts.KubeConfigPath, "path to master kubeconfig - fallback to KUBECONFIG env-var")
+	flagSet.StringVarP(&opts.ServerConfig.KubeConfigPath, clientcmd.RecommendedConfigPathFlag, "k", opts.ServerConfig.KubeConfigPath, "path to master kubeconfig - fallback to KUBECONFIG env-var")
 	commoncli.MapServerConfigFlags(flagSet, &opts.ServerConfig)
 	MapWatchConfigFlags(flagSet, &opts.WatchConfig)
-	flagSet.StringVarP(&opts.BasePrefix, "base-prefix", "b", minkapi.DefaultBasePrefix, "base path prefix for the base view of the minkapi core")
+	flagSet.StringVarP(&opts.BasePrefix, "base-prefix", "b", api.DefaultBasePrefix, "base path prefix for the base view of the minkapi core")
 	return flagSet, &opts
 }
 
 // MapWatchConfigFlags  adds the watch configuration flags to the passed FlagSet.
-func MapWatchConfigFlags(flagSet *pflag.FlagSet, opts *minkapi.WatchConfig) {
-	flagSet.IntVarP(&opts.QueueSize, "watch-queue-size", "s", minkapi.DefaultWatchQueueSize, "max number of events to queue per watcher")
-	flagSet.DurationVarP(&opts.Timeout, "watch-timeout", "t", minkapi.DefaultWatchTimeout, "watch timeout after which connection is closed and watch removed")
+func MapWatchConfigFlags(flagSet *pflag.FlagSet, opts *api.WatchConfig) {
+	flagSet.IntVarP(&opts.QueueSize, "watch-queue-size", "s", api.DefaultWatchQueueSize, "max number of events to queue per watcher")
+	flagSet.DurationVarP(&opts.Timeout, "watch-timeout", "t", api.DefaultWatchTimeout, "watch timeout after which connection is closed and watch removed")
 }
 
 func validateMainOpts(opts *Opts) error {
 	var errs []error
 	errs = append(errs, commoncli.ValidateServerConfigFlags(opts.ServerConfig))
-	if len(strings.TrimSpace(opts.KubeConfigPath)) == 0 {
+	if len(strings.TrimSpace(opts.ServerConfig.KubeConfigPath)) == 0 {
 		errs = append(errs, fmt.Errorf("%w: --kubeconfig/-k", commonerrors.ErrMissingOpt))
 	}
 	return errors.Join(errs...)
