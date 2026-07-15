@@ -140,13 +140,10 @@ func (v *sandboxView) CreateObject(ctx context.Context, gvk schema.GroupVersionK
 
 func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
 	obj, err = v.getSandboxObject(ctx, gvk, objName)
-	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
-		// Tombstoned: surface as the standard Kubernetes "not found" error and do not fall
-		// through to the delegate (the sandbox has explicitly deleted this object).
-		return nil, err
+	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
+		return
 	}
-	if obj != nil || !apierrors.IsNotFound(err) {
-		// return if the object is found or get an error other than not found error
+	if obj != nil {
 		return
 	}
 	obj, err = v.delegateView.GetObject(ctx, gvk, objName)
@@ -156,13 +153,8 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
 	objName := objutil.CacheName(obj)
 	sandboxObj, err := v.getSandboxObject(ctx, gvk, objName)
-	if err != nil {
-		if errors.Is(err, minkapi.ErrObjectDeleted) {
-			// Tombstoned: caller is updating something that has been deleted from the sandbox.
-			return err
-		} else if !apierrors.IsNotFound(err) {
-			return err
-		}
+	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
+		return err
 	}
 	if sandboxObj != nil { //sandbox object is being updated.
 		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
@@ -185,10 +177,7 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
 	gvk := typeinfo.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
-	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
-		return
-	}
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
 		return
 	}
 	// TODO: make the below a bit generic later using functional programming
