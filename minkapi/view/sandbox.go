@@ -156,26 +156,25 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
 	objName := objutil.CacheName(obj)
 	sandboxObj, err := v.getSandboxObject(ctx, gvk, objName)
-	if err != nil && errors.Is(err, minkapi.ErrObjectDeleted) {
-		// Tombstoned: caller is updating something that has been deleted from the sandbox.
-		return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
-	}
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
+	if err != nil {
+		if errors.Is(err, minkapi.ErrObjectDeleted) {
+			// Tombstoned: caller is updating something that has been deleted from the sandbox.
+			return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, objName.String())
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
 	}
 	if sandboxObj != nil { //sandbox object is being updated.
 		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 	}
-	// Materialize a deep-copy of the delegate's object into the sandbox store (no broadcast,
-	// since consumers already saw the original), then update it.
 	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
 	if err != nil {
 		return err
 	}
-	materialized := delegateObj.DeepCopyObject()
-	asMeta, ok := materialized.(metav1.Object)
+	sandboxObj = delegateObj.DeepCopyObject()
+	asMeta, ok := sandboxObj.(metav1.Object)
 	if !ok {
-		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, materialized)
+		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, sandboxObj)
 	}
 	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
 		return err
@@ -356,12 +355,10 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	if err != nil {
 		return err
 	}
-	// Materialize a deep-copy of the delegate's object into the sandbox store (no broadcast,
-	// since consumers already saw the original via the delegate's initial-list), then tombstone it.
-	materialized := delegateObj.DeepCopyObject()
-	asMeta, ok := materialized.(metav1.Object)
+	sandboxObj := delegateObj.DeepCopyObject()
+	asMeta, ok := sandboxObj.(metav1.Object)
 	if !ok {
-		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrDeleteObject, materialized)
+		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrDeleteObject, sandboxObj)
 	}
 	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
 		return err
