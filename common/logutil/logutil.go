@@ -12,9 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
-
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,7 +27,7 @@ const (
 
 // VerbosityFromContext retrieves the verbosity level from the given context.
 func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
-	val := ctx.Value(commontypes.VerbosityCtxKey)
+	val := ctx.Value(apicommon.VerbosityCtxKey)
 	if val == nil {
 		return
 	}
@@ -47,11 +46,11 @@ func VerbosityFromContext(ctx context.Context) (verbosity uint32) {
 // VerbosityTraceFromContext retrieves the verbosity level, the trace dir and the trace log path from the given context.
 func VerbosityTraceFromContext(ctx context.Context) (verbosity uint32, traceDir string, traceLogPath string) {
 	verbosity = VerbosityFromContext(ctx)
-	d := ctx.Value(commontypes.TraceDirCtxKey)
+	d := ctx.Value(apicommon.TraceDirCtxKey)
 	if d != nil {
 		traceDir = d.(string)
 	}
-	l := ctx.Value(commontypes.TraceLogPathCtxKey)
+	l := ctx.Value(apicommon.TraceLogPathCtxKey)
 	if l != nil {
 		traceLogPath = l.(string)
 	}
@@ -105,7 +104,7 @@ func WrapContextWithFileLogger(ctx context.Context, prefix string, logPath strin
 	mSink := &multiSink{sinks: []logr.LogSink{baseSink, fileSink}}
 
 	combined := base.WithSink(mSink)
-	logCtx = context.WithValue(logr.NewContext(ctx, combined), commontypes.TraceLogPathCtxKey, logPath)
+	logCtx = context.WithValue(logr.NewContext(ctx, combined), apicommon.TraceLogPathCtxKey, logPath)
 
 	return
 }

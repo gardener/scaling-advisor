@@ -15,12 +15,10 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/gardener/scaling-advisor/common/ioutil"
-
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/common/ioutil"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -336,18 +334,18 @@ func CacheName(mo metav1.Object) cache.ObjectName {
 	return cache.NewObjectName(mo.GetNamespace(), mo.GetName())
 }
 
-// NamespacedName returns the commontypes.NamespacedName for a metav1.Object.
-func NamespacedName(mo metav1.Object) commontypes.NamespacedName {
-	return commontypes.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
+// NamespacedName returns the apicommon.NamespacedName for a metav1.Object.
+func NamespacedName(mo metav1.Object) apicommon.NamespacedName {
+	return apicommon.NamespacedName{Namespace: mo.GetNamespace(), Name: mo.GetName()}
 }
 
-// NamespacedNameFromEventRegarding regards the commontypes.NamespacedName for the object that is the event subject.
-func NamespacedNameFromEventRegarding(ev eventsv1.Event) commontypes.NamespacedName {
-	return commontypes.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
+// NamespacedNameFromEventRegarding regards the apicommon.NamespacedName for the object that is the event subject.
+func NamespacedNameFromEventRegarding(ev eventsv1.Event) apicommon.NamespacedName {
+	return apicommon.NamespacedName{Namespace: ev.Regarding.Namespace, Name: ev.Regarding.Name}
 }
 
 // GetFullNames converts a slice of NamespacedName objects into a slice of their string representations.
-func GetFullNames(nsNames []commontypes.NamespacedName) []string {
+func GetFullNames(nsNames []apicommon.NamespacedName) []string {
 	if len(nsNames) == 0 {
 		return nil
 	}
@@ -373,7 +371,7 @@ func GenerateName(base string) string {
 func AsMeta(o any) (mo metav1.Object, err error) {
 	mo, err = meta.Accessor(o)
 	if err != nil {
-		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", commonerrors.ErrUnexpectedType, o))
+		err = apierrors.NewInternalError(fmt.Errorf("%w: cannot access meta object for o of type %T", apicommon.ErrUnexpectedType, o))
 	}
 	return
 }
@@ -382,7 +380,7 @@ func AsMeta(o any) (mo metav1.Object, err error) {
 func Cast[T any](obj any) (t T, err error) {
 	t, ok := obj.(T)
 	if !ok {
-		err = fmt.Errorf("%w: obj has type %T, expected %T", commonerrors.ErrUnexpectedType, obj, TypeName[T]())
+		err = fmt.Errorf("%w: obj has type %T, expected %T", apicommon.ErrUnexpectedType, obj, TypeName[T]())
 	}
 	return
 }

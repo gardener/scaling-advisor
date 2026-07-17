@@ -7,10 +7,10 @@ package podutil
 import (
 	"slices"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
-
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,8 +60,8 @@ func GetPodCondition(status *corev1.PodStatus, conditionType corev1.PodCondition
 	return -1, nil
 }
 
-// AsPod converts a planner.PodInfo to a corev1.Pod object.
-func AsPod(info planner.PodInfo) *corev1.Pod {
+// AsPod converts a plannerapi.PodInfo to a corev1.Pod object.
+func AsPod(info plannerapi.PodInfo) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: info.ObjectMeta,
 		Spec: corev1.PodSpec{
@@ -92,10 +92,10 @@ func AsPod(info planner.PodInfo) *corev1.Pod {
 
 // PodResourceInfosFromPodInfo converts the given slice of PodInfo to a slice of leaner PodResourceInfo
 // where each PodResourceInfo only holds the Name, Namespace and the AggregatedRequests from the PodInfo.
-func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResourceInfo {
-	podResourceInfos := make([]planner.PodResourceInfo, 0, len(podInfos))
+func PodResourceInfosFromPodInfo(podInfos []plannerapi.PodInfo) []simulationapi.PodResourceInfo {
+	podResourceInfos := make([]simulationapi.PodResourceInfo, 0, len(podInfos))
 	for _, podInfo := range podInfos {
-		podResourceInfos = append(podResourceInfos, planner.PodResourceInfo{
+		podResourceInfos = append(podResourceInfos, simulationapi.PodResourceInfo{
 			NamespacedName:     objutil.NamespacedName(&podInfo),
 			AggregatedRequests: podInfo.AggregatedRequests,
 		})
@@ -105,17 +105,17 @@ func PodResourceInfosFromPodInfo(podInfos []planner.PodInfo) []planner.PodResour
 
 // PodResourceInfosFromCoreV1Pods extracts the AggregatedRequests for each pod
 // from a corev1 Pod slice alongwith its identification into a PodResourceInfo slice.
-func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodResourceInfo {
-	podResourceInfos := make([]planner.PodResourceInfo, 0, len(pods))
+func PodResourceInfosFromCoreV1Pods(pods []corev1.Pod) []simulationapi.PodResourceInfo {
+	podResourceInfos := make([]simulationapi.PodResourceInfo, 0, len(pods))
 	for _, p := range pods {
 		podResourceInfos = append(podResourceInfos, PodResourceInfoFromCoreV1Pod(&p))
 	}
 	return podResourceInfos
 }
 
-// PodInfosFromCoreV1Pods converts the given slice of corev1 Pod objects into a slice of planner.PodInfo objects.
-func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
-	podInfos := make([]planner.PodInfo, 0, len(pods))
+// PodInfosFromCoreV1Pods converts the given slice of corev1 Pod objects into a slice of plannerapi.PodInfo objects.
+func PodInfosFromCoreV1Pods(pods []corev1.Pod) []plannerapi.PodInfo {
+	podInfos := make([]plannerapi.PodInfo, 0, len(pods))
 	for _, p := range pods {
 		podInfos = append(podInfos, AsPodInfo(p))
 	}
@@ -124,9 +124,9 @@ func PodInfosFromCoreV1Pods(pods []corev1.Pod) []planner.PodInfo {
 
 // PodResourceInfoFromCoreV1Pod extracts the AggregatedRequests for a single
 // corev1 pod resource along with its identification into a PodResourceInfo object.
-func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) planner.PodResourceInfo {
-	return planner.PodResourceInfo{
-		NamespacedName:     commontypes.NamespacedName{Namespace: p.Namespace, Name: p.Name},
+func PodResourceInfoFromCoreV1Pod(p *corev1.Pod) simulationapi.PodResourceInfo {
+	return simulationapi.PodResourceInfo{
+		NamespacedName:     apicommon.NamespacedName{Namespace: p.Namespace, Name: p.Name},
 		AggregatedRequests: AggregatePodRequests(p),
 	}
 }
@@ -147,7 +147,7 @@ func AggregatePodRequests(p *corev1.Pod) map[corev1.ResourceName]resource.Quanti
 }
 
 // GetObjectNamesFromPodResourceInfos maps a slice of PodResourceInfo to pod names of the form "namespace/name"
-func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string {
+func GetObjectNamesFromPodResourceInfos(pods []simulationapi.PodResourceInfo) []string {
 	objectNames := make([]string, 0, len(pods))
 	for _, pod := range pods {
 		objectNames = append(objectNames, pod.String())
@@ -155,9 +155,9 @@ func GetObjectNamesFromPodResourceInfos(pods []planner.PodResourceInfo) []string
 	return objectNames
 }
 
-// AsPodInfo converts a corev1.Pod to a planner.PodInfo object.
-func AsPodInfo(pod corev1.Pod) planner.PodInfo {
-	return planner.PodInfo{
+// AsPodInfo converts a corev1.Pod to a plannerapi.PodInfo object.
+func AsPodInfo(pod corev1.Pod) plannerapi.PodInfo {
+	return plannerapi.PodInfo{
 		ObjectMeta:                pod.ObjectMeta,
 		AggregatedRequests:        AggregatePodRequests(&pod),
 		Volumes:                   pod.Spec.Volumes,

@@ -16,8 +16,7 @@ import (
 	"strings"
 	"text/template"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -37,7 +36,7 @@ func CloseQuietly(closer io.Closer) {
 }
 
 // ResetAll resets the given varying number of resettable and returns the aggregated error (if any)
-func ResetAll(resettable ...commontypes.Resettable) error {
+func ResetAll(resettable ...apicommon.Resettable) error {
 	var errs []error
 	for _, r := range resettable {
 		if err := r.Reset(); err != nil {
@@ -48,16 +47,16 @@ func ResetAll(resettable ...commontypes.Resettable) error {
 }
 
 // LoadEmbeddedTextTemplate loads the text template at the given templatePath within the given embedFS.
-// If unsuccessful, returns an error containing the sentinel error commonerrors.ErrLoadTemplate.
+// If unsuccessful, returns an error containing the sentinel error apicommon.ErrLoadTemplate.
 func LoadEmbeddedTextTemplate(embedFS embed.FS, templatePath string) (tmpl *template.Template, err error) {
 	data, err := embedFS.ReadFile(templatePath)
 	if err != nil {
-		err = fmt.Errorf("%w: cannot read %q from embed FS: %w", commonerrors.ErrLoadTemplate, templatePath, err)
+		err = fmt.Errorf("%w: cannot read %q from embed FS: %w", apicommon.ErrLoadTemplate, templatePath, err)
 		return
 	}
 	tmpl, err = template.New(templatePath).Funcs(funcMap).Parse(string(data))
 	if err != nil {
-		err = fmt.Errorf("%w: cannot parse %q template: %w", commonerrors.ErrLoadTemplate, templatePath, err)
+		err = fmt.Errorf("%w: cannot parse %q template: %w", apicommon.ErrLoadTemplate, templatePath, err)
 	}
 	return
 }

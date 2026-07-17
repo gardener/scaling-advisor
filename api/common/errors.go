@@ -14,8 +14,6 @@ var (
 	ErrMissingOpt = errors.New("missing option")
 	// ErrInvalidOptVal is a sentinel error indicating that a specific option has an invalid value
 	ErrInvalidOptVal = errors.New("invalid option value")
-	// ErrUnimplemented indicates that the feature or operation is unimplemented. It possibly maybe be implemented in the future.
-	ErrUnimplemented = errors.New("not implemented")
 	// ErrUnexpectedType is a sentinel error representing an unexpected type error which should not happen - generally encountered when casting. Use this in lieu of a panic.
 	ErrUnexpectedType = errors.New("unexpected type")
 	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.

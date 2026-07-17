@@ -15,11 +15,10 @@ import (
 	"strings"
 	"syscall"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 )
 
 const (
@@ -43,10 +42,10 @@ var (
 )
 
 // MapServerConfigFlags adds the constants flags to the passed FlagSet.
-func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *commontypes.ServerConfig) {
-	flagSet.StringVar(&opts.BindAddress, "bind-address", commonconstants.DefaultMinKAPIBindAddress, "bind address of the form <host>:<port>")
-	flagSet.BoolVar(&opts.ProfilingEnabled, "profile", false, "enable pprof profiling")
-	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", commonconstants.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
+func MapServerConfigFlags(flagSet *pflag.FlagSet, opts *apicommon.ServerConfig) {
+	flagSet.StringVar(&opts.BindAddress, "bind-address", opts.BindAddress, "bind address of the form <host>:<port>")
+	flagSet.BoolVar(&opts.ProfilingEnabled, "profile", opts.ProfilingEnabled, "enable pprof profiling")
+	flagSet.DurationVar(&opts.GracefulShutdownTimeout.Duration, "shutdown-timeout", apicommon.DefaultGracefulShutdownTimeout, "graceful shutdown timeout")
 
 	klogFlagSet := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(klogFlagSet)
@@ -62,7 +61,7 @@ const (
 )
 
 // MapQPSBurstFlags adds the QPS and Burst values to the passed FlagSet.
-func MapQPSBurstFlags(flagSet *pflag.FlagSet, opts *commontypes.QPSBurst) {
+func MapQPSBurstFlags(flagSet *pflag.FlagSet, opts *apicommon.QPSBurst) {
 	flagSet.Float32Var(&opts.QPS, "kube-api-qps", DefaultQPS, "QPS to use while talking with kubernetes apiserver")
 	flagSet.IntVar(&opts.Burst, "kube-api-burst", DefaultBurst, "Burst to use while talking with kubernetes apiserver")
 }
@@ -87,7 +86,7 @@ func HandleErrorAndExit(err error) {
 }
 
 // ValidateServerConfigFlags validates server config flags.
-func ValidateServerConfigFlags(opts commontypes.ServerConfig) error {
+func ValidateServerConfigFlags(opts apicommon.ServerConfig) error {
 	if strings.TrimSpace(opts.BindAddress) == "" {
 		return fmt.Errorf("%w: --bind-address must be specified", ErrInvalidOpt)
 	}
