@@ -8,12 +8,11 @@ import (
 	"context"
 	"fmt"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -38,7 +37,7 @@ func ListUnscheduledPods(ctx context.Context, view minkapi.View) ([]corev1.Pod, 
 
 // ListPersistentVolumes lists all the persistent volumes in the given minkapi view.
 func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]*corev1.PersistentVolume, error) {
-	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumesDescriptor.GVK, minkapi.MatchAllCriteria)
+	objs, _, err := view.ListMetaObjects(ctx, minkapi.PersistentVolumesDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,7 @@ func ListPersistentVolumes(ctx context.Context, view minkapi.View) ([]*corev1.Pe
 
 // ListPersistentVolumeClaims lists all the persistent volume claims in the given minkapi view.
 func ListPersistentVolumeClaims(ctx context.Context, view minkapi.View) ([]*corev1.PersistentVolumeClaim, error) {
-	objs, _, err := view.ListMetaObjects(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, minkapi.MatchAllCriteria)
+	objs, _, err := view.ListMetaObjects(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 		log.V(4).Info(prefix+"|node in view",
 			"viewName", view.GetName(),
 			"nodeName", node.Name,
-			"nodePool", node.Labels[commonconstants.LabelNodePoolName],
+			"nodePool", node.Labels[apicommon.LabelNodePoolName],
 			"instanceType", node.Labels[corev1.LabelInstanceTypeStable],
 			"region", node.Labels[corev1.LabelTopologyRegion],
 			"zone", node.Labels[corev1.LabelTopologyZone],
@@ -142,7 +141,7 @@ func LogObjects(ctx context.Context, prefix string, view minkapi.View) error {
 // ListStorageClassesClaimsAndVolumes gets the slice of [storagev1.StorageClass],
 // slice of [corev1.PersistentVolumeClaim] and slice of [corev1.PersistentVolume] from the given minkapi view or an error
 func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) (scs []*storagev1.StorageClass, pvcs []*corev1.PersistentVolumeClaim, pvs []*corev1.PersistentVolume, err error) {
-	scObjs, _, err := view.ListMetaObjects(ctx, typeinfo.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
+	scObjs, _, err := view.ListMetaObjects(ctx, minkapi.StorageClassDescriptor.GVK, minkapi.MatchAllCriteria)
 	if err != nil {
 		return
 	}
@@ -167,7 +166,7 @@ func ListStorageClassesClaimsAndVolumes(ctx context.Context, view minkapi.View) 
 
 // GetPersistentVolume returns the PersistentVolume with the given name from the given [minkapi.View]
 func GetPersistentVolume(ctx context.Context, name string, view minkapi.View) (*corev1.PersistentVolume, error) {
-	obj, err := view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, name))
+	obj, err := view.GetObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, name))
 	if err != nil {
 		return nil, err
 	}

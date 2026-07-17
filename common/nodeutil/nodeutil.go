@@ -7,12 +7,12 @@ package nodeutil
 import (
 	"time"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -84,8 +84,8 @@ func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, p
 	nodeLabels[corev1.LabelTopologyRegion] = placement.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
 	nodeLabels[corev1.LabelHostname] = hostName
-	nodeLabels[commonconstants.LabelNodePoolName] = placement.PoolName
-	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.TemplateName
+	nodeLabels[apicommon.LabelNodePoolName] = placement.PoolName
+	nodeLabels[apicommon.LabelNodeTemplateName] = placement.TemplateName
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec
@@ -96,7 +96,7 @@ func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINod
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: storagev1.SchemeGroupVersion.Version,
-					Kind:       typeinfo.CSINodeDescriptor.GetKind(),
+					Kind:       minkapi.CSINodeDescriptor.GetKind(),
 					Name:       nodeName,
 					UID:        nodeUID,
 				},

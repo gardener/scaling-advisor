@@ -10,14 +10,15 @@ import (
 	"maps"
 	"slices"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -135,7 +136,7 @@ func SortPVCByIncreasingStorage(pvcs []*corev1.PersistentVolumeClaim) {
 // PV must have:
 //   - spec.claimRef populated
 //   - status.phase = Bound
-func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAssignments []plannerapi.VolumeClaimAssignment, err error) {
+func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAssignments []simulationapi.VolumeClaimAssignment, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: cannot bind claims for immediate mode: %w", plannerapi.ErrBindClaimVolume, err)
@@ -151,7 +152,7 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAs
 	}
 	var (
 		defaultSc = GetDefaultStorageClass(scs)
-		boundPVs  = make(map[string]plannerapi.VolumeClaimAssignment) // key is pvName
+		boundPVs  = make(map[string]simulationapi.VolumeClaimAssignment) // key is pvName
 		chosenPVs = make(map[string]*corev1.PersistentVolume)
 		chosenPV  *corev1.PersistentVolume
 	)
@@ -192,8 +193,8 @@ func BindClaimsForImmediateMode(ctx context.Context, view minkapi.View) (claimAs
 		if err = BindClaimAndVolume(ctx, view, pvc, chosenPV); err != nil {
 			return
 		}
-		boundPVs[chosenPV.Name] = plannerapi.VolumeClaimAssignment{
-			ClaimName:  commontypes.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name},
+		boundPVs[chosenPV.Name] = simulationapi.VolumeClaimAssignment{
+			ClaimName:  apicommon.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name},
 			VolumeName: chosenPV.Name,
 		}
 	}
@@ -278,7 +279,7 @@ func FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx context.Context, view min
 			continue
 		}
 		log.V(3).Info("kube-scheduler has bound PV.Spec.ClaimRef", "pvName", pv.Name, "claimRef", ref)
-		obj, err = view.GetObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(ref.Namespace, ref.Name))
+		obj, err = view.GetObject(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, cache.NewObjectName(ref.Namespace, ref.Name))
 		if err != nil {
 			log.V(1).Info("cannot get PVC in PV.Spec.ClaimRef", "pvName", pv.Name, "claimRef", ref)
 			continue
@@ -292,11 +293,11 @@ func FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx context.Context, view min
 		pvc.Status.Phase = corev1.ClaimBound
 		metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 		pv.Status.Phase = corev1.VolumeBound
-		err = view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc)
+		err = view.UpdateObject(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, pvc)
 		if err != nil {
 			return
 		}
-		err = view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv)
+		err = view.UpdateObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, pv)
 		if err != nil {
 			return
 		}
@@ -352,7 +353,7 @@ func getSelectedNodeZone(ctx context.Context, view minkapi.View, pvc *corev1.Per
 		err = fmt.Errorf("annotation %q empty for PVC with name %q", storagevolume.AnnSelectedNode, objutil.NamespacedName(pvc))
 		return
 	}
-	obj, err := view.GetObject(ctx, typeinfo.NodesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, selectedNodeName))
+	obj, err := view.GetObject(ctx, minkapi.NodesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, selectedNodeName))
 	if err != nil {
 		return
 	}
@@ -377,14 +378,14 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
 	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
-	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
+	if err := view.UpdateObject(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, pvc); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)
 	}
 
 	// Bind PV → PVC
 	pv.Spec.ClaimRef = &corev1.ObjectReference{
-		Kind:       typeinfo.KindPersistentVolumeClaim,
+		Kind:       minkapi.KindPersistentVolumeClaim,
 		Namespace:  pvc.Namespace,
 		Name:       pvc.Name,
 		UID:        pvc.UID,
@@ -393,7 +394,7 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pv.Status.Phase = corev1.VolumeBound
 	pv.Status.LastPhaseTransitionTime = ptr.To(metav1.Now())
 	metav1.SetMetaDataAnnotation(&pv.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if err := view.UpdateObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, pv); err != nil {
 		log.Error(err, "failed to bind pv->pvc", "pv", pv, "pvc", pvc)
 		return fmt.Errorf("%w: failed to bind pv %q ->pvc %q: %w", plannerapi.ErrBindClaimVolume, pv.Name, pvc.Name, err)
 	}
@@ -409,7 +410,7 @@ func createSimulatedVolumeMatchingClaim(ctx context.Context, view minkapi.View, 
 		pvObj runtime.Object
 	)
 	pvName := simulatedVolumeNamePrefix + pvc.Namespace + "-" + pvc.Name
-	if pvObj, err = view.GetObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pvName)); pvObj != nil {
+	if pvObj, err = view.GetObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, cache.NewObjectName(metav1.NamespaceNone, pvName)); pvObj != nil {
 		pv = pvObj.(*corev1.PersistentVolume)
 		log.V(4).Info("simulated PV already created for PVC", "pvName", pv.Name, "pvcName", pvc.Name, "pvcNamespace", pvc.Namespace)
 		return
@@ -455,7 +456,7 @@ func createSimulatedVolumeMatchingClaim(ctx context.Context, view minkapi.View, 
 			},
 		}
 	}
-	if _, err = view.CreateObject(ctx, typeinfo.PersistentVolumesDescriptor.GVK, pv); err != nil {
+	if _, err = view.CreateObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, pv); err != nil {
 		err = fmt.Errorf("could not create simulated PV %q matching PVC %q: %w", pv.Name, objutil.NamespacedName(pvc), err)
 		return
 	}

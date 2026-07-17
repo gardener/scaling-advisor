@@ -86,8 +86,4 @@ var (
 	// DefaultAdvisorServiceBindAddress is the default bind address for the standard scaling-advisor service.
 	// This service maybe used standalone or embedded within the scaling-advisor operator.
 	DefaultAdvisorServiceBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultAdvisorServicePort))
-
-	// DefaultMinKAPIBindAddress is the default bind address for the MinKAPI server.
-	// This server maybe used standalone or embedded within the scaling-advisor operator.
-	DefaultMinKAPIBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultMinKAPIPort))
 )
