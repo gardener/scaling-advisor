@@ -152,26 +152,24 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 
 func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
 	objName := objutil.CacheName(obj)
-	sandboxObj, err := v.getSandboxObject(ctx, gvk, objName)
-	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
-		return err
-	}
-	if sandboxObj != nil { //sandbox object is being updated.
+	err := updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
+	if apierrors.IsNotFound(err) && !errors.Is(err, minkapi.ErrObjectDeleted) {
+		delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
+		if err != nil {
+			return err
+		}
+		sandboxObj := delegateObj.DeepCopyObject()
+		asMeta, ok := sandboxObj.(metav1.Object)
+		if !ok {
+			return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, sandboxObj)
+		}
+		if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
+			return err
+		}
 		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 	}
-	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
-	if err != nil {
-		return err
-	}
-	sandboxObj = delegateObj.DeepCopyObject()
-	asMeta, ok := sandboxObj.(metav1.Object)
-	if !ok {
-		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, sandboxObj)
-	}
-	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
-		return err
-	}
-	return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
+
+	return err
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
@@ -323,7 +321,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	if err != nil {
 		return err
 	}
-	if _, gerr := s.GetByKey(ctx, objName.String()); gerr == nil {
+	if _, gerr := s.Get(ctx, objName); gerr == nil {
 		// Sandbox-local: tombstone directly.
 		if err = s.Delete(ctx, objName, minkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
 			return err
@@ -413,6 +411,6 @@ func (v *sandboxView) getSandboxObject(ctx context.Context, gvk schema.GroupVers
 	if err != nil {
 		return
 	}
-	obj, err = s.GetByKey(ctx, objName.String())
+	obj, err = s.Get(ctx, objName)
 	return
 }

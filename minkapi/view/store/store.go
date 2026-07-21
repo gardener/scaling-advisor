@@ -119,19 +119,11 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts 
 		return err
 	}
 	key := objutil.CacheName(mo).String()
-	obj, exists, err := s.cache.GetByKey(key)
+	// TODO: This code just checks if the object has been tombstoned.
+	// Think of a better approach rather than calling `GetByKey()` and discarding the object returned.
+	_, err = s.GetByKey(ctx, key)
 	if err != nil {
-		log.Error(err, "failed to find object with key", "key", key)
-		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
-	}
-	if !exists {
-		log.V(6).Info("did not find object by key", "key", key)
-		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-	}
-	if isTombstone(obj) {
-		log.V(6).Info("found tombstone for key", "key", key)
-		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
+		return err
 	}
 	mo.SetResourceVersion(s.nextResourceVersionAsString())
 	err = s.cache.Update(o)
@@ -151,28 +143,19 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts 
 }
 
 // DeleteByKey deletes the object identified by key in the store, sets the deletion timestamp on the object and broadcasts the watch Deleted event.
-// TODO think on how to handle context cancellation
+// TODO: think on how to handle context cancellation
+// TODO: We end up getting the object from the store using the key; might be better to just pass the object we want to delete.
+//
+// WARNING: No locking done here; should not be invoked directly. Always use Delete()
 func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error {
 	log := logr.FromContextOrDiscard(ctx)
-	obj, exists, err := s.cache.GetByKey(key)
-	if err != nil {
-		log.Error(err, "failed to find object with key", "key", key)
-		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
-	}
-	if !exists {
-		log.V(6).Info("did not find object by key", "key", key)
-		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-	}
-	if isTombstone(obj) {
-		log.V(6).Info("found tombstone for key", "key", key)
-		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
-	}
-	mo, err := objutil.AsMeta(obj)
+	// TODO: This code just checks if the object has been tombstoned.
+	// Think of a better approach rather than calling `GetByKey()`.
+	obj, err := s.GetByKey(ctx, key)
 	if err != nil {
 		return err
 	}
-	o, err := s.validateRuntimeObj(mo)
+	mo, err := objutil.AsMeta(obj)
 	if err != nil {
 		return err
 	}
@@ -184,7 +167,7 @@ func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error 
 	mo.SetDeletionTimestamp(&metav1.Time{Time: time.Now()})
 	log.V(4).Info("deleted object", "kind", s.args.ObjectGVK.Kind, "key", key)
 	go func() {
-		err = s.broadcaster.Action(watch.Deleted, o)
+		err = s.broadcaster.Action(watch.Deleted, obj)
 		if err != nil {
 			log.Error(err, "failed to broadcast object delete", "key", key, "resourceVersion", mo.GetResourceVersion())
 		}
@@ -196,6 +179,9 @@ func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error 
 // If the [minkapi.ObjectOptions.MarkAsDeleted] is set then we put a tombstone for the specified key
 // else we delete the object from the cache.
 func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectName, opts minkapi.ObjectOptions) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if opts.MarkAsDeleted {
 		return s.markDeleted(ctx, objName.String())
 	}
@@ -208,10 +194,9 @@ func (s *InMemResourceStore) Delete(ctx context.Context, objName cache.ObjectNam
 //   - The key was previously deleted -> returns [minkapi.ErrObjectDeleted]
 //     so callers can distinguish "tombstoned" objects from non-existent ones.
 //   - The object for the key was never created -> returns apierrors.NotFound.
+//
+// WARNING: No locking done here; should not be invoked directly. Always use Get()
 func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtime.Object, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	log := logr.FromContextOrDiscard(ctx)
 	obj, exists, err := s.cache.GetByKey(key)
 	if err != nil {
@@ -242,6 +227,9 @@ func (s *InMemResourceStore) GetByKey(ctx context.Context, key string) (o runtim
 
 // Get gets the object identified by the given fully qualified cache name from the store. It delegates to GetByKey.
 func (s *InMemResourceStore) Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.GetByKey(ctx, objName.String())
 }
 
@@ -372,6 +360,9 @@ func (s *InMemResourceStore) ListTombstonedKeys(ctx context.Context) (tombstoned
 // It returns the number of deleted objects and an error if one occurs during deletion.
 // Tombstoned entries are skipped.
 func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria, opts minkapi.ObjectOptions) (delCount int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	items := filterOutTombstones(s.cache.List())
 	var mo metav1.Object
 	for _, item := range items {
@@ -386,16 +377,12 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 		if !c.Matches(mo) {
 			continue
 		}
-		objName := objutil.CacheName(mo)
-		_, err = s.Get(ctx, objName)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
-			return
+		key := objutil.CacheName(mo).String()
+		if opts.MarkAsDeleted {
+			err = s.markDeleted(ctx, key)
+		} else {
+			err = s.DeleteByKey(ctx, key)
 		}
-		err = s.Delete(ctx, objName, opts)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -413,23 +400,13 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 // marker is parked at the same key in the underlying cache.Store.
 //
 // markDeleted returns apierrors.NotFound when the key is already tombstoned or never existed.
+//
+// WARNING: No locking done here; should not be invoked directly.
 func (s *InMemResourceStore) markDeleted(ctx context.Context, key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	log := logr.FromContextOrDiscard(ctx)
-	obj, exists, err := s.cache.GetByKey(key)
+	obj, err := s.GetByKey(ctx, key)
 	if err != nil {
-		log.Error(err, "failed to find object with key", "key", key)
-		return apierrors.NewInternalError(fmt.Errorf("cannot find object with key %q: %w", key, err))
-	}
-	if !exists {
-		log.V(6).Info("did not find object by key", "key", key)
-		return apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-	}
-	if isTombstone(obj) {
-		log.V(6).Info("found tombstone for key", "key", key)
-		err = apierrors.NewNotFound(schema.GroupResource{Group: s.args.ObjectGVK.Group, Resource: s.args.Name}, key)
-		return fmt.Errorf("%w: %w", minkapi.ErrObjectDeleted, err)
+		return err
 	}
 	mo, err := objutil.AsMeta(obj)
 	if err != nil {

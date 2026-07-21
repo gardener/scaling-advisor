@@ -153,8 +153,7 @@ func (v *baseView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, o
 	if err != nil {
 		return
 	}
-	key := objName.String()
-	obj, err = s.GetByKey(ctx, key)
+	obj, err = s.Get(ctx, objName)
 	return
 }
 

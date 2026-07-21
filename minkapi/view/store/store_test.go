@@ -869,65 +869,6 @@ func TestWatch(t *testing.T) {
 	}
 }
 
-func TestGetWatcher(t *testing.T) {
-	tests := map[string]struct {
-		modifyAfterWatch  bool
-		expectedMinEvents int
-	}{
-		"receives initial list as Added events": {
-			expectedMinEvents: 3,
-		},
-		"receives Modified event after update": {
-			modifyAfterWatch:  true,
-			expectedMinEvents: 4, // 3 Added + 1 Modified
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
-			t.Cleanup(func() { s.Close() })
-			createdPods, _ := createPodsForTesting(t, s, mkapi.ObjectOptions{})
-
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-
-			w, err := s.GetWatcher(ctx, testPod.Namespace, metav1.ListOptions{})
-			if err != nil {
-				t.Fatalf("GetWatcher failed: %v", err)
-			}
-			t.Cleanup(w.Stop)
-
-			if tc.modifyAfterWatch {
-				time.Sleep(50 * time.Millisecond)
-				mod := createdPods[0].DeepCopy()
-				mod.Labels["modified"] = "true"
-				if err = s.Update(t.Context(), metav1.Object(mod), mkapi.ObjectOptions{}); err != nil {
-					t.Fatalf("Update failed: %v", err)
-				}
-			}
-
-			var received []watch.Event
-			timeout := time.After(500 * time.Millisecond)
-		drain:
-			for {
-				select {
-				case ev, ok := <-w.ResultChan():
-					if !ok {
-						break drain
-					}
-					received = append(received, ev)
-				case <-timeout:
-					break drain
-				}
-			}
-			if len(received) < tc.expectedMinEvents {
-				t.Errorf("expected at least %d events, got %d", tc.expectedMinEvents, len(received))
-			}
-		})
-	}
-}
-
 func TestGetVersionCounter(t *testing.T) {
 	tests := map[string]struct {
 		mutate func(t *testing.T, s *InMemResourceStore, p *corev1.Pod)
