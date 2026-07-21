@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package types
+package common
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
@@ -28,6 +28,29 @@ type QPSBurst struct {
 	QPS float32 `json:"qps"`
 	// Burst is the burst size for rate limiting, allowing temporary spikes above QPS.
 	Burst int `json:"burst"`
+}
+
+// ServerConfig is the common configuration for a server which can be used as standalone
+// or embedded within another process.
+type ServerConfig struct {
+	// KubeConfigPath is the path to master kube-config.
+	KubeConfigPath string `json:"kubeConfigPath"`
+	// BindAddress is the address(host:port) to bind the server to.
+	BindAddress string `json:"bindAddress"`
+	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
+	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
+	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
+	ProfilingEnabled bool `json:"profilingEnabled"`
+	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown for the MinKAPI server.
+}
+
+// Service is a component that can be started and stopped.
+type Service interface {
+	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
+	// The context is expected to be populated with a logger.
+	Start(ctx context.Context) error
+	// Stop stops the core. Stop does not block.
+	Stop(ctx context.Context) error
 }
 
 // NamespacedName is a fully qualified object name.
@@ -61,7 +84,7 @@ func (nn NamespacedName) String() string {
 }
 
 // SimulatorStrategy represents a simulation strategy variant.
-// +enum
+// +kubebuilder:validation:Enum=single-node-multi-sim;multi-node-single-sim
 type SimulatorStrategy string
 
 const (
@@ -114,6 +137,7 @@ func (a ScalingAdviceGenerationMode) IsAllAtOnce() bool {
 }
 
 // NodeScoringStrategy represents a node scoring strategy variant.
+// +kubebuilder:validation:Enum=least-waste;least-cost
 type NodeScoringStrategy string
 
 const (
@@ -155,7 +179,7 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	case "openstack":
 		return CloudProviderOpenStack, nil
 	default:
-		return "", fmt.Errorf("%w: unknown %q", commonerrors.ErrUnsupportedCloudProvider, cloudProvider)
+		return "", fmt.Errorf("%w: unknown %q", ErrUnsupportedCloudProvider, cloudProvider)
 	}
 }
 
@@ -171,6 +195,18 @@ const (
 
 	// TraceLogPathCtxKey is the context key under which the path to the trace log file is stored.
 	TraceLogPathCtxKey ContextKey = "trace-log"
+)
+
+// CapacityType identifies the procurement model of compute capacity used
+// to run a node, such as on-demand or spot.
+// +kubebuilder:validation:Enum=on-demand;spot
+type CapacityType string
+
+const (
+	// CapacityTypeOnDemand represents on-demand compute capacity.
+	CapacityTypeOnDemand CapacityType = "on-demand"
+	// CapacityTypeSpot represents spot or preemptible compute capacity.
+	CapacityTypeSpot CapacityType = "spot"
 )
 
 // PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.

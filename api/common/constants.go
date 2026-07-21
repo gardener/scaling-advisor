@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package constants
+package common
 
 import (
 	"net"
 	"strconv"
+	"time"
 )
 
 const (
@@ -71,6 +72,8 @@ const (
 	DefaultOperatorProfilingPort = 8083
 	// DefaultAdvisorServicePort is the default port for the scaling advisor service.
 	DefaultAdvisorServicePort = 8090
+	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown for servers.
+	DefaultGracefulShutdownTimeout = 10 * time.Second
 )
 
 var (

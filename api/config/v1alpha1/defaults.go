@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -52,14 +52,14 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectio
 // SetDefaults_ScalingAdvisorServerConfiguration sets defaults for ScalingAdvisorServerConfig.
 func SetDefaults_ScalingAdvisorServerConfiguration(serverConfig *ScalingAdvisorServerConfig) {
 	if strings.TrimSpace(serverConfig.HealthProbeBindAddress) == "" {
-		serverConfig.HealthProbeBindAddress = constants.DefaultOperatorHealthProbeBindAddress
+		serverConfig.HealthProbeBindAddress = apicommon.DefaultOperatorHealthProbeBindAddress
 	}
 	if strings.TrimSpace(serverConfig.MetricsBindAddress) == "" {
-		serverConfig.MetricsBindAddress = constants.DefaultOperatorMetricsBindAddress
+		serverConfig.MetricsBindAddress = apicommon.DefaultOperatorMetricsBindAddress
 	}
 	if serverConfig.ProfilingEnabled {
 		if strings.TrimSpace(serverConfig.ProfilingBindAddress) == "" {
-			serverConfig.ProfilingBindAddress = constants.DefaultOperatorProfilingBindAddress
+			serverConfig.ProfilingBindAddress = apicommon.DefaultOperatorProfilingBindAddress
 		}
 	}
 }

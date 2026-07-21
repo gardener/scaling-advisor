@@ -5,7 +5,7 @@
 package v1alpha1
 
 import (
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -18,7 +18,7 @@ const (
 
 var (
 	// SchemeGroupVersion is group version used to register objects from the scaling recommender API.
-	SchemeGroupVersion = schema.GroupVersion{Group: constants.OperatorGroupName, Version: GroupVersion}
+	SchemeGroupVersion = schema.GroupVersion{Group: apicommon.OperatorGroupName, Version: GroupVersion}
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	// AddToScheme adds the types in this group-version to the given scheme.
@@ -31,6 +31,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ScalingAdviceList{},
 		&ScalingConstraint{},
 		&ScalingConstraintList{},
+		&NodeTemplateSet{},
+		&NodeTemplateSetList{},
 	)
 	return nil
 }
