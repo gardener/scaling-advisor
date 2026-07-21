@@ -1,0 +1,102 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: instancepricesets.sa.gardener.cloud
+spec:
+  group: sa.gardener.cloud
+  names:
+    kind: InstancePriceSet
+    listKind: InstancePriceSetList
+    plural: instancepricesets
+    shortNames:
+    - ips
+    singular: instancepriceset
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InstancePriceSet defines a top-level object with a [InstancePriceSetSpec] consisting of all the [InstancePrice]'s
+          that are referenced by any [NodeTemplate].
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of this InstancePriceSet
+            properties:
+              prices:
+                description: |-
+                  Prices is a slice of [InstancePrice]'s which should be set uniquely keyed on
+                  [InstancePrice.InstanceType], [InstancePrice.CapacityType] and [InstancePrice.Region].
+                items:
+                  description: InstancePrice describes pricing information along with
+                    an [InstancePriceKey].
+                  properties:
+                    capacityType:
+                      description: CapacityType represents procurement model of compute
+                        capacity.
+                      enum:
+                      - on-demand
+                      - spot
+                      type: string
+                    instanceType:
+                      description: InstanceType is the instance type of the node template.
+                      type: string
+                    price:
+                      description: Price is the total price of the instance type.
+                      exclusiveMinimum: true
+                      format: double
+                      minimum: 0
+                      type: number
+                    region:
+                      description: Region is the cloud provider region.
+                      type: string
+                    unitCPUPrice:
+                      description: UnitCPUPrice is the price per CPU of the instance
+                        type.
+                      exclusiveMinimum: true
+                      format: double
+                      minimum: 0
+                      type: number
+                    unitMemoryPrice:
+                      description: UnitMemoryPrice is the price per memory of the
+                        instance type.
+                      exclusiveMinimum: true
+                      format: double
+                      minimum: 0
+                      type: number
+                  required:
+                  - capacityType
+                  - instanceType
+                  - price
+                  - region
+                  type: object
+                minItems: 1
+                type: array
+            required:
+            - prices
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true

@@ -19,8 +19,9 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScalingAdvice is the schema to define cluster scaling advice
-          for a cluster.
+        description: |-
+          ScalingAdvice is the top-level object containing scaling advice produced by the scaling-advisor
+          from a [ScalingConstraint] applied against a k8s cluster.
         properties:
           apiVersion:
             description: |-
@@ -43,8 +44,8 @@ spec:
             description: Spec defines the specification of ScalingAdvice.
             properties:
               constraintRef:
-                description: ConstraintRef is a reference to the ScalingConstraint
-                  that this advice is based on.
+                description: ConstraintRef references the [ScalingConstraint] for
+                  which this [ScalingAdvice] was generated.
                 properties:
                   name:
                     description: Name is the name of the object.
@@ -54,6 +55,24 @@ spec:
                     type: string
                 required:
                 - name
+                type: object
+              diagnostic:
+                description: |-
+                  Diagnostic provides diagnostics information for the scaling advice.
+                  This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
+                  set on the corresponding ScalingConstraint resource.
+                properties:
+                  runResultsLogName:
+                    description: RunResultsLogName is the name of the run resets log.  This
+                      can be used to fetch the run results log.
+                    type: string
+                  traceLogName:
+                    description: TraceLogName is the name of the trace log. This can
+                      be used to fetch the trace log.
+                    type: string
+                required:
+                - runResultsLogName
+                - traceLogName
                 type: object
               scaleIn:
                 description: ScaleIn is the plan for scaling in across node pools.
@@ -93,6 +112,7 @@ spec:
                       - region
                       - templateName
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - items
@@ -120,6 +140,7 @@ spec:
                           description: Delta is the delta change in the number of
                             nodes for the NodePlacement.
                           format: int32
+                          minimum: 1
                           type: integer
                         instanceType:
                           description: InstanceType is the instance type of the Node
@@ -142,10 +163,12 @@ spec:
                       - region
                       - templateName
                       type: object
+                    minItems: 1
                     type: array
                   unsatisfiedPodNames:
-                    description: UnsatisfiedPodNames is the list of all pods (namespace/name)
-                      that could not be satisfied by the scale out plan.
+                    description: |-
+                      UnsatisfiedPodNames contains pod names in "namespace/name" format that could not be scheduled by this scale-out
+                      plan.
                     items:
                       type: string
                     type: array
@@ -156,10 +179,11 @@ spec:
             - constraintRef
             type: object
           status:
-            description: Status defines the status of ScalingAdvice.
+            description: Status defines the observed state of ScalingAdvice.
             properties:
               conditions:
-                description: Conditions represents additional information
+                description: Conditions contains the [metav1.Condition]'s for this
+                  ScalingAdvice.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -215,62 +239,6 @@ spec:
                   - type
                   type: object
                 type: array
-              diagnostic:
-                description: |-
-                  Diagnostic provides diagnostics information for the scaling advice.
-                  This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-                  set on the corresponding ScalingConstraint resource.
-                properties:
-                  simRunResults:
-                    description: SimRunResults is the list of simulation run results
-                      for the scaling advice.
-                    items:
-                      description: ScalingSimRunResult is the result of a simulation
-                        run in the scaling advisor.
-                      properties:
-                        availabilityZone:
-                          description: AvailabilityZone is the availability zone of
-                            the node pool.
-                          type: string
-                        nodePoolName:
-                          description: NodePoolName is the name of the node pool.
-                          type: string
-                        nodeScore:
-                          description: NodeScore is the score of the node in the simulation
-                            run.
-                          format: int64
-                          type: integer
-                        nodeTemplateName:
-                          description: NodeTemplateName is the name of the node template.
-                          type: string
-                        numUnscheduledPods:
-                          description: NumUnscheduledPods is the number of pods that
-                            could not be scheduled in this simulation run.
-                          format: int32
-                          type: integer
-                        scheduledPodNames:
-                          description: ScheduledPodNames is the list of pod names
-                            that were scheduled in this simulation run.
-                          items:
-                            type: string
-                          type: array
-                      required:
-                      - availabilityZone
-                      - nodePoolName
-                      - nodeScore
-                      - nodeTemplateName
-                      - numUnscheduledPods
-                      - scheduledPodNames
-                      type: object
-                    type: array
-                  traceLogName:
-                    description: TraceLogName is the name of the trace log. This can
-                      be used to fetch the trace log from the scaling advisor core.
-                    type: string
-                required:
-                - simRunResults
-                - traceLogName
-                type: object
               feedback:
                 description: Feedback represents the [ScalingFeedback] from the lifecycle
                   manager applying the [ScalingAdvice]
@@ -282,9 +250,10 @@ spec:
                       acceptedNodeNames:
                         description: |-
                           AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
-                          Required to be specified, since if empty, the ScaleInFeedback itself should not be populated.
+                          This field must be non-empty whenever [ScaleInFeedback] is present.
                         items:
                           type: string
+                        minItems: 1
                         type: array
                     required:
                     - acceptedNodeNames
@@ -295,9 +264,12 @@ spec:
                       [ScalingAdviceSpec].
                     properties:
                       items:
+                        description: |-
+                          Items contains item feedback corresponding to [ScaleOutItem]. This field must be non-empty whenever
+                          [ScaleOutFeedback] is present.
                         items:
                           description: ScaleOutItemFeedback is the feedback from the
-                            life cycle manager when applying an individual [ScaleOutItem]
+                            life cycle manager when applying an individual [ScaleOutItem].
                           properties:
                             backoffUntil:
                               description: |-
@@ -315,6 +287,9 @@ spec:
                             errorType:
                               description: ErrorType is the type of error that occurred
                                 during scale-out.
+                              enum:
+                              - ResourceExhaustedError
+                              - CreationTimeoutError
                               type: string
                             failCount:
                               description: FailCount is the number of nodes that have
@@ -329,7 +304,10 @@ spec:
                           - creationDeadline
                           - index
                           type: object
+                        minItems: 1
                         type: array
+                    required:
+                    - items
                     type: object
                 type: object
             type: object

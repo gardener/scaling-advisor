@@ -19,8 +19,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScalingConstraint is a schema to define constraints that will
-          be used to create cluster scaling advises for a cluster.
+        description: ScalingConstraint defines the constraints used by the scaling
+          advisor to generate scaling advice for a cluster.
         properties:
           apiVersion:
             description: |-
@@ -40,7 +40,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the specification of the ScalingConstraint.
+            description: Spec is the [ScalingConstraintSpec] used to generate scaling
+              advice.
             properties:
               nodePools:
                 description: NodePools is the list of node pools to choose from when
@@ -70,6 +71,31 @@ spec:
                       description: Name is the name of the node pool. It must be unique
                         within the cluster.
                       type: string
+                    nodeTemplateRefs:
+                      description: |-
+                        NodeTemplateRefs specifies the NodeTemplates that may be used for this NodePool together with their relative
+                        priorities.
+                      items:
+                        description: NodeTemplateRef references a NodeTemplate and
+                          specifies its optional priority within the parent NodePool.
+                        properties:
+                          name:
+                            description: Name is the name of the referenced [NodeTemplate].  The
+                              referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
+                            type: string
+                          priority:
+                            description: |-
+                              Priority defines the preference for this NodeTemplate when selecting a scale-out candidate in the parent NodePool.
+
+                              If omitted, the default implicit priority is zero. Higher values are preferred.
+                            format: int32
+                            minimum: 0
+                            type: integer
+                        required:
+                        - name
+                        type: object
+                      minItems: 1
+                      type: array
                     priority:
                       description: Priority is the priority of the node pool.
                       format: int32
@@ -86,44 +112,6 @@ spec:
                     region:
                       description: Region is the name of the region.
                       type: string
-                    requirements:
-                      description: Requirements encapsulates the slice of requirement
-                        selectors for this NodePool
-                      items:
-                        description: |-
-                          NodePoolRequirement is a requirement selector that encapsulates values, a key, and an operator
-                          that relates the key and values.
-                        properties:
-                          key:
-                            description: Key is the label key that the selector applies
-                              to.
-                            type: string
-                          operator:
-                            description: |-
-                              Operator represents a key's relationship to a set of values.
-                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
-                            type: string
-                          priority:
-                            description: Priority represents the priority of this
-                              requirement. Higher values have greater priority.
-                            format: int32
-                            type: integer
-                          values:
-                            description: |-
-                              Values is an array of string values. If the operator is "In" or "NotIn",
-                              the values array must be non-empty. If the operator is "Exists" or "DoesNotExist",
-                              the values array must be empty. If the operator is "Gt" or "Lt", the values
-                              array must have a single element, which will be interpreted as an integer.
-                              This array is replaced during a strategic merge patch.
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                        required:
-                        - key
-                        - operator
-                        type: object
-                      type: array
                     taints:
                       description: Taints is a list of taints applied to all the nodes
                         in this node pool.
@@ -159,82 +147,32 @@ spec:
                   required:
                   - availabilityZones
                   - name
+                  - nodeTemplateRefs
                   - region
-                  - requirements
                   type: object
+                minItems: 1
                 type: array
-              nodeTemplates:
-                description: NodeTemplates is the slice of all NodeTemplates that
-                  can be used for selecting instances associated with each NodePool.
-                items:
-                  description: |-
-                    NodeTemplate defines a node template configuration for an instance type.
-                    There can be different NodeTemplate's for a [ScalingConstraintSpec] for the same instance type.
-                    This is permitted to allow the opportunity for different SystemReserved.
-                  properties:
-                    architecture:
-                      description: Architecture is the architecture of the instance
-                        type.
-                      type: string
-                    capacity:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: Capacity defines the capacity of resources that
-                        are available for this instance type.
-                      type: object
-                    instanceType:
-                      description: InstanceType is the instance type of the node template.
-                      type: string
-                    kubeReservedCapacity:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: |-
-                        KubeReserved defines the capacity for kube reserved resources.
-                        See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
-                      type: object
-                    maxVolumes:
-                      description: MaxVolumes is the max number of volumes that can
-                        be attached to a node of this instance type.
-                      format: int32
-                      type: integer
-                    name:
-                      description: Name is the name of the node template. Name is
-                        unique within a particular [ScalingConstraintSpec]
-                      type: string
-                    systemReservedCapacity:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: |-
-                        SystemReserved defines the capacity for system reserved resources.
-                        See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
-                        Please read https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#general-guidelines when deciding to
-                      type: object
-                  required:
-                  - architecture
-                  - capacity
-                  - instanceType
-                  - maxVolumes
-                  - name
-                  type: object
-                type: array
+              scoringStrategy:
+                description: |-
+                  ScoringStrategy defines the node scoring strategy to use the [apicommon.SimulatorStrategySingleNodeMultiSim] '
+                  strategy.
+                enum:
+                - least-waste
+                - least-cost
+                type: string
+              simulatorStrategy:
+                description: SimulatorStrategy defines the simulator strategy used
+                  by the scaling planner.
+                enum:
+                - single-node-multi-sim
+                - multi-node-single-sim
+                type: string
             required:
             - nodePools
-            - nodeTemplates
             type: object
           status:
-            description: Status defines the status of the ScalingConstraint.
+            description: Status contains validation and processing information for
+              this ScalingConstraint.
             properties:
               conditions:
                 description: Conditions contains the conditions for the ScalingConstraint.
@@ -295,8 +233,8 @@ spec:
                 type: array
             type: object
         required:
+        - metadata
         - spec
-        - status
         type: object
     served: true
     storage: true

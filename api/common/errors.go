@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package errors holds common sentinel errors and string formats for error message.
-package errors
+package common
 
 import (
 	"errors"
@@ -20,7 +19,10 @@ var (
 	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
 	ErrMissingRequiredLabel = errors.New("missing required label")
-
+	// ErrLoadTemplate is a sentinel error representing a problem loading a template file
+	ErrLoadTemplate = errors.New("failed to load template")
+	// ErrExecuteTemplate is a sentinel error indicating that template execution failed.
+	ErrExecuteTemplate = errors.New("cannot execute template")
 	// ErrSerialization is a sentinel error indicating that serialization of an object failed
 	ErrSerialization = errors.New("failed to serialize obj")
 )
