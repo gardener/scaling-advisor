@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	gocmp "github.com/google/go-cmp/cmp"
@@ -23,7 +22,7 @@ var (
 	baseViewArgs = mkapi.ViewArgs{
 		Name:           "base",
 		KubeConfigPath: "base",
-		Scheme:         typeinfo.SupportedScheme,
+		Scheme:         api.SupportedScheme,
 		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
 			Timeout:   mkapi.DefaultWatchTimeout,
@@ -32,7 +31,7 @@ var (
 	sandboxViewArgs = mkapi.ViewArgs{
 		Name:           "sandbox",
 		KubeConfigPath: "sandbox",
-		Scheme:         typeinfo.SupportedScheme,
+		Scheme:         api.SupportedScheme,
 		WatchConfig: mkapi.WatchConfig{
 			QueueSize: mkapi.DefaultWatchQueueSize,
 			Timeout:   mkapi.DefaultWatchTimeout,
@@ -111,7 +110,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 		},
 	}
 	nAWithCondChange.Status.Conditions = conditions
-	err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAWithCondChange)
+	err = s.UpdateObject(t.Context(), api.NodesDescriptor.GVK, &nAWithCondChange)
 	if err != nil {
 		t.Fatalf("in view %q, failed to update node: %v", s.GetName(), err)
 		return
@@ -390,7 +389,7 @@ func createBinding(p *corev1.Pod, n *corev1.Node) corev1.Binding {
 
 func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 	t.Helper()
-	_, err := v.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, p)
+	_, err := v.CreateObject(t.Context(), api.PodsDescriptor.GVK, p)
 	if err != nil {
 		t.Fatalf("failed to store pod: %v", err)
 		return err
@@ -400,7 +399,7 @@ func storePod(t *testing.T, v mkapi.View, p *corev1.Pod) error {
 
 func storeNode(t *testing.T, v mkapi.View, n *corev1.Node) error {
 	t.Helper()
-	_, err := v.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, n)
+	_, err := v.CreateObject(t.Context(), api.NodesDescriptor.GVK, n)
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", v.GetName(), err)
 		return err
@@ -410,7 +409,7 @@ func storeNode(t *testing.T, v mkapi.View, n *corev1.Node) error {
 
 func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error) {
 	t.Helper()
-	o, err := v.GetObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", name))
+	o, err := v.GetObject(t.Context(), api.NodesDescriptor.GVK, cache.NewObjectName("", name))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, err
@@ -428,7 +427,7 @@ func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error
 
 func getPod(t *testing.T, v mkapi.View, namespace, name string) (p *corev1.Pod, err error) {
 	t.Helper()
-	o, err := v.GetObject(t.Context(), typeinfo.PodsDescriptor.GVK, cache.NewObjectName(namespace, name))
+	o, err := v.GetObject(t.Context(), api.PodsDescriptor.GVK, cache.NewObjectName(namespace, name))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, err

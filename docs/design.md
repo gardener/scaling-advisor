@@ -7,24 +7,58 @@
 
 ![High Level Operational View](./assets/high-level.svg)
 
-- `ScalingAdvisor` is an *advisory-controller* that reconciles `ClusterScalingConstraint` and `ClusterScalingAdviceFeedback` and generates next `ClusterScalingAdvice`
+- `scaling-advisor` is an *advisory-controller* that reconciles `ScalingConstraint` and `ScalingFeedback` and generates next `ScalingAdvice`
 - Real actions are taken by a consuming lifecycle management component like the MCM. Scaling advisor does not take actions
 
-
-## Modules
+## Statics
 
 The scaling-advisor has been structured into several modules, some of which are independently re-useable.
 
-### API Module
+![Modules](./assets/modules.svg)
+
+### API (Base) Module
+### MinKAPI API Module
+### Simulation API Module
+### Planner API Module
+
+## Dynamics
+
+### ScalingPlanner
+`ScalingPlanner` takes in `plannerapi.Request` and delivers `plannerapi.Response` on a result channel.
+
+```mermaid
+---
+title: ScalingPlanner
+---
+classDiagram
+    class ScalingPlanner {
+        <<interface>>
+        +Plan(Request) chan Response
+    }
+    class Request {
+       +ID
+       +CorrelationID
+       +SimulationStrategy
+       +ScoringStrategy
+       +ClusterSnapshot
+       +DiagnosticVerbosity
+    }
+    class Response {
+      +ID
+      +RequestRef(ID, CorrelationID)
+      +Error
+      +Labels map[string]string 
+      +ScaleOutPlan
+      +ScaleInPLan
+    }
+    ScalingPlanner-->Request:consumes
+    ScalingPlanner-->Response:produces
+```
 
 
-### Components
-### Overview
 
 
-
-### Simulation Engine 
-
+### Older Material (To be Revised)
 ![Node Pool Simulation](./assets/scaling-advisor-simulator.svg)
 
 - The `ScalingAdvisor` leverages a minimal in-memory KAPI (called `minkapi`) to hold cluster snapshot (k8s objects such as existing nodes, pods, volumes, volume-attachments, etc.) of the real cluster.

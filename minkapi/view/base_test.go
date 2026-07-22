@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"
@@ -31,18 +29,18 @@ func TestNodeCreation(t *testing.T) {
 	}{
 		"No error": {
 			fileName: "testdata/node-a.json",
-			gvk:      typeinfo.NodesDescriptor.GVK,
+			gvk:      api.NodesDescriptor.GVK,
 			retErr:   nil,
 		},
 		"Incorrect gvk": {
 			fileName: "testdata/node-a.json",
-			gvk:      typeinfo.PodsDescriptor.GVK,
+			gvk:      api.PodsDescriptor.GVK,
 			retErr:   fmt.Errorf("does not match expected objGVK"),
 		},
 		"Missing name and generateName in file": {
 			fileName: "testdata/name-node-a.json",
-			gvk:      typeinfo.NodesDescriptor.GVK,
-			retErr:   minkapi.ErrCreateObject,
+			gvk:      api.NodesDescriptor.GVK,
+			retErr:   api.ErrCreateObject,
 		},
 	}
 
@@ -79,7 +77,7 @@ func TestNodeCreation(t *testing.T) {
 func TestPodListing(t *testing.T) {
 	matchCriteria := map[string]struct {
 		retErr    error
-		c         minkapi.MatchCriteria
+		c         api.MatchCriteria
 		namespace string
 		names     []string
 	}{
@@ -100,7 +98,7 @@ func TestPodListing(t *testing.T) {
 	}
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			criteria := minkapi.MatchCriteria{Namespace: tc.namespace, Names: sets.New(tc.names...)}
+			criteria := api.MatchCriteria{Namespace: tc.namespace, Names: sets.New(tc.names...)}
 			p, err := baseView.ListPods(t.Context(), criteria)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)
@@ -121,37 +119,37 @@ func TestEventDeletion(t *testing.T) {
 	matchCriteria := map[string]struct {
 		retErr error
 		gvk    schema.GroupVersionKind
-		c      minkapi.MatchCriteria
+		c      api.MatchCriteria
 	}{
 		"No criteria": {
-			c:      minkapi.MatchCriteria{},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			c:      api.MatchCriteria{},
+			gvk:    api.EventsDescriptor.GVK,
 			retErr: fmt.Errorf("cannot list events without namespace"),
 		},
 		"test namespace": {
-			c:      minkapi.MatchCriteria{Namespace: "test"},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			c:      api.MatchCriteria{Namespace: "test"},
+			gvk:    api.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		"random namespace": {
-			c:      minkapi.MatchCriteria{Namespace: "mnbvcxz"},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			c:      api.MatchCriteria{Namespace: "mnbvcxz"},
+			gvk:    api.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		"default namespace": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			c:      api.MatchCriteria{Namespace: metav1.NamespaceDefault},
+			gvk:    api.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 		// TODO GVK is only utilized for checking store existence
 		"incorrect gvk when deleting": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
-			gvk:    typeinfo.PodsDescriptor.GVK,
+			c:      api.MatchCriteria{Namespace: metav1.NamespaceDefault},
+			gvk:    api.PodsDescriptor.GVK,
 			retErr: nil,
 		},
 		"non-existing name": {
-			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault, Names: sets.New("bingo")},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			c:      api.MatchCriteria{Namespace: metav1.NamespaceDefault, Names: sets.New("bingo")},
+			gvk:    api.EventsDescriptor.GVK,
 			retErr: nil,
 		},
 	}
@@ -163,7 +161,7 @@ func TestEventDeletion(t *testing.T) {
 	t.Cleanup(func() { baseView.Close() })
 	for name, tc := range matchCriteria {
 		t.Run(name, func(t *testing.T) {
-			_, err = createObjectFromFileName[eventsv1.Event](t, baseView, "testdata/event-a.json", typeinfo.EventsDescriptor.GVK)
+			_, err = createObjectFromFileName[eventsv1.Event](t, baseView, "testdata/event-a.json", api.EventsDescriptor.GVK)
 			if err != nil {
 				t.Error(err)
 				return
@@ -286,14 +284,14 @@ func TestCombinePrimarySecondary(t *testing.T) {
 	}
 }
 
-func createTestBaseView(t *testing.T) (minkapi.View, error) {
+func createTestBaseView(t *testing.T) (api.View, error) {
 	t.Helper()
-	viewArgs := minkapi.ViewArgs{
+	viewArgs := api.ViewArgs{
 
-		Name:           minkapi.DefaultBasePrefix,
+		Name:           api.DefaultBasePrefix,
 		KubeConfigPath: "/tmp/minkapi-test.yaml",
-		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: minkapi.WatchConfig{
+		Scheme:         api.SupportedScheme,
+		WatchConfig: api.WatchConfig{
 			QueueSize: 100,
 			Timeout:   500 * time.Millisecond,
 		},
@@ -301,13 +299,13 @@ func createTestBaseView(t *testing.T) (minkapi.View, error) {
 	return NewBase(&viewArgs)
 }
 
-func createTestObjects(t *testing.T, view *minkapi.View) (err error) {
-	_, err = createObjectFromFileName[corev1.Node](t, *view, "testdata/node-a.json", typeinfo.NodesDescriptor.GVK)
+func createTestObjects(t *testing.T, view *api.View) (err error) {
+	_, err = createObjectFromFileName[corev1.Node](t, *view, "testdata/node-a.json", api.NodesDescriptor.GVK)
 	if err != nil {
 		return
 	}
 	for _, file := range []string{"testdata/pod-a.json", "testdata/pod-defaultns.json", "testdata/pod-testns.json"} {
-		_, err = createObjectFromFileName[corev1.Pod](t, *view, file, typeinfo.PodsDescriptor.GVK)
+		_, err = createObjectFromFileName[corev1.Pod](t, *view, file, api.PodsDescriptor.GVK)
 		if err != nil {
 			return
 		}
@@ -325,7 +323,7 @@ func convertJSONtoObject[T any](t *testing.T, data []byte) (T, error) {
 	return obj, nil
 }
 
-func createObjectFromFileName[T any](t *testing.T, view minkapi.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
+func createObjectFromFileName[T any](t *testing.T, view api.View, fileName string, gvk schema.GroupVersionKind) (T, error) {
 	var (
 		jsonData []byte
 		obj      T

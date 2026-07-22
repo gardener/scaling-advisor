@@ -33,7 +33,7 @@ type InstancePriceSetList struct {
 }
 
 // InstancePriceSetSpec contains a list of [InstancePrice]'s that is semantically a set
-// where (instanceType, region, capacityType) combination is unique.
+// where each [InstancePriceKey] is unique.
 type InstancePriceSetSpec struct {
 	// Prices is a slice of [InstancePrice]'s which should be set uniquely keyed on
 	// [InstancePrice.InstanceType], [InstancePrice.CapacityType] and [InstancePrice.Region].

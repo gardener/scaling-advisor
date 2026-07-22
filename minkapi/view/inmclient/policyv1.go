@@ -5,10 +5,11 @@
 package inmclient
 
 import (
+	"errors"
+
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/policyaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	clientpolicyv1 "k8s.io/client-go/kubernetes/typed/policy/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,15 +19,15 @@ var (
 )
 
 type policyV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (p *policyV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (p *policyV1Impl) Evictions(_ string) clientpolicyv1.EvictionInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (p *policyV1Impl) PodDisruptionBudgets(namespace string) clientpolicyv1.PodDisruptionBudgetInterface {

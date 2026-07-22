@@ -17,6 +17,7 @@ require (
 
 replace (
 	github.com/gardener/scaling-advisor/common => ../common
+	github.com/gardener/scaling-advisor/minkapi/api => ./api
 )
 
 require (

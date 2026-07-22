@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +28,11 @@ type storageClassAccess struct {
 }
 
 // NewStorageClassAccess creates an access facade for managing StorageClass resources using the given minkapi View.
-func NewStorageClassAccess(view minkapi.View) clientstoragev1.StorageClassInterface {
+func NewStorageClassAccess(view api.View) clientstoragev1.StorageClassInterface {
 	return &storageClassAccess{
 		access.GenericResourceAccess[*storagev1.StorageClass, *storagev1.StorageClassList]{
 			View:      view,
-			GVK:       typeinfo.StorageClassDescriptor.GVK,
+			GVK:       api.StorageClassDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}

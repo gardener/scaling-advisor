@@ -1,15 +1,19 @@
-module github.com/gardener/scaling-advisor/minkapi/api
+module github.com/gardener/scaling-advisor/simulation/api
 
 go 1.26.3
 
 require (
 	github.com/gardener/scaling-advisor/api v0.0.0
+	github.com/gardener/scaling-advisor/minkapi/api v0.0.0
 	k8s.io/api v0.34.3
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3
 )
 
-replace github.com/gardener/scaling-advisor/api => ../../api
+replace (
+	github.com/gardener/scaling-advisor/api => ../../api
+	github.com/gardener/scaling-advisor/minkapi/api => ../../minkapi/api
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -32,7 +36,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.44.0 // indirect

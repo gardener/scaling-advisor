@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,11 +29,11 @@ type serviceAccess struct {
 }
 
 // NewServiceAccess creates a new access facade for managing Service resources within a specific namespace using the given minkapi View.
-func NewServiceAccess(view minkapi.View, namespace string) clientcorev1.ServiceInterface {
+func NewServiceAccess(view api.View, namespace string) clientcorev1.ServiceInterface {
 	return &serviceAccess{
 		access.GenericResourceAccess[*corev1.Service, *corev1.ServiceList]{
 			View:      view,
-			GVK:       typeinfo.ServicesDescriptor.GVK,
+			GVK:       api.ServicesDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}

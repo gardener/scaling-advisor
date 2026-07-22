@@ -15,8 +15,6 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/view/store"
 
 	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -36,12 +34,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ minkapi.View = (*sandboxView)(nil)
+var _ api.View = (*sandboxView)(nil)
 
 type sandboxView struct {
-	delegateView minkapi.View
-	eventSink    minkapi.EventSink
-	args         *minkapi.ViewArgs
+	delegateView api.View
+	eventSink    api.EventSink
+	args         *api.ViewArgs
 	mu           *sync.RWMutex
 	stores       map[schema.GroupVersionKind]*store.InMemResourceStore
 	changeCount  atomic.Int64
@@ -49,9 +47,9 @@ type sandboxView struct {
 
 // NewSandbox returns a "sandbox" (private) view which holds changes made via its facade into its private store independent of the base view,
 // otherwise delegating to the delegate View.
-func NewSandbox(delegateView minkapi.View, args *minkapi.ViewArgs) (minkapi.View, error) {
+func NewSandbox(delegateView api.View, args *api.ViewArgs) (api.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
-	for _, d := range typeinfo.SupportedDescriptors {
+	for _, d := range api.SupportedDescriptors {
 		baseStore, err := delegateView.GetResourceStore(d.GVK)
 		if err != nil {
 			return nil, err
@@ -87,8 +85,8 @@ func (v *sandboxView) GetName() string {
 	return v.args.Name
 }
 
-func (v *sandboxView) GetType() minkapi.ViewType {
-	return minkapi.ViewTypeSandbox
+func (v *sandboxView) GetType() api.ViewType {
+	return api.ViewTypeSandbox
 }
 
 func (v *sandboxView) GetObjectChangeCount() int64 {
@@ -103,7 +101,7 @@ func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontyp
 	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrClientFacadesFailed, err)
+			err = fmt.Errorf("%w: %w", api.ErrClientFacadesFailed, err)
 		}
 	}()
 	switch accessMode {
@@ -117,17 +115,17 @@ func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontyp
 	return
 }
 
-func (v *sandboxView) GetResourceStore(gvk schema.GroupVersionKind) (minkapi.ResourceStore, error) {
+func (v *sandboxView) GetResourceStore(gvk schema.GroupVersionKind) (api.ResourceStore, error) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	s, exists := v.stores[gvk]
 	if !exists {
-		return nil, fmt.Errorf("%w: store not found for GVK %q in view %q", minkapi.ErrStoreNotFound, gvk, v.args.Name)
+		return nil, fmt.Errorf("%w: store not found for GVK %q in view %q", api.ErrStoreNotFound, gvk, v.args.Name)
 	}
 	return s, nil
 }
 
-func (v *sandboxView) GetEventSink() minkapi.EventSink {
+func (v *sandboxView) GetEventSink() api.EventSink {
 	return v.eventSink
 }
 
@@ -169,7 +167,7 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
-	gvk := typeinfo.PodsDescriptor.GVK
+	gvk := api.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
 	if err != nil && !apierrors.IsNotFound(err) {
 		return
@@ -179,7 +177,7 @@ func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.Ob
 	if obj != nil { // pod is found in sandbox view update pod node binding directly
 		pod, ok = obj.(*corev1.Pod)
 		if !ok {
-			err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", minkapi.ErrUpdateObject, v.GetName(), obj, podName)
+			err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", api.ErrUpdateObject, v.GetName(), obj, podName)
 			return
 		}
 		return updatePodNodeBinding(ctx, v, pod, binding)
@@ -191,7 +189,7 @@ func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.Ob
 	}
 	pod, ok = obj.(*corev1.Pod)
 	if !ok {
-		err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", minkapi.ErrUpdateObject, v.GetName(), obj, podName)
+		err = fmt.Errorf("%w: cannot update pod node binding in %q view since obj %T for name %q not a corev1.Pod", api.ErrUpdateObject, v.GetName(), obj, podName)
 		if err != nil {
 			return
 		}
@@ -214,7 +212,7 @@ func (v *sandboxView) PatchObjectStatus(ctx context.Context, gvk schema.GroupVer
 	return patchObjectStatus(ctx, v, gvk, objName, patchData)
 }
 
-func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) (items []metav1.Object, maxVersion int64, err error) {
+func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria api.MatchCriteria) (items []metav1.Object, maxVersion int64, err error) {
 	sandboxItems, myMax, err := listMetaObjects(ctx, v, gvk, criteria)
 	if err != nil {
 		return
@@ -232,7 +230,7 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	return
 }
 
-func (v *sandboxView) ListObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) (listObj runtime.Object, err error) {
+func (v *sandboxView) ListObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria api.MatchCriteria) (listObj runtime.Object, err error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return
@@ -245,7 +243,7 @@ func (v *sandboxView) ListObjects(ctx context.Context, gvk schema.GroupVersionKi
 	return store.WrapMetaObjectsIntoRuntimeListObject(maxVersion, objGVK, objListKind, items)
 }
 
-func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback minkapi.WatchEventCallback) error {
+func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionKind, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
 	log := logr.FromContextOrDiscard(ctx)
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
@@ -307,7 +305,7 @@ func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionK
 	return nil
 }
 
-func (v *sandboxView) DeleteObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) error {
+func (v *sandboxView) DeleteObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria api.MatchCriteria) error {
 	err := deleteObjects(ctx, v, gvk, criteria, &v.changeCount)
 	if err != nil {
 		return err
@@ -316,8 +314,8 @@ func (v *sandboxView) DeleteObjects(ctx context.Context, gvk schema.GroupVersion
 }
 
 func (v *sandboxView) ListNodes(ctx context.Context, matchingNodeNames ...string) (nodes []corev1.Node, err error) {
-	gvk := typeinfo.NodesDescriptor.GVK
-	metaObjs, _, err := v.ListMetaObjects(ctx, gvk, minkapi.MatchCriteria{
+	gvk := api.NodesDescriptor.GVK
+	metaObjs, _, err := v.ListMetaObjects(ctx, gvk, api.MatchCriteria{
 		Names: sets.New(matchingNodeNames...),
 	})
 	if err != nil {
@@ -327,8 +325,8 @@ func (v *sandboxView) ListNodes(ctx context.Context, matchingNodeNames ...string
 	return
 }
 
-func (v *sandboxView) ListPods(ctx context.Context, c minkapi.MatchCriteria) (pods []corev1.Pod, err error) {
-	gvk := typeinfo.PodsDescriptor.GVK
+func (v *sandboxView) ListPods(ctx context.Context, c api.MatchCriteria) (pods []corev1.Pod, err error) {
+	gvk := api.PodsDescriptor.GVK
 	metaObjs, _, err := v.ListMetaObjects(ctx, gvk, c)
 	if err != nil {
 		return
@@ -338,7 +336,7 @@ func (v *sandboxView) ListPods(ctx context.Context, c minkapi.MatchCriteria) (po
 }
 
 func (v *sandboxView) ListEvents(ctx context.Context, namespace string) (events []eventsv1.Event, err error) {
-	metaObjs, _, err := v.ListMetaObjects(ctx, typeinfo.EventsDescriptor.GVK, minkapi.MatchCriteria{
+	metaObjs, _, err := v.ListMetaObjects(ctx, api.EventsDescriptor.GVK, api.MatchCriteria{
 		Namespace: namespace,
 	})
 	if err != nil {

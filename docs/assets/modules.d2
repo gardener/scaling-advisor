@@ -1,59 +1,155 @@
 # Force neutral theme and override the text color token (N1 -> black)
 vars: {
   d2-config: {
-    theme-id: 103
-    theme-overrides: {
-       N2: "#000000"
-    }
+    layout-engine: elk
+    theme-id: 1
   }
 }
 api: {
-  label: API
-  shape: package
-  icon: https://icons.terrastruct.com/azure%2FWeb%20Service%20Color%2FAPI%20Connections.svg
-}
+  label: "API\n(/api/go.mod)"
+  common{
+    label:"github.com/gardener/scaling-advisor/api/common"
+    shape: package
+  }
 
+  config {
+    label:"github.com/gardener/scaling-advisor/api/config/v1alpha1"
+    shape: package
+  }
+  core{
+    label:"github.com/gardener/scaling-advisor/api/core/v1alpha1"
+    shape: package
+  }
+}
+# apinote: {
+#   label: "/api/go.mod"
+#   shape: page
+# }
+# apinote -- api: {
+#   style.stroke-dash: 3
+# }
 common: {
   label: Common Module
-  shape: package
-  icon: "box.svg"
+  ioutil
+  nodeutil
+  objutil
+  podutil
 }
 
-
+minkapi-api: {
+  label: "MinKAPI API\n (/minkapi/api/go.mod)"
+  "github.com/gardener/scaling-advisor/minkapi/api" {
+    shape: package
+  }
+}
 minkapi: {
-  label: MinKAPI Module
-  shape: package
-  icon: "log-in.svg"
-  icon: "kube.svg"
-}
-
-service: {
-  label: Service Module
-  shape: package
-  icon: "map.svg"
+  label: "MinkAPI Core\n (/minkapi/go.mod)"
+  "github.com/gardener/scaling-advisor/minkapi" {
+    shape: package
+  }
 }
 
 operator: {
-  label: Operator Module
-  shape: package
+  label: "Operator\n(/operator/go.mod)"
   icon: "repeat.svg"
 }
 
-tools: {
-  label: Tools Module
-  shape: package
-  icon: https://icons.terrastruct.com/aws%2F_General%2FToolkit_light-bg.svg
+planner-api: {
+  label: "Planner API\n(/planner/api/go.mod) "
+  "github.com/gardener/scaling-advisor/planner/api" {
+    shape: package
+  }
 }
 
-generator: {
-  label: "Generator Pkg"
-  shape: page
-  icon: "engine-belt.svg"
+planner: {
+  label: "Planner Core\n(/planner/go.mod) "
+  "github.com/gardener/scaling-advisor/planner" {
+    shape: package
+  }
+}
+
+pricing-api: {
+  label: "Pricing API\n(/pricing/api/go.mod) "
+  "github.com/gardener/scaling-advisor/pricing/api" {
+    shape: package
+  }
+}
+
+pricing: {
+  label: "Pricing Core\n(/pricing/go.mod) "
+  "github.com/gardener/scaling-advisor/pricing" {
+    shape: package
+  }
+}
+
+service: {
+  label: "Service\n(/service/go.mod)"
+  icon: "map.svg"
+}
+
+# tools: {
+#   label: Tools Module
+#   shape: package
+#   icon: https://icons.terrastruct.com/aws%2F_General%2FToolkit_light-bg.svg
+# }
+
+simulation-api: {
+  label: "Simulation API\n(/simulation/api/go.mod)"
+  "github.com/gardener/scaling-advisor/simulation/api" {
+    shape: package
+  }
 }
 
 simulation: {
-  label: "Simulation Pkg"
-  shape: page
-  icon: "sandbox.svg"
+  label: "Simulation Core\n(/simulation/go.mod)"
+  "github.com/gardener/scaling-advisor/simulation" {
+    shape: package
+  }
 }
 
+minkapi-api->api.common
+minkapi->minkapi-api
+minkapi->common
+pricing-api->api.common
+pricing->pricing-api
+planner-api->minkapi-api
+planner-api->simulation-api
+planner-api->api
+planner-api->pricing-api
+planner->planner-api
+planner->common
+common->api
+common->minkapi-api
+operator->api
+operator->common
+operator->minkapi
+operator->planner
+operator->service
+service->planner
+service->minkapi
+simulation->simulation-api
+simulation-api->minkapi-api
+simulation->common
+
+
+
+
+# app: {
+#     auth: {
+#         login
+#         session
+#     }
+#
+#     storage: {
+#         postgres
+#         cache
+#     }
+#
+#     api: {
+#         handlers
+#         middleware
+#     }
+# }
+# app.api.handlers -> app.auth.login
+# app.api.handlers -> app.storage.postgres
+# app.auth.session -> app.storage.cache

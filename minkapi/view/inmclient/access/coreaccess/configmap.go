@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +28,11 @@ type configMapAccess struct {
 }
 
 // NewConfigMapAccess creates a new access facade for managing ConfigMap resources within a specific namespace using the given minkapi View.
-func NewConfigMapAccess(view minkapi.View, namespace string) clientcorev1.ConfigMapInterface {
+func NewConfigMapAccess(view api.View, namespace string) clientcorev1.ConfigMapInterface {
 	return &configMapAccess{
 		access.GenericResourceAccess[*corev1.ConfigMap, *corev1.ConfigMapList]{
 			View:      view,
-			GVK:       typeinfo.ConfigMapsDescriptor.GVK,
+			GVK:       api.ConfigMapsDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}

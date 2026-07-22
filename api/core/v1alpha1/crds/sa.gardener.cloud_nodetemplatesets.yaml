@@ -49,9 +49,9 @@ spec:
                   names should be unique.
                 items:
                   description: |-
-                    NodeTemplate defines a node template configuration for an instance type.
-                    Multiple NodeTemplates may reference the same instance type which permits different reserved resource configurations
-                    for the same underlying instance type. However, node template names are expected to be unique within a [NodeTemplateSet].
+                    NodeTemplate defines a node template configuration for an instance type. Multiple NodeTemplates may reference the
+                    same instance type which permits different reserved resource configurations for the same underlying instance type.
+                    However, node template names are expected to be unique within a [NodeTemplateSet].
                   properties:
                     architecture:
                       description: Architecture is the architecture of the instance
@@ -65,8 +65,8 @@ spec:
                         - type: string
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
-                      description: Capacity defines the capacity of resources that
-                        are available for this instance type.
+                      description: Capacity specifies the capacity of resources that
+                        are available for the instance type of this node template.
                       type: object
                     instanceType:
                       description: InstanceType is the instance type of the node template.
@@ -90,7 +90,7 @@ spec:
                         - type: string
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
-                      description: Reserved defines the capacity for total reserved
+                      description: Reserved specifies the capacity for total reserved
                         resources. This should include both system and Kubernetes
                         components.
                       type: object

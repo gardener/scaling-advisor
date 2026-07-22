@@ -1,14 +1,16 @@
-go 1.26.3
+go 1.26.0
 
 use (
 	./api
-	./common
-	./minkapi
-	./minkapi/api
-	./operator
-	./planner
-	./pricing
-	./samples
-	./service
-	./tools
+	//./minkapi/api
+	//./simulation/api
+//./pricing/api
+//./planner/api
+//./common
+//./minkapi
+//./operator
+//./pricing
+//./samples
+//./service
+//./tools
 )

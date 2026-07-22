@@ -8,9 +8,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,8 +44,12 @@ const (
 	DefaultBasePrefix = "base"
 	// DefaultMinKAPIPort is the default port for the MinKAPI core.
 	DefaultMinKAPIPort = 8091
-	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown for the MinKAPI server.
-	DefaultGracefulShutdownTimeout = 10 * time.Second
+)
+
+var (
+	// DefaultMinKAPIBindAddress is the default bind address for the MinKAPI server.
+	// This server maybe used standalone or embedded within the scaling-advisor operator.
+	DefaultMinKAPIBindAddress = net.JoinHostPort("", strconv.Itoa(DefaultMinKAPIPort))
 )
 
 // Config holds the configuration for MinKAPI.
@@ -51,7 +58,7 @@ type Config struct {
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
 	// ServerConfig holds the server config parameters
-	ServerConfig ServerConfig
+	ServerConfig apicommon.ServerConfig
 	// WatchConfig holds config parameters relevant for watchers.
 	WatchConfig WatchConfig
 }
@@ -62,19 +69,6 @@ type WatchConfig struct {
 	QueueSize int
 	// Timeout represents the timeout for watches following which MinKAPI core will close the connection and ends the watch.
 	Timeout time.Duration
-}
-
-// ServerConfig is the common configuration for a server which can be used as standalone
-// or embedded within another process.
-type ServerConfig struct {
-	// KubeConfigPath is the path to master kube-config.
-	KubeConfigPath string `json:"kubeConfigPath"`
-	// BindAddress is the address(host:port) to bind the server to.
-	BindAddress string `json:"bindAddress"`
-	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
-	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
-	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
-	ProfilingEnabled bool `json:"profilingEnabled"`
 }
 
 // ClientAccessMode indicates the access mode of k8s client
@@ -106,15 +100,9 @@ type ClientFacades struct {
 // WatchEventCallback is a function type for handling watch events from a ResourceStore.
 type WatchEventCallback func(watch.Event) (err error)
 
-// Resettable defines types that can reset their state to a default or initial configuration.
-type Resettable interface {
-	// Reset resets the state of the implementing type.
-	Reset() error
-}
-
 // ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	Resettable
+	apicommon.Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
@@ -195,7 +183,7 @@ type ResourceStoreArgs struct {
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	Resettable
+	apicommon.Resettable
 	events.EventSink
 	// List returns all events in the sink.
 	List() []eventsv1.Event
@@ -203,7 +191,7 @@ type EventSink interface {
 
 // View is the high-level facade to a repository of objects of different types (GVK).
 type View interface {
-	Resettable
+	apicommon.Resettable
 	io.Closer
 	// GetName returns the name of this view.
 	GetName() string
@@ -298,19 +286,10 @@ type ViewAccess interface {
 	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
 }
 
-// Service is a component that can be started and stopped.
-type Service interface {
-	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
-	// The context is expected to be populated with a logger.
-	Start(ctx context.Context) error
-	// Stop stops the core. Stop does not block.
-	Stop(ctx context.Context) error
-}
-
 // Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
-	Service
+	apicommon.Service
 	ViewAccess
 }
 

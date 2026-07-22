@@ -13,9 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,12 +27,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-var _ minkapi.ResourceStore = (*InMemResourceStore)(nil)
+var _ api.ResourceStore = (*InMemResourceStore)(nil)
 
 // InMemResourceStore represents an in-memory implementation of the ResourceStore interface for managing resources.
 // It leverages and wraps a backing cache.Store.
 type InMemResourceStore struct {
-	args        *minkapi.ResourceStoreArgs
+	args        *api.ResourceStoreArgs
 	cache       cache.Store
 	broadcaster *watch.Broadcaster
 	// versionCounter is the atomic counter for generating monotonically increasing resource versions
@@ -52,7 +51,7 @@ func (s *InMemResourceStore) GetObjAndListGVK() (objKind schema.GroupVersionKind
 }
 
 // NewInMemResourceStore returns an in-memory store for a given object GVK. TODO: think on simplifying parameters.
-func NewInMemResourceStore(args *minkapi.ResourceStoreArgs) *InMemResourceStore {
+func NewInMemResourceStore(args *api.ResourceStoreArgs) *InMemResourceStore {
 	s := InMemResourceStore{
 		args:           args,
 		cache:          cache.NewStore(cache.MetaNamespaceKeyFunc),
@@ -194,17 +193,17 @@ func (s *InMemResourceStore) Get(ctx context.Context, objName cache.ObjectName) 
 }
 
 // List queries the store according to the given MatchCriteria, gets objects and creates and returns the List object wrapping individual objects.
-func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) (listObj runtime.Object, err error) {
+func (s *InMemResourceStore) List(ctx context.Context, c api.MatchCriteria) (listObj runtime.Object, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log := logr.FromContextOrDiscard(ctx)
 	items := s.cache.List()
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
-	typesMap := typeinfo.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
+	typesMap := api.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
 	listType, ok := typesMap[s.args.ObjectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
-		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), s.args.ObjectListGVK)
+		return nil, runtime.NewNotRegisteredErrForKind(api.SupportedScheme.Name(), s.args.ObjectListGVK)
 	}
 	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
 	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList
@@ -260,7 +259,7 @@ func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) 
 }
 
 // ListMetaObjects queries the store according to the given MatchCriteria, gets objects and returns them as a slice, including the maximum resource version found in the returned objects.
-func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
+func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c api.MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -275,7 +274,7 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 		}
 		mo, err = objutil.AsMeta(item)
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrListObjects, err)
+			err = fmt.Errorf("%w: %w", api.ErrListObjects, err)
 			return
 		}
 		if !c.Matches(mo) {
@@ -295,7 +294,7 @@ func (s *InMemResourceStore) ListMetaObjects(ctx context.Context, c minkapi.Matc
 
 // DeleteObjects deletes objects from the store that match the provided MatchCriteria.
 // It returns the number of deleted objects and an error if one occurs during deletion.
-func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchCriteria) (delCount int, err error) {
+func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c api.MatchCriteria) (delCount int, err error) {
 	items := s.cache.List()
 	var mo metav1.Object
 	for _, item := range items {
@@ -304,7 +303,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 		}
 		mo, err = objutil.AsMeta(item)
 		if err != nil {
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
 			return
 		}
 		if !c.Matches(mo) {
@@ -316,7 +315,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
 			return
 		}
 		err = s.Delete(ctx, objName)
@@ -324,7 +323,7 @@ func (s *InMemResourceStore) DeleteObjects(ctx context.Context, c minkapi.MatchC
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			err = fmt.Errorf("%w: %w", minkapi.ErrDeleteObject, err)
+			err = fmt.Errorf("%w: %w", api.ErrDeleteObject, err)
 			return
 		}
 		delCount++
@@ -376,7 +375,7 @@ type EventCallbackFn func(watch.Event) (err error)
 
 // Watch is a blocking function that watches the store for object changes beginning from startVersion, belonging tot he given namespace, matching the given labelSelector and invoking the given eventCallback.
 // Watch will return after the configured watch timeout or if the given context is cancelled.
-func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback minkapi.WatchEventCallback) error {
+func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback api.WatchEventCallback) error {
 	log := logr.FromContextOrDiscard(ctx)
 	events, err := s.buildPendingWatchEvents(startVersion, namespace, labelSelector)
 	if err != nil {
@@ -420,7 +419,7 @@ func (s *InMemResourceStore) Watch(ctx context.Context, startVersion int64, name
 func (s *InMemResourceStore) GetWatcher(ctx context.Context, namespace string, options metav1.ListOptions) (eventWatcher watch.Interface, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%w :%w", minkapi.ErrCreateWatcher, err)
+			err = fmt.Errorf("%w :%w", api.ErrCreateWatcher, err)
 		}
 	}()
 	log := logr.FromContextOrDiscard(ctx)
@@ -491,10 +490,10 @@ func (s *InMemResourceStore) nextResourceVersion() int64 {
 // Returns the constructed runtime.Object or an error if the operation fails.
 func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schema.GroupVersionKind, objectListGVK schema.GroupVersionKind, items []metav1.Object) (listObj runtime.Object, err error) {
 	resourceVersionStr := strconv.FormatInt(resourceVersion, 10)
-	typesMap := typeinfo.SupportedScheme.KnownTypes(objectGVK.GroupVersion())
+	typesMap := api.SupportedScheme.KnownTypes(objectGVK.GroupVersion())
 	listType, ok := typesMap[objectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
-		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), objectListGVK)
+		return nil, runtime.NewNotRegisteredErrForKind(api.SupportedScheme.Name(), objectListGVK)
 	}
 	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
 	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList

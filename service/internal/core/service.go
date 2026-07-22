@@ -12,7 +12,6 @@ import (
 	"path"
 	"strings"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	pricingapi "github.com/gardener/scaling-advisor/api/pricing"

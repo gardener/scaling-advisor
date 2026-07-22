@@ -13,10 +13,9 @@ import (
 	"testing"
 	"time"
 
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -59,7 +58,7 @@ func TestAdd(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := testPod.DeepCopy()
 			p.TypeMeta = tc.typeMeta
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			s := createStoreForTesting(api.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
 			obj1 := metav1.Object(p.DeepCopy())
@@ -115,7 +114,7 @@ func TestUpdate(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create object before updating
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			s := createStoreForTesting(api.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
@@ -195,7 +194,7 @@ func TestDelete(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			s := createStoreForTesting(api.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
@@ -253,7 +252,7 @@ func TestGetByKey(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			s := createStoreForTesting(api.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
 			createdPod := testPod.DeepCopy()
@@ -280,7 +279,7 @@ func TestGetByKey(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	s := createStoreForTesting(typeinfo.PodsDescriptor)
+	s := createStoreForTesting(api.PodsDescriptor)
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
@@ -317,7 +316,7 @@ func TestList(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
+			c := api.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
 			objList, err := s.List(t.Context(), c)
 			if err != nil {
 				testutil.AssertError(t, err, tc.retErr)
@@ -341,7 +340,7 @@ func TestList(t *testing.T) {
 }
 
 func TestBuildPendingWatchEvents(t *testing.T) {
-	s := createStoreForTesting(typeinfo.PodsDescriptor)
+	s := createStoreForTesting(api.PodsDescriptor)
 	_, _ = createPodsForTesting(t, s)
 
 	tests := map[string]struct {
@@ -488,7 +487,7 @@ func TestWatch(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			s := createStoreForTesting(api.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
 			createdPods, _ := createPodsForTesting(t, s)
@@ -559,16 +558,16 @@ func TestWatch(t *testing.T) {
 	}
 }
 
-func createStoreForTesting(d typeinfo.Descriptor) *InMemResourceStore {
+func createStoreForTesting(d api.Descriptor) *InMemResourceStore {
 	queueSize := 100
 	watchTimeout := 2 * time.Second
 
-	return NewInMemResourceStore(&mkapi.ResourceStoreArgs{
+	return NewInMemResourceStore(&api.ResourceStoreArgs{
 		Name:          d.GVR.Resource,
 		ObjectGVK:     d.GVK,
 		ObjectListGVK: d.ListGVK,
-		Scheme:        typeinfo.SupportedScheme,
-		WatchConfig:   mkapi.WatchConfig{QueueSize: queueSize, Timeout: watchTimeout},
+		Scheme:        api.SupportedScheme,
+		WatchConfig:   api.WatchConfig{QueueSize: queueSize, Timeout: watchTimeout},
 	})
 }
 

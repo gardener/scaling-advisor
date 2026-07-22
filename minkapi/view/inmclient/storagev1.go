@@ -5,10 +5,11 @@
 package inmclient
 
 import (
+	"errors"
+
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/storageaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	clientstoragev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,11 +19,11 @@ var (
 )
 
 type storageV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (a *storageV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented) //TODO: provide a common implementation of rest.Interface for any resource
+	panic(errors.ErrUnsupported) //TODO: provide a common implementation of rest.Interface for any resource
 }
 
 func (a *storageV1Impl) CSIDrivers() clientstoragev1.CSIDriverInterface {

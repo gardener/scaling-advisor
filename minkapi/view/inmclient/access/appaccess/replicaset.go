@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,11 +30,11 @@ type replicaSetAccess struct {
 }
 
 // NewReplicaSetAccess creates a new access facade for managing ReplicaSet resources within a specific namespace using the given minkapi View.
-func NewReplicaSetAccess(view minkapi.View, namespace string) clientappsv1.ReplicaSetInterface {
+func NewReplicaSetAccess(view api.View, namespace string) clientappsv1.ReplicaSetInterface {
 	return &replicaSetAccess{
 		access.GenericResourceAccess[*appsv1.ReplicaSet, *appsv1.ReplicaSetList]{
 			View:      view,
-			GVK:       typeinfo.ReplicaSetDescriptor.GVK,
+			GVK:       api.ReplicaSetDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
