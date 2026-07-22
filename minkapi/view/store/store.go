@@ -144,13 +144,10 @@ func (s *InMemResourceStore) Update(ctx context.Context, mo metav1.Object, opts 
 
 // DeleteByKey deletes the object identified by key in the store, sets the deletion timestamp on the object and broadcasts the watch Deleted event.
 // TODO: think on how to handle context cancellation
-// TODO: We end up getting the object from the store using the key; might be better to just pass the object we want to delete.
 //
 // WARNING: No locking done here; should not be invoked directly. Always use Delete()
 func (s *InMemResourceStore) DeleteByKey(ctx context.Context, key string) error {
 	log := logr.FromContextOrDiscard(ctx)
-	// TODO: This code just checks if the object has been tombstoned.
-	// Think of a better approach rather than calling `GetByKey()`.
 	obj, err := s.GetByKey(ctx, key)
 	if err != nil {
 		return err
