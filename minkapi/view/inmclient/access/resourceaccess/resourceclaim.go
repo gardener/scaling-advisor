@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +28,11 @@ type resourceClaimAccess struct {
 }
 
 // NewResourceClaimAccess creates a new access facade for managing ResourceClaim resources within a specific namespace using the given minkapi View.
-func NewResourceClaimAccess(view minkapi.View, namespace string) clientresourcev1.ResourceClaimInterface {
+func NewResourceClaimAccess(view api.View, namespace string) clientresourcev1.ResourceClaimInterface {
 	return &resourceClaimAccess{
 		access.GenericResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]{
 			View:      view,
-			GVK:       typeinfo.ResourceClaimDescriptor.GVK,
+			GVK:       api.ResourceClaimDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}

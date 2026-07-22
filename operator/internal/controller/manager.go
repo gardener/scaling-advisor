@@ -7,7 +7,6 @@ package controller
 import (
 	"github.com/gardener/scaling-advisor/operator/internal/controller/scalingconstraints"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	corev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/go-logr/logr"

@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +28,11 @@ type namespaceAccess struct {
 }
 
 // NewNamespaceAccess creates a new namespace access facade for managing namespace resources using the given minkapi View.
-func NewNamespaceAccess(view minkapi.View) clientcorev1.NamespaceInterface {
+func NewNamespaceAccess(view api.View) clientcorev1.NamespaceInterface {
 	return &namespaceAccess{
 		access.GenericResourceAccess[*corev1.Namespace, *corev1.NamespaceList]{
 			View:      view,
-			GVK:       typeinfo.NamespacesDescriptor.GVK,
+			GVK:       api.NamespacesDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}

@@ -19,11 +19,11 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName={sc}
 
-// ScalingConstraint defines the constraints used by the scaling advisor to generate scaling advice for a cluster.
+// ScalingConstraint defines the inputs and constraints used to generate [ScalingAdvice] for a cluster.
 type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitzero"`
-	// Spec is the [ScalingConstraintSpec] used to generate scaling advice.
+	// Spec specifies the inputs and constraints used to generate [ScalingAdvice].
 	// +required
 	Spec ScalingConstraintSpec `json:"spec"`
 	// Status contains validation and processing information for this ScalingConstraint.
@@ -43,7 +43,7 @@ type ScalingConstraintList struct {
 	Items []ScalingConstraint `json:"items"`
 }
 
-// ScalingConstraintSpec specifies the scaling constraints used to generate scaling advice.
+// ScalingConstraintSpec defines the inputs and constraints used to generate [ScalingAdvice].
 type ScalingConstraintSpec struct {
 	// SimulatorStrategy defines the simulator strategy used by the scaling planner.
 	// +optional
@@ -69,14 +69,15 @@ func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
 	return zones
 }
 
-// ScalingConstraintStatus contains validation and processing information for this ScalingConstraint.
+// ScalingConstraintStatus reports validation and processing status for a [ScalingConstraint].
 type ScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ScalingConstraint.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// NodePool defines a node pool configuration for a cluster.
+// NodePool defines a scalable node pool together with the [NodeTemplate]s that may be used to provision nodes in the
+// pool.
 type NodePool struct {
 	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
 	// +optional
@@ -84,9 +85,6 @@ type NodePool struct {
 	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
-	// Quota defines the quota for the node pool.
-	// +optional
-	Quota corev1.ResourceList `json:"quota,omitempty"`
 	// Name is the name of the node pool. It must be unique within the cluster.
 	// +required
 	Name string `json:"name"`
@@ -99,8 +97,8 @@ type NodePool struct {
 	// AvailabilityZones is a list of availability zones for the node pool.
 	// +required
 	AvailabilityZones []string `json:"availabilityZones"`
-	// NodeTemplateRefs specifies the NodeTemplates that may be used for this NodePool together with their relative
-	// priorities.
+	// NodeTemplateRefs references the NodeTemplates that may be used by this NodePool together with their relative
+	// priorities and optional scaling limits.
 	// +kubebuilder:validation:MinItems=1
 	// +required
 	NodeTemplateRefs []NodeTemplateRef `json:"nodeTemplateRefs"`
@@ -109,8 +107,12 @@ type NodePool struct {
 	Priority int32 `json:"priority,omitzero"`
 }
 
-// NodeTemplateRef references a NodeTemplate and specifies its optional priority within the parent NodePool.
+// NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
+// its relative priority and optional [ScalingLimits].
 type NodeTemplateRef struct {
+	// Limits specifies optional scaling limits for the referenced NodeTemplate within the parent NodePool.
+	// +optional
+	Limits *ScalingLimits `json:"limits,omitempty"`
 	// Name is the name of the referenced [NodeTemplate].  The referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
 	// +required
 	Name string `json:"name"`
@@ -120,4 +122,15 @@ type NodeTemplateRef struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Priority int32 `json:"priority,omitzero"`
+}
+
+// ScalingLimits specify the minimum and maximum aggregate resources that may be provisioned for the referenced
+// [NodeTemplate] within a [NodePool]. They are declared within a [NodeTemplateRef].
+type ScalingLimits struct {
+	// Min specifies the minimum aggregate resources that may be provisioned.
+	// +optional
+	Min corev1.ResourceList `json:"min,omitempty"`
+	// Max specifies the maximum aggregate resources that may be provisioned.
+	// +optional
+	Max corev1.ResourceList `json:"max,omitempty"`
 }

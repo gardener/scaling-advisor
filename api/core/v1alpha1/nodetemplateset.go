@@ -40,14 +40,14 @@ type NodeTemplateSetSpec struct {
 	Templates []NodeTemplate `json:"templates"`
 }
 
-// NodeTemplate defines a node template configuration for an instance type.
-// Multiple NodeTemplates may reference the same instance type which permits different reserved resource configurations
-// for the same underlying instance type. However, node template names are expected to be unique within a [NodeTemplateSet].
+// NodeTemplate defines a node template configuration for an instance type. Multiple NodeTemplates may reference the
+// same instance type which permits different reserved resource configurations for the same underlying instance type.
+// However, node template names are expected to be unique within a [NodeTemplateSet].
 type NodeTemplate struct {
-	// Capacity defines the capacity of resources that are available for this instance type.
+	// Capacity specifies the capacity of resources that are available for the instance type of this node template.
 	// +required
 	Capacity corev1.ResourceList `json:"capacity"`
-	// Reserved defines the capacity for total reserved resources. This should include both system and Kubernetes components.
+	// Reserved specifies the capacity for total reserved resources. This should include both system and Kubernetes components.
 	// +optional
 	Reserved corev1.ResourceList `json:"reservedCapacity,omitempty"`
 	// Name is a logical name given to this NodeTemplate specification

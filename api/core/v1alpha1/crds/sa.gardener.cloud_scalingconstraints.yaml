@@ -19,8 +19,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScalingConstraint defines the constraints used by the scaling
-          advisor to generate scaling advice for a cluster.
+        description: ScalingConstraint defines the inputs and constraints used to
+          generate [ScalingAdvice] for a cluster.
         properties:
           apiVersion:
             description: |-
@@ -40,14 +40,16 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec is the [ScalingConstraintSpec] used to generate scaling
-              advice.
+            description: Spec specifies the inputs and constraints used to generate
+              [ScalingAdvice].
             properties:
               nodePools:
                 description: NodePools is the list of node pools to choose from when
                   creating scaling advice.
                 items:
-                  description: NodePool defines a node pool configuration for a cluster.
+                  description: |-
+                    NodePool defines a scalable node pool together with the [NodeTemplate]s that may be used to provision nodes in the
+                    pool.
                   properties:
                     annotations:
                       additionalProperties:
@@ -73,12 +75,38 @@ spec:
                       type: string
                     nodeTemplateRefs:
                       description: |-
-                        NodeTemplateRefs specifies the NodeTemplates that may be used for this NodePool together with their relative
-                        priorities.
+                        NodeTemplateRefs references the NodeTemplates that may be used by this NodePool together with their relative
+                        priorities and optional scaling limits.
                       items:
-                        description: NodeTemplateRef references a NodeTemplate and
-                          specifies its optional priority within the parent NodePool.
+                        description: |-
+                          NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
+                          its relative priority and optional [ScalingLimits].
                         properties:
+                          limits:
+                            description: Limits specifies optional scaling limits
+                              for the referenced NodeTemplate within the parent NodePool.
+                            properties:
+                              max:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: Max specifies the maximum aggregate resources
+                                  that may be provisioned.
+                                type: object
+                              min:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: Min specifies the minimum aggregate resources
+                                  that may be provisioned.
+                                type: object
+                            type: object
                           name:
                             description: Name is the name of the referenced [NodeTemplate].  The
                               referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
@@ -100,15 +128,6 @@ spec:
                       description: Priority is the priority of the node pool.
                       format: int32
                       type: integer
-                    quota:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: Quota defines the quota for the node pool.
-                      type: object
                     region:
                       description: Region is the name of the region.
                       type: string

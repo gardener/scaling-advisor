@@ -8,9 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +23,7 @@ import (
 // GenericResourceAccess provides helper methods for basic Create, Get, Update, Delete, Patch of k8s object defined by generic parameter T, and k8s list object
 // provided by generic parameter L.
 type GenericResourceAccess[T metav1.Object, L metav1.ListInterface] struct {
-	View      minkapi.View
+	View      api.View
 	GVK       schema.GroupVersionKind
 	Namespace string
 }
@@ -181,7 +180,7 @@ func checkUnimplementedRequiredListOptions(listOptions metav1.ListOptions) error
 	return nil
 }
 
-func asMatchCriteria(namespace string, listOptions metav1.ListOptions) (c minkapi.MatchCriteria, err error) {
+func asMatchCriteria(namespace string, listOptions metav1.ListOptions) (c api.MatchCriteria, err error) {
 	var selector = labels.Everything()
 	if listOptions.LabelSelector != "" {
 		selector, err = labels.Parse(listOptions.LabelSelector)

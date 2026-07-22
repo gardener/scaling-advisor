@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"

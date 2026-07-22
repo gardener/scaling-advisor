@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +28,11 @@ type resourceSliceAccess struct {
 }
 
 // NewResourceSliceAccess creates an access facade for managing ResourceSlice resources using the given minkapi View.
-func NewResourceSliceAccess(view minkapi.View) clientresourcev1.ResourceSliceInterface {
+func NewResourceSliceAccess(view api.View) clientresourcev1.ResourceSliceInterface {
 	return &resourceSliceAccess{
 		access.GenericResourceAccess[*resourcev1.ResourceSlice, *resourcev1.ResourceSliceList]{
 			View:      view,
-			GVK:       typeinfo.ResourceSliceDescriptor.GVK,
+			GVK:       api.ResourceSliceDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}

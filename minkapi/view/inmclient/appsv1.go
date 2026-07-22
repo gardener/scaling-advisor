@@ -5,10 +5,9 @@
 package inmclient
 
 import (
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/appaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,7 +17,7 @@ var (
 )
 
 type appsV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (a *appsV1Impl) RESTClient() rest.Interface {
