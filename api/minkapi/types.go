@@ -67,24 +67,27 @@ type ResourceStore interface {
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
-	// Add adds a new object to the store using the given opts.
+	// Add adds a new object to the store using the given [ObjectOptions].
 	Add(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// GetByKey retrieves an object from the store by its key.
 	GetByKey(ctx context.Context, key string) (o runtime.Object, err error)
 	// Get retrieves an object from the store by its name.
 	Get(ctx context.Context, objName cache.ObjectName) (o runtime.Object, err error)
-	// Update updates an existing object in the store using the given opts.
+	// Update updates an existing object in the store using the given [ObjectOptions].
 	Update(ctx context.Context, mo metav1.Object, opts ObjectOptions) error
 	// DeleteByKey deletes an object from the store by its key.
 	DeleteByKey(ctx context.Context, key string) error
-	// Delete deletes an object from the store by its name.
-	Delete(ctx context.Context, objName cache.ObjectName) error
-	// DeleteObjects deletes objects matching the given criteria and returns the count of deleted objects.
-	DeleteObjects(ctx context.Context, c MatchCriteria) (delCount int, err error)
+	// Delete deletes an object from the store by its name using the given [ObjectOptions].
+	Delete(ctx context.Context, objName cache.ObjectName, opts ObjectOptions) error
+	// DeleteObjects deletes a list of objects matching the given criteria, using given [ObjectOptions]
+	// and returns the count of deleted objects.
+	DeleteObjects(ctx context.Context, c MatchCriteria, opts ObjectOptions) (delCount int, err error)
 	// List lists objects matching the given criteria.
 	List(ctx context.Context, c MatchCriteria) (listObj runtime.Object, err error)
 	// ListMetaObjects lists metadata objects matching the given criteria.
 	ListMetaObjects(ctx context.Context, c MatchCriteria) (metaObjs []metav1.Object, maxVersion int64, err error)
+	// ListTombstonedKeys lists the keys of tombstoned objects.
+	ListTombstonedKeys(ctx context.Context) (tombstonedKeys sets.Set[string], err error)
 	// Watch watches object changes in this store starting from the given startVersion, belonging to the given namespace and matching the given labelSelector and then constructs a watch.Event followed by invoking eventCallback.
 	Watch(ctx context.Context, startVersion int64, namespace string, labelSelector labels.Selector, eventCallback WatchEventCallback) error
 	// GetWatcher returns a watcher - an implementation of watch.Interface to watch changes in objects beginning from options.ResourceVersion and belonging to the given namespace, then use the  options.labelSelector to filter, and supply watch events via the watch.Interface.ResultChan.
@@ -98,6 +101,8 @@ type ResourceStore interface {
 type ObjectOptions struct {
 	// NoBroadcast means there will be no watch event broadcasted when this object is created or updated.
 	NoBroadcast bool
+	// MarkAsDeleted means that the object would be replaced by tombstone; else we delete the object from view.
+	MarkAsDeleted bool
 }
 
 // ResourceStoreArgs contains arguments for creating a ResourceStore.
@@ -232,7 +237,8 @@ type Server interface {
 }
 
 // App represents a MinKAPI application process that wraps a minkapi Server, an application context and application cancel func.
-// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp and shutdown applications via minkapi cli.ShutdownApp
+// Main entry-point functions that embed minkapi are expected to construct a new App instance via minkapi cli.LaunchApp
+// and shutdown applications via minkapi cli.ShutdownApp
 type App struct {
 	// Ctx is the application context.
 	Ctx context.Context
@@ -243,9 +249,13 @@ type App struct {
 }
 
 // MatchCriteria defines criteria for matching Kubernetes objects.
+// The precedence of criteria for matching is as follows in the order of highest precedence to lowest:
+// Namespace, ExcludeNames, Names, LabelSelector
 type MatchCriteria struct {
 	// LabelSelector specifies the label selector for matching objects.
 	LabelSelector labels.Selector
+	// ExcludeNames specifies the set of object names to not match. Empty means exclude none.
+	ExcludeNames sets.Set[string]
 	// Names specifies the set of object names to match. Empty means all names.
 	Names sets.Set[string]
 	// Namespace specifies the namespace to match. Empty means all namespaces.
@@ -258,6 +268,9 @@ var MatchAllCriteria = MatchCriteria{}
 // Matches returns true if the given object matches the criteria.
 func (c MatchCriteria) Matches(obj metav1.Object) bool {
 	if c.Namespace != "" && obj.GetNamespace() != c.Namespace {
+		return false
+	}
+	if c.ExcludeNames.Len() > 0 && c.ExcludeNames.Has(obj.GetName()) {
 		return false
 	}
 	if c.Names.Len() > 0 && !c.Names.Has(obj.GetName()) {

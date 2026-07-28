@@ -6,6 +6,7 @@ package view
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -132,13 +133,17 @@ func (v *sandboxView) GetEventSink() minkapi.EventSink {
 }
 
 func (v *sandboxView) CreateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) (metav1.Object, error) {
+	// A successful Create resurrects a tombstoned name; the underlying store's Add replaces
+	// any DeletedFinalStateUnknown wrapper for the same key with the new object.
 	return storeObject(ctx, v, gvk, obj, opts, &v.changeCount)
 }
 
 func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
 	obj, err = v.getSandboxObject(ctx, gvk, objName)
-	if obj != nil || !apierrors.IsNotFound(err) {
-		// return if I found the object or get an error other than not found error
+	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
+		return
+	}
+	if obj != nil {
 		return
 	}
 	obj, err = v.delegateView.GetObject(ctx, gvk, objName)
@@ -147,38 +152,30 @@ func (v *sandboxView) GetObject(ctx context.Context, gvk schema.GroupVersionKind
 
 func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionKind, obj metav1.Object, opts minkapi.ObjectOptions) error {
 	objName := objutil.CacheName(obj)
-	sandboxObj, err := v.getSandboxObject(ctx, gvk, objName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	if sandboxObj != nil { //sandbox object is being updated.
+	err := updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
+	if apierrors.IsNotFound(err) && !errors.Is(err, minkapi.ErrObjectDeleted) {
+		delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
+		if err != nil {
+			return err
+		}
+		sandboxObj := delegateObj.DeepCopyObject()
+		asMeta, ok := sandboxObj.(metav1.Object)
+		if !ok {
+			return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, sandboxObj)
+		}
+		if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
+			return err
+		}
 		return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
 	}
-	// The object lives only in the delegate. Materialize a deep-copy of the current delegate
-	// state into the sandbox without broadcasting (consumers already saw the original via the
-	// delegate's initial-list, so this materialization is plumbing). Then run the normal
-	// update path against the sandbox copy so the broadcast carries the user-visible change.
-	// WatchObjects' filter suppresses the delegate watcher's events for this object name from
-	// here on, so the sandbox broadcast is the single observable event.
-	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
-	if err != nil {
-		return err
-	}
-	materialized := delegateObj.DeepCopyObject()
-	asMeta, ok := materialized.(metav1.Object)
-	if !ok {
-		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrUpdateObject, materialized)
-	}
-	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
-		return err
-	}
-	return updateObject(ctx, v, gvk, obj, opts, &v.changeCount)
+
+	return err
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
 	gvk := typeinfo.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
 		return
 	}
 	// TODO: make the below a bit generic later using functional programming
@@ -226,15 +223,17 @@ func (v *sandboxView) ListMetaObjects(ctx context.Context, gvk schema.GroupVersi
 	if err != nil {
 		return
 	}
+	sandboxTombstonedKeys, err := listTombstonedKeys(ctx, v, gvk)
+	if err != nil {
+		return
+	}
+	// Pass the tombstoned keys to be excluded from the list call.
+	criteria.ExcludeNames = sandboxTombstonedKeys
 	delegateItems, delegateMax, err := v.delegateView.ListMetaObjects(ctx, gvk, criteria)
 	if err != nil {
 		return
 	}
-	if myMax >= delegateMax {
-		maxVersion = myMax
-	} else {
-		maxVersion = delegateMax
-	}
+	maxVersion = max(myMax, delegateMax)
 	items = combinePrimarySecondary(sandboxItems, delegateItems)
 	return
 }
@@ -271,8 +270,13 @@ func (v *sandboxView) WatchObjects(ctx context.Context, gvk schema.GroupVersionK
 				return err
 			}
 			objFullName := objutil.CacheName(evObj)
-			sandboxObj, _ := v.getSandboxObject(ctx, gvk, objFullName)
-			if sandboxObj != nil { // already covered by other watch, omit
+			sandboxObj, gerr := v.getSandboxObject(ctx, gvk, objFullName)
+			if sandboxObj != nil {
+				// already covered by sandbox watcher's own event for this object
+				return nil
+			}
+			if gerr != nil && errors.Is(gerr, minkapi.ErrObjectDeleted) {
+				// tombstoned in this sandbox: hide delegate's events for this name
 				return nil
 			}
 			return eventCallback(event)
@@ -303,34 +307,65 @@ func (v *sandboxView) GetWatcher(ctx context.Context, gvk schema.GroupVersionKin
 	return eventWatcher, nil
 }
 
+// DeleteObject removes an object from the sandbox's perspective. It NEVER mutates the delegate
+// view; instead, it parks a [cache.DeletedFinalStateUnknown] tombstone in the sandbox's own store.
+//
+// Three cases:
+//   - The object is in the sandbox local store: tombstone it directly and fire a Deleted broadcast.
+//   - The object is in the delegate only: materialize a deep-copy into the sandbox store with
+//     NoBroadcast=true, tombstone the materialized copy and fire the Deleted broadcast.
+//   - The object exists in neither (or is already tombstoned): returns error which wraps
+//     apierrors.NewNotFound and minkapi.ErrObjectDeleted.
 func (v *sandboxView) DeleteObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) error {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return err
 	}
-	obj, err := s.GetByKey(ctx, objName.String())
-	if err != nil && !apierrors.IsNotFound(err) {
+	if _, gerr := s.Get(ctx, objName); gerr == nil {
+		// Sandbox-local: tombstone directly.
+		if err = s.Delete(ctx, objName, minkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+			return err
+		}
+		v.changeCount.Add(1)
+		return nil
+	} else if errors.Is(gerr, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(gerr) {
+		return gerr
+	}
+	// Sandbox doesn't have it; consult delegate.
+	delegateObj, err := v.delegateView.GetObject(ctx, gvk, objName)
+	if err != nil {
 		return err
 	}
-	if obj == nil {
-		// delegate to delegateView if obj not found in sandbox
-		return v.delegateView.DeleteObject(ctx, gvk, objName)
+	sandboxObj := delegateObj.DeepCopyObject()
+	asMeta, ok := sandboxObj.(metav1.Object)
+	if !ok {
+		return fmt.Errorf("%w: %T does not implement metav1.Object", minkapi.ErrDeleteObject, sandboxObj)
 	}
-	// if found in this views store, delete and return
-	err = s.Delete(ctx, objName)
-	if err != nil {
+	if _, err = v.CreateObject(ctx, gvk, asMeta, minkapi.ObjectOptions{NoBroadcast: true}); err != nil {
+		return err
+	}
+	if err = s.Delete(ctx, objName, minkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
 		return err
 	}
 	v.changeCount.Add(1)
 	return nil
 }
 
+// DeleteObjects deletes from the sandbox's perspective every object that matches criteria.
+// It never mutates the delegate.
 func (v *sandboxView) DeleteObjects(ctx context.Context, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria) error {
-	err := deleteObjects(ctx, v, gvk, criteria, &v.changeCount)
+	// Combined list reflecting tombstones already filters out previously-tombstoned names.
+	items, _, err := v.ListMetaObjects(ctx, gvk, criteria)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: cannot list objects for bulk delete: %w", minkapi.ErrDeleteObject, err)
 	}
-	return v.delegateView.DeleteObjects(ctx, gvk, criteria)
+	for _, it := range items {
+		objName := objutil.CacheName(it)
+		if err := v.DeleteObject(ctx, gvk, objName); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (v *sandboxView) ListNodes(ctx context.Context, matchingNodeNames ...string) (nodes []corev1.Node, err error) {
@@ -370,11 +405,12 @@ func (v *sandboxView) GetKubeConfigPath() string {
 	return v.args.KubeConfigPath
 }
 
+// getSandboxObject retrieves an object from the sandbox's local store.
 func (v *sandboxView) getSandboxObject(ctx context.Context, gvk schema.GroupVersionKind, objName cache.ObjectName) (obj runtime.Object, err error) {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return
 	}
-	obj, err = s.GetByKey(ctx, objName.String())
+	obj, err = s.Get(ctx, objName)
 	return
 }

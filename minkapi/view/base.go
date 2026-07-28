@@ -153,8 +153,7 @@ func (v *baseView) GetObject(ctx context.Context, gvk schema.GroupVersionKind, o
 	if err != nil {
 		return
 	}
-	key := objName.String()
-	obj, err = s.GetByKey(ctx, key)
+	obj, err = s.Get(ctx, objName)
 	return
 }
 
@@ -223,7 +222,7 @@ func (v *baseView) DeleteObject(ctx context.Context, gvk schema.GroupVersionKind
 	if err != nil {
 		return err
 	}
-	err = s.Delete(ctx, objName)
+	err = s.Delete(ctx, objName, minkapi.ObjectOptions{})
 	if err != nil {
 		return err
 	}
@@ -440,12 +439,20 @@ func listMetaObjects(ctx context.Context, v minkapi.View, gvk schema.GroupVersio
 	return s.ListMetaObjects(ctx, criteria)
 }
 
+func listTombstonedKeys(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind) (tombstoneKeys sets.Set[string], err error) {
+	s, err := v.GetResourceStore(gvk)
+	if err != nil {
+		return
+	}
+	return s.ListTombstonedKeys(ctx)
+}
+
 func deleteObjects(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKind, criteria minkapi.MatchCriteria, changeCount *atomic.Int64) error {
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return err
 	}
-	delCount, err := s.DeleteObjects(ctx, criteria)
+	delCount, err := s.DeleteObjects(ctx, criteria, minkapi.ObjectOptions{})
 	if err != nil {
 		return err
 	}

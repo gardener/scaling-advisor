@@ -376,7 +376,6 @@ func BindClaimAndVolume(ctx context.Context, view minkapi.View, pvc *corev1.Pers
 	pvc.Status.Phase = corev1.ClaimBound
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBindCompleted, "yes")
 	metav1.SetMetaDataAnnotation(&pvc.ObjectMeta, storagevolume.AnnBoundByController, "yes") // VERY-IMPORTANT
-	delete(pvc.Annotations, storagevolume.AnnSelectedNode)                                   // avoid provisioning again
 	if err := view.UpdateObject(ctx, typeinfo.PersistentVolumeClaimsDescriptor.GVK, pvc, minkapi.ObjectOptions{}); err != nil {
 		log.Error(err, "failed to bind pvc<->pv", "pvc", pvc, "pv", pv)
 		return fmt.Errorf("%w: failed to bind pvc %q ->pv %q: %w", plannerapi.ErrBindClaimVolume, pvc.Name, pv.Name, err)

@@ -6,8 +6,8 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"sync"
 	"testing"
@@ -35,12 +35,70 @@ var testPod = corev1.Pod{
 	},
 }
 
+func TestReset(t *testing.T) {
+	tests := map[string]struct {
+		tombstoneBeforeReset    bool
+		expectedNumberOfObjects int
+	}{
+		"reset clears live objects": {
+			expectedNumberOfObjects: 0,
+		},
+		"reset clears tombstones": {
+			tombstoneBeforeReset:    true,
+			expectedNumberOfObjects: 0,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+			_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
+
+			if tc.tombstoneBeforeReset {
+				p := testPod.DeepCopy()
+				p.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+				if err := s.Add(t.Context(), p, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("setup: failed to add: %v", err)
+				}
+				if err := s.Delete(t.Context(), cache.NewObjectName(testPod.Namespace, testPod.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone: %v", err)
+				}
+			}
+
+			if err := s.Reset(); err != nil {
+				t.Fatalf("Reset failed: %v", err)
+			}
+			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
+
+			_, err := s.GetByKey(t.Context(), cache.NewObjectName(testPod.Namespace, testPod.Name).String())
+			if !apierrors.IsNotFound(err) {
+				t.Errorf("expected NotFound after Reset, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestGetObjAndListGVK(t *testing.T) {
+	s := createStoreForTesting(typeinfo.PodsDescriptor)
+	t.Cleanup(func() { s.Close() })
+
+	objGVK, listGVK := s.GetObjAndListGVK()
+	if objGVK != typeinfo.PodsDescriptor.GVK {
+		t.Errorf("expected objGVK %v, got %v", typeinfo.PodsDescriptor.GVK, objGVK)
+	}
+	if listGVK != typeinfo.PodsDescriptor.ListGVK {
+		t.Errorf("expected listGVK %v, got %v", typeinfo.PodsDescriptor.ListGVK, listGVK)
+	}
+}
+
 func TestAdd(t *testing.T) {
 	tests := map[string]struct {
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
 		typeMeta                         metav1.TypeMeta
 		opts                             mkapi.ObjectOptions
+		tombstoneBeforeAdd               bool
 		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
@@ -56,6 +114,14 @@ func TestAdd(t *testing.T) {
 			expectedNumberOfObjects: 0,
 			opts:                    mkapi.ObjectOptions{},
 		},
+		"resurrect tombstoned name": {
+			typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+			ignoredFieldsForOutputComparison: cmpopts.IgnoreFields(corev1.Pod{}, "ResourceVersion"),
+			retErr:                           nil,
+			expectedNumberOfObjects:          1,
+			opts:                             mkapi.ObjectOptions{},
+			tombstoneBeforeAdd:               true,
+		},
 	}
 
 	for name, tc := range tests {
@@ -64,6 +130,17 @@ func TestAdd(t *testing.T) {
 			p.TypeMeta = tc.typeMeta
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
+
+			if tc.tombstoneBeforeAdd {
+				initial := testPod.DeepCopy()
+				initial.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+				if err := s.Add(t.Context(), initial, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("setup: failed to add pod before tombstone: %v", err)
+				}
+				if err := s.Delete(t.Context(), cache.NewObjectName(testPod.Namespace, testPod.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod: %v", err)
+				}
+			}
 
 			obj1 := metav1.Object(p.DeepCopy())
 			if err := s.Add(t.Context(), obj1, tc.opts); err != nil {
@@ -87,14 +164,143 @@ func TestAdd(t *testing.T) {
 	}
 }
 
+func TestGetByKey(t *testing.T) {
+	tests := map[string]struct {
+		errorCheckFunc            func(error) bool
+		key                       string
+		opts                      mkapi.ObjectOptions
+		tombstoneBeforeFetch      bool
+		objectFound               bool
+		createObjectBeforeTesting bool
+	}{
+		"fetch existing object": {
+			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
+			objectFound:               true,
+			createObjectBeforeTesting: true,
+			opts:                      mkapi.ObjectOptions{},
+		},
+		"fetch non-existent object": {
+			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
+			objectFound:               false,
+			createObjectBeforeTesting: false,
+			errorCheckFunc:            apierrors.IsNotFound,
+			opts:                      mkapi.ObjectOptions{},
+		},
+		"fetch object with wrong key": {
+			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, "abcd"),
+			objectFound:               false,
+			createObjectBeforeTesting: true,
+			errorCheckFunc:            apierrors.IsNotFound,
+			opts:                      mkapi.ObjectOptions{},
+		},
+		"fetch tombstoned object returns ErrObjectDeleted": {
+			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
+			objectFound:               false,
+			createObjectBeforeTesting: true,
+			tombstoneBeforeFetch:      true,
+			errorCheckFunc:            func(err error) bool { return errors.Is(err, mkapi.ErrObjectDeleted) },
+			opts:                      mkapi.ObjectOptions{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+
+			createdPod := testPod.DeepCopy()
+			if tc.createObjectBeforeTesting {
+				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+				if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
+					t.Errorf("Error adding object to store")
+					return
+				}
+			}
+
+			if tc.tombstoneBeforeFetch {
+				if err := s.Delete(t.Context(), cache.NewObjectName(testPod.Namespace, testPod.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod: %v", err)
+				}
+			}
+
+			_, err := s.GetByKey(t.Context(), tc.key)
+			if err != nil {
+				if !tc.errorCheckFunc(err) {
+					t.Errorf("Expected error to be %s, got: %v",
+						testutil.GetFunctionName(t, tc.errorCheckFunc), err,
+					)
+					return
+				}
+				return
+			}
+		})
+	}
+}
+
+func TestGet(t *testing.T) {
+	tests := map[string]struct {
+		errorCheckFunc            func(error) bool
+		objName                   cache.ObjectName
+		createObjectBeforeTesting bool
+		tombstoneBeforeFetch      bool
+	}{
+		"fetch existing object": {
+			objName:                   cache.NewObjectName(testPod.Namespace, testPod.Name),
+			createObjectBeforeTesting: true,
+		},
+		"fetch non-existent object": {
+			objName:        cache.NewObjectName(testPod.Namespace, testPod.Name),
+			errorCheckFunc: apierrors.IsNotFound,
+		},
+		"fetch tombstoned object returns ErrObjectDeleted": {
+			objName:                   cache.NewObjectName(testPod.Namespace, testPod.Name),
+			createObjectBeforeTesting: true,
+			tombstoneBeforeFetch:      true,
+			errorCheckFunc:            func(err error) bool { return errors.Is(err, mkapi.ErrObjectDeleted) },
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+
+			if tc.createObjectBeforeTesting {
+				p := testPod.DeepCopy()
+				p.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+				if err := s.Add(t.Context(), p, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("failed to add pod: %v", err)
+				}
+			}
+			if tc.tombstoneBeforeFetch {
+				if err := s.Delete(t.Context(), tc.objName, mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone: %v", err)
+				}
+			}
+
+			_, err := s.Get(t.Context(), tc.objName)
+			if tc.errorCheckFunc != nil {
+				if !tc.errorCheckFunc(err) {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	tests := map[string]struct {
 		ignoredFieldsForOutputComparison cmp.Option
 		retErr                           error
 		typeMeta                         metav1.TypeMeta
 		name                             string
-		expectedNumberOfObjects          int
 		opts                             mkapi.ObjectOptions
+		tombstoneBeforeUpdate            bool
+		expectedNumberOfObjects          int
 	}{
 		"correct typeMeta": {
 			typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
@@ -109,6 +315,13 @@ func TestUpdate(t *testing.T) {
 			expectedNumberOfObjects: 1,
 			opts:                    mkapi.ObjectOptions{},
 		},
+		"update tombstoned object returns ErrObjectDeleted": {
+			typeMeta:                metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+			retErr:                  fmt.Errorf("object was deleted"),
+			expectedNumberOfObjects: 0,
+			opts:                    mkapi.ObjectOptions{},
+			tombstoneBeforeUpdate:   true,
+		},
 		//"update non-existent object": { // If object doesn't exist, it creates one
 		//	name:                             "abcd",
 		//	typeMeta:                         metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
@@ -120,7 +333,6 @@ func TestUpdate(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create object before updating
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
 
@@ -129,6 +341,12 @@ func TestUpdate(t *testing.T) {
 			if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
 				t.Errorf("Error adding object to store")
 				return
+			}
+
+			if tc.tombstoneBeforeUpdate {
+				if err := s.Delete(t.Context(), cache.NewObjectName(testPod.Namespace, testPod.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod: %v", err)
+				}
 			}
 
 			p := testPod.DeepCopy()
@@ -176,9 +394,10 @@ func TestDelete(t *testing.T) {
 	tests := map[string]struct {
 		retErr                    error
 		name                      string
-		expectedNumberOfObjects   int
-		createObjectBeforeTesting bool
 		opts                      mkapi.ObjectOptions
+		tombstoneBeforeDelete     bool
+		createObjectBeforeTesting bool
+		expectedNumberOfObjects   int
 	}{
 		"correct deletion": {
 			name:                      testPod.Name,
@@ -201,6 +420,28 @@ func TestDelete(t *testing.T) {
 			retErr:                    fmt.Errorf("not found"),
 			opts:                      mkapi.ObjectOptions{},
 		},
+		"tombstone live object": {
+			name:                      testPod.Name,
+			createObjectBeforeTesting: true,
+			expectedNumberOfObjects:   0,
+			retErr:                    nil,
+			opts:                      mkapi.ObjectOptions{MarkAsDeleted: true},
+		},
+		"tombstone already-tombstoned object returns NotFound": {
+			name:                      testPod.Name,
+			createObjectBeforeTesting: true,
+			tombstoneBeforeDelete:     true,
+			expectedNumberOfObjects:   0,
+			retErr:                    fmt.Errorf("not found"),
+			opts:                      mkapi.ObjectOptions{MarkAsDeleted: true},
+		},
+		"tombstone never-created object returns NotFound": {
+			name:                      testPod.Name,
+			createObjectBeforeTesting: false,
+			expectedNumberOfObjects:   0,
+			retErr:                    fmt.Errorf("not found"),
+			opts:                      mkapi.ObjectOptions{MarkAsDeleted: true},
+		},
 	}
 
 	for name, tc := range tests {
@@ -211,57 +452,73 @@ func TestDelete(t *testing.T) {
 			createdPod := testPod.DeepCopy()
 			if tc.createObjectBeforeTesting {
 				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-				if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
+				if err := s.Add(t.Context(), metav1.Object(createdPod), mkapi.ObjectOptions{}); err != nil {
 					t.Errorf("Error adding object to store")
 					return
 				}
 			}
 
+			if tc.tombstoneBeforeDelete {
+				if err := s.Delete(t.Context(), cache.NewObjectName(createdPod.Namespace, tc.name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod: %v", err)
+				}
+			}
+
 			key := cache.NewObjectName(createdPod.Namespace, tc.name).String()
 			gotObj, _ := s.GetByKey(t.Context(), key)
-			if err := s.DeleteByKey(t.Context(), key); err != nil {
+			if err := s.Delete(t.Context(), cache.NewObjectName(createdPod.Namespace, tc.name), tc.opts); err != nil {
 				assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 				testutil.AssertError(t, err, tc.retErr)
 				return
 			}
 			assertNumberOfItems(t, s, tc.expectedNumberOfObjects)
 
-			mo, _ := objutil.AsMeta(gotObj)
-			if !reflect.DeepEqual(mo.GetDeletionTimestamp().Time, time.Time{}) { // FIXME
-				t.Errorf("Expected deletionTimestamp to be set for object that's successfully deleted, got: %v", mo.GetDeletionTimestamp())
-				return
+			if !tc.opts.MarkAsDeleted {
+				mo, _ := objutil.AsMeta(gotObj)
+				if mo.GetDeletionTimestamp() == nil {
+					t.Errorf("Expected deletionTimestamp to be set for object that's successfully deleted, got: %v", mo.GetDeletionTimestamp())
+					return
+				}
 			}
 		})
 	}
 }
 
-func TestGetByKey(t *testing.T) {
+func TestDeleteObjects(t *testing.T) {
 	tests := map[string]struct {
-		errorCheckFunc            func(error) bool
-		key                       string
-		objectFound               bool
-		createObjectBeforeTesting bool
-		opts                      mkapi.ObjectOptions
+		labelSelector         labels.Selector
+		namespace             string
+		opts                  mkapi.ObjectOptions
+		expectedDelCount      int
+		expectedRemainingLive int
 	}{
-		"fetch existing object": {
-			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
-			objectFound:               true,
-			createObjectBeforeTesting: true,
-			opts:                      mkapi.ObjectOptions{},
+		"delete all matching namespace": {
+			namespace:             testPod.Namespace,
+			labelSelector:         labels.NewSelector(),
+			opts:                  mkapi.ObjectOptions{},
+			expectedDelCount:      3,
+			expectedRemainingLive: 0,
 		},
-		"fetch non-existent object": {
-			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name),
-			objectFound:               false,
-			createObjectBeforeTesting: false,
-			errorCheckFunc:            apierrors.IsNotFound,
-			opts:                      mkapi.ObjectOptions{},
+		"delete by label filter": {
+			namespace:             testPod.Namespace,
+			labelSelector:         labels.SelectorFromSet(labels.Set{"k1": "v1"}),
+			opts:                  mkapi.ObjectOptions{},
+			expectedDelCount:      2,
+			expectedRemainingLive: 1,
 		},
-		"fetch object with wrong key": {
-			key:                       fmt.Sprintf("%s/%s", testPod.Namespace, "abcd"),
-			objectFound:               false,
-			createObjectBeforeTesting: true,
-			errorCheckFunc:            apierrors.IsNotFound,
-			opts:                      mkapi.ObjectOptions{},
+		"delete with tombstone": {
+			namespace:             testPod.Namespace,
+			labelSelector:         labels.NewSelector(),
+			opts:                  mkapi.ObjectOptions{MarkAsDeleted: true},
+			expectedDelCount:      3,
+			expectedRemainingLive: 0,
+		},
+		"delete non-matching namespace yields zero": {
+			namespace:             "other",
+			labelSelector:         labels.NewSelector(),
+			opts:                  mkapi.ObjectOptions{},
+			expectedDelCount:      0,
+			expectedRemainingLive: 3,
 		},
 	}
 
@@ -269,38 +526,27 @@ func TestGetByKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s := createStoreForTesting(typeinfo.PodsDescriptor)
 			t.Cleanup(func() { s.Close() })
+			_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
 
-			createdPod := testPod.DeepCopy()
-			if tc.createObjectBeforeTesting {
-				createdPod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
-				if err := s.Add(t.Context(), metav1.Object(createdPod), tc.opts); err != nil {
-					t.Errorf("Error adding object to store")
-					return
-				}
-			}
-
-			_, err := s.GetByKey(t.Context(), tc.key)
+			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
+			delCount, err := s.DeleteObjects(t.Context(), c, tc.opts)
 			if err != nil {
-				if !tc.errorCheckFunc(err) {
-					t.Errorf("Expected error to be %s, got: %v",
-						testutil.GetFunctionName(t, tc.errorCheckFunc), err,
-					)
-					return
-				}
-				return
+				t.Fatalf("DeleteObjects failed: %v", err)
 			}
+			if delCount != tc.expectedDelCount {
+				t.Errorf("expected %d deletions, got %d", tc.expectedDelCount, delCount)
+			}
+			assertNumberOfItems(t, s, tc.expectedRemainingLive)
 		})
 	}
 }
 
 func TestList(t *testing.T) {
-	s := createStoreForTesting(typeinfo.PodsDescriptor)
-	_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
-
 	tests := map[string]struct {
 		labelSelector           labels.Selector
 		retErr                  error
 		namespace               string
+		tombstoneOneObject      bool
 		expectedNumberOfObjects int
 	}{
 		"base": {
@@ -327,10 +573,28 @@ func TestList(t *testing.T) {
 			retErr:                  nil,
 			expectedNumberOfObjects: 0,
 		},
+		"tombstoned object excluded": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			expectedNumberOfObjects: 2,
+			tombstoneOneObject:      true,
+		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+			pods, _ := createPodsForTesting(t, s, mkapi.ObjectOptions{})
+
+			if tc.tombstoneOneObject {
+				target := pods[0]
+				if err := s.Delete(t.Context(), cache.NewObjectName(target.Namespace, target.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod: %v", err)
+				}
+			}
+
 			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
 			objList, err := s.List(t.Context(), c)
 			if err != nil {
@@ -354,86 +618,89 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestBuildPendingWatchEvents(t *testing.T) {
-	s := createStoreForTesting(typeinfo.PodsDescriptor)
-	_, _ = createPodsForTesting(t, s, mkapi.ObjectOptions{})
-
+func TestListMetaObjects(t *testing.T) {
 	tests := map[string]struct {
 		labelSelector           labels.Selector
-		retErr                  error
 		namespace               string
-		startVersion            int64
+		tombstoneOneObject      bool
 		expectedNumberOfObjects int
 	}{
 		"base": {
 			namespace:               testPod.Namespace,
-			labelSelector:           labels.SelectorFromSet(labels.Set{"k0": "v0"}),
-			retErr:                  nil,
-			startVersion:            0,
+			labelSelector:           labels.NewSelector(),
 			expectedNumberOfObjects: 3,
 		},
-		"high resource version": {
-			namespace:               testPod.Namespace,
-			labelSelector:           labels.NewSelector(),
-			retErr:                  nil,
-			startVersion:            1000,
-			expectedNumberOfObjects: 0,
-		},
-		"resource version that doesn't match all objects": {
-			namespace:               testPod.Namespace,
-			labelSelector:           labels.NewSelector(),
-			retErr:                  nil,
-			startVersion:            2,
-			expectedNumberOfObjects: 1,
-		},
-		"negative resource version": {
-			namespace:               testPod.Namespace,
-			labelSelector:           labels.NewSelector(),
-			retErr:                  nil,
-			startVersion:            -999,
-			expectedNumberOfObjects: 3,
-		},
-		"labels that don't match all objects": {
+		"label filter": {
 			namespace:               testPod.Namespace,
 			labelSelector:           labels.SelectorFromSet(labels.Set{"k1": "v1"}),
-			retErr:                  nil,
-			startVersion:            0,
 			expectedNumberOfObjects: 2,
 		},
-		"empty labelSelector": {
+		"non-matching namespace": {
+			namespace:               "other",
+			labelSelector:           labels.NewSelector(),
+			expectedNumberOfObjects: 0,
+		},
+		"tombstoned object excluded": {
 			namespace:               testPod.Namespace,
 			labelSelector:           labels.NewSelector(),
-			retErr:                  nil,
-			startVersion:            0,
-			expectedNumberOfObjects: 3,
-		},
-		"non-matching namespace": {
-			namespace:               "abcd",
-			labelSelector:           labels.NewSelector(),
-			retErr:                  nil,
-			startVersion:            0,
-			expectedNumberOfObjects: 0,
+			tombstoneOneObject:      true,
+			expectedNumberOfObjects: 2,
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			watchEvents, err := s.buildPendingWatchEvents(tc.startVersion, tc.namespace, tc.labelSelector)
-			if err != nil {
-				testutil.AssertError(t, err, tc.retErr)
-			}
-			if len(watchEvents) != tc.expectedNumberOfObjects {
-				t.Errorf("Expected returned number of objects to be %d, got %d",
-					tc.expectedNumberOfObjects,
-					len(watchEvents),
-				)
-			}
-			for _, w := range watchEvents {
-				if w.Type != watch.Added {
-					t.Errorf("Expected watch event type to be ADDED, got: %s", w.Type)
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+			pods, _ := createPodsForTesting(t, s, mkapi.ObjectOptions{})
+
+			if tc.tombstoneOneObject {
+				target := pods[0]
+				if err := s.Delete(t.Context(), cache.NewObjectName(target.Namespace, target.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone: %v", err)
 				}
-				obj := w.Object.(metav1.Object)
-				t.Logf("Event type: %s, object name: %s, resourceVersion: %s", w.Type, obj.GetName(), obj.GetResourceVersion())
+			}
+
+			c := mkapi.MatchCriteria{Namespace: tc.namespace, LabelSelector: tc.labelSelector}
+			objs, _, err := s.ListMetaObjects(t.Context(), c)
+			if err != nil {
+				t.Fatalf("ListMetaObjects failed: %v", err)
+			}
+			if len(objs) != tc.expectedNumberOfObjects {
+				t.Errorf("expected %d objects, got %d", tc.expectedNumberOfObjects, len(objs))
+			}
+		})
+	}
+}
+
+func TestListTombstonedKeys(t *testing.T) {
+	tests := map[string]struct {
+		numTombstones int
+	}{
+		"no tombstones":    {numTombstones: 0},
+		"one tombstone":    {numTombstones: 1},
+		"three tombstones": {numTombstones: 3},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+			pods, _ := createPodsForTesting(t, s, mkapi.ObjectOptions{})
+
+			for i := range tc.numTombstones {
+				target := pods[i]
+				if err := s.Delete(t.Context(), cache.NewObjectName(target.Namespace, target.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Fatalf("setup: failed to tombstone pod %d: %v", i, err)
+				}
+			}
+
+			keys, err := s.ListTombstonedKeys(t.Context())
+			if err != nil {
+				t.Fatalf("ListTombstonedKeys failed: %v", err)
+			}
+			if keys.Len() != tc.numTombstones {
+				t.Errorf("expected %d tombstoned keys, got %d: %v", tc.numTombstones, keys.Len(), keys)
 			}
 		})
 	}
@@ -444,10 +711,11 @@ func TestWatch(t *testing.T) {
 		labelSelector           labels.Selector
 		retErr                  error
 		namespace               string
+		opts                    mkapi.ObjectOptions
+		tombstoneAfterWatch     bool
+		modifyObjectAfterWatch  bool
 		startVersion            int64
 		expectedNumberOfObjects int
-		modifyObjectAfterWatch  bool
-		opts                    mkapi.ObjectOptions
 	}{
 		"base": {
 			namespace:               testPod.Namespace,
@@ -506,6 +774,15 @@ func TestWatch(t *testing.T) {
 			modifyObjectAfterWatch:  true,
 			opts:                    mkapi.ObjectOptions{},
 		},
+		"tombstone after watch starts delivers Deleted event": {
+			namespace:               testPod.Namespace,
+			labelSelector:           labels.NewSelector(),
+			retErr:                  nil,
+			startVersion:            0,
+			expectedNumberOfObjects: 4, // 3 Added (initial list) + 1 Deleted (tombstone broadcast)
+			tombstoneAfterWatch:     true,
+			opts:                    mkapi.ObjectOptions{},
+		},
 	}
 
 	for name, tc := range tests {
@@ -558,6 +835,17 @@ func TestWatch(t *testing.T) {
 				}
 			}
 
+			if tc.tombstoneAfterWatch {
+				time.Sleep(100 * time.Millisecond)
+				target := createdPods[0]
+				if err := s.Delete(t.Context(), cache.NewObjectName(target.Namespace, target.Name), mkapi.ObjectOptions{MarkAsDeleted: true}); err != nil {
+					t.Errorf("Error tombstoning object in store: %v", err)
+					cancel()
+					wg.Wait()
+					return
+				}
+			}
+
 			time.Sleep(100 * time.Millisecond)
 
 			cancel()
@@ -576,6 +864,57 @@ func TestWatch(t *testing.T) {
 					tc.expectedNumberOfObjects,
 					count,
 				)
+			}
+		})
+	}
+}
+
+func TestGetVersionCounter(t *testing.T) {
+	tests := map[string]struct {
+		mutate func(t *testing.T, s *InMemResourceStore, p *corev1.Pod)
+	}{
+		"increments after Add": {
+			mutate: func(t *testing.T, s *InMemResourceStore, p *corev1.Pod) {
+				if err := s.Add(t.Context(), p, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("Add failed: %v", err)
+				}
+			},
+		},
+		"increments after Update": {
+			mutate: func(t *testing.T, s *InMemResourceStore, p *corev1.Pod) {
+				if err := s.Add(t.Context(), p, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("Add failed: %v", err)
+				}
+				before := s.GetVersionCounter().Load()
+				p.Labels = map[string]string{"updated": "true"}
+				if err := s.Update(t.Context(), p, mkapi.ObjectOptions{}); err != nil {
+					t.Fatalf("Update failed: %v", err)
+				}
+				if s.GetVersionCounter().Load() <= before {
+					t.Errorf("expected counter to increment after Update, got %d (was %d)",
+						s.GetVersionCounter().Load(), before)
+				}
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := createStoreForTesting(typeinfo.PodsDescriptor)
+			t.Cleanup(func() { s.Close() })
+
+			counter := s.GetVersionCounter()
+			if counter == nil {
+				t.Fatal("expected non-nil version counter")
+			}
+			before := counter.Load()
+
+			p := testPod.DeepCopy()
+			p.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
+			tc.mutate(t, s, p)
+
+			if counter.Load() <= before {
+				t.Errorf("expected counter to increment, got %d (was %d)", counter.Load(), before)
 			}
 		})
 	}
@@ -617,7 +956,7 @@ func createPodsForTesting(t *testing.T, s *InMemResourceStore, opts mkapi.Object
 
 func assertNumberOfItems(t *testing.T, s *InMemResourceStore, want int) {
 	t.Helper()
-	got := len(s.cache.ListKeys())
+	got := len(filterOutTombstones(s.cache.List()))
 	if got != want {
 		t.Errorf("Unexpected number of items, got: %v, want: %v", got, want)
 	} else {
