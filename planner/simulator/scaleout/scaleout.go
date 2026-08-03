@@ -22,6 +22,7 @@ import (
 	"github.com/gardener/scaling-advisor/api/minkapi"
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/scalingconstraintutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
@@ -175,18 +176,35 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
-// CreateAllNodeTemplates creates a slice of all possible [plannerapi.ScaleOutNodeTemplate] for the given slice of
-// [sacorev1alpha1.NodePool].
-func CreateAllNodeTemplates(pools []sacorev1alpha1.NodePool) []plannerapi.ScaleOutNodeTemplate {
-	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0, len(pools)*2)
-	for _, np := range pools {
-		for _, nt := range np.NodeTemplates {
+// CreateAllNodeTemplates creates and returns a slice of [plannerapi.ScaleOutNodeTemplate] for all the possible combinations of NodePools, NodeTemplates and availability zones
+func CreateAllNodeTemplates(sc *sacorev1alpha1.ScalingConstraint) []plannerapi.ScaleOutNodeTemplate {
+	npToTemplates := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec)
+	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0)
+	for _, np := range sc.Spec.NodePools {
+		if len(np.AvailabilityZones) == 0 {
+			continue
+		}
+		for _, nt := range npToTemplates[np.Name] {
+			highestPrio := findHighestPrioMatchingRequirement(nt, np.Requirements) //Needed to extract the priority of the matching requirement for the node template to be used in the ScaleOutNodeTemplate's PriorityKey.Second
+			if highestPrio == -1 {
+				continue
+			}
 			for _, az := range np.AvailabilityZones {
-				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az))
+				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az, highestPrio))
 			}
 		}
 	}
 	return allNodeTemplates
+}
+
+func findHighestPrioMatchingRequirement(nt sacorev1alpha1.NodeTemplate, requirements []sacorev1alpha1.NodePoolRequirement) int32 {
+	highestPrio := int32(-1)
+	for _, req := range requirements {
+		if scalingconstraintutil.NodeTemplateMatchesRequirement(nt, req) {
+			highestPrio = max(req.Priority, highestPrio)
+		}
+	}
+	return highestPrio
 }
 
 // GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
@@ -198,8 +216,9 @@ func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTem
 		group, ok := templatesByPriority[pk]
 		if !ok {
 			group = []plannerapi.ScaleOutNodeTemplate{t}
+		} else {
+			group = append(group, t)
 		}
-		group = append(group, t)
 		templatesByPriority[pk] = group
 	}
 	return templatesByPriority
@@ -207,7 +226,7 @@ func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTem
 
 // createNodeTemplate creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
 // [sacorev1alpha1.NodeTemplate] and availability zone.
-func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
+func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string, ntPrio int32) plannerapi.ScaleOutNodeTemplate {
 	return plannerapi.ScaleOutNodeTemplate{
 		NodePlacement: sacorev1alpha1.NodePlacement{
 			PoolName:         pool.Name,
@@ -222,7 +241,7 @@ func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.No
 		Taints:      pool.Taints,
 		PriorityKey: commontypes.PriorityKey{
 			First:  pool.Priority,
-			Second: template.Priority,
+			Second: ntPrio,
 		},
 		Capacity:       template.Capacity,
 		KubeReserved:   template.KubeReserved,

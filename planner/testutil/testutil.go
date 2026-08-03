@@ -20,6 +20,7 @@ import (
 	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/scalingconstraintutil"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/gardener/scaling-advisor/minkapi/view"
@@ -331,8 +332,9 @@ func (s *testStorageMetaAccess) GetFallbackCSINodeSpec(instanceType string) (csi
 // getAllNodePlacements computes all the possible NodePlacements for the ScalingConstraintSpec.
 func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []sacorev1alpha1.NodePlacement) {
 	placements = make([]sacorev1alpha1.NodePlacement, 0, len(c.NodePools)*len(c.GetAllAvailabilityZones()))
+	allNodePlacements := scalingconstraintutil.GetNodePlacements(sacorev1alpha1.ScalingConstraint{Spec: c})
 	for _, p := range c.NodePools {
-		placements = append(placements, p.GetNodePlacements()...)
+		placements = append(placements, allNodePlacements[p.Name]...)
 	}
 	return placements
 }
