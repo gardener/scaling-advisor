@@ -40,6 +40,8 @@ func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
 		StorageClassName: pv.Spec.StorageClassName,
 		Phase:            pv.Status.Phase,
 	}
+	pvi.ResourceVersion = ""
+	pvi.ManagedFields = nil
 	if pv.Spec.ClaimRef != nil {
 		pvi.ClaimRef.Namespace = pv.Spec.ClaimRef.Namespace
 
@@ -77,11 +79,14 @@ func AsPV(p plannerapi.PVInfo) *corev1.PersistentVolume {
 
 // AsPVCInfo converts the given k8s corev1.PersistentVolumeClaim object to a lean planner PVCInfo.
 func AsPVCInfo(pvc corev1.PersistentVolumeClaim) plannerapi.PVCInfo {
-	return plannerapi.PVCInfo{
+	pvcInfo := plannerapi.PVCInfo{
 		ObjectMeta:                pvc.ObjectMeta,
 		PersistentVolumeClaimSpec: pvc.Spec,
 		Phase:                     pvc.Status.Phase,
 	}
+	pvcInfo.ResourceVersion = ""
+	pvcInfo.ManagedFields = nil
+	return pvcInfo
 }
 
 // AsPVC converts the given plannerapi PVCInfo object to a corev1.PersistentVolumeClaim
