@@ -368,6 +368,7 @@ func patchObject(ctx context.Context, v minkapi.View, gvk schema.GroupVersionKin
 	if err != nil {
 		return
 	}
+	obj = obj.DeepCopyObject()
 	err = objutil.PatchObject(obj, objName, patchType, patchData)
 	if err != nil {
 		err = fmt.Errorf("failed to patch object %q: %w", objName, err)
