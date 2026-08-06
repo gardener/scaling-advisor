@@ -163,11 +163,11 @@ func SubtractResources(a, b corev1.ResourceList) {
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
 // TODO: Add unit test for this specific objutil method.
 func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {
-	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
+	objPtrValue := reflect.ValueOf(objPtr)
+	if objPtrValue.Kind() != reflect.Pointer || objPtrValue.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", name)
 	}
-	objInterface := objValuePtr.Interface()
+	objInterface := objPtrValue.Interface()
 	originalJSON, err := jsonutil.Marshal(objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal object %q: %w", name, err)
