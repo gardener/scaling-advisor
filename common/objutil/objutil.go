@@ -162,12 +162,12 @@ func SubtractResources(a, b corev1.ResourceList) {
 
 // PatchObject directly patches the given runtime object with the given patchBytes and using the given patch type.
 // TODO: Add unit test for this specific objutil method.
-func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {
-	objPtrValue := reflect.ValueOf(objPtr)
-	if objPtrValue.Kind() != reflect.Pointer || objPtrValue.IsNil() {
+func PatchObject(obj runtime.Object, name cache.ObjectName, patchType types.PatchType, patchBytes []byte) error {
+	objValue := reflect.ValueOf(obj)
+	if objValue.Kind() != reflect.Pointer || objValue.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", name)
 	}
-	objInterface := objPtrValue.Interface()
+	objInterface := objValue.Interface()
 	originalJSON, err := jsonutil.Marshal(objInterface)
 	if err != nil {
 		return fmt.Errorf("failed to marshal object %q: %w", name, err)
@@ -196,14 +196,14 @@ func PatchObject(objPtr runtime.Object, name cache.ObjectName, patchType types.P
 }
 
 // PatchObjectStatus patches the given runtime object's status subresource with the given patchBytes.
-func PatchObjectStatus(objPtr runtime.Object, objName cache.ObjectName, patch []byte) error {
-	objValuePtr := reflect.ValueOf(objPtr)
-	if objValuePtr.Kind() != reflect.Pointer || objValuePtr.IsNil() {
+func PatchObjectStatus(obj runtime.Object, objName cache.ObjectName, patch []byte) error {
+	objValue := reflect.ValueOf(obj)
+	if objValue.Kind() != reflect.Pointer || objValue.IsNil() {
 		return fmt.Errorf("object %q must be a non-nil pointer", objName)
 	}
-	statusField := objValuePtr.Elem().FieldByName("Status")
+	statusField := objValue.Elem().FieldByName("Status")
 	if !statusField.IsValid() {
-		return fmt.Errorf("object %q of type %T has no Status field", objName, objPtr)
+		return fmt.Errorf("object %q of type %T has no Status field", objName, obj)
 	}
 
 	var patchWrapper map[string]json.RawMessage
