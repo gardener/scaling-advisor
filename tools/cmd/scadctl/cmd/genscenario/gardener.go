@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,15 +29,20 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v2"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
@@ -64,9 +70,15 @@ type ShootAccess interface {
 	// ListNodes fetches the nodes on a shoot cluster matching the given criteria.
 	ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) ([]corev1.Node, error)
 	// ListPods fetches the pods on a shoot cluster matching the given criteria.
-	ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeKubeSystemPods bool) ([]corev1.Pod, error)
+	ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeSystemComponents bool) ([]corev1.Pod, error)
+	// ListPVs fetches the persistent volumes on a shoot cluster.
+	ListPVs(ctx context.Context) ([]planner.PVInfo, error)
+	// ListPVCs fetches the persistent volume claims on a shoot cluster.
+	ListPVCs(ctx context.Context, excludeSystemComponents bool) ([]planner.PVCInfo, error)
+	// ListStorageClasses fetches the storage classes on a shoot cluster.
+	ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error)
 	// ListPriorityClasses fetches all the priority classes present on a shoot cluster.
-	ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error)
+	ListPriorityClasses(ctx context.Context, excludeSystemComponents bool) ([]schedulingv1.PriorityClass, error)
 	// ListRuntimeClasses fetches all the runtime classes present on a shoot cluster.
 	ListRuntimeClasses(ctx context.Context) ([]nodev1.RuntimeClass, error)
 	// GetCSINodeSpecs returns a map of node name to CSINodeSpec if a CSINode was present in the shoot cluster.
@@ -77,10 +89,13 @@ var _ ShootAccess = (*access)(nil)
 
 type instanceCapacities map[string]corev1.ResourceList
 
+type caPrioritiesMap map[int][]*regexp.Regexp
+
 type access struct {
 	shoot                  gardenercorev1beta1.Shoot
 	shootClient            client.Client
 	scheme                 *runtime.Scheme
+	priorityMap            *corev1.ConfigMap
 	instanceTypeToCapacity instanceCapacities
 	shootCoord             ShootCoordinate
 }
@@ -164,6 +179,7 @@ var gardenerCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("error creating shoot access: %v", err)
 		}
+		currentTime := time.Now().UTC().Format("20060102T150405Z")
 
 		scalingConstraint := shootAccess.createScalingConstraint()
 
@@ -172,22 +188,34 @@ var gardenerCmd = &cobra.Command{
 			return fmt.Errorf("error creating cluster snapshot: %v", err)
 		}
 		fmt.Printf("Created cluster snapshot with %d nodes and %d pods\n", len(snap.Nodes), len(snap.Pods))
-		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
+
+		if err = genSnapshotVariants(snap, scenarioDir, currentTime); err != nil {
 			return fmt.Errorf("error creating snapshot variants: %v", err)
 		}
-		saveFilename := "scaling-constraints-" + time.Now().UTC().Format("20060102T150405Z") + ".json"
-		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, saveFilename)
+
+		constraintsFilename := "scaling-constraints-" + currentTime + ".json"
+		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, constraintsFilename)
 		if err != nil {
 			return fmt.Errorf("cannot save scaling constraint at %q: %v", scalingConstraintSavePath, err)
 		}
-		fmt.Printf("Saved scaling constraints at %s\n", scalingConstraintSavePath)
+		fmt.Printf("Saved scaling constraint at %s\n", scalingConstraintSavePath)
+
+		if shootAccess.priorityMap != nil {
+			caPriorityCMFilename := "ca-priority-expander-" + currentTime + ".yaml"
+			priorityCMSavePath, err := objutil.SaveRuntimeObjAsYAMLToPath(shootAccess.priorityMap, scenarioDir, caPriorityCMFilename)
+			if err != nil {
+				return fmt.Errorf("cannot save priority configMap at %q: %v", priorityCMSavePath, err)
+			}
+			fmt.Printf("Saved priority configMap at %s\n", priorityCMSavePath)
+		}
+
 		return nil
 	},
 }
 
 func (sc *ShootCoordinate) getFullyQualifiedName() string {
 	trimmedLandscape := strings.TrimPrefix(sc.Landscape, "sap-landscape-")
-	return fmt.Sprintf("%s:%s:%s", trimmedLandscape, sc.Project, sc.Shoot)
+	return fmt.Sprintf("%s_%s_%s", trimmedLandscape, sc.Project, sc.Shoot)
 }
 
 // ---------------------------------------------------------------------------------
@@ -208,10 +236,7 @@ func createShootAccess(ctx context.Context) (*access, error) {
 	if err != nil {
 		return nil, err
 	}
-	if shoot.Spec.CloudProfile == nil {
-		return nil, fmt.Errorf("no cloudprofile associated with the shoot")
-	}
-	instanceTypes, err := getCloudProfileMachineTypes(ctx, landscapeClient, shoot.Spec.CloudProfile.Name)
+	instanceTypes, err := getCloudProfileMachineTypes(ctx, landscapeClient, shoot.Spec.CloudProfile, shootCoords.Project)
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +255,18 @@ func createShootAccess(ctx context.Context) (*access, error) {
 	if err != nil {
 		return nil, err
 	}
+	priorityMap, err := getCAPriorityExpanderConfigMap(ctx, shootClient)
+	if err != nil {
+		return nil, err
+	}
+
 	return &access{
 		shootCoord:             shootCoords,
 		scheme:                 clientScheme,
 		shootClient:            shootClient,
 		shoot:                  shoot,
 		instanceTypeToCapacity: instancesMap,
+		priorityMap:            priorityMap,
 	}, nil
 }
 
@@ -323,6 +354,23 @@ func getClient(kubeConfigPath string, scheme *runtime.Scheme) (client.Client, er
 	return client.New(restCfg, client.Options{Scheme: scheme})
 }
 
+func getCAPriorityExpanderConfigMap(ctx context.Context, shootClient client.Client) (*corev1.ConfigMap, error) {
+	var caPriorityCM corev1.ConfigMap
+	err := shootClient.Get(ctx, client.ObjectKey{
+		Name:      "cluster-autoscaler-priority-expander",
+		Namespace: "kube-system",
+	}, &caPriorityCM)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf("error getting the priority expander configmap: %v", err)
+	} else if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	caPriorityCM.Annotations = nil
+	caPriorityCM.ManagedFields = nil
+	caPriorityCM.ResourceVersion = ""
+	return &caPriorityCM, nil
+}
+
 // ---------------------------------------------------------------------------------
 // Cluster Snapshot
 // ---------------------------------------------------------------------------------
@@ -347,12 +395,16 @@ func (a *access) ListNodes(ctx context.Context, criteria minkapi.MatchCriteria) 
 	return
 }
 
-func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeKubeSystemPods bool) (pods []corev1.Pod, err error) {
+func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, excludeSystemComponents bool) (pods []corev1.Pod, err error) {
 	var podList corev1.PodList
-	err = a.shootClient.List(ctx, &podList, &client.ListOptions{
+	listOpts := &client.ListOptions{
 		Namespace:     criteria.Namespace,
 		LabelSelector: criteria.LabelSelector,
-	})
+	}
+	if excludeSystemComponents {
+		listOpts.FieldSelector = fields.OneTermNotEqualSelector("metadata.namespace", metav1.NamespaceSystem)
+	}
+	err = a.shootClient.List(ctx, &podList, listOpts)
 	if err != nil {
 		return
 	}
@@ -366,23 +418,54 @@ func (a *access) ListPods(ctx context.Context, criteria minkapi.MatchCriteria, e
 		if checkPodName && !criteria.Names.Has(p.Name) {
 			continue
 		}
-
-		if excludeKubeSystemPods && p.Namespace == metav1.NamespaceSystem {
-			continue
-		}
-
 		pods = append(pods, p)
 	}
 	return
 }
 
-func (a *access) ListPriorityClasses(ctx context.Context, excludeKubeSystemPods bool) ([]schedulingv1.PriorityClass, error) {
+func (a *access) ListPVs(ctx context.Context) ([]planner.PVInfo, error) {
+	var pvList corev1.PersistentVolumeList
+	err := a.shootClient.List(ctx, &pvList)
+	if err != nil {
+		return nil, err
+	}
+	pvInfos := make([]planner.PVInfo, 0, len(pvList.Items))
+	for _, pv := range pvList.Items {
+		pvInfos = append(pvInfos, volutil.AsPVInfo(pv))
+	}
+	return pvInfos, nil
+}
+
+func (a *access) ListPVCs(ctx context.Context, excludeSystemComponents bool) ([]planner.PVCInfo, error) {
+	var pvcList corev1.PersistentVolumeClaimList
+	listOpts := &client.ListOptions{}
+	if excludeSystemComponents {
+		listOpts.FieldSelector = fields.OneTermNotEqualSelector("metadata.namespace", metav1.NamespaceSystem)
+	}
+	err := a.shootClient.List(ctx, &pvcList, listOpts)
+	if err != nil {
+		return nil, err
+	}
+	pvcInfos := make([]planner.PVCInfo, 0, len(pvcList.Items))
+	for _, pvc := range pvcList.Items {
+		pvcInfos = append(pvcInfos, volutil.AsPVCInfo(pvc))
+	}
+	return pvcInfos, nil
+}
+
+func (a *access) ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error) {
+	var scList storagev1.StorageClassList
+	err := a.shootClient.List(ctx, &scList)
+	return scList.Items, err
+}
+
+func (a *access) ListPriorityClasses(ctx context.Context, excludeSystemComponents bool) ([]schedulingv1.PriorityClass, error) {
 	var priorityClassList schedulingv1.PriorityClassList
 	err := a.shootClient.List(ctx, &priorityClassList)
 	if err != nil {
 		return nil, err
 	}
-	if excludeKubeSystemPods {
+	if excludeSystemComponents {
 		priorityClassList.Items = slices.DeleteFunc(priorityClassList.Items,
 			func(pc schedulingv1.PriorityClass) bool {
 				return strings.HasPrefix(pc.Name, "gardener-shoot-system")
@@ -419,7 +502,7 @@ func (a *access) GetCSINodeSpecs(ctx context.Context) (map[string]storagev1.CSIN
 func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstraint, a *access) (planner.ClusterSnapshot, error) {
 	var snap planner.ClusterSnapshot
 
-	nodes, err := a.ListNodes(ctx, minkapi.MatchCriteria{})
+	nodes, err := a.ListNodes(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -427,12 +510,17 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	slices.SortFunc(nodes, func(nodeA, nodeB corev1.Node) int {
 		return nodeB.CreationTimestamp.Compare(nodeA.CreationTimestamp.Time)
 	})
-	snap.Nodes = make([]planner.NodeInfo, 0, len(nodes))
 	csiNodeSpecs, err := a.GetCSINodeSpecs(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to obtain csiNodeSpecs: %w", err)
 	}
-	pods, err := a.ListPods(ctx, minkapi.MatchCriteria{}, excludeSystemComponents)
+	snap.Nodes = make([]planner.NodeInfo, 0, len(nodes))
+	err = addNodesToSnapshot(&snap, sc.Spec.NodePools, nodes, csiNodeSpecs)
+	if err != nil {
+		return snap, err
+	}
+
+	pods, err := a.ListPods(ctx, minkapi.MatchAllCriteria, excludeSystemComponents)
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -441,35 +529,20 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
-
-	for _, node := range nodes {
-		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]
-		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
-		var matchingNodeTemplateName string
-		for _, p := range sc.Spec.NodePools {
-			if p.Name == poolName {
-				for _, nt := range p.NodeTemplates {
-					if nt.InstanceType == instanceType {
-						matchingNodeTemplateName = nt.Name
-					}
-				}
-			}
-		}
-		if matchingNodeTemplateName == "" {
-			return snap, fmt.Errorf("failed to find matching node template for pool %q and instance-type %q", poolName, instanceType)
-		}
-		sanitizeNode(&node)
-		ni := nodeutil.AsNodeInfo(node)
-		if cns, ok := csiNodeSpecs[ni.Name]; ok {
-			ni.CSINodeSpec = &cns
-		}
-		ni.Labels[commonconstants.LabelNodePoolName] = poolName
-		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
-		ni.Labels[commonconstants.LabelNodeTemplateName] = matchingNodeTemplateName
-		if err = ni.ValidateLabels(); err != nil {
-			return snap, err
-		}
-		snap.Nodes = append(snap.Nodes, ni)
+	snap.PVs, err = a.ListPVs(ctx)
+	if err != nil {
+		return snap, fmt.Errorf("failed to list pvs: %w", err)
+	}
+	snap.PVCs, err = a.ListPVCs(ctx, excludeSystemComponents)
+	if err != nil {
+		return snap, fmt.Errorf("failed to list pvcs: %w", err)
+	}
+	snap.StorageClasses, err = a.ListStorageClasses(ctx)
+	if err != nil {
+		return snap, fmt.Errorf("failed to list storage classes: %w", err)
+	}
+	for i := range snap.StorageClasses {
+		sanitizeStorageClass(&snap.StorageClasses[i])
 	}
 
 	snap.PriorityClasses, err = a.ListPriorityClasses(ctx, excludeSystemComponents)
@@ -492,13 +565,13 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	return snap, nil
 }
 
+// TODO: Convert this to a top level command allowing for generating variants on the fly
 // genSnapshotVariants takes the cluster snapshot and generates variants
 // of the snapshot without a few of the most recent scaled nodes and
 // unbinds the pods scheduled on those nodes. This is useful to compare
 // the removed nodes with the nodes scaled up by autoscaling component.
-func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
-	formattedTime := time.Now().UTC().Format("20060102T150405Z")
-	baseSnapshotFileName := path.Join(dir, "cluster-snapshot-"+formattedTime+"-baseline.json")
+func genSnapshotVariants(snap planner.ClusterSnapshot, dir, currentTime string) error {
+	baseSnapshotFileName := path.Join(dir, "cluster-snapshot-"+currentTime+"-baseline.json")
 	if err := saveDataToFile(snap, baseSnapshotFileName); err != nil {
 		return err
 	}
@@ -507,7 +580,7 @@ func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
 	for _, numNodesToRemove := range []int{1, 5, 10, 20} {
 		numNodesToRemove = min(numNodesToRemove, len(snap.Nodes))
 		countNodeRemovedSnapFileName := path.Join(
-			dir, "cluster-snapshot-"+formattedTime+"-latest-"+strconv.Itoa(numNodesToRemove)+".json",
+			dir, "cluster-snapshot-"+currentTime+"-latest-"+strconv.Itoa(numNodesToRemove)+".json",
 		)
 		if _, err := os.Stat(countNodeRemovedSnapFileName); !os.IsNotExist(err) {
 			continue // Snapshot already created
@@ -539,24 +612,86 @@ func removeNodesFromSnapshot(snap planner.ClusterSnapshot, count int) planner.Cl
 	return newSnap
 }
 
+func addNodesToSnapshot(
+	snap *planner.ClusterSnapshot,
+	pools []sacorev1alpha1.NodePool,
+	nodes []corev1.Node,
+	csiNodeSpecs map[string]storagev1.CSINodeSpec,
+) (err error) {
+	for _, node := range nodes {
+		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]
+		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
+		var matchingNodeTemplateName string
+		for _, p := range pools {
+			if p.Name == poolName {
+				for _, nt := range p.NodeTemplates {
+					if nt.InstanceType == instanceType {
+						matchingNodeTemplateName = nt.Name
+					}
+				}
+			}
+		}
+		if matchingNodeTemplateName == "" {
+			return fmt.Errorf("failed to find matching node template for pool %q and instance-type %q", poolName, instanceType)
+		}
+		sanitizeNode(&node)
+		ni := nodeutil.AsNodeInfo(node)
+		if cns, ok := csiNodeSpecs[ni.Name]; ok {
+			ni.CSINodeSpec = &cns
+		}
+		ni.Labels[commonconstants.LabelNodePoolName] = poolName
+		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
+		ni.Labels[commonconstants.LabelNodeTemplateName] = matchingNodeTemplateName
+		if err = ni.ValidateLabels(); err != nil {
+			return
+		}
+		snap.Nodes = append(snap.Nodes, ni)
+	}
+	return
+}
+
 // ---------------------------------------------------------------------------------
 // ScalingConstraint
 // ---------------------------------------------------------------------------------
 
 // getCloudProfileMachineTypes retreives the CloudProfile MachineTypes for the specified landscape
 // This is required for getting the instance capacities
-func getCloudProfileMachineTypes(ctx context.Context, landscapeClient client.Client, cloudProfileName string) ([]gardenercorev1beta1.MachineType, error) {
-	var cloudProfile gardenercorev1beta1.CloudProfile
-	key := client.ObjectKey{
-		Name:      cloudProfileName,
+func getCloudProfileMachineTypes(
+	ctx context.Context,
+	landscapeClient client.Client,
+	cloudProfileRef *gardenercorev1beta1.CloudProfileReference,
+	project string,
+) (instances []gardenercorev1beta1.MachineType, err error) {
+	if cloudProfileRef == nil {
+		return nil, fmt.Errorf("no cloudprofile associated with the shoot")
+	}
+	var profile gardenercorev1beta1.CloudProfile
+	profileKey := client.ObjectKey{
 		Namespace: "garden",
 	}
 
-	if err := landscapeClient.Get(ctx, key, &cloudProfile); err != nil {
-		return nil, fmt.Errorf("failed to get required cloudProfile: %w", err)
+	if cloudProfileRef.Kind == "NamespacedCloudProfile" {
+		var nsCloudProfile gardenercorev1beta1.NamespacedCloudProfile
+		nsProfileKey := client.ObjectKey{
+			Name:      cloudProfileRef.Name,
+			Namespace: "garden-" + project,
+		}
+		if err := landscapeClient.Get(ctx, nsProfileKey, &nsCloudProfile); err != nil {
+			return nil, fmt.Errorf("failed to get required namespacedCloudProfile: %w", err)
+		}
+
+		instances = nsCloudProfile.Spec.MachineTypes
+		profileKey.Name = nsCloudProfile.Spec.Parent.Name
+	} else {
+		profileKey.Name = cloudProfileRef.Name
 	}
 
-	return cloudProfile.Spec.MachineTypes, nil
+	if err := landscapeClient.Get(ctx, profileKey, &profile); err != nil {
+		return nil, fmt.Errorf("failed to get required cloudProfile: %w", err)
+	}
+	instances = slices.Concat(instances, profile.Spec.MachineTypes)
+
+	return instances, nil
 }
 
 func constructInstanceRequirementsMap(instances []gardenercorev1beta1.MachineType) (instanceMap map[string]corev1.ResourceList) {
@@ -582,15 +717,27 @@ func (a *access) createScalingConstraint() (csc *sacorev1alpha1.ScalingConstrain
 
 func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
 	region := a.shoot.Spec.Region
+	var priorities caPrioritiesMap
+	if a.priorityMap != nil {
+		priorities, _ = constructPrioritiesFromConfigMap(*a.priorityMap)
+	}
 
 	for _, worker := range a.shoot.Spec.Provider.Workers {
 		var nodePool sacorev1alpha1.NodePool
 
 		nodePool.Name = worker.Name
 		nodePool.Region = region
+
 		if worker.Priority != nil {
 			nodePool.Priority = *worker.Priority
 		}
+		if priorities != nil {
+			priority, found := checkCAPriorityMapForWorker(worker.Name+"-z", priorities)
+			if found {
+				nodePool.Priority = int32(priority) // #nosec G115 -- priority cannot be greater than MaxInt32.
+			}
+		}
+
 		if len(worker.Labels) > 0 {
 			nodePool.Labels = maps.Clone(worker.Labels)
 			maps.DeleteFunc(nodePool.Labels, sanitizeDeleteFunc)
@@ -612,13 +759,51 @@ func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
 	return
 }
 
+// Source: (this is just a simplified version of autoscaler priority expander parsing)
+// https://github.com/kubernetes/autoscaler/blob/212f88b4e4f3ca95902d5c186197a46790c7bacc/cluster-autoscaler/expander/priority/priority.go#L91
+func constructPrioritiesFromConfigMap(caPriorityCM corev1.ConfigMap) (caPrioritiesMap, error) {
+	priorityStr, found := caPriorityCM.Data["priorities"]
+	if !found {
+		return nil, fmt.Errorf("incorrect configmap for priority expander")
+	}
+
+	var config map[int][]string
+	if err := yaml.Unmarshal([]byte(priorityStr), &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal priorities configmap: %v", err)
+	}
+	priorities := make(caPrioritiesMap)
+	for prio, reList := range config {
+		for _, re := range reList {
+			regexp, err := regexp.Compile(re)
+			if err != nil {
+				return nil, fmt.Errorf("can't compile regexp rule for priority %d and rule %s: %v", prio, re, err)
+			}
+			priorities[prio] = append(priorities[prio], regexp)
+		}
+	}
+
+	return priorities, nil
+}
+
+func checkCAPriorityMapForWorker(name string, priorities caPrioritiesMap) (int, bool) {
+	maxPrio, found := -1, false
+	for prio, nameRegexpList := range priorities {
+		for _, re := range nameRegexpList {
+			if re.FindStringIndex(name) != nil {
+				maxPrio = max(maxPrio, prio)
+				found = true
+			}
+		}
+	}
+	return maxPrio, found
+}
+
 func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacorev1alpha1.NodeTemplate {
 	return sacorev1alpha1.NodeTemplate{
 		Name:         worker.Name,
 		Architecture: ptr.Deref(worker.Machine.Architecture, ""),
 		InstanceType: worker.Machine.Type,
 		Priority:     ptr.Deref(worker.Priority, 0),
-		// TODO: add pool.NodeTemplate.VirtualCapacity
 		Capacity:     a.constructNodeTemplateCapacity(worker.ProviderConfig, worker.Machine.Type),
 		KubeReserved: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),
 		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
@@ -628,11 +813,16 @@ func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacore
 }
 
 func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtension, machineType string) (capacity corev1.ResourceList) {
+	// Capacity currently consists of data from the cloudprofile
 	capacity = a.instanceTypeToCapacity[machineType]
 	var (
-		providerConfigData map[string]any
-		virtualCapacity    corev1.ResourceList
+		providerConfigData  map[string]any
+		providerCfgCapacity corev1.ResourceList
+		virtualCapacity     corev1.ResourceList
 	)
+	if providerConfig == nil {
+		return
+	}
 	if err := stdjson.Unmarshal(providerConfig.Raw, &providerConfigData); err != nil {
 		// Fallback to instanceCapacity if providerConfig can't be decoded
 		return
@@ -642,6 +832,23 @@ func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtens
 		return
 	}
 
+	// Update capacity with 'providerConfig.nodeTemplate.capacity'
+	capacityData, _, err := unstructured.NestedMap(nodeTemplate, "capacity")
+	if err != nil {
+		return
+	}
+
+	capacityBytes, err := stdjson.Marshal(capacityData)
+	if err != nil {
+		return
+	}
+	if err = stdjson.Unmarshal(capacityBytes, &providerCfgCapacity); err != nil {
+		return
+	}
+
+	maps.Copy(capacity, providerCfgCapacity)
+
+	// Update capacity with 'providerConfig.nodeTemplate.virtualCapacity'
 	virtualCapacityData, _, err := unstructured.NestedMap(nodeTemplate, "virtualCapacity")
 	if err != nil {
 		return
@@ -656,6 +863,7 @@ func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtens
 	}
 
 	maps.Copy(capacity, virtualCapacity)
+
 	return
 }
 
@@ -704,6 +912,38 @@ func sanitizePod(pod *corev1.Pod) {
 	for i := range pod.Spec.Volumes {
 		pod.Spec.Volumes[i].Projected = nil
 	}
+
+	// This is needed to clean up pods that cannot be deployed due to failures:
+	// metadata.annotations[container.apparmor.security.beta.kubernetes.io/install-cni]:
+	// Invalid value: "install-cni": container not found
+	// Required as PodInfo doesn't track all the containers in the pod object. Rather
+	// all the container resources are combined to form a single dummy aggregated container.
+	maps.DeleteFunc(pod.Annotations, func(k, _ string) bool {
+		return strings.HasSuffix(k, "install-cni")
+	})
+
+	// This is needed to fix invalid pods having same keys in 'matchLabelKeys'
+	// and 'labelSelector' for `spec.topologySpreadConstraints`
+	for i, tsc := range pod.Spec.TopologySpreadConstraints {
+		if tsc.LabelSelector == nil || len(tsc.MatchLabelKeys) == 0 {
+			continue
+		}
+
+		matchLabelKeysSet := sets.New(tsc.MatchLabelKeys...)
+		// Remove conflicting keys from matchLabels
+		for key := range tsc.LabelSelector.MatchLabels {
+			if matchLabelKeysSet.Has(key) {
+				delete(pod.Spec.TopologySpreadConstraints[i].LabelSelector.MatchLabels, key)
+			}
+		}
+		// Remove conflicting keys from matchExpressions
+		pod.Spec.TopologySpreadConstraints[i].LabelSelector.MatchExpressions = slices.DeleteFunc(
+			tsc.LabelSelector.MatchExpressions,
+			func(expr metav1.LabelSelectorRequirement) bool {
+				return matchLabelKeysSet.Has(expr.Key)
+			},
+		)
+	}
 }
 
 func sanitizeNode(node *corev1.Node) {
@@ -718,6 +958,11 @@ func sanitizeNode(node *corev1.Node) {
 		func(cond corev1.NodeCondition) bool {
 			return !slices.Contains(requiredConditions, cond.Type)
 		})
+}
+
+func sanitizeStorageClass(sc *storagev1.StorageClass) {
+	sc.ManagedFields = nil
+	sc.ResourceVersion = ""
 }
 
 func sanitizePriorityClass(pc *schedulingv1.PriorityClass) {
