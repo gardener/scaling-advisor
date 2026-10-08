@@ -1,0 +1,367 @@
+{
+    "pods": [
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-1",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "nodeName": "node-a-1",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-2",
+            "namespace": "default",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "nodeName": "node-a-1",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-3",
+            "namespace": "default",
+            "nodeName": "node-a-2",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-4",
+            "namespace": "default",
+            "nodeName": "node-a-2",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-5",
+            "namespace": "default",
+            "nodeName": "node-a-3",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-6",
+            "namespace": "default",
+            "nodeName": "node-a-3",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-7",
+            "namespace": "default",
+            "nodeName": "node-a-4",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-8",
+            "namespace": "default",
+            "nodeName": "node-a-4",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        },
+        {
+            "aggregatedRequests": {
+                "cpu": "500m",
+                "memory": "2500Mi"
+            },
+            "schedulerName": "bin-packing-scheduler",
+            "name": "half-berry-9",
+            "namespace": "default",
+            "nodeName": "node-a-5",
+            "creationTimestamp": "2026-06-08T21:16:28Z",
+            "labels": {
+                "app.kubernetes.io/name": "test"
+            },
+            "ownerReferences": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "name": "owner-replica-set",
+                    "uid": "88ff105f-ff62-4e05-8dc6-ca7fe843f5cc",
+                    "controller": true
+                }
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "capacity": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "pods": "110"
+            },
+            "allocatable": {
+                "cpu": "1920m",
+                "memory": "71310056Ki",
+                "pods": "110"
+            },
+            "instanceType": "m5.large",
+            "name": "node-a-1",
+            "creationTimestamp": "2026-05-28T07:57:22Z",
+            "labels": {
+                "kubernetes.io/arch": "arm64",
+                "node.kubernetes.io/instance-type": "m5.large",
+                "topology.kubernetes.io/zone": "eu-west-1c",
+                "worker.gardener.cloud/pool": "a"
+            },
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "lastHeartbeatTime": "2026-05-28T09:46:05Z",
+                    "lastTransitionTime": "2026-05-28T07:57:46Z",
+                    "reason": "KubeletReady",
+                    "message": "kubelet is posting ready status"
+                }
+            ]
+        },
+        {
+            "capacity": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "pods": "110"
+            },
+            "allocatable": {
+                "cpu": "1920m",
+                "memory": "71310056Ki",
+                "pods": "110"
+            },
+            "instanceType": "m5.large",
+            "name": "node-a-2",
+            "creationTimestamp": "2026-05-28T07:57:22Z",
+            "labels": {
+                "kubernetes.io/arch": "arm64",
+                "node.kubernetes.io/instance-type": "m5.large",
+                "topology.kubernetes.io/zone": "eu-west-1c",
+                "worker.gardener.cloud/pool": "a"
+            },
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "lastHeartbeatTime": "2026-05-28T09:46:05Z",
+                    "lastTransitionTime": "2026-05-28T07:57:46Z",
+                    "reason": "KubeletReady",
+                    "message": "kubelet is posting ready status"
+                }
+            ]
+        },
+        {
+            "capacity": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "pods": "110"
+            },
+            "allocatable": {
+                "cpu": "1920m",
+                "memory": "71310056Ki",
+                "pods": "110"
+            },
+            "instanceType": "m5.large",
+            "name": "node-a-3",
+            "creationTimestamp": "2026-05-28T07:57:22Z",
+            "labels": {
+                "kubernetes.io/arch": "arm64",
+                "node.kubernetes.io/instance-type": "m5.large",
+                "topology.kubernetes.io/zone": "eu-west-1c",
+                "worker.gardener.cloud/pool": "a"
+            },
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "lastHeartbeatTime": "2026-05-28T09:46:05Z",
+                    "lastTransitionTime": "2026-05-28T07:57:46Z",
+                    "reason": "KubeletReady",
+                    "message": "kubelet is posting ready status"
+                }
+            ]
+        },
+        {
+            "capacity": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "pods": "110"
+            },
+            "allocatable": {
+                "cpu": "1920m",
+                "memory": "71310056Ki",
+                "pods": "110"
+            },
+            "instanceType": "m5.large",
+            "name": "node-a-4",
+            "creationTimestamp": "2026-05-28T07:57:22Z",
+            "labels": {
+                "kubernetes.io/arch": "arm64",
+                "sa.gardener.cloud/node-pool-name": "a",
+                "worker.gardener.cloud/pool": "a"
+            },
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "lastHeartbeatTime": "2026-05-28T09:46:05Z",
+                    "lastTransitionTime": "2026-05-28T07:57:46Z",
+                    "reason": "KubeletReady",
+                    "message": "kubelet is posting ready status"
+                }
+            ]
+        },
+        {
+            "capacity": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "pods": "110"
+            },
+            "allocatable": {
+                "cpu": "1920m",
+                "memory": "7600Mi",
+                "pods": "110"
+            },
+            "instanceType": "m5.large",
+            "name": "node-a-5",
+            "creationTimestamp": "2026-05-28T07:57:22Z",
+            "labels": {
+                "kubernetes.io/arch": "arm64",
+                "node.kubernetes.io/instance-type": "m5.large",
+                "topology.kubernetes.io/zone": "eu-west-1c",
+                "worker.gardener.cloud/pool": "a"
+            },
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "lastHeartbeatTime": "2026-05-28T09:46:05Z",
+                    "lastTransitionTime": "2026-05-28T07:57:46Z",
+                    "reason": "KubeletReady",
+                    "message": "kubelet is posting ready status"
+                }
+            ]
+        }
+    ]
+}

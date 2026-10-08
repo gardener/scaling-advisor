@@ -1,0 +1,36 @@
+{
+  "kind": "ScalingConstraint",
+  "apiVersion": "sa.gardener.cloud/v1alpha1",
+  "spec": {
+    "nodePools": [
+      {
+        "labels": {
+          "worker.gardener.cloud/pool": "a"
+        },
+        "name": "a",
+        "region": "eu-west-1",
+        "availabilityZones": [
+          "eu-west-1c"
+        ],
+        "nodeTemplates": [
+          {
+            "capacity": {
+              "cpu": "2",
+              "gpu": "0",
+              "memory": "8Gi"
+            },
+            "kubeReservedCapacity": {
+              "cpu": "80m",
+              "memory": "400Mi"
+            },
+            "name": "m5l",
+            "architecture": "amd64",
+            "instanceType": "m5.large",
+            "priority": 0
+          }
+        ],
+        "priority": 0
+      }
+    ]
+  }
+}

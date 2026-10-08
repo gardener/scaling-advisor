@@ -35,3 +35,7 @@ gosec-report.sarif
 # hack tools binaries and generated configurations
 **/bin/
 gen/
+
+# Exclude the go.work.sum file, not needed for reproducible builds,
+# leads to needless merge conflicts
+go.work.sum

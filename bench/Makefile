@@ -1,0 +1,83 @@
+# Change these variables as necessary.
+
+MODULE_ROOT     := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
+REPO_ROOT               := $(shell dirname "$(MODULE_ROOT)")
+REPO_HACK_DIR           := $(REPO_ROOT)/hack
+export GOWORK := off
+
+scalebench_main_pkg_path = .
+scalebench_binary_name = scalebench
+
+# include tools targets
+include $(REPO_HACK_DIR)/tools.mk
+
+## help: print this help message
+.PHONY: help
+help:
+	@echo 'Usage:'
+	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
+
+.PHONY: no-dirty
+no-dirty:
+	@test -z "$(shell git status --porcelain)"
+
+## test-unit: run all unit tests with coverage
+.PHONY: test-unit
+test-unit:
+	go test -v -race -buildvcs -cover -coverprofile=${MODULE_ROOT}/coverage.out ./...
+	go tool cover -html=${MODULE_ROOT}/coverage.out -o ${MODULE_ROOT}/coverage.html
+
+## test-integration: run all integration tests
+.PHONY: test-integration
+test-integration:
+	go test -v -buildvcs -tags=integration ./test/integration/...
+
+## upgradeable: list direct dependencies that have upgrades available
+.PHONY: upgradeable
+upgradeable:
+	@go list -u -f '{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}: {{.Version}} -> {{.Update.Version}}{{end}}' -m all
+
+## tidy: tidies up go mod
+.PHONY: tidy
+tidy:
+	@env GO111MODULE=on go mod tidy
+
+## build: build the client
+.PHONY: build
+build:
+	mkdir -p bin
+	go build -buildvcs -o=bin/${scalebench_binary_name} ${scalebench_main_pkg_path}
+
+.PHONY: format
+format: $(GOIMPORTS_REVISER)
+	@$(REPO_HACK_DIR)/format.sh ./...
+
+## check: for 'bench' module, the 'hack/check.sh' is not invoked and the linter is
+##        explicitly called to avoid performing the 'patch' golang version check
+##        which karpenter doesn't adhere to.
+.PHONY: check
+check: $(GOLANGCI_LINT) format
+	golangci-lint run -c "${REPO_ROOT}/.golangci.yaml" --timeout 10m ./...
+
+## run: run the client
+.PHONY: run
+run: build
+	bin/${service_binary_name}
+
+.PHONY: sast
+sast: $(GOSEC)
+	@$(REPO_HACK_DIR)/sast.sh
+
+.PHONY: sast-report
+sast-report: $(GOSEC)
+	@$(REPO_HACK_DIR)/sast.sh --gosec-report true
+
+## clean-logs: remove all scenario log directories
+.PHONY: clean-logs
+clean-logs:
+	@rm -rf cmd/scenarios/logs/*
+
+## kwok-cleanup: delete all kwok clusters
+.PHONY: kwok-cleanup
+kwok-cleanup:
+	@scripts/kwok-cleanup.sh

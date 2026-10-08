@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  config: |
+    apiVersion: v1alpha
+    configmap:
+      name: kwok-provider-templates
+    nodegroups:
+      fromNodeLabelKey: worker.gardener.cloud/pool
+    nodes:
+      skipTaint: true
+    readNodesFrom: configmap
+kind: ConfigMap
+metadata:
+  name: kwok-provider-config
+  namespace: default
