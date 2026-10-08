@@ -84,7 +84,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `mode` _[ScalingAdviceGenerationMode](#scalingadvicegenerationmode)_ | Mode defines the mode in which scaling advice is generated. |  |  |
-| `simulationStrategy` _[SimulationStrategy](#simulationstrategy)_ | SimulationStrategy defines the simulation strategy to be used for scaling virtual nodes for generation of scaling advice. |  |  |
+| `simulatorStrategy` _[SimulatorStrategy](#simulatorstrategy)_ | SimulatorStrategy defines the simulator strategy used by the ScaleOutSimulator implementation. |  |  |
 | `scoringStrategy` _[NodeScoringStrategy](#nodescoringstrategy)_ | ScoringStrategy defines the node scoring strategy to use for scaling decisions. |  |  |
 
 
@@ -130,26 +130,7 @@ _Appears in:_
 ### Resource Types
 - [ScalingAdvice](#scalingadvice)
 - [ScalingConstraint](#scalingconstraint)
-- [ScalingFeedback](#scalingfeedback)
 
-
-
-#### BackoffPolicy
-
-
-
-BackoffPolicy defines the backoff policy to be used when backing off from suggesting an instance type + zone in subsequence scaling advice upon failed scaling operation.
-
-
-
-_Appears in:_
-- [NodePool](#nodepool)
-- [ScalingConstraintSpec](#scalingconstraintspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `initialBackoff` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | InitialBackoffDuration defines the lower limit of the backoff duration. |  |  |
-| `maxBackoff` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#duration-v1-meta)_ | MaxBackoffDuration defines the upper limit of the backoff duration. |  |  |
 
 
 
@@ -168,8 +149,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
-| `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
+| `poolName` _string_ | PoolName is the name of the node pool. |  |  |
+| `templateName` _string_ | TemplateName is the name of the node template. |  |  |
 | `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
@@ -190,22 +171,20 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `labels` _object (keys:string, values:string)_ | Labels is a map of key/value pairs for labels applied to all the nodes in this node pool. |  |  |
 | `annotations` _object (keys:string, values:string)_ | Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool. |  |  |
-| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the scale in policy for this node pool. |  |  |
-| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | BackoffPolicy defines the backoff policy applicable to resource exhaustion of any instance type + zone combination in this node pool. |  |  |
 | `name` _string_ | Name is the name of the node pool. It must be unique within the cluster. |  |  |
 | `region` _string_ | Region is the name of the region. |  |  |
 | `taints` _[Taint](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#taint-v1-core) array_ | Taints is a list of taints applied to all the nodes in this node pool. |  |  |
 | `availabilityZones` _string array_ | AvailabilityZones is a list of availability zones for the node pool. |  |  |
-| `nodeTemplates` _[NodeTemplate](#nodetemplate) array_ | NodeTemplates is a slice of NodeTemplate. |  |  |
+| `requirements` _[NodePoolRequirement](#nodepoolrequirement) array_ | Requirements encapsulates the slice of requirement selectors for this NodePool |  |  |
 | `priority` _integer_ | Priority is the priority of the node pool. |  |  |
 
 
-#### NodeTemplate
+#### NodePoolRequirement
 
 
 
-NodeTemplate defines a node template configuration for an instance type.
-All nodes of a certain instance type in a node pool will be created using this template.
+NodePoolRequirement is a requirement selector that encapsulates values, a key, and an operator
+that relates the key and values.
 
 
 
@@ -214,27 +193,68 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | Name is the name of the node template. |  |  |
-| `architecture` _string_ | Architecture is the architecture of the instance type. |  |  |
-| `instanceType` _string_ | InstanceType is the instance type of the node template. |  |  |
-| `priority` _integer_ | Priority is the priority of the node template. The lower the number, the higher the priority. |  |  |
-| `maxVolumes` _integer_ | MaxVolumes is the max number of volumes that can be attached to a node of this instance type. |  |  |
+| `key` _string_ | Key is the label key that the selector applies to. |  |  |
+| `operator` _[NodePoolRequirementOperator](#nodepoolrequirementoperator)_ | Operator represents a key's relationship to a set of values.<br />Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt. |  |  |
+| `values` _string array_ | Values is an array of string values. If the operator is "In" or "NotIn",<br />the values array must be non-empty. If the operator is "Exists" or "DoesNotExist",<br />the values array must be empty. If the operator is "Gt" or "Lt", the values<br />array must have a single element, which will be interpreted as an integer.<br />This array is replaced during a strategic merge patch. |  |  |
+| `priority` _integer_ | Priority represents the priority of this requirement. Higher values have greater priority. |  |  |
 
 
-#### ScaleInErrorInfo
+#### NodePoolRequirementOperator
 
+_Underlying type:_ _string_
 
-
-ScaleInErrorInfo is the information about nodes that could not be deleted for scale-in.
+NodePoolRequirementOperator is the set of operators that can be used in a [NodePoolRequirement]
 
 
 
 _Appears in:_
-- [ScalingFeedbackSpec](#scalingfeedbackspec)
+- [NodePoolRequirement](#nodepoolrequirement)
+
+| Field | Description |
+| --- | --- |
+| `In` | NodePoolRequirementOpIn is the enum constant for the "In" operator used within a [NodePoolRequirement].<br /> |
+| `NotIn` | NodePoolRequirementOpNotIn is the enum constant for the "NotIn" operator used within a [NodePoolRequirement].<br /> |
+| `Exists` | NodePoolRequirementOpExists is the enum constant for the "Exist" operator used within a [NodePoolRequirement].<br /> |
+| `DoesNotExist` | NodePoolRequirementOpDoesNotExist is the enum constant for the "DoesNotExist" operator used within a [NodePoolRequirement].<br /> |
+| `Gt` | NodePoolRequirementOpGt is the enum constant for the "Gt" operator used within a [NodePoolRequirement].<br /> |
+| `Lt` | NodePoolRequirementOpLt is the enum constant for the "Lt" operator used within a [NodePoolRequirement].<br /> |
+
+
+#### NodeTemplate
+
+
+
+NodeTemplate defines a node template configuration for an instance type.
+There can be different NodeTemplate's for a [ScalingConstraintSpec] for the same instance type.
+This is permitted to allow the opportunity for different SystemReserved.
+
+
+
+_Appears in:_
+- [ScalingConstraintSpec](#scalingconstraintspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `nodeNames` _string array_ | NodeNames is the list of node names that could not be deleted for scaled in. |  |  |
+| `name` _string_ | Name is the name of the node template. Name is unique within a particular [ScalingConstraintSpec] |  |  |
+| `architecture` _string_ | Architecture is the architecture of the instance type. |  |  |
+| `instanceType` _string_ | InstanceType is the instance type of the node template. |  |  |
+| `maxVolumes` _integer_ | MaxVolumes is the max number of volumes that can be attached to a node of this instance type. |  |  |
+
+
+#### ScaleInFeedback
+
+
+
+ScaleInFeedback is  the feedback from the life cycle manager after applying [ScaleInPlan]
+
+
+
+_Appears in:_
+- [ScalingFeedback](#scalingfeedback)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `acceptedNodeNames` _string array_ | AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.<br />Required to be specified, since if empty, the ScaleInFeedback itself should not be populated. |  |  |
 
 
 #### ScaleInItem
@@ -250,8 +270,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
-| `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
+| `poolName` _string_ | PoolName is the name of the node pool. |  |  |
+| `templateName` _string_ | TemplateName is the name of the node template. |  |  |
 | `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
@@ -274,37 +294,20 @@ _Appears in:_
 | `items` _[ScaleInItem](#scaleinitem) array_ | Items is the slice of scaling-in advice for a node pool. |  |  |
 
 
-#### ScaleInPolicy
+#### ScaleOutFeedback
 
 
 
-ScaleInPolicy defines the scale in policy to be used when scaling in a node pool.
-
-
-
-_Appears in:_
-- [NodePool](#nodepool)
-- [ScalingConstraintSpec](#scalingconstraintspec)
-
-
-
-#### ScaleOutErrorInfo
-
-
-
-ScaleOutErrorInfo is the backoff information for each instance type + zone.
+ScaleOutFeedback is the feedback from the life cycle manager when applying an [ScaleOutPlan] of a [ScalingAdviceSpec]
 
 
 
 _Appears in:_
-- [ScalingFeedbackSpec](#scalingfeedbackspec)
+- [ScalingFeedback](#scalingfeedback)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
-| `instanceType` _string_ | InstanceType is the instance type of the node pool. |  |  |
-| `errorType` _[ScalingErrorType](#scalingerrortype)_ | ErrorType is the type of error that occurred during scale-out. |  |  |
-| `failCount` _integer_ | FailCount is the number of nodes that have failed creation. |  |  |
+| `items` _[ScaleOutItemFeedback](#scaleoutitemfeedback) array_ |  |  |  |
 
 
 #### ScaleOutItem
@@ -320,13 +323,33 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `nodePoolName` _string_ | NodePoolName is the name of the node pool. |  |  |
-| `nodeTemplateName` _string_ | NodeTemplateName is the name of the node template. |  |  |
+| `poolName` _string_ | PoolName is the name of the node pool. |  |  |
+| `templateName` _string_ | TemplateName is the name of the node template. |  |  |
 | `instanceType` _string_ | InstanceType is the instance type of the Node |  |  |
 | `region` _string_ | Region is the region of the instance |  |  |
 | `availabilityZone` _string_ | AvailabilityZone is the availability zone of the node pool. |  |  |
 | `currentReplicas` _integer_ | CurrentReplicas is the current number of replicas for the NodePlacement. |  |  |
 | `delta` _integer_ | Delta is the delta change in the number of nodes for the NodePlacement. |  |  |
+
+
+#### ScaleOutItemFeedback
+
+
+
+ScaleOutItemFeedback is the feedback from the life cycle manager when applying an individual [ScaleOutItem]
+
+
+
+_Appears in:_
+- [ScaleOutFeedback](#scaleoutfeedback)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `creationDeadline` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#time-v1-meta)_ | CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available<br />for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,<br />this field is mandatory to be set inside all [ScaleOutItemFeedback] |  |  |
+| `backoffUntil` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#time-v1-meta)_ | BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding<br />[ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s |  |  |
+| `errorType` _[ScalingErrorType](#scalingerrortype)_ | ErrorType is the type of error that occurred during scale-out. |  |  |
+| `index` _integer_ | Index represents the item index in [ScaleOutPlan.Items] |  |  |
+| `failCount` _integer_ | FailCount is the number of nodes that have failed creation. |  |  |
 
 
 #### ScaleOutPlan
@@ -343,7 +366,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `unsatisfiedPodNames` _string array_ | UnsatisfiedPodNames is the list of all pods (namespace/name) that could not be satisfied by the scale out plan. |  |  |
-| `Items` _[ScaleOutItem](#scaleoutitem) array_ | Items is the slice of scaling-out advice for a node pool. |  |  |
+| `items` _[ScaleOutItem](#scaleoutitem) array_ | Items is the slice of scaling-out advice for a node pool. |  |  |
 
 
 #### ScalingAdvice
@@ -395,9 +418,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `scaleOutPlan` _[ScaleOutPlan](#scaleoutplan)_ | ScaleOutPlan is the plan for scaling out across node pools. |  |  |
-| `scaleInPlan` _[ScaleInPlan](#scaleinplan)_ | ScaleInPlan is the plan for scaling in across node pools. |  |  |
-| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
+| `scaleOut` _[ScaleOutPlan](#scaleoutplan)_ | ScaleOut is the plan for scaling out across node pools. |  |  |
+| `scaleIn` _[ScaleInPlan](#scaleinplan)_ | ScaleIn is the plan for scaling in across node pools. |  |  |
+| `constraintRef` _[NamespacedName](#namespacedname)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
 
 
 #### ScalingAdviceStatus
@@ -414,6 +437,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `diagnostic` _[ScalingAdviceDiagnostic](#scalingadvicediagnostic)_ | Diagnostic provides diagnostics information for the scaling advice.<br />This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is<br />set on the corresponding ScalingConstraint resource. |  |  |
+| `feedback` _[ScalingFeedback](#scalingfeedback)_ | Feedback represents the [ScalingFeedback] from the lifecycle manager applying the [ScalingAdvice] |  |  |
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#condition-v1-meta) array_ | Conditions represents additional information |  |  |
 
 
@@ -449,10 +473,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `defaultBackoffPolicy` _[BackoffPolicy](#backoffpolicy)_ | DefaultBackoffPolicy defines a default backoff policy for all NodePools of a cluster. Backoff policy can be overridden at the NodePool level. |  |  |
-| `scaleInPolicy` _[ScaleInPolicy](#scaleinpolicy)_ | ScaleInPolicy defines the default scale in policy to be used when scaling in a node pool. |  |  |
-| `consumerID` _string_ | ConsumerID is the Name of the consumer who creates the scaling constraint and is the target for cluster scaling advises.<br />It allows a consumer to accept or reject the advises by checking the ConsumerID for which the scaling advice has been created. |  |  |
 | `nodePools` _[NodePool](#nodepool) array_ | NodePools is the list of node pools to choose from when creating scaling advice. |  |  |
+| `nodeTemplates` _[NodeTemplate](#nodetemplate) array_ | NodeTemplates is the slice of all NodeTemplates that can be used for selecting instances associated with each NodePool. |  |  |
 
 
 #### ScalingConstraintStatus
@@ -480,7 +502,7 @@ ScalingErrorType defines the type of scaling error.
 
 
 _Appears in:_
-- [ScaleOutErrorInfo](#scaleouterrorinfo)
+- [ScaleOutItemFeedback](#scaleoutitemfeedback)
 
 | Field | Description |
 | --- | --- |
@@ -492,37 +514,18 @@ _Appears in:_
 
 
 
-ScalingFeedback provides scale-in and scale-out error feedback from the lifecycle manager.
+ScalingFeedback provides scale-in and scale-out feedback from the lifecycle manager.
 Scaling advisor can refine its future scaling advice based on this feedback.
 
 
 
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `sa.gardener.cloud/v1alpha1` | | |
-| `kind` _string_ | `ScalingFeedback` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[ScalingFeedbackSpec](#scalingfeedbackspec)_ | Spec defines the specification of ScalingFeedback. |  |  |
-
-
-#### ScalingFeedbackSpec
-
-
-
-ScalingFeedbackSpec defines the specification of the ScalingFeedback.
-
-
-
 _Appears in:_
-- [ScalingFeedback](#scalingfeedback)
+- [ScalingAdviceStatus](#scalingadvicestatus)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `constraintRef` _[ConstraintReference](#constraintreference)_ | ConstraintRef is a reference to the ScalingConstraint that this advice is based on. |  |  |
-| `scaleOutErrorInfos` _[ScaleOutErrorInfo](#scaleouterrorinfo) array_ | ScaleOutErrorInfos is the list of scale-out errors for the scaling advice. |  |  |
-| `scaleInErrorInfo` _[ScaleInErrorInfo](#scaleinerrorinfo)_ | ScaleInErrorInfo is the scale-in error information for the scaling advice. |  |  |
+| `scaleOut` _[ScaleOutFeedback](#scaleoutfeedback)_ | ScaleOut is the scale-out feedback from the lifecycle manager when applying [ScaleOutPlan]<br />[ScalingAdviceSpec]. |  |  |
+| `scaleIn` _[ScaleInFeedback](#scaleinfeedback)_ | ScaleIn is the scale-in feedback from life-cycle manager when applying [ScaleInPlan] |  |  |
 
 
 #### ScalingSimRunResult

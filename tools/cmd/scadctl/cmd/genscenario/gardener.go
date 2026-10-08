@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/scalingconstraintutil"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -442,13 +443,15 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
+	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec)
+
 	for _, node := range nodes {
 		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]
 		instanceType := node.Labels[corev1.LabelInstanceTypeStable]
 		var matchingNodeTemplateName string
 		for _, p := range sc.Spec.NodePools {
 			if p.Name == poolName {
-				for _, nt := range p.NodeTemplates {
+				for _, nt := range nodeToNodeTemplateMap[p.Name] {
 					if nt.InstanceType == instanceType {
 						matchingNodeTemplateName = nt.Name
 					}
@@ -573,18 +576,20 @@ func constructInstanceRequirementsMap(instances []gardenercorev1beta1.MachineTyp
 }
 
 func (a *access) createScalingConstraint() (csc *sacorev1alpha1.ScalingConstraint) {
-	nodePools := a.createNodePools()
+	nodePools, nodeTemplates := a.createNodePoolsAndNodeTemplates()
 	csc = &sacorev1alpha1.ScalingConstraint{}
 	csc.Spec.NodePools = nodePools
+	csc.Spec.NodeTemplates = nodeTemplates
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }
 
-func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
+func (a *access) createNodePoolsAndNodeTemplates() (nodePools []sacorev1alpha1.NodePool, nodeTemplates []sacorev1alpha1.NodeTemplate) {
 	region := a.shoot.Spec.Region
 
 	for _, worker := range a.shoot.Spec.Provider.Workers {
 		var nodePool sacorev1alpha1.NodePool
+		var nodeTemplate sacorev1alpha1.NodeTemplate
 
 		nodePool.Name = worker.Name
 		nodePool.Region = region
@@ -603,13 +608,36 @@ func (a *access) createNodePools() (nodePools []sacorev1alpha1.NodePool) {
 		}
 		nodePool.AvailabilityZones = worker.Zones
 
-		nodeTemplate := a.constructNodeTemplate(worker)
-		nodePool.NodeTemplates = append(nodePool.NodeTemplates, nodeTemplate)
+		nodePool.Requirements = buildNodePoolRequirements(worker)
+
 		// TODO nP.Quota, nP.ScaleInPolicy, nP.BackoffPolicy
 
 		nodePools = append(nodePools, nodePool)
+
+		nodeTemplate = a.constructNodeTemplate(worker)
+		nodeTemplates = append(nodeTemplates, nodeTemplate)
 	}
 	return
+}
+
+func buildNodePoolRequirements(worker gardenercorev1beta1.Worker) []sacorev1alpha1.NodePoolRequirement {
+	reqs := []sacorev1alpha1.NodePoolRequirement{
+		{
+			Key:      corev1.LabelInstanceTypeStable,
+			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
+			Values:   []string{worker.Machine.Type},
+		},
+	}
+
+	if arch := ptr.Deref(worker.Machine.Architecture, ""); arch != "" {
+		reqs = append(reqs, sacorev1alpha1.NodePoolRequirement{
+			Key:      corev1.LabelArchStable,
+			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
+			Values:   []string{arch},
+		})
+	}
+
+	return reqs
 }
 
 func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacorev1alpha1.NodeTemplate {
@@ -617,7 +645,6 @@ func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacore
 		Name:         worker.Name,
 		Architecture: ptr.Deref(worker.Machine.Architecture, ""),
 		InstanceType: worker.Machine.Type,
-		Priority:     ptr.Deref(worker.Priority, 0),
 		// TODO: add pool.NodeTemplate.VirtualCapacity
 		Capacity:     a.constructNodeTemplateCapacity(worker.ProviderConfig, worker.Machine.Type),
 		KubeReserved: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),

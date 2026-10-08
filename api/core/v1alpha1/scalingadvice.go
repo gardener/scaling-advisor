@@ -16,6 +16,8 @@ import (
 // +kubebuilder:resource:shortName={sa}
 
 // ScalingAdvice is the schema to define cluster scaling advice for a cluster.
+//
+//nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type ScalingAdvice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -38,11 +40,11 @@ type ScalingAdviceList struct {
 
 // ScalingAdviceSpec defines the desired state of ScalingAdvice.
 type ScalingAdviceSpec struct {
-	// ScaleOutPlan is the plan for scaling out across node pools.
+	// ScaleOut is the plan for scaling out across node pools.
 	// +optional
-	ScaleOutPlan *ScaleOutPlan `json:"scaleOutPlan"`
-	// ScaleInPlan is the plan for scaling in across node pools.
-	ScaleInPlan *ScaleInPlan `json:"scaleInPlan"`
+	ScaleOut *ScaleOutPlan `json:"scaleOut,omitempty"`
+	// ScaleIn is the plan for scaling in across node pools.
+	ScaleIn *ScaleInPlan `json:"scaleIn,omitempty"`
 	// ConstraintRef is a reference to the ScalingConstraint that this advice is based on.
 	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
@@ -54,6 +56,9 @@ type ScalingAdviceStatus struct {
 	// set on the corresponding ScalingConstraint resource.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
+	// Feedback represents the [ScalingFeedback] from the lifecycle manager applying the [ScalingAdvice]
+	// +optional
+	Feedback *ScalingFeedback `json:"feedback,omitempty"`
 	// Conditions represents additional information
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

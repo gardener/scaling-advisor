@@ -87,7 +87,7 @@ func (s *simulatorMultiSim) Close() error {
 
 func (s *simulatorMultiSim) createAndGroupSimulations() ([]plannerapi.ScaleOutSimGroup, error) {
 	var (
-		allScaleOutNodeTemplates = scaleout.CreateAllNodeTemplates(s.state.Request.Constraint.Spec.NodePools)
+		allScaleOutNodeTemplates = scaleout.CreateAllNodeTemplates(s.state.Request.Constraint)
 		allSimulations           = make([]plannerapi.ScaleOutSimulation, 0, len(allScaleOutNodeTemplates))
 	)
 	for i, snt := range allScaleOutNodeTemplates {

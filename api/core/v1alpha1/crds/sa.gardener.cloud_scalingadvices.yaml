@@ -55,8 +55,8 @@ spec:
                 required:
                 - name
                 type: object
-              scaleInPlan:
-                description: ScaleInPlan is the plan for scaling in across node pools.
+              scaleIn:
+                description: ScaleIn is the plan for scaling in across node pools.
                 properties:
                   items:
                     description: Items is the slice of scaling-in advice for a node
@@ -97,9 +97,8 @@ spec:
                 required:
                 - items
                 type: object
-              scaleOutPlan:
-                description: ScaleOutPlan is the plan for scaling out across node
-                  pools.
+              scaleOut:
+                description: ScaleOut is the plan for scaling out across node pools.
                 properties:
                   items:
                     description: Items is the slice of scaling-out advice for a node
@@ -155,7 +154,6 @@ spec:
                 type: object
             required:
             - constraintRef
-            - scaleInPlan
             type: object
           status:
             description: Status defines the status of ScalingAdvice.
@@ -272,6 +270,67 @@ spec:
                 required:
                 - simRunResults
                 - traceLogName
+                type: object
+              feedback:
+                description: Feedback represents the [ScalingFeedback] from the lifecycle
+                  manager applying the [ScalingAdvice]
+                properties:
+                  scaleIn:
+                    description: ScaleIn is the scale-in feedback from life-cycle
+                      manager when applying [ScaleInPlan]
+                    properties:
+                      acceptedNodeNames:
+                        description: |-
+                          AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
+                          Required to be specified, since if empty, the ScaleInFeedback itself should not be populated.
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - acceptedNodeNames
+                    type: object
+                  scaleOut:
+                    description: |-
+                      ScaleOut is the scale-out feedback from the lifecycle manager when applying [ScaleOutPlan]
+                      [ScalingAdviceSpec].
+                    properties:
+                      items:
+                        items:
+                          description: ScaleOutItemFeedback is the feedback from the
+                            life cycle manager when applying an individual [ScaleOutItem]
+                          properties:
+                            backoffUntil:
+                              description: |-
+                                BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding
+                                [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s
+                              format: date-time
+                              type: string
+                            creationDeadline:
+                              description: |-
+                                CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available
+                                for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,
+                                this field is mandatory to be set inside all [ScaleOutItemFeedback]
+                              format: date-time
+                              type: string
+                            errorType:
+                              description: ErrorType is the type of error that occurred
+                                during scale-out.
+                              type: string
+                            failCount:
+                              description: FailCount is the number of nodes that have
+                                failed creation.
+                              format: int32
+                              type: integer
+                            index:
+                              description: Index represents the item index in [ScaleOutPlan.Items]
+                              format: int32
+                              type: integer
+                          required:
+                          - creationDeadline
+                          - index
+                          type: object
+                        type: array
+                    type: object
                 type: object
             type: object
         required:
