@@ -10,7 +10,6 @@ import (
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
-
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -323,29 +322,29 @@ func TestSimGroupKey_String(t *testing.T) {
 	tests := []struct {
 		name     string
 		expected string
-		key      apicommon.PriorityKey
+		key      simulationapi.GroupKey
 	}{
 		{
 			name: "both priorities positive",
-			key: apicommon.PriorityKey{
-				First:  1,
-				Second: 2,
+			key: simulationapi.GroupKey{
+				NodePoolPriority:     1,
+				NodeTemplatePriority: 2,
 			},
 			expected: "1-2",
 		},
 		{
 			name: "zero priorities",
-			key: apicommon.PriorityKey{
-				First:  0,
-				Second: 0,
+			key: simulationapi.GroupKey{
+				NodePoolPriority:     0,
+				NodeTemplatePriority: 0,
 			},
 			expected: "0-0",
 		},
 		{
 			name: "large priorities",
-			key: apicommon.PriorityKey{
-				First:  100,
-				Second: 200,
+			key: simulationapi.GroupKey{
+				NodePoolPriority:     100,
+				NodeTemplatePriority: 200,
 			},
 			expected: "100-200",
 		},

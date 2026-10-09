@@ -2,11 +2,11 @@ go 1.26.0
 
 use (
 	./api
-	//./minkapi/api
-	//./simulation/api
-//./pricing/api
-//./planner/api
-//./common
+	./minkapi/api
+	//./pricing/api
+	./simulation/api
+	./planner/api
+	./common
 //./minkapi
 //./operator
 //./pricing

@@ -4,19 +4,29 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: scalingconstraints.sa.gardener.cloud
+  name: scalingconstraints.scad.gardener.cloud
 spec:
-  group: sa.gardener.cloud
+  group: scad.gardener.cloud
   names:
     kind: ScalingConstraint
     listKind: ScalingConstraintList
     plural: scalingconstraints
     shortNames:
-    - sc
+    - scon
     singular: scalingconstraint
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.plannerStrategy
+      name: PlannerStrategy
+      type: string
+    - jsonPath: .spec.simulatorStrategy
+      name: SimulatorStrategy
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ScalingConstraint defines the inputs and constraints used to
@@ -54,36 +64,43 @@ spec:
                     annotations:
                       additionalProperties:
                         type: string
-                      description: Annotations is a map of key/value pairs for annotations
-                        applied to all the nodes in this node pool.
                       type: object
                     availabilityZones:
-                      description: AvailabilityZones is a list of availability zones
-                        for the node pool.
+                      description: AvailabilityZones is the list of availability zones
+                        in which nodes may be provisioned for this pool.
                       items:
                         type: string
+                      minItems: 1
                       type: array
                     labels:
                       additionalProperties:
                         type: string
-                      description: Labels is a map of key/value pairs for labels applied
-                        to all the nodes in this node pool.
                       type: object
                     name:
-                      description: Name is the name of the node pool. It must be unique
-                        within the cluster.
                       type: string
                     nodeTemplateRefs:
-                      description: |-
-                        NodeTemplateRefs references the NodeTemplates that may be used by this NodePool together with their relative
-                        priorities and optional scaling limits.
+                      description: NodeTemplateRefs is the list of node templates
+                        that may be used to provision nodes in this pool.
                       items:
                         description: |-
                           NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
-                          its relative priority and optional [ScalingLimits].
+                          its relative priority and optional [ResourceLimits].
                         properties:
-                          limits:
-                            description: Limits specifies optional scaling limits
+                          name:
+                            description: Name is the name of the referenced [NodeTemplate].
+                              The referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
+                            minLength: 1
+                            type: string
+                          priority:
+                            description: |-
+                              Priority defines the preference for this NodeTemplate when selecting a scale-out candidate in the parent NodePool.
+
+                              If omitted, the default implicit priority is zero. Higher values are preferred.
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          quota:
+                            description: Quota specifies optional resource limits
                               for the referenced NodeTemplate within the parent NodePool.
                             properties:
                               max:
@@ -107,33 +124,60 @@ spec:
                                   that may be provisioned.
                                 type: object
                             type: object
-                          name:
-                            description: Name is the name of the referenced [NodeTemplate].  The
-                              referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
-                            type: string
-                          priority:
-                            description: |-
-                              Priority defines the preference for this NodeTemplate when selecting a scale-out candidate in the parent NodePool.
-
-                              If omitted, the default implicit priority is zero. Higher values are preferred.
-                            format: int32
-                            minimum: 0
-                            type: integer
                         required:
                         - name
                         type: object
                       minItems: 1
                       type: array
+                      x-kubernetes-list-map-keys:
+                      - name
+                      x-kubernetes-list-type: map
                     priority:
-                      description: Priority is the priority of the node pool.
+                      description: |-
+                        Priority defines the preference for this NodePool when selecting a scale-out candidate.
+
+                        If omitted, the default implicit priority is zero. Higher values are preferred.
                       format: int32
+                      minimum: 0
                       type: integer
                     region:
-                      description: Region is the name of the region.
                       type: string
+                    scalingParams:
+                      description: ScalingParams specifies the scaling parameters
+                        to be used when scaling a node pool.
+                      properties:
+                        underutilizedDuration:
+                          type: string
+                        utilizationThresholds:
+                          items:
+                            description: ResourceUtilizationThreshold pairs a resource
+                              name with its utilization threshold.
+                            properties:
+                              name:
+                                description: Name is the resource name (e.g. "cpu",
+                                  "memory", "nvidia.com/gpu").
+                                type: string
+                              threshold:
+                                description: |-
+                                  Threshold is the utilization fraction at or below which the node is considered underutilized,
+                                  expressed as a decimal string in the range (0, 1].
+                                  Examples: "0.5" (50 %), "1" (100 %).
+
+                                  Using string rather than float64 follows the same convention as [ResourceUnitPrice.Value] and
+                                  other Kubernetes ecosystem projects to avoid floating-point serialization issues in CRD fields.
+                                pattern: ^(0(\.[0-9]+)?|1(\.0+)?)$
+                                type: string
+                            required:
+                            - name
+                            - threshold
+                            type: object
+                          type: array
+                      type: object
+                    startupTaintKeys:
+                      items:
+                        type: string
+                      type: array
                     taints:
-                      description: Taints is a list of taints applied to all the nodes
-                        in this node pool.
                       items:
                         description: |-
                           The node this Taint is attached to has the "effect" on
@@ -171,10 +215,24 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              plannerStrategy:
+                description: |-
+                  PlannerStrategy defines the high-level approach the scaling planner uses to combine scale-in and scale-out
+                  simulation results into a final [ScalingAdvice]. It controls the order and scope of simulations performed.
+                enum:
+                - scale-in-then-scale-out
+                - scale-out-then-scale-in
+                - consolidated-scale-out
+                - only-scale-out
+                - only-scale-in
+                type: string
               scoringStrategy:
                 description: |-
-                  ScoringStrategy defines the node scoring strategy to use the [apicommon.SimulatorStrategySingleNodeMultiSim] '
-                  strategy.
+                  ScoringStrategy selects the algorithm used to score and rank candidate scale-out nodes.
+                  Only relevant when [SimulatorStrategy] is [apicommon.SimulatorStrategySingleNodeMultiSim].
                 enum:
                 - least-waste
                 - least-cost
@@ -188,6 +246,7 @@ spec:
                 type: string
             required:
             - nodePools
+            - plannerStrategy
             type: object
           status:
             description: Status contains validation and processing information for
@@ -252,7 +311,6 @@ spec:
                 type: array
             type: object
         required:
-        - metadata
         - spec
         type: object
     served: true

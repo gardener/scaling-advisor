@@ -12,7 +12,7 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// OperatorConfig defines the configuration for the scalingadvisor operator.
+// OperatorConfig defines the configuration for the scaling-advisor operator.
 //
 //nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type OperatorConfig struct {

@@ -1,33 +1,32 @@
 package api
 
 import (
+	"cmp"
 	"context"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
 
 	apicommon "github.com/gardener/scaling-advisor/api/common"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/tools/events"
 )
 
-// SimulationFactory is a factory facade for creating [Simulation] objects
+// SimulationFactory is a factory facade for creating [Simulation]'s.
 type SimulationFactory interface {
-	// NewScaleOut creates a ScaleOutSimulation instance with the given name and arguments.
-	NewScaleOut(args SimulationArgs) (Simulation, error)
+	// New creates a [Simulation] instance with the given arguments.
+	New(args SimulationArgs) (Simulation, error)
 }
 
 // SimulationArgs represents the arguments necessary for creating a [Simulation] instance.
 type SimulationArgs struct {
 	// SchedulerLauncher is used to launch scheduler instances for the simulation.
 	SchedulerLauncher SchedulerLauncher
-	// StorageMetaAccess is interrogated for metadata to create CSINodes for the simulation
-	StorageMetaAccess StorageMetaAccess
 	// RunCounter is an atomic counter for tracking simulation runs.
 	RunCounter *atomic.Uint32
 	// Name is the name of the simulation instance
@@ -45,13 +44,13 @@ type SimulationArgs struct {
 // SimulationConfig holds the configuration for the [Simulation].
 type SimulationConfig struct {
 	// TrackPollInterval is the polling interval for tracking pod scheduling in the view of the simulation
-	TrackPollInterval time.Duration
+	TrackPollInterval time.Duration `json:"trackPollInterval"`
 	// MaxUnchangedTrackAttempts is the maximum number of unchanged simulation track attempts after which a simulation run is
 	// considered as stabilized.
-	MaxUnchangedTrackAttempts int
+	MaxUnchangedTrackAttempts int `json:"maxUnchangedTrackAttempts"`
 	// BindVolumeClaimsForImmediateMode should be set if simulation is expected to bind unbound PVC<->PV for
 	// [corev1.VolumeBindingImmediate], also creating a simulated PV if a matching existing PV doesn't exist.
-	BindVolumeClaimsForImmediateMode bool
+	BindVolumeClaimsForImmediateMode bool `json:"bindVolumeClaimsForImmediateMode,omitempty"`
 }
 
 // SchedulerLauncher defines the interface for launching a kube-scheduler instance.
@@ -77,28 +76,20 @@ type SchedulerHandle interface {
 	GetParams() SchedulerLaunchParams
 }
 
-// StorageMetaAccess defines an interface for querying misc storage metadata
-type StorageMetaAccess interface {
-	// GetFallbackCSINodeSpec gets the default storagev1.CSINodeSpec which is suitable for the given instanceType.
-	// Used as a fallback when there is no CSINodeSpec associated with the NodeInfo or in a scale-from-zero
-	// scenario.
-	GetFallbackCSINodeSpec(instanceType string) (storagev1.CSINodeSpec, error)
-}
-
 // Simulation represents a simulation that can depending on the implementation can scale-in nodes or scale-out virtual node(s)
 // or do both and perform valid unscheduled pod to ready node bindings against a minkapi View.
 // The default Simulation implementation uses an embedded k8s scheduler to perform this work.
 // More exotic implementations could form a SAT (Satisfiability Testing) /MIP (Mixed Integer Programming)
 // constraint model from the pod/node data and run a tool that solves the model.
 type Simulation interface {
-	apicommon.Resettable
+	apicomponent.Resettable
 	// Name returns the logical simulation name
 	Name() string
 	// Status returns the current ActivityStatus of the simulation
 	Status() ActivityStatus
-	// PriorityKey returns the PriorityKey for the simulation which is the key by which simulations are grouped and determines
+	// GroupKey returns the [GroupKey] for the simulation which is the key by which simulations are grouped and determines
 	// the order in which simulations are run.
-	PriorityKey() apicommon.PriorityKey
+	GroupKey() GroupKey
 	// Run executes the simulation against the given simulation [minkapi.View] to completion and returns the [SimulationResult]
 	// or any encountered error.
 	// This is a blocking call, and callers are expected to manage concurrency and ScaleOutSimResult consumption.
@@ -118,6 +109,28 @@ const (
 	// ActivityStatusFailure indicates the activity failed.
 	ActivityStatusFailure ActivityStatus = metav1.StatusFailure
 )
+
+// GroupKey represents a composite and comparable key for grouping and determine order of simulation runs.
+type GroupKey struct {
+	// NodePoolPriority is the primary priority value. Higher values represent higher priority.
+	NodePoolPriority int32 `json:"nodePoolPriority"`
+	// NodeTemplatePriority is the secondary priority value. Higher value represent higher priority.
+	NodeTemplatePriority int32 `json:"nodeTemplatePriority"`
+}
+
+// String returns a string representation of the GroupKey.
+func (k GroupKey) String() string {
+	return fmt.Sprintf("%d-%d", k.NodePoolPriority, k.NodeTemplatePriority)
+}
+
+// CmpGroupKeyDecreasing is a compare function for [GroupKey] in decreasing value of priority.
+// ie higher values  before lower values which is the kubernetes convention.
+func CmpGroupKeyDecreasing(a, b GroupKey) int {
+	if firstCmp := cmp.Compare(b.NodePoolPriority, a.NodePoolPriority); firstCmp != 0 {
+		return firstCmp
+	}
+	return cmp.Compare(b.NodeTemplatePriority, a.NodeTemplatePriority)
+}
 
 // ScaleOutNodeTemplate is a superset of the [sacorev1alpha1.NodePlacement] consisting of enough information to create
 // a simulated scale-out [corev1.Node] within a [minkapi.View] such that the `kube-scheduler` can bind pods to nodes.
@@ -147,39 +160,39 @@ type ScaleOutNodeTemplate struct {
 	Architecture string `json:"architecture"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
 	Taints []corev1.Taint `json:"taints,omitempty"`
-	// PriorityKey is the priority key for this ScaleOutNodeTemplate.
-	PriorityKey apicommon.PriorityKey
+	// GroupKey is the group key associated with this ScaleOutNodeTemplate.
+	GroupKey GroupKey `json:"groupKey"`
 }
 
 // SimulationResult contains the results of a completed simulation run.
 type SimulationResult struct {
 	// Name of the ScaleOutSimulation that produced this result.
-	Name string
+	Name string `json:"name"`
 	// View is the minkapi View against which the simulation was run.
-	View minkapi.View
+	View minkapi.View `json:"-"`
 	// ScaleOutItems is the slice of [sacorev1alpha1.ScaleOutItem] where each item encapsulates the
 	// [sacorev1alpha1.NodePlacement] and associated delta.
-	ScaleOutItems []sacorev1alpha1.ScaleOutItem
+	ScaleOutItems []sacorev1alpha1.ScaleOutItem `json:"scaleOutItems,omitempty"`
 	// ScaleInItems is the slice of [sacorev1alpha1.ScaleInItem] where each item encapsulates the
 	// [sacorev1alpha1.NodePlacement] and node name that was successfully scaled-in.
-	ScaleInItems []sacorev1alpha1.ScaleInItem
+	ScaleInItems []sacorev1alpha1.ScaleInItem `json:"scaleInItems,omitempty"`
 	// NodePodAssignments represents the assignment of Pods to simulated scale-out Nodes.
-	NodePodAssignments []NodePodAssignment
+	NodePodAssignments []NodePodAssignment `json:"nodePodAssignments,omitempty"`
 	// OtherNodePodAssignments represent the assignment of unscheduled Pods to either an existing Node which is part of
 	// the ClusterSnapshot, or it is a simulated scale-out Node from a previous run.
-	OtherNodePodAssignments []NodePodAssignment
+	OtherNodePodAssignments []NodePodAssignment `json:"otherNodePodAssignments,omitempty"`
 	// LeftoverUnscheduledPods is the slice of unscheduled pods that remain unscheduled after the simulation Run is
 	// completed.
-	LeftoverUnscheduledPods []apicommon.NamespacedName
+	LeftoverUnscheduledPods []apicommon.NamespacedName `json:"leftoverUnscheduledPods,omitempty"`
 }
 
 // SimulationGroup is a group of [Simulation]'s at the same priority level (ie a partition of simulations).
 type SimulationGroup interface {
-	apicommon.Resettable
+	apicomponent.Resettable
 	// Name returns the name of the simulation group.
 	Name() string
-	// PriorityKey returns the simulation group key.
-	PriorityKey() apicommon.PriorityKey
+	// Key returns the simulation group key.
+	Key() GroupKey
 	// GetSimulations returns all simulations in this group.
 	GetSimulations() []Simulation
 	// AddSimulation adds a simulation to the group.
@@ -191,9 +204,9 @@ type SimulationGroup interface {
 // NodePodAssignment represents the assignment of pods to a node for simulation purposes.
 type NodePodAssignment struct {
 	// NodeResources contains the resource information for the node.
-	NodeResources NodeResourceInfo
+	NodeResources NodeResourceInfo `json:"nodeResources"`
 	// ScheduledPods contains the list of pods scheduled to this node.
-	ScheduledPods []PodResourceInfo
+	ScheduledPods []PodResourceInfo `json:"scheduledPods,omitempty"`
 }
 
 // PodResourceInfo contains resource information for a pod used by the [Simulation] and given by the [SimulationResult].
@@ -206,34 +219,34 @@ type PodResourceInfo struct {
 // NodeResourceInfo represents the instance type and resource information about a node given by the [SimulationResult].
 type NodeResourceInfo struct {
 	// Capacity is the total resource capacity of the node.
-	Capacity corev1.ResourceList
+	Capacity corev1.ResourceList `json:"capacity"`
 	// Allocatable is the allocatable resource capacity of the node.
-	Allocatable corev1.ResourceList
+	Allocatable corev1.ResourceList `json:"allocatable"`
 	// Name is the node name.
-	Name string
+	Name string `json:"name"`
 	// InstanceType is the cloud instance type of the node.
-	InstanceType string
+	InstanceType string `json:"instanceType"`
 }
 
 // VolumeClaimAssignment represents the assignment of a PersistentVolumeClaim to a PersistentVolume
 type VolumeClaimAssignment struct {
 	// ClaimName is the PVC namespaced name.
-	ClaimName apicommon.NamespacedName
+	ClaimName apicommon.NamespacedName `json:"claimName"`
 	// VolumeName is the name of the bound PV
-	VolumeName string
+	VolumeName string `json:"volumeName"`
 }
 
-// CmpSimulationDecreasingPriority is a cmp function for [ScaleOutSimulation] that compares by decreasing PriorityKey.
+// CmpSimulationDecreasingPriority is a cmp function for [ScaleOutSimulation] that compares by decreasing GroupKey.
 func CmpSimulationDecreasingPriority(s1, s2 Simulation) int {
-	return apicommon.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+	return CmpGroupKeyDecreasing(s1.GroupKey(), s2.GroupKey())
 }
 
-// CmpSimulationGroup is a cmp function for [SimulationGroup] that compares by decreasing PriorityKey.
+// CmpSimulationGroup is a cmp function for [SimulationGroup] that compares by decreasing GroupKey.
 func CmpSimulationGroup(s1, s2 SimulationGroup) int {
-	return apicommon.CmpPriorityKeyDecreasing(s1.PriorityKey(), s2.PriorityKey())
+	return CmpGroupKeyDecreasing(s1.Key(), s2.Key())
 }
 
-// CmpScaleOutNodeTemplate is a cmp function for [ScaleOutNodeTemplate] that compares by decreasing PriorityKey.
+// CmpScaleOutNodeTemplate is a cmp function for [ScaleOutNodeTemplate] that compares by decreasing GroupKey.
 func CmpScaleOutNodeTemplate(a, b ScaleOutNodeTemplate) int {
-	return apicommon.CmpPriorityKeyDecreasing(a.PriorityKey, b.PriorityKey)
+	return CmpGroupKeyDecreasing(a.GroupKey, b.GroupKey)
 }

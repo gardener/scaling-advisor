@@ -166,11 +166,16 @@ const (
 
 // Descriptor is an aggregate holder of various bits of type information on a given Kind
 type Descriptor struct {
-	GVK          schema.GroupVersionKind
-	ListGVK      schema.GroupVersionKind
-	GVR          schema.GroupVersionResource
+	// GVK is the GroupVersionKind of the resource.
+	GVK schema.GroupVersionKind
+	// ListGVK is the GroupVersionKind of the list resource.
+	ListGVK schema.GroupVersionKind
+	// GVR is the GroupVersionResource of the resource.
+	GVR schema.GroupVersionResource
+	// ListTypeMeta is the TypeMeta for the list resource, used when constructing list responses.
 	ListTypeMeta metav1.TypeMeta
-	APIResource  metav1.APIResource
+	// APIResource describes the resource for API discovery.
+	APIResource metav1.APIResource
 }
 
 // GetKind returns the Kind of the resource represented by this Descriptor.
@@ -189,7 +194,11 @@ func (d Descriptor) CreateObject() (obj metav1.Object, err error) {
 	if err != nil {
 		return
 	}
-	obj = runtimeObj.(metav1.Object)
+	var ok bool
+	obj, ok = runtimeObj.(metav1.Object)
+	if !ok {
+		err = fmt.Errorf("scheme returned %T for %v which does not implement metav1.Object", runtimeObj, d.GVK)
+	}
 	return
 }
 

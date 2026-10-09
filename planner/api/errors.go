@@ -48,6 +48,8 @@ var (
 	ErrNoUnscheduledPods = errors.New("no unscheduled pods")
 	// ErrNoScaleOutPlan is a sentinel error indicating that no ScaleOutPlan was generated.
 	ErrNoScaleOutPlan = errors.New("no scale-out plan")
+	// ErrNoScaleInPlan is a sentinel error indicating that no ScaleInPlan was generated.
+	ErrNoScaleInPlan = errors.New("no scale-in plan")
 	// ErrCreateNodeScorer is a sentinel error indicating that the planner cannot create a NodeScorer.
 	ErrCreateNodeScorer = errors.New("cannot create node scorer")
 	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
@@ -67,7 +69,7 @@ func AsGenError(id string, correlationID string, err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(ErrGenScalingPlan, err) {
+	if errors.Is(err, ErrGenScalingPlan) {
 		return err
 	}
 	return fmt.Errorf("%w: could not process request with id %q, correlationID %q: %w", ErrGenScalingPlan, id, correlationID, err)

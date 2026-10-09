@@ -5,6 +5,9 @@
 package v1alpha1
 
 import (
+	"fmt"
+	"strings"
+
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,10 +16,15 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={sa}
+// +kubebuilder:resource:shortName={scad},scope=Namespaced
+// +kubebuilder:printcolumn:name="Constraint",type=string,JSONPath=`.spec.constraintRef.name`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ScalingAdvice is the top-level object containing scaling advice produced by the scaling-advisor
 // from a [ScalingConstraint] applied against a k8s cluster.
+//
+// The lifecycle manager's response is written to a companion [ScalingFeedback] resource that shares
+// the same name and namespace and carries an owner reference back to this object.
 //
 //nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type ScalingAdvice struct {
@@ -38,7 +46,6 @@ type ScalingAdviceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	// Items is a slice of ScalingAdvice.
-	// +kubebuilder:validation:MinItems=1
 	// +required
 	Items []ScalingAdvice `json:"items"`
 }
@@ -52,8 +59,6 @@ type ScalingAdviceSpec struct {
 	// +optional
 	ScaleIn *ScaleInPlan `json:"scaleIn,omitempty"`
 	// Diagnostic provides diagnostics information for the scaling advice.
-	// This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-	// set on the corresponding ScalingConstraint resource.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
 	// ConstraintRef references the [ScalingConstraint] for which this [ScalingAdvice] was generated.
@@ -61,12 +66,10 @@ type ScalingAdviceSpec struct {
 	ConstraintRef apicommon.NamespacedName `json:"constraintRef"`
 }
 
-// ScalingAdviceStatus contains the observed status from the lifecycle manager (external actor which consumes the
-// [ScalingAdviceSpec]. It holds the [ScalingFeedback] and [metav1.Condition]'s.
+// ScalingAdviceStatus contains the observed status from the scaling-advisor controller.
+// Lifecycle manager feedback is written to the companion [ScalingFeedback] resource
+// (same name and namespace, owner reference pointing to this object).
 type ScalingAdviceStatus struct {
-	// Feedback represents the [ScalingFeedback] from the lifecycle manager applying the [ScalingAdvice]
-	// +optional
-	Feedback *ScalingFeedback `json:"feedback,omitempty"`
 	// Conditions contains the [metav1.Condition]'s for this ScalingAdvice.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -93,7 +96,9 @@ type ScaleInPlan struct {
 
 // ScaleInItem is the unit of scaling-in advice for a specific node.
 type ScaleInItem struct {
-	NodePlacement `json:",inline"`
+	// NodePlacement identifies the target pool, template, and cloud location for this scale-in.
+	// +required
+	NodePlacement NodePlacement `json:"nodePlacement"`
 	// NodeName is the name of the node to be scaled in.
 	// +required
 	NodeName string `json:"nodeName"`
@@ -101,8 +106,15 @@ type ScaleInItem struct {
 
 // ScaleOutItem is the unit of scaling advice for a node pool.
 type ScaleOutItem struct {
-	NodePlacement `json:",inline"`
+	// NodePlacement identifies the target pool, template, and cloud location for this scale-out.
+	// +required
+	NodePlacement NodePlacement `json:"nodePlacement"`
+	// Name represents a logical name for this scale-out item. This is generated name unique within this ScalingAdvice.
+	// Ex: of the form: scaleout-<index>
+	// +required
+	Name string `json:"name"`
 	// CurrentReplicas is the current number of replicas for the NodePlacement.
+	// +kubebuilder:validation:Minimum=0
 	// +required
 	CurrentReplicas int32 `json:"currentReplicas"`
 	// Delta is the delta change in the number of nodes for the NodePlacement.
@@ -130,72 +142,34 @@ type NodePlacement struct {
 	AvailabilityZone string `json:"availabilityZone"`
 }
 
+// MarshalText encodes NodePlacement as a |-separated string for use as a JSON map key.
+// Value receiver is intentional: encoding/json requires TextMarshaler on the value type (not *T) to marshal map keys.
+//
+//nolint:recvcheck
+func (n NodePlacement) MarshalText() ([]byte, error) {
+	return []byte(n.PoolName + "|" + n.TemplateName + "|" + n.InstanceType + "|" + n.Region + "|" + n.AvailabilityZone), nil
+}
+
+// UnmarshalText decodes a |-separated string produced by [NodePlacement.MarshalText].
+func (n *NodePlacement) UnmarshalText(text []byte) error {
+	parts := strings.SplitN(string(text), "|", 5)
+	if len(parts) != 5 {
+		return fmt.Errorf("invalid NodePlacement text %q: expected 5 |-separated fields", string(text))
+	}
+	n.PoolName = parts[0]
+	n.TemplateName = parts[1]
+	n.InstanceType = parts[2]
+	n.Region = parts[3]
+	n.AvailabilityZone = parts[4]
+	return nil
+}
+
 // ScalingAdviceDiagnostic provides diagnostics information for the scaling advice.
 type ScalingAdviceDiagnostic struct {
 	// TraceLogName is the name of the trace log. This can be used to fetch the trace log.
+	// +required
 	TraceLogName string `json:"traceLogName"`
-	// RunResultsLogName is the name of the run resets log.  This can be used to fetch the run results log.
+	// RunResultsLogName is the name of the run results log.  This can be used to fetch the run results log.
+	// +required
 	RunResultsLogName string `json:"runResultsLogName"`
-}
-
-// ScalingFeedback provides scale-in and scale-out feedback from the lifecycle manager.
-// Scaling advisor can refine its future scaling advice based on this feedback.
-type ScalingFeedback struct {
-	// ScaleOut is the scale-out feedback from the lifecycle manager when applying [ScaleOutPlan]
-	// [ScalingAdviceSpec].
-	ScaleOut *ScaleOutFeedback `json:"scaleOut,omitempty"`
-	// ScaleIn is the scale-in feedback from life-cycle manager when applying [ScaleInPlan]
-	ScaleIn *ScaleInFeedback `json:"scaleIn,omitempty"`
-}
-
-// ScalingErrorType defines the type of scaling error.
-//
-// +kubebuilder:validation:Enum=ResourceExhaustedError;CreationTimeoutError
-type ScalingErrorType string
-
-const (
-	// ScalingErrorTypeResourceExhausted indicates that the lifecycle manager could not create the instance due to resource exhaustion for an instance type in an availability zone.
-	ScalingErrorTypeResourceExhausted ScalingErrorType = "ResourceExhaustedError"
-	// ScalingErrorTypeCreationTimeout indicates that the lifecycle manager could not create the instance within its configured timeout despite multiple attempts.
-	ScalingErrorTypeCreationTimeout ScalingErrorType = "CreationTimeoutError"
-)
-
-// ScaleOutFeedback is the feedback from the life cycle manager when applying an [ScaleOutPlan] of a [ScalingAdviceSpec]
-type ScaleOutFeedback struct {
-	// Items contains item feedback corresponding to [ScaleOutItem]. This field must be non-empty whenever
-	// [ScaleOutFeedback] is present.
-	// +kubebuilder:validation:MinItems=1
-	// +required
-	Items []ScaleOutItemFeedback `json:"items"`
-}
-
-// ScaleOutItemFeedback is the feedback from the life cycle manager when applying an individual [ScaleOutItem].
-type ScaleOutItemFeedback struct {
-	// CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available
-	// for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,
-	// this field is mandatory to be set inside all [ScaleOutItemFeedback]
-	// +required
-	CreationDeadline metav1.Time `json:"creationDeadline"`
-	// BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding
-	// [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s
-	// +optional
-	BackoffUntil *metav1.Time `json:"backoffUntil,omitempty"`
-	// ErrorType is the type of error that occurred during scale-out.
-	// +optional
-	ErrorType ScalingErrorType `json:"errorType,omitempty"`
-	// Index represents the item index in [ScaleOutPlan.Items]
-	// +required
-	Index int32 `json:"index"`
-	// FailCount is the number of nodes that have failed creation.
-	// +optional
-	FailCount int32 `json:"failCount,omitzero"`
-}
-
-// ScaleInFeedback is  the feedback from the life cycle manager after applying [ScaleInPlan]
-type ScaleInFeedback struct {
-	// AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
-	// This field must be non-empty whenever [ScaleInFeedback] is present.
-	// +kubebuilder:validation:MinItems=1
-	// +required
-	AcceptedNodeNames []string `json:"acceptedNodeNames"`
 }

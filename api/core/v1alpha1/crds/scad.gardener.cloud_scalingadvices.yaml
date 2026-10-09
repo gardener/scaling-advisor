@@ -4,24 +4,34 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: scalingadvices.sa.gardener.cloud
+  name: scalingadvices.scad.gardener.cloud
 spec:
-  group: sa.gardener.cloud
+  group: scad.gardener.cloud
   names:
     kind: ScalingAdvice
     listKind: ScalingAdviceList
     plural: scalingadvices
     shortNames:
-    - sa
+    - scad
     singular: scalingadvice
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.constraintRef.name
+      name: Constraint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
           ScalingAdvice is the top-level object containing scaling advice produced by the scaling-advisor
           from a [ScalingConstraint] applied against a k8s cluster.
+
+          The lifecycle manager's response is written to a companion [ScalingFeedback] resource that shares
+          the same name and namespace and carries an owner reference back to this object.
         properties:
           apiVersion:
             description: |-
@@ -57,14 +67,12 @@ spec:
                 - name
                 type: object
               diagnostic:
-                description: |-
-                  Diagnostic provides diagnostics information for the scaling advice.
-                  This is only set by the scaling advisor controller if the constants.AnnotationEnableScalingDiagnostics annotation is
-                  set on the corresponding ScalingConstraint resource.
+                description: Diagnostic provides diagnostics information for the scaling
+                  advice.
                 properties:
                   runResultsLogName:
-                    description: RunResultsLogName is the name of the run resets log.  This
-                      can be used to fetch the run results log.
+                    description: RunResultsLogName is the name of the run results
+                      log.  This can be used to fetch the run results log.
                     type: string
                   traceLogName:
                     description: TraceLogName is the name of the trace log. This can
@@ -84,33 +92,17 @@ spec:
                       description: ScaleInItem is the unit of scaling-in advice for
                         a specific node.
                       properties:
-                        availabilityZone:
-                          description: AvailabilityZone is the availability zone of
-                            the node pool.
-                          type: string
-                        instanceType:
-                          description: InstanceType is the instance type of the Node
-                          type: string
                         nodeName:
                           description: NodeName is the name of the node to be scaled
                             in.
                           type: string
-                        poolName:
-                          description: PoolName is the name of the node pool.
-                          type: string
-                        region:
-                          description: Region is the region of the instance
-                          type: string
-                        templateName:
-                          description: TemplateName is the name of the node template.
+                        nodePlacement:
+                          description: NodePlacement identifies the target pool, template,
+                            and cloud location for this scale-in.
                           type: string
                       required:
-                      - availabilityZone
-                      - instanceType
                       - nodeName
-                      - poolName
-                      - region
-                      - templateName
+                      - nodePlacement
                       type: object
                     minItems: 1
                     type: array
@@ -127,14 +119,11 @@ spec:
                       description: ScaleOutItem is the unit of scaling advice for
                         a node pool.
                       properties:
-                        availabilityZone:
-                          description: AvailabilityZone is the availability zone of
-                            the node pool.
-                          type: string
                         currentReplicas:
                           description: CurrentReplicas is the current number of replicas
                             for the NodePlacement.
                           format: int32
+                          minimum: 0
                           type: integer
                         delta:
                           description: Delta is the delta change in the number of
@@ -142,26 +131,20 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
-                        instanceType:
-                          description: InstanceType is the instance type of the Node
+                        name:
+                          description: |-
+                            Name represents a logical name for this scale-out item. This is generated name unique within this ScalingAdvice.
+                            Ex: of the form: scaleout-<index>
                           type: string
-                        poolName:
-                          description: PoolName is the name of the node pool.
-                          type: string
-                        region:
-                          description: Region is the region of the instance
-                          type: string
-                        templateName:
-                          description: TemplateName is the name of the node template.
+                        nodePlacement:
+                          description: NodePlacement identifies the target pool, template,
+                            and cloud location for this scale-out.
                           type: string
                       required:
-                      - availabilityZone
                       - currentReplicas
                       - delta
-                      - instanceType
-                      - poolName
-                      - region
-                      - templateName
+                      - name
+                      - nodePlacement
                       type: object
                     minItems: 1
                     type: array
@@ -239,77 +222,6 @@ spec:
                   - type
                   type: object
                 type: array
-              feedback:
-                description: Feedback represents the [ScalingFeedback] from the lifecycle
-                  manager applying the [ScalingAdvice]
-                properties:
-                  scaleIn:
-                    description: ScaleIn is the scale-in feedback from life-cycle
-                      manager when applying [ScaleInPlan]
-                    properties:
-                      acceptedNodeNames:
-                        description: |-
-                          AcceptedNodeNames holds the slice of node names that were accepted for scale-in by the lifecycle controller.
-                          This field must be non-empty whenever [ScaleInFeedback] is present.
-                        items:
-                          type: string
-                        minItems: 1
-                        type: array
-                    required:
-                    - acceptedNodeNames
-                    type: object
-                  scaleOut:
-                    description: |-
-                      ScaleOut is the scale-out feedback from the lifecycle manager when applying [ScaleOutPlan]
-                      [ScalingAdviceSpec].
-                    properties:
-                      items:
-                        description: |-
-                          Items contains item feedback corresponding to [ScaleOutItem]. This field must be non-empty whenever
-                          [ScaleOutFeedback] is present.
-                        items:
-                          description: ScaleOutItemFeedback is the feedback from the
-                            life cycle manager when applying an individual [ScaleOutItem].
-                          properties:
-                            backoffUntil:
-                              description: |-
-                                BackoffUntil if populated, represents the time until the scaling-advisor will not consider the corresponding
-                                [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent [ScaleOutPlan]'s
-                              format: date-time
-                              type: string
-                            creationDeadline:
-                              description: |-
-                                CreationDeadline represents the time after which the scaling-advisor can expect real nodes to be created and available
-                                for the corresponding [ScaleOutItem]'s [NodePlacement]. When the [ScalingFeedback] is constructed by the life-cycle manager,
-                                this field is mandatory to be set inside all [ScaleOutItemFeedback]
-                              format: date-time
-                              type: string
-                            errorType:
-                              description: ErrorType is the type of error that occurred
-                                during scale-out.
-                              enum:
-                              - ResourceExhaustedError
-                              - CreationTimeoutError
-                              type: string
-                            failCount:
-                              description: FailCount is the number of nodes that have
-                                failed creation.
-                              format: int32
-                              type: integer
-                            index:
-                              description: Index represents the item index in [ScaleOutPlan.Items]
-                              format: int32
-                              type: integer
-                          required:
-                          - creationDeadline
-                          - index
-                          type: object
-                        minItems: 1
-                        type: array
-                    required:
-                    - items
-                    type: object
-                type: object
             type: object
         required:
         - spec

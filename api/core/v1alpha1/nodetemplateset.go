@@ -7,14 +7,14 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName={nts}
+// +kubebuilder:resource:shortName={nts},scope=Namespaced
 
-// NodeTemplateSet defines top-level object with a [NodeTemplateSetSpec] holding all the [NodeTemplate]'s known
-// to the scaling-advisor. Any NodeTemplate referenced in a [NodePool] within a [ScalingConstraintSpec] must have a
-// corresponding [NodeTemplate] object within the data plane.
+// NodeTemplateSet defines a top-level object whose spec contains all [NodeTemplate]s known to the scaling-advisor.
+//
+// Any NodeTemplate referenced by a [NodePool] in a [ScalingConstraintSpec] must exist in the NodeTemplateSet.
 type NodeTemplateSet struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the specification of the NodeTemplateSet
 	// +required
 	Spec NodeTemplateSetSpec `json:"spec"`
@@ -36,34 +36,31 @@ type NodeTemplateSetList struct {
 type NodeTemplateSetSpec struct {
 	// Templates is a slice of [NodeTemplate]'s. NodeTemplate names should be unique.
 	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=name
 	// +required
 	Templates []NodeTemplate `json:"templates"`
 }
 
 // NodeTemplate defines a node template configuration for an instance type. Multiple NodeTemplates may reference the
-// same instance type which permits different reserved resource configurations for the same underlying instance type.
+// same instance type which permits different reserved resource configurations (and scaling limits?)
+// for the same underlying instance type.
 // However, node template names are expected to be unique within a [NodeTemplateSet].
 type NodeTemplate struct {
-	// Capacity specifies the capacity of resources that are available for the instance type of this node template.
-	// +required
-	Capacity corev1.ResourceList `json:"capacity"`
-	// Reserved specifies the capacity for total reserved resources. This should include both system and Kubernetes components.
+	// ExtendedResources specifies Kubernetes extended resources advertised by nodes created from this template, over
+	// and above the instance type's BaseResources.
 	// +optional
-	Reserved corev1.ResourceList `json:"reservedCapacity,omitempty"`
+	ExtendedResources corev1.ResourceList `json:"extendedResources,omitempty"`
+	// ReservedResources specifies resources reserved for the operating system, Kubernetes components, and other node-level
+	// services. These resources are not available for scheduling workloads.
+	// +required
+	ReservedResources corev1.ResourceList `json:"reservedResources"`
+	// InstanceType is the instance type of the node template. Should be associated with some [InstanceTypeDef].
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	InstanceType string `json:"instanceType"`
 	// Name is a logical name given to this NodeTemplate specification
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	Name string `json:"name"`
-	// Architecture is the architecture of the instance type.
-	// +kubebuilder:validation:MinLength=1
-	// +required
-	Architecture string `json:"architecture"`
-	// InstanceType is the instance type of the node template.
-	// +kubebuilder:validation:MinLength=1
-	// +required
-	InstanceType string `json:"instanceType"`
-	// MaxVolumes is the max number of volumes that can be attached to a node of this instance type.
-	// +kubebuilder:validation:Minimum=0
-	// +required
-	MaxVolumes int32 `json:"maxVolumes,omitzero"`
 }

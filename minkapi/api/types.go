@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	apicommon "github.com/gardener/scaling-advisor/api/common"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,7 +58,7 @@ type Config struct {
 	// Defaults to [DefaultBasePrefix]
 	BasePrefix string
 	// ServerConfig holds the server config parameters
-	ServerConfig apicommon.ServerConfig
+	ServerConfig apicomponent.ServerConfig
 	// WatchConfig holds config parameters relevant for watchers.
 	WatchConfig WatchConfig
 }
@@ -102,7 +102,7 @@ type WatchEventCallback func(watch.Event) (err error)
 
 // ResourceStore defines an interface for storing and managing Kubernetes resources with watch capabilities.
 type ResourceStore interface {
-	apicommon.Resettable
+	apicomponent.Resettable
 	io.Closer
 	// GetObjAndListGVK gets the object GVK and object list GVK associated with this resource store.
 	GetObjAndListGVK() (objKind schema.GroupVersionKind, objListKind schema.GroupVersionKind)
@@ -162,7 +162,7 @@ type ResourceStoreArgs struct {
 
 // EventSink defines an interface for storing and retrieving Kubernetes events.
 type EventSink interface {
-	apicommon.Resettable
+	apicomponent.Resettable
 	events.EventSink
 	// List returns all events in the sink.
 	List() []eventsv1.Event
@@ -170,7 +170,7 @@ type EventSink interface {
 
 // View is the high-level facade to a repository of objects of different types (GVK).
 type View interface {
-	apicommon.Resettable
+	apicomponent.Resettable
 	io.Closer
 	// GetName returns the name of this view.
 	GetName() string
@@ -268,7 +268,7 @@ type ViewAccess interface {
 // Server represents a MinKAPI server that provides access to a KAPI (kubernetes API) core accessible at http://<MinKAPIHost>:<MinKAPIPort>/base
 // It also supports methods to create "sandbox" (private) views accessible at http://<MinKAPIHost>:<MinKAPIPort>/sandboxName
 type Server interface {
-	apicommon.Service
+	apicomponent.Service
 	ViewAccess
 }
 
@@ -283,6 +283,7 @@ type App struct {
 	// Server is the MinKAPI server instance.
 	Server Server
 }
+
 // MatchCriteria defines criteria for matching Kubernetes objects.
 // The precedence of criteria for matching is as follows in the order of highest precedence to lowest:
 // Namespace, ExcludeNames, Names, LabelSelector

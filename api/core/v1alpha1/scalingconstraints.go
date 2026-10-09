@@ -17,18 +17,21 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName={sc}
+// +kubebuilder:resource:shortName={scon},scope=Namespaced
+// +kubebuilder:printcolumn:name="PlannerStrategy",type=string,JSONPath=`.spec.plannerStrategy`
+// +kubebuilder:printcolumn:name="SimulatorStrategy",type=string,JSONPath=`.spec.simulatorStrategy`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ScalingConstraint defines the inputs and constraints used to generate [ScalingAdvice] for a cluster.
 type ScalingConstraint struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec specifies the inputs and constraints used to generate [ScalingAdvice].
 	// +required
 	Spec ScalingConstraintSpec `json:"spec"`
 	// Status contains validation and processing information for this ScalingConstraint.
 	// +optional
-	Status ScalingConstraintStatus `json:"status,omitzero"`
+	Status ScalingConstraintStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -37,34 +40,40 @@ type ScalingConstraint struct {
 // ScalingConstraintList is a list of ScalingConstraint.
 type ScalingConstraintList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	// Items is a slice of ScalingConstraint's.
 	// +required
 	Items []ScalingConstraint `json:"items"`
 }
 
-// ScalingConstraintSpec defines the inputs and constraints used to generate [ScalingAdvice].
+// ScalingConstraintSpec defines the constraints used to generate [ScalingAdvice].
 type ScalingConstraintSpec struct {
 	// SimulatorStrategy defines the simulator strategy used by the scaling planner.
 	// +optional
-	SimulatorStrategy apicommon.SimulatorStrategy `json:"simulatorStrategy"`
-	// ScoringStrategy defines the node scoring strategy to use the [apicommon.SimulatorStrategySingleNodeMultiSim] '
-	// strategy.
+	SimulatorStrategy apicommon.SimulatorStrategy `json:"simulatorStrategy,omitempty"`
+	// ScoringStrategy selects the algorithm used to score and rank candidate scale-out nodes.
+	// Only relevant when [SimulatorStrategy] is [apicommon.SimulatorStrategySingleNodeMultiSim].
 	// +optional
-	ScoringStrategy apicommon.NodeScoringStrategy `json:"scoringStrategy"`
+	ScoringStrategy apicommon.NodeScoringStrategy `json:"scoringStrategy,omitempty"`
+	// PlannerStrategy defines the high-level approach the scaling planner uses to combine scale-in and scale-out
+	// simulation results into a final [ScalingAdvice]. It controls the order and scope of simulations performed.
+	// +required
+	PlannerStrategy apicommon.PlannerStrategy `json:"plannerStrategy"`
 	// NodePools is the list of node pools to choose from when creating scaling advice.
 	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=name
 	// +required
 	NodePools []NodePool `json:"nodePools"`
 }
 
 // GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
 func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
-	zoneSet := sets.NewString()
+	zoneSet := sets.New[string]()
 	for _, p := range c.NodePools {
 		zoneSet.Insert(p.AvailabilityZones...)
 	}
-	zones := zoneSet.List()
+	zones := zoneSet.UnsortedList()
 	slices.Sort(zones)
 	return zones
 }
@@ -78,42 +87,40 @@ type ScalingConstraintStatus struct {
 
 // NodePool defines a scalable node pool together with the [NodeTemplate]s that may be used to provision nodes in the
 // pool.
+//
+//nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type NodePool struct {
-	// Labels is a map of key/value pairs for labels applied to all the nodes in this node pool.
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
-	// +optional
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// Name is the name of the node pool. It must be unique within the cluster.
-	// +required
-	Name string `json:"name"`
-	// Region is the name of the region.
-	// +required
-	Region string `json:"region"`
-	// Taints is a list of taints applied to all the nodes in this node pool.
-	// +optional
-	Taints []corev1.Taint `json:"taints,omitempty"`
-	// AvailabilityZones is a list of availability zones for the node pool.
-	// +required
-	AvailabilityZones []string `json:"availabilityZones"`
-	// NodeTemplateRefs references the NodeTemplates that may be used by this NodePool together with their relative
-	// priorities and optional scaling limits.
+	Labels           map[string]string `json:"labels,omitempty"`
+	Annotations      map[string]string `json:"annotations,omitempty"`
+	ScalingParams    *ScalingParams    `json:"scalingParams,omitempty"`
+	Name             string            `json:"name"`
+	Region           string            `json:"region"`
+	Taints           []corev1.Taint    `json:"taints,omitempty"`
+	StartupTaintKeys []string          `json:"startupTaintKeys,omitempty"`
+	// AvailabilityZones is the list of availability zones in which nodes may be provisioned for this pool.
 	// +kubebuilder:validation:MinItems=1
-	// +required
+	AvailabilityZones []string `json:"availabilityZones"`
+	// NodeTemplateRefs is the list of node templates that may be used to provision nodes in this pool.
+	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=name
 	NodeTemplateRefs []NodeTemplateRef `json:"nodeTemplateRefs"`
-	// Priority is the priority of the node pool.
+	// Priority defines the preference for this NodePool when selecting a scale-out candidate.
+	//
+	// If omitted, the default implicit priority is zero. Higher values are preferred.
+	// +kubebuilder:validation:Minimum=0
 	// +optional
-	Priority int32 `json:"priority,omitzero"`
+	Priority int32 `json:"priority,omitempty"`
 }
 
 // NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
-// its relative priority and optional [ScalingLimits].
+// its relative priority and optional [ResourceLimits].
 type NodeTemplateRef struct {
-	// Limits specifies optional scaling limits for the referenced NodeTemplate within the parent NodePool.
+	// Quota specifies optional resource limits for the referenced NodeTemplate within the parent NodePool.
 	// +optional
-	Limits *ScalingLimits `json:"limits,omitempty"`
-	// Name is the name of the referenced [NodeTemplate].  The referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
+	Quota *ResourceLimits `json:"quota,omitempty"`
+	// Name is the name of the referenced [NodeTemplate]. The referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
+	// +kubebuilder:validation:MinLength=1
 	// +required
 	Name string `json:"name"`
 	// Priority defines the preference for this NodeTemplate when selecting a scale-out candidate in the parent NodePool.
@@ -121,16 +128,40 @@ type NodeTemplateRef struct {
 	// If omitted, the default implicit priority is zero. Higher values are preferred.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	Priority int32 `json:"priority,omitzero"`
+	Priority int32 `json:"priority,omitempty"`
 }
 
-// ScalingLimits specify the minimum and maximum aggregate resources that may be provisioned for the referenced
-// [NodeTemplate] within a [NodePool]. They are declared within a [NodeTemplateRef].
-type ScalingLimits struct {
+// ResourceLimits specify the minimum and maximum aggregate resources that may be provisioned for the referenced
+// [NodeTemplate] within a [NodePool].
+type ResourceLimits struct {
 	// Min specifies the minimum aggregate resources that may be provisioned.
 	// +optional
 	Min corev1.ResourceList `json:"min,omitempty"`
 	// Max specifies the maximum aggregate resources that may be provisioned.
 	// +optional
 	Max corev1.ResourceList `json:"max,omitempty"`
+}
+
+// ScalingParams specifies the scaling parameters to be used when scaling a node pool.
+//
+//nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
+type ScalingParams struct {
+	UtilizationThresholds []ResourceUtilizationThreshold `json:"utilizationThresholds,omitempty"`
+	UnderutilizedDuration metav1.Duration                `json:"underutilizedDuration,omitempty"`
+}
+
+// ResourceUtilizationThreshold pairs a resource name with its utilization threshold.
+type ResourceUtilizationThreshold struct {
+	// Name is the resource name (e.g. "cpu", "memory", "nvidia.com/gpu").
+	// +required
+	Name corev1.ResourceName `json:"name"`
+	// Threshold is the utilization fraction at or below which the node is considered underutilized,
+	// expressed as a decimal string in the range (0, 1].
+	// Examples: "0.5" (50 %), "1" (100 %).
+	//
+	// Using string rather than float64 follows the same convention as [ResourceUnitPrice.Value] and
+	// other Kubernetes ecosystem projects to avoid floating-point serialization issues in CRD fields.
+	// +kubebuilder:validation:Pattern=`^(0(\.[0-9]+)?|1(\.0+)?)$`
+	// +required
+	Threshold string `json:"threshold"`
 }

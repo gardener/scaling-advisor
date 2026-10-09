@@ -14,10 +14,19 @@ import (
 )
 
 const (
-	defaultLeaderElectionResourceLock = "leases"
-	defaultLeaderElectionResourceName = "scalingadvisor-operator-leader-election"
-	defaultConcurrentSyncs            = 2
+	defaultLeaderElectionResourceLock      = "leases"
+	defaultLeaderElectionResourceName      = "scalingadvisor-leader-election"
+	defaultLeaderElectionResourceNamespace = "kube-system"
+	defaultConcurrentSyncs                 = 2
 )
+
+// SetDefaults_OperatorConfig sets defaults for all fields of the OperatorConfig.
+func SetDefaults_OperatorConfig(config *OperatorConfig) {
+	SetDefaults_ScalingAdvisorServerConfiguration(&config.Server)
+	SetDefaults_ClientConnectionConfiguration(&config.ClientConnection)
+	SetDefaults_LeaderElectionConfiguration(&config.LeaderElection)
+	SetDefaults_ScalingConstraintsControllerConfiguration(&config.Controllers.ScalingConstraints)
+}
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
 func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfig) {
@@ -40,6 +49,9 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectio
 	}
 	if leaderElectionConfig.RetryPeriod == zero {
 		leaderElectionConfig.RetryPeriod = metav1.Duration{Duration: 2 * time.Second}
+	}
+	if leaderElectionConfig.ResourceNamespace == "" {
+		leaderElectionConfig.ResourceNamespace = defaultLeaderElectionResourceNamespace
 	}
 	if leaderElectionConfig.ResourceLock == "" {
 		leaderElectionConfig.ResourceLock = defaultLeaderElectionResourceLock

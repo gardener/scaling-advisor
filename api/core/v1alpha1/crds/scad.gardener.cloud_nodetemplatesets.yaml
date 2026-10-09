@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: nodetemplatesets.sa.gardener.cloud
+  name: nodetemplatesets.scad.gardener.cloud
 spec:
-  group: sa.gardener.cloud
+  group: scad.gardener.cloud
   names:
     kind: NodeTemplateSet
     listKind: NodeTemplateSetList
@@ -20,9 +20,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          NodeTemplateSet defines top-level object with a [NodeTemplateSetSpec] holding all the [NodeTemplate]'s known
-          to the scaling-advisor. Any NodeTemplate referenced in a [NodePool] within a [ScalingConstraintSpec] must have a
-          corresponding [NodeTemplate] object within the data plane.
+          NodeTemplateSet defines a top-level object whose spec contains all [NodeTemplate]s known to the scaling-advisor.
+
+          Any NodeTemplate referenced by a [NodePool] in a [ScalingConstraintSpec] must exist in the NodeTemplateSet.
         properties:
           apiVersion:
             description: |-
@@ -50,59 +50,52 @@ spec:
                 items:
                   description: |-
                     NodeTemplate defines a node template configuration for an instance type. Multiple NodeTemplates may reference the
-                    same instance type which permits different reserved resource configurations for the same underlying instance type.
+                    same instance type which permits different reserved resource configurations (and scaling limits?)
+                    for the same underlying instance type.
                     However, node template names are expected to be unique within a [NodeTemplateSet].
                   properties:
-                    architecture:
-                      description: Architecture is the architecture of the instance
-                        type.
-                      minLength: 1
-                      type: string
-                    capacity:
+                    extendedResources:
                       additionalProperties:
                         anyOf:
                         - type: integer
                         - type: string
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
-                      description: Capacity specifies the capacity of resources that
-                        are available for the instance type of this node template.
+                      description: |-
+                        ExtendedResources specifies Kubernetes extended resources advertised by nodes created from this template, over
+                        and above the instance type's BaseResources.
                       type: object
                     instanceType:
                       description: InstanceType is the instance type of the node template.
+                        Should be associated with some [InstanceTypeDef].
                       minLength: 1
                       type: string
-                    maxVolumes:
-                      description: MaxVolumes is the max number of volumes that can
-                        be attached to a node of this instance type.
-                      format: int32
-                      minimum: 0
-                      type: integer
                     name:
                       description: Name is a logical name given to this NodeTemplate
                         specification
                       minLength: 1
                       type: string
-                    reservedCapacity:
+                    reservedResources:
                       additionalProperties:
                         anyOf:
                         - type: integer
                         - type: string
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
-                      description: Reserved specifies the capacity for total reserved
-                        resources. This should include both system and Kubernetes
-                        components.
+                      description: |-
+                        ReservedResources specifies resources reserved for the operating system, Kubernetes components, and other node-level
+                        services. These resources are not available for scheduling workloads.
                       type: object
                   required:
-                  - architecture
-                  - capacity
                   - instanceType
-                  - maxVolumes
                   - name
+                  - reservedResources
                   type: object
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             required:
             - templates
             type: object

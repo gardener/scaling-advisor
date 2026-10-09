@@ -28,15 +28,8 @@ function generate_deepcopy_defaulter() {
 
 function generate_crds() {
   local output_dir="${API_GO_MODULE_ROOT}/core/v1alpha1/crds"
-  local package="github.com/gardener/scaling-advisor/api/core/v1alpha1"
-  local package_path="$(go list -f '{{.Dir}}' "${package}")"
 
-  if [ -z "${package_path}" ]; then
-    echo >&2 "Could not locate directory for package: ${package}"
-    exit 1
-  fi
-
-  if [ -z "${output_dir}" ]; then
+  if [ ! -d "${output_dir}" ]; then
     mkdir -p "${output_dir}"
   fi
 
@@ -45,7 +38,7 @@ function generate_crds() {
     rm "${output_dir}/*.yaml"
   fi
 
-  controller-gen crd:allowDangerousTypes=true paths="${package_path}" output:crd:dir="${output_dir}" output:stdout
+  controller-gen crd paths="${API_GO_MODULE_ROOT}/..." output:crd:dir="${output_dir}" output:stdout
 }
 
 function main() {

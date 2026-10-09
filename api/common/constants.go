@@ -14,9 +14,9 @@ const (
 	// OperatorName is the name of the scalingadvisor operator.
 	OperatorName = "scalingadvisor"
 	// OperatorConfigGroupName is the group name for OperatorConfiguration
-	OperatorConfigGroupName = "config.sa.gardener.cloud"
+	OperatorConfigGroupName = "config.scad.gardener.cloud"
 	// OperatorGroupName is the name of the group for all scaling recommender custom resources.
-	OperatorGroupName = "sa.gardener.cloud"
+	OperatorGroupName = "scad.gardener.cloud"
 )
 
 const (
@@ -32,35 +32,43 @@ const (
 	// AnnotationEnableScalingDiagnostics is the annotation key to enable scaling diagnostics for a cluster.
 	// This is applied by a user/tool on the ClusterScalingConstraint object which produces diagnostics within
 	// the generated ClusterScalingAdvice.Status.
-	AnnotationEnableScalingDiagnostics = "sa.gardener.cloud/enable-scaling-diagnostics"
+	AnnotationEnableScalingDiagnostics = "scad.gardener.cloud/enable-scaling-diagnostics"
+
+	// AnnotationScaleInDisabled is the annotation key present on a node to indicate that scale-in for this node is disabled.
+	AnnotationScaleInDisabled = "scad.gardener.cloud/scale-in-disabled"
+
+	// AnnotationDoNotDisrupt is the annotation key present on a node or pod to indicate that it must not be disrupted.
+	// On a node object this means that the node must not be scaled-in. On a Pod object, this means the Pod cannot be moved
+	// to another node.
+	AnnotationDoNotDisrupt = "scad.gardener.cloud/do-not-disrupt"
 )
 
 const (
 	// LabelSimulationName is the label key to identify name of the simulation inside a simulation group.
-	LabelSimulationName = "sa.gardener.cloud/simulation-name"
+	LabelSimulationName = "scad.gardener.cloud/simulation-name"
 	// LabelSimulationGroupName is the label key to identify the name of the simulation group.
-	LabelSimulationGroupName = "sa.gardener.cloud/simulation-group-name"
+	LabelSimulationGroupName = "scad.gardener.cloud/simulation-group-name"
 	// LabelSimulationRunNum is the label key to identify the run number for the simulation which produced this object.
-	LabelSimulationRunNum = "sa.gardener.cloud/simulation-run-num"
+	LabelSimulationRunNum = "scad.gardener.cloud/simulation-run-num"
 	// LabelNodePoolName is the label key to identify the node pool name for which the simulation is being run.
-	LabelNodePoolName = "sa.gardener.cloud/node-pool-name"
+	LabelNodePoolName = "scad.gardener.cloud/node-pool-name"
 	// LabelNodeTemplateName is the label key to identify the node template name for which the simulation is being run.
-	LabelNodeTemplateName = "sa.gardener.cloud/node-template-name"
+	LabelNodeTemplateName = "scad.gardener.cloud/node-template-name"
 	// LabelRequestID is the label key to identify the request Name of scaling advice request.
-	LabelRequestID = "sa.gardener.cloud/request-id"
+	LabelRequestID = "scad.gardener.cloud/request-id"
 	// LabelCorrelationID is the label key to identify the correlation Name of the scaling advice request.
-	LabelCorrelationID = "sa.gardener.cloud/correlation-id"
+	LabelCorrelationID = "scad.gardener.cloud/correlation-id"
 	// LabelTotalSimulationRuns is the label key to indicate the total number of simulation runs made across all simulation groups to produce ScaleOutPlan
-	LabelTotalSimulationRuns = "sa.gardener.cloud/total-simulation-runs"
+	LabelTotalSimulationRuns = "scad.gardener.cloud/total-simulation-runs"
 
 	// LabelPlanGenerateDuration is the label key for the duration taken for the scaling planner to generate a scaling plan for a request.
-	LabelPlanGenerateDuration = "sa.gardener.cloud/plan-generate-duration"
+	LabelPlanGenerateDuration = "scad.gardener.cloud/plan-generate-duration"
 
 	// LabelConstraintNumPools is the label key for the number of pools in the scaling constraint.
-	LabelConstraintNumPools = "sa.gardener.cloud/constraint-num-pools"
+	LabelConstraintNumPools = "scad.gardener.cloud/constraint-num-pools"
 
 	// LabelSnapshotNumUnscheduledPods is the label key for the number of unscheduled pods in the snapshot.
-	LabelSnapshotNumUnscheduledPods = "sa.gardener.cloud/snapshot-num-unscheduled-pods"
+	LabelSnapshotNumUnscheduledPods = "scad.gardener.cloud/snapshot-num-unscheduled-pods"
 )
 
 const (

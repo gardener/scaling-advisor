@@ -29,10 +29,16 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&ScalingAdvice{},
 		&ScalingAdviceList{},
+		&ScalingFeedback{},
+		&ScalingFeedbackList{},
 		&ScalingConstraint{},
 		&ScalingConstraintList{},
 		&NodeTemplateSet{},
 		&NodeTemplateSetList{},
+		&InstancePriceSet{},
+		&InstancePriceSetList{},
+		&InstanceTypeDefSet{},
+		&InstanceTypeDefSetList{},
 	)
 	return nil
 }

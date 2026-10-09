@@ -1,0 +1,117 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: instancetypedefsets.scad.gardener.cloud
+spec:
+  group: scad.gardener.cloud
+  names:
+    kind: InstanceTypeDefSet
+    listKind: InstanceTypeDefSetList
+    plural: instancetypedefsets
+    shortNames:
+    - ids
+    singular: instancetypedefset
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provider
+      name: Provider
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InstanceTypeDefSet defines a top-level object whose spec contains all [InstanceTypeDef]'s known to the
+          scaling-advisor. If an instance type is referenced by a [NodeTemplate] or an [InstancePrice], then
+          a corresponding [InstanceTypeDef] must exist in the [InstanceTypeDefSet].
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of this InstanceTypeDefSet.
+            properties:
+              instanceTypeDefs:
+                description: InstanceTypeDefs is a slice of [InstanceTypeDef]'s. InstanceTypeDef
+                  names should be unique.
+                items:
+                  description: InstanceTypeDef holds core instance information about
+                    an instance type offered by a cloud provider.
+                  properties:
+                    architecture:
+                      description: Architecture is the cpu architecture.
+                      minLength: 1
+                      type: string
+                    baseResources:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: BaseResources specifies the base, natively-available
+                        resources for this instance type as offered by the cloud provider.
+                      type: object
+                    maxVolumes:
+                      description: MaxVolumes is the maximum number of block volumes
+                        supported by this instance type.
+                      format: int32
+                      minimum: 0
+                      type: integer
+                    name:
+                      description: 'Name is the name of the cloud provider''s instance
+                        type. (Ex: m5.xlarge, etc). This should be unique within a
+                        [InstanceTypeDefSet]'
+                      minLength: 1
+                      type: string
+                  required:
+                  - architecture
+                  - baseResources
+                  - maxVolumes
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              provider:
+                description: Provider is the cloud provider offering these instance
+                  types
+                enum:
+                - aws
+                - gcp
+                - azure
+                - ali
+                - openstack
+                type: string
+            required:
+            - instanceTypeDefs
+            - provider
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

@@ -5,53 +5,13 @@
 package common
 
 import (
-	"cmp"
-	"context"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 )
-
-// Resettable defines types that can reset their state to a default or initial configuration.
-type Resettable interface {
-	// Reset resets the state of the implementing type.
-	Reset() error
-}
-
-// QPSBurst is a simple encapsulation of client QPS and Burst settings.
-type QPSBurst struct {
-	// QPS is the queries per second rate limit for the client.
-	QPS float32 `json:"qps"`
-	// Burst is the burst size for rate limiting, allowing temporary spikes above QPS.
-	Burst int `json:"burst"`
-}
-
-// ServerConfig is the common configuration for a server which can be used as standalone
-// or embedded within another process.
-type ServerConfig struct {
-	// KubeConfigPath is the path to master kube-config.
-	KubeConfigPath string `json:"kubeConfigPath"`
-	// BindAddress is the address(host:port) to bind the server to.
-	BindAddress string `json:"bindAddress"`
-	// GracefulShutdownTimeout is the time given to the core to gracefully shutdown.
-	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
-	// ProfilingEnabled indicates whether this core should register the standard pprof HTTP handlers: /debug/pprof/*
-	ProfilingEnabled bool `json:"profilingEnabled"`
-	// DefaultGracefulShutdownTimeout is the default timeout for graceful shutdown for the MinKAPI server.
-}
-
-// Service is a component that can be started and stopped.
-type Service interface {
-	// Start starts the core with the given context. Start may block depending on the implementation - if the core is a server.
-	// The context is expected to be populated with a logger.
-	Start(ctx context.Context) error
-	// Stop stops the core. Stop does not block.
-	Stop(ctx context.Context) error
-}
 
 // NamespacedName is a fully qualified object name.
 // NOTE: This is only needed since k8s APIMachinery types.NamespacedName does not have JSON tags and k8s maintainers
@@ -83,7 +43,50 @@ func (nn NamespacedName) String() string {
 	return nn.Namespace + string(types.Separator) + nn.Name
 }
 
-// SimulatorStrategy represents a simulation strategy variant.
+// PlannerStrategy represents a scaling planner's strategy that governs the approach it takes towards generating scaling plans.
+// +kubebuilder:validation:Enum=scale-in-then-scale-out;scale-out-then-scale-in;consolidated-scale-out;only-scale-out;only-scale-in
+type PlannerStrategy string
+
+const (
+	// PlannerStrategyScaleInThenScaleOut represents a planner strategy which executes pure scale-in simulation(s) first
+	// to produce scale-in plans and then executes pure scale-out simulation(s) according to [SimulatorStrategy] to
+	// produce scale-out plans.
+	// Pure scale-in simulations involve scaling-in underutilized nodes and checking that existing scheduled workload
+	// can be successfully moved to existing nodes. Pure scale-out simulations involve scaling out nodes and checking that
+	// unscheduled workload can be scheduled on them.
+	// The simulation view is passed from last successful scale-in simulation to the scale-out simulation.
+	PlannerStrategyScaleInThenScaleOut PlannerStrategy = "scale-in-then-scale-out"
+
+	// PlannerStrategyScaleOutThenScaleIn represents a planner strategy which executes pure scale-out simulation(s) first
+	// to produce scale-out plans and then executes pure scale-in simulation(s) to produce scale-in plans.
+	// The simulation view is passed from last successful scale-out simulation to the first scale-in simulation.
+	PlannerStrategyScaleOutThenScaleIn PlannerStrategy = "scale-out-then-scale-in"
+
+	// PlannerStrategyConsolidatedScaleOut represents a planner strategy in which existing scheduled workload on candidate scale-in
+	//  node(s) are unassigned and added to the unscheduled workload, the nodes then removed (without any simulation), followed
+	// by scale-out simulation(s) using the configured [SimulatorStrategy]. Then a consolidated scale-in and scale-out plan
+	// is produced.
+	PlannerStrategyConsolidatedScaleOut PlannerStrategy = "consolidated-scale-out"
+
+	// PlannerStrategyOnlyScaleOut represents a planner strategy in which only scale-out plans are produced via applicable
+	// scale-out simulation(s).
+	PlannerStrategyOnlyScaleOut PlannerStrategy = "only-scale-out"
+
+	// PlannerStrategyOnlyScaleIn represents a planner strategy in which only scale-in plans are produced via applicable
+	// scale-in simulation(s).
+	PlannerStrategyOnlyScaleIn PlannerStrategy = "only-scale-in"
+)
+
+// SupportedPlannerStrategies is a set of all supported planner strategies.
+var SupportedPlannerStrategies = sets.New(
+	PlannerStrategyScaleInThenScaleOut,
+	PlannerStrategyScaleOutThenScaleIn,
+	PlannerStrategyConsolidatedScaleOut,
+	PlannerStrategyOnlyScaleOut,
+	PlannerStrategyOnlyScaleIn,
+)
+
+// SimulatorStrategy represents a simulator strategy variant.
 // +kubebuilder:validation:Enum=single-node-multi-sim;multi-node-single-sim
 type SimulatorStrategy string
 
@@ -106,7 +109,14 @@ func (s SimulatorStrategy) IsSingleNode() bool {
 	return s == SimulatorStrategySingleNodeMultiSim
 }
 
+// SupportedSimulatorStrategies is a set of all supported simulator strategies.
+var SupportedSimulatorStrategies = sets.New(
+	SimulatorStrategySingleNodeMultiSim,
+	SimulatorStrategyMultiNodeSingleSim,
+)
+
 // ScalingAdviceGenerationMode defines the mode in which scaling advice is generated.
+// +kubebuilder:validation:Enum=incremental;all-at-once
 // +enum
 type ScalingAdviceGenerationMode string
 
@@ -147,8 +157,14 @@ const (
 	NodeScoringStrategyLeastCost NodeScoringStrategy = "least-cost"
 )
 
+// SupportedNodeScoringStrategies is a set of all supported node scoring strategies.
+var SupportedNodeScoringStrategies = sets.New(
+	NodeScoringStrategyLeastWaste,
+	NodeScoringStrategyLeastCost,
+)
+
 // CloudProvider represents the cloud provider type for the cluster.
-// +enum
+// +kubebuilder:validation:Enum=aws;gcp;azure;ali;openstack
 type CloudProvider string
 
 const (
@@ -197,8 +213,7 @@ const (
 	TraceLogPathCtxKey ContextKey = "trace-log"
 )
 
-// CapacityType identifies the procurement model of compute capacity used
-// to run a node, such as on-demand or spot.
+// CapacityType identifies the procurement model of compute capacity used to run a node, such as on-demand or spot.
 // +kubebuilder:validation:Enum=on-demand;spot
 type CapacityType string
 
@@ -208,25 +223,3 @@ const (
 	// CapacityTypeSpot represents spot or preemptible compute capacity.
 	CapacityTypeSpot CapacityType = "spot"
 )
-
-// PriorityKey represents a composite and comparable key for ordering objects that have a primary and secondary unit priority levels.
-type PriorityKey struct {
-	// First is the first priority value. Higher values represent higher priority.
-	First int32
-	// Second is the second priority value. Higher value represent higher priority. Secondary weight compared to First
-	Second int32
-}
-
-// String returns a string representation of the PriorityKey.
-func (k PriorityKey) String() string {
-	return fmt.Sprintf("%d-%d", k.First, k.Second)
-}
-
-// CmpPriorityKeyDecreasing is a compare function for [PriorityKey] in decreasing value of priority.
-// ie higher priority values  before lower priority values which is the kubernetes convention.
-func CmpPriorityKeyDecreasing(a, b PriorityKey) int {
-	if firstCmp := cmp.Compare(b.First, a.First); firstCmp != 0 {
-		return firstCmp
-	}
-	return cmp.Compare(b.Second, a.Second)
-}

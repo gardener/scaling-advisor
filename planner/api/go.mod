@@ -1,11 +1,10 @@
 module github.com/gardener/scaling-advisor/planner/api
 
-go 1.26.3
+go 1.26.0
 
 require (
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/minkapi/api v0.0.0
-	github.com/gardener/scaling-advisor/pricing/api v0.0.0
 	github.com/gardener/scaling-advisor/simulation/api v0.0.0
 	github.com/google/go-cmp v0.7.0
 	k8s.io/api v0.34.3
@@ -57,6 +56,5 @@ require (
 replace (
 	github.com/gardener/scaling-advisor/api => ../../api
 	github.com/gardener/scaling-advisor/minkapi/api => ../../minkapi/api
-	github.com/gardener/scaling-advisor/pricing/api => ../../pricing/api
 	github.com/gardener/scaling-advisor/simulation/api => ../../simulation/api
 )
