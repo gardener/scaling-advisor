@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -101,7 +102,7 @@ func createBaseView(ctx context.Context, viewArgs *api.ViewArgs) (api.View, erro
 		ObjectMeta: metav1.ObjectMeta{
 			Name: metav1.NamespaceDefault,
 		},
-	}, minkapi.ObjectOptions{})
+	}, api.ObjectOptions{})
 	if err != nil {
 		return nil, err
 	}

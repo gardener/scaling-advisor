@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,11 +72,11 @@ func (a *namespaceAccess) Patch(ctx context.Context, name string, pt types.Patch
 }
 
 func (a *namespaceAccess) Apply(_ context.Context, _ *v1.NamespaceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Namespace, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *namespaceAccess) ApplyStatus(_ context.Context, _ *v1.NamespaceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Namespace, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *namespaceAccess) Finalize(ctx context.Context, item *corev1.Namespace, opts metav1.UpdateOptions) (*corev1.Namespace, error) {

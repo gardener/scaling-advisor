@@ -5,6 +5,7 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,5 +72,5 @@ func (a *volumeAttributesClassAccess) Patch(ctx context.Context, name string, pt
 }
 
 func (a *volumeAttributesClassAccess) Apply(_ context.Context, _ *v1.VolumeAttributesClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttributesClass, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

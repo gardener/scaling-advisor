@@ -5,6 +5,7 @@
 package policyaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -75,9 +76,9 @@ func (a *podDisruptionBudgetAccess) Patch(ctx context.Context, name string, pt t
 }
 
 func (a *podDisruptionBudgetAccess) Apply(_ context.Context, _ *v1.PodDisruptionBudgetApplyConfiguration, _ metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podDisruptionBudgetAccess) ApplyStatus(_ context.Context, _ *v1.PodDisruptionBudgetApplyConfiguration, _ metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

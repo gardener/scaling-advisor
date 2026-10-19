@@ -13,6 +13,6 @@
 //   - Constants: operator and CRD group names, default bind addresses and ports, annotation and
 //     label keys used across the system (see constants.go).
 //
-//   - Sentinel errors: package-level error values such as [ErrUnsupportedCloudProvider],
+//   - Sentinel errors: package-level error values such as [ErrLoadTemplate],
 //     [ErrLoadTemplate], and [ErrSerialization] for use with [errors.Is] (see errors.go).
 package common

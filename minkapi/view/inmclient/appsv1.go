@@ -5,6 +5,7 @@
 package inmclient
 
 import (
+	"errors"
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/appaccess"
 
@@ -21,19 +22,19 @@ type appsV1Impl struct {
 }
 
 func (a *appsV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented) //TODO: provide a common implementation of rest.Interface for any resource
+	panic(errors.ErrUnsupported) //TODO: provide a common implementation of rest.Interface for any resource
 }
 
 func (a *appsV1Impl) ControllerRevisions(_ string) appsv1.ControllerRevisionInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) DaemonSets(_ string) appsv1.DaemonSetInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) Deployments(_ string) appsv1.DeploymentInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) ReplicaSets(namespace string) appsv1.ReplicaSetInterface {

@@ -5,6 +5,7 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,9 +72,9 @@ func (a *storageClassAccess) Patch(ctx context.Context, name string, pt types.Pa
 }
 
 func (a *storageClassAccess) Apply(_ context.Context, _ *clientconfigstoragev1.StorageClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *storageClassAccess) ApplyStatus(_ context.Context, _ *clientconfigstoragev1.StorageClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

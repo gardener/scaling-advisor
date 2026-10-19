@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -79,9 +80,9 @@ func (a *nodeAccess) PatchStatus(ctx context.Context, nodeName string, data []by
 }
 
 func (a *nodeAccess) Apply(_ context.Context, _ *v1.NodeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Node, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *nodeAccess) ApplyStatus(_ context.Context, _ *v1.NodeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Node, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }

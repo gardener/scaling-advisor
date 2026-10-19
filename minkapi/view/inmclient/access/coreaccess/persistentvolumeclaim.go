@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -59,11 +60,11 @@ func (a *pvcAccess) UpdateStatus(ctx context.Context, pvc *corev1.PersistentVolu
 }
 
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespaceWithContext(_ context.Context, _ *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", errors.ErrUnsupported)
 }
 
 func (a *pvcAccess) UpdateWithPersistentVolumeClaimNamespace(_ *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: update of pvc with namespace is not supported", errors.ErrUnsupported)
 }
 
 func (a *pvcAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
@@ -91,17 +92,17 @@ func (a *pvcAccess) Patch(ctx context.Context, name string, pt types.PatchType, 
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespace(_ *corev1.PersistentVolumeClaim, _ []byte) (*corev1.PersistentVolumeClaim, error) {
-	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", errors.ErrUnsupported)
 }
 
 func (a *pvcAccess) PatchWithPersistentVolumeClaimNamespaceWithContext(_ context.Context, _ *corev1.PersistentVolumeClaim, _ []byte) (*corev1.PersistentVolumeClaim, error) {
-	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: patch of pvc with namespace is not supported", errors.ErrUnsupported)
 }
 
 func (a *pvcAccess) Apply(_ context.Context, _ *applyconfigv1.PersistentVolumeClaimApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
-	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of pvc is not supported", errors.ErrUnsupported)
 }
 
 func (a *pvcAccess) ApplyStatus(_ context.Context, _ *applyconfigv1.PersistentVolumeClaimApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolumeClaim, err error) {
-	return nil, fmt.Errorf("%w: apply of pvc is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of pvc is not supported", errors.ErrUnsupported)
 }

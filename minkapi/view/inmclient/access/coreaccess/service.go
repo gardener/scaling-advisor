@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -72,13 +73,13 @@ func (a *serviceAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *serviceAccess) Apply(_ context.Context, _ *v1.ServiceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Service, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *serviceAccess) ApplyStatus(_ context.Context, _ *v1.ServiceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Service, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *serviceAccess) ProxyGet(_, _, _, _ string, _ map[string]string) rest.ResponseWrapper {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }

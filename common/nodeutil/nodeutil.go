@@ -7,9 +7,9 @@ package nodeutil
 import (
 	"time"
 
-	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"

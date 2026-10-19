@@ -5,6 +5,7 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,9 +72,9 @@ func (a *csiNodeAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *csiNodeAccess) Apply(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", errors.ErrUnsupported)
 }
 
 func (a *csiNodeAccess) ApplyStatus(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", errors.ErrUnsupported)
 }

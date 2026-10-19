@@ -7,9 +7,9 @@ package inmclient
 import (
 	"errors"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/policyaccess"
 
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	clientpolicyv1 "k8s.io/client-go/kubernetes/typed/policy/v1"
 	"k8s.io/client-go/rest"
 )

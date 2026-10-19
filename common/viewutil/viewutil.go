@@ -8,10 +8,10 @@ import (
 	"context"
 	"fmt"
 
-	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"

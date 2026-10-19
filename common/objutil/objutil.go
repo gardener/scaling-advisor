@@ -15,10 +15,11 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/gardener/scaling-advisor/common/ioutil"
+
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	saconfigv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/common/ioutil"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"

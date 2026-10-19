@@ -5,6 +5,7 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -75,9 +76,9 @@ func (a *volumeAttachmentAccess) Patch(ctx context.Context, name string, pt type
 }
 
 func (a *volumeAttachmentAccess) Apply(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *volumeAttachmentAccess) ApplyStatus(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

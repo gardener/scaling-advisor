@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,5 +72,5 @@ func (a *configMapAccess) Patch(ctx context.Context, name string, pt types.Patch
 }
 
 func (a *configMapAccess) Apply(_ context.Context, _ *v1.ConfigMapApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.ConfigMap, err error) {
-	return nil, fmt.Errorf("%w: apply of configmaps is not supported", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply of configmaps is not supported", errors.ErrUnsupported)
 }

@@ -21,12 +21,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server/configtmpl"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/webutil"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -391,7 +391,7 @@ func handleCreate(d api.Descriptor, view api.View) http.HandlerFunc {
 			namespace = GetObjectName(r, d).Namespace
 			mo.SetNamespace(namespace)
 		}
-		mo, err = view.CreateObject(r.Context(), d.GVK, mo, minkapi.ObjectOptions{})
+		mo, err = view.CreateObject(r.Context(), d.GVK, mo, api.ObjectOptions{})
 		if err != nil {
 			handleError(w, r, err)
 			return
@@ -414,7 +414,7 @@ func handlePut(d api.Descriptor, view api.View) http.HandlerFunc {
 			return
 		}
 		metaObj := obj.(metav1.Object)
-		err = view.UpdateObject(r.Context(), d.GVK, metaObj, minkapi.ObjectOptions{})
+		err = view.UpdateObject(r.Context(), d.GVK, metaObj, api.ObjectOptions{})
 		if err != nil {
 			handleError(w, r, err)
 			return

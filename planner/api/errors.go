@@ -54,8 +54,6 @@ var (
 	ErrCreateNodeScorer = errors.New("cannot create node scorer")
 	// ErrInvalidScalingConstraint is a sentinel error indicating that the provided scaling constraint is invalid.
 	ErrInvalidScalingConstraint = errors.New("invalid scaling constraint")
-	// ErrUnsupportedSimulatorStrategy is a sentinel error indicating that an unsupported simulator strategy was specified.
-	ErrUnsupportedSimulatorStrategy = errors.New("unsupported simulator strategy")
 	// ErrInvalidRequest is a sentinel error indicating that the scaling planner request is invalid.
 	ErrInvalidRequest = errors.New("invalid planner request")
 	// ErrServiceInitFailed is a sentinel error indicating that the ScalingPlannerService cannot initialize.

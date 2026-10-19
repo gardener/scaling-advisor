@@ -5,9 +5,11 @@
 package inmclient
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
@@ -39,7 +41,7 @@ func (i *inMemDummyDynInformerFactory) Start(_ <-chan struct{}) {
 
 // ForResource is not implemented and panics.
 func (i *inMemDummyDynInformerFactory) ForResource(_ schema.GroupVersionResource) informers.GenericInformer {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 // WaitForCacheSync is a no-op implementation that returns an empty map.

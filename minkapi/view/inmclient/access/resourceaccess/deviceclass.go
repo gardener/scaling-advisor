@@ -5,6 +5,7 @@
 package resourceaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,5 +72,5 @@ func (a *deviceClassAccess) Patch(ctx context.Context, name string, pt types.Pat
 }
 
 func (a *deviceClassAccess) Apply(_ context.Context, _ *v1.DeviceClassApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.DeviceClass, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

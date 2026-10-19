@@ -5,6 +5,7 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -71,5 +72,5 @@ func (a *csiDriverAccess) Patch(ctx context.Context, name string, pt types.Patch
 }
 
 func (a *csiDriverAccess) Apply(_ context.Context, _ *applyconfigv1.CSIDriverApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSIDriver, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for csiDrivers", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for csiDrivers", errors.ErrUnsupported)
 }

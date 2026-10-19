@@ -1,8 +1,9 @@
 module github.com/gardener/scaling-advisor/minkapi
 
-go 1.25.0
+go 1.26.0
 
 require (
+	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/minkapi/api v0.0.0
 	github.com/gardener/scaling-advisor/common v0.0.0
 	github.com/go-logr/logr v1.4.3
@@ -15,6 +16,7 @@ require (
 )
 
 replace (
+	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/common => ../common
 	github.com/gardener/scaling-advisor/minkapi/api => ./api
 )

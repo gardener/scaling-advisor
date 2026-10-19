@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"
+
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/json"

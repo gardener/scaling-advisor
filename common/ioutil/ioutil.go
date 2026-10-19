@@ -17,6 +17,7 @@ import (
 	"text/template"
 
 	apicommon "github.com/gardener/scaling-advisor/api/common"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -36,7 +37,7 @@ func CloseQuietly(closer io.Closer) {
 }
 
 // ResetAll resets the given varying number of resettable and returns the aggregated error (if any)
-func ResetAll(resettable ...apicommon.Resettable) error {
+func ResetAll(resettable ...apicomponent.Resettable) error {
 	var errs []error
 	for _, r := range resettable {
 		if err := r.Reset(); err != nil {

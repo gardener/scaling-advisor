@@ -5,6 +5,7 @@
 package appaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -77,21 +78,21 @@ func (a *replicaSetAccess) Patch(ctx context.Context, name string, pt types.Patc
 }
 
 func (a *replicaSetAccess) Apply(_ context.Context, _ *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, _ metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) ApplyStatus(_ context.Context, _ *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, _ metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) GetScale(_ context.Context, _ string, _ metav1.GetOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) UpdateScale(_ context.Context, _ string, _ *autoscalingv1.Scale, _ metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) ApplyScale(_ context.Context, _ string, _ *clientapplyconfigurationsautoscalingv1.ScaleApplyConfiguration, _ metav1.ApplyOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }

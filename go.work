@@ -7,7 +7,7 @@ use (
 	./simulation/api
 	./planner/api
 	./common
-//./minkapi
+	./minkapi
 //./operator
 //./pricing
 //./samples

@@ -5,11 +5,14 @@
 package access
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +26,7 @@ import (
 // GenericResourceAccess provides helper methods for basic Create, Get, Update, Delete, Patch of k8s object defined by generic parameter T, and k8s list object
 // provided by generic parameter L.
 type GenericResourceAccess[T metav1.Object, L metav1.ListInterface] struct {
-	View      api.View
+	View      minkapi.View
 	GVK       schema.GroupVersionKind
 	Namespace string
 }
@@ -70,10 +73,10 @@ func (a *GenericResourceAccess[T, L]) DeleteObject(ctx context.Context, namespac
 // Returns an error if any issues occur during deletion or if unsupported delete options are used.
 func (a *GenericResourceAccess[T, L]) DeleteObjectCollection(ctx context.Context, namespace string, delOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	if delOpts.PropagationPolicy != nil {
-		return fmt.Errorf("%w: propagationPolicy is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+		return fmt.Errorf("%w: propagationPolicy is unimplemented for DeleteCollection of %q", errors.ErrUnsupported, a.GVK.Kind)
 	}
 	if delOpts.PropagationPolicy != nil {
-		return fmt.Errorf("%w: gracePeriodSeconds is unimplemented for DeleteCollection of %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+		return fmt.Errorf("%w: gracePeriodSeconds is unimplemented for DeleteCollection of %q", errors.ErrUnsupported, a.GVK.Kind)
 	}
 	err := checkLogListOptions(ctx, listOpts)
 	if err != nil {
@@ -133,7 +136,7 @@ func (a *GenericResourceAccess[T, L]) GetWatcher(ctx context.Context, namespace 
 func (a *GenericResourceAccess[T, L]) PatchObject(ctx context.Context, name string, pt types.PatchType, patchData []byte, subResources ...string) (patchedObj T, err error) {
 	if len(subResources) > 0 {
 		if subResources[0] != "status" {
-			err = fmt.Errorf("%w: patch of subResources %q is unsupported for %q", commonerrors.ErrInvalidOptVal, subResources, a.GVK.Kind)
+			err = fmt.Errorf("%w: patch of subResources %q is unsupported for %q", apicommon.ErrInvalidOptVal, subResources, a.GVK.Kind)
 			if err != nil {
 				return
 			}
@@ -175,12 +178,12 @@ func logUnimplementedOptionalListOptions(log logr.Logger, listOptions metav1.Lis
 
 func checkUnimplementedRequiredListOptions(listOptions metav1.ListOptions) error {
 	if listOptions.FieldSelector != "" {
-		return fmt.Errorf("%w: listOptions.FieldSelector is unimplemented", commonerrors.ErrUnimplemented)
+		return fmt.Errorf("%w: listOptions.FieldSelector is unimplemented", errors.ErrUnsupported)
 	}
 	return nil
 }
 
-func asMatchCriteria(namespace string, listOptions metav1.ListOptions) (c api.MatchCriteria, err error) {
+func asMatchCriteria(namespace string, listOptions metav1.ListOptions) (c minkapi.MatchCriteria, err error) {
 	var selector = labels.Everything()
 	if listOptions.LabelSelector != "" {
 		selector, err = labels.Parse(listOptions.LabelSelector)
@@ -206,7 +209,7 @@ func validateMinimumResourceVersion(desiredResourceVersion string, currentResour
 		return apierrors.NewBadRequest(fmt.Sprintf("invalid resource version %q: %v", currentResourceVersion, err))
 	}
 	if desiredRV > currentRV {
-		return apierrors.NewBadRequest(fmt.Sprintf("too large desired resource version: %q, current: %q", desiredRV, currentResourceVersion))
+		return apierrors.NewBadRequest(fmt.Sprintf("too large desired resource version: %d, current: %q", desiredRV, currentResourceVersion))
 	}
 	return nil
 }

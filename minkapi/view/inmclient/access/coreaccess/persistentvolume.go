@@ -5,6 +5,7 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
@@ -75,9 +76,9 @@ func (a *pvAccess) Patch(ctx context.Context, name string, pt types.PatchType, d
 }
 
 func (a *pvAccess) Apply(_ context.Context, _ *v1.PersistentVolumeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolume, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *pvAccess) ApplyStatus(_ context.Context, _ *v1.PersistentVolumeApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.PersistentVolume, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }

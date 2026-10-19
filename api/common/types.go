@@ -5,6 +5,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -195,7 +196,7 @@ func AsCloudProvider(cloudProvider string) (CloudProvider, error) {
 	case "openstack":
 		return CloudProviderOpenStack, nil
 	default:
-		return "", fmt.Errorf("%w: unknown %q", ErrUnsupportedCloudProvider, cloudProvider)
+		return "", fmt.Errorf("%w: unknown %q", errors.ErrUnsupported, cloudProvider)
 	}
 }
 

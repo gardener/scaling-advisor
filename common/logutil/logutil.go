@@ -12,8 +12,9 @@ import (
 	"path/filepath"
 	"regexp"
 
-	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/objutil"
+
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -13,10 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/server"
 
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
-	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
@@ -84,7 +85,7 @@ func LaunchApp(ctx context.Context) (app api.App, exitCode int, err error) {
 
 // ShutdownApp gracefully shuts-down the given minkapi application and returns an exit code that can be used by the cli hosting the app.
 func ShutdownApp(app *api.App) (exitCode int) {
-	shutDownCtx, cancel := context.WithTimeout(context.Background(), api.DefaultGracefulShutdownTimeout)
+	shutDownCtx, cancel := context.WithTimeout(context.Background(), apicommon.DefaultGracefulShutdownTimeout)
 	defer cancel()
 	log := logr.FromContextOrDiscard(app.Ctx)
 
@@ -127,7 +128,7 @@ func validateMainOpts(opts *Opts) error {
 	var errs []error
 	errs = append(errs, commoncli.ValidateServerConfigFlags(opts.ServerConfig))
 	if len(strings.TrimSpace(opts.ServerConfig.KubeConfigPath)) == 0 {
-		errs = append(errs, fmt.Errorf("%w: --kubeconfig/-k", commonerrors.ErrMissingOpt))
+		errs = append(errs, fmt.Errorf("%w: --kubeconfig/-k", apicommon.ErrMissingOpt))
 	}
 	return errors.Join(errs...)
 }

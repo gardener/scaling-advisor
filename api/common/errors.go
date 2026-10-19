@@ -15,8 +15,6 @@ var (
 	ErrInvalidOptVal = errors.New("invalid option value")
 	// ErrUnexpectedType is a sentinel error representing an unexpected type error which should not happen - generally encountered when casting. Use this in lieu of a panic.
 	ErrUnexpectedType = errors.New("unexpected type")
-	// ErrUnsupportedCloudProvider is a sentinel error indicating an unsupported cloud provider was specified.
-	ErrUnsupportedCloudProvider = errors.New("unsupported cloud provider")
 	// ErrMissingRequiredLabel is a sentinel error indicating that a required label is missing from a resource.
 	ErrMissingRequiredLabel = errors.New("missing required label")
 	// ErrLoadTemplate is a sentinel error representing a problem loading a template file
