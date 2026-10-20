@@ -241,16 +241,6 @@ func TestValidateInstanceTypeDefSet(t *testing.T) {
 			wantField: "instanceTypeDefSet.spec.instanceTypeDefs[0].baseResources",
 			wantType:  field.ErrorTypeRequired,
 		},
-		{
-			name: "instanceTypeDef - negative maxVolumes",
-			defSet: func() v1alpha1.InstanceTypeDefSet {
-				s := validInstanceTypeDefSet()
-				s.Spec.InstanceTypeDefs[0].MaxVolumes = -1
-				return s
-			}(),
-			wantField: "instanceTypeDefSet.spec.instanceTypeDefs[0].maxVolumes",
-			wantType:  field.ErrorTypeInvalid,
-		},
 	}
 
 	for _, tt := range tests {
@@ -815,7 +805,6 @@ func validInstanceTypeDefSet() v1alpha1.InstanceTypeDefSet {
 					Name:          "m5.xlarge",
 					Architecture:  "amd64",
 					BaseResources: resourceList(corev1.ResourceCPU, "4", corev1.ResourceMemory, "16Gi"),
-					MaxVolumes:    20,
 				},
 			},
 		},

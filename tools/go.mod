@@ -1,11 +1,13 @@
 module github.com/gardener/scaling-advisor/tools
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/gardener/gardener/pkg/apis v1.138.0
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/common v0.0.0
+	github.com/gardener/scaling-advisor/minkapi/api v0.0.0
+	github.com/gardener/scaling-advisor/planner/api v0.0.0
 	github.com/spf13/cobra v1.10.1
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
@@ -17,6 +19,8 @@ replace (
 	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/common => ../common
 	github.com/gardener/scaling-advisor/minkapi => ../minkapi
+	github.com/gardener/scaling-advisor/minkapi/api => ../minkapi/api
+	github.com/gardener/scaling-advisor/planner/api => ../planner/api
 )
 
 require (

@@ -1,11 +1,17 @@
-apiVersion: sa.gardener.cloud/v1alpha1
+apiVersion: scad.gardener.cloud/v1alpha1
 kind: ScalingConstraint
 metadata:
   name: two-pool
   namespace: default
 spec:
+  plannerStrategy: consolidated-scale-out
   nodePools:
-    - labels:
+    - name: a
+      region: eu-west-1
+      availabilityZones:
+        - eu-west-1a
+      priority: 1
+      labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
         node.kubernetes.io/role: node
@@ -13,55 +19,21 @@ spec:
         worker.gardener.cloud/cri-name: containerd
         worker.gardener.cloud/pool: p
         worker.gardener.cloud/system-components: "true"
-      name: a
+      nodeTemplateRefs:
+        - name: m5l
+          priority: 0
+    - name: b
       region: eu-west-1
       availabilityZones:
         - eu-west-1a
-      priority: 1
-      requirements:
-        - key: "node.kubernetes.io/instance-type"
-          operator: In
-          values:
-            - m5.large
-          priority: 0
-    - labels:
+      priority: 0
+      labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
         node.kubernetes.io/role: node
         worker.garden.sapcloud.io/group: q
         worker.gardener.cloud/cri-name: containerd
         worker.gardener.cloud/pool: q
-      name: b
-      region: eu-west-1
-      availabilityZones:
-        - eu-west-1a
-      priority: 0
-      requirements:
-        - key: "node.kubernetes.io/instance-type"
-          operator: In
-          values:
-            - m5.xlarge
+      nodeTemplateRefs:
+        - name: m5xl
           priority: 0
-  nodeTemplates:
-    - name: m5l
-      instanceType: m5.large
-      architecture: amd64
-      capacity:
-        cpu: "2"
-        gpu: "0"
-        memory: 8Gi
-      kubeReservedCapacity:
-        cpu: 80m
-        memory: 1Gi
-        pid: 20k
-    - name: m5xl
-      instanceType: m5.xlarge
-      architecture: amd64
-      capacity:
-        cpu: "4"
-        gpu: "0"
-        memory: 16Gi
-      kubeReservedCapacity:
-        cpu: 80m
-        memory: 1Gi
-        pid: 20k

@@ -62,8 +62,4 @@ type InstanceTypeDef struct {
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	Name string `json:"name"`
-	// MaxVolumes is the maximum number of block volumes supported by this instance type.
-	// +kubebuilder:validation:Minimum=0
-	// +required
-	MaxVolumes int32 `json:"maxVolumes"`
 }

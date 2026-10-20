@@ -20,14 +20,15 @@ import (
 	gardenerauthv1alpha1 "github.com/gardener/gardener/pkg/apis/authentication/v1alpha1"
 	gardenercorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	gardenerconstantsv1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/scalingconstraintutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -35,15 +36,13 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// ShootCoordinate is a struct comprising of the information needed to uniquely
+// ShootCoordinate is a struct comprising the information needed to uniquely
 // identify a gardener Shoot cluster: Landscape, Project and Shoot name.
 type ShootCoordinate struct {
 	Landscape string
@@ -165,9 +164,9 @@ var gardenerCmd = &cobra.Command{
 			return fmt.Errorf("error creating shoot access: %v", err)
 		}
 
-		scalingConstraint := shootAccess.createScalingConstraint()
+		scalingConstraint, nodeTemplateSet := shootAccess.createScalingConstraint()
 
-		snap, err := createClusterSnapshot(ctx, scalingConstraint, shootAccess)
+		snap, err := createClusterSnapshot(ctx, scalingConstraint, nodeTemplateSet, shootAccess)
 		if err != nil {
 			return fmt.Errorf("error creating cluster snapshot: %v", err)
 		}
@@ -175,12 +174,17 @@ var gardenerCmd = &cobra.Command{
 		if err = genSnapshotVariants(snap, scenarioDir); err != nil {
 			return fmt.Errorf("error creating snapshot variants: %v", err)
 		}
-		saveFilename := "scaling-constraints-" + time.Now().UTC().Format("20060102T150405Z") + ".json"
-		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, saveFilename)
+		formattedTime := time.Now().UTC().Format("20060102T150405Z")
+		scalingConstraintSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(scalingConstraint, scenarioDir, "scaling-constraints-"+formattedTime+".json")
 		if err != nil {
 			return fmt.Errorf("cannot save scaling constraint at %q: %v", scalingConstraintSavePath, err)
 		}
 		fmt.Printf("Saved scaling constraints at %s\n", scalingConstraintSavePath)
+		nodeTemplateSetSavePath, err := objutil.SaveRuntimeObjAsJSONToPath(nodeTemplateSet, scenarioDir, "node-template-set-"+formattedTime+".json")
+		if err != nil {
+			return fmt.Errorf("cannot save node template set at %q: %v", nodeTemplateSetSavePath, err)
+		}
+		fmt.Printf("Saved node template set at %s\n", nodeTemplateSetSavePath)
 		return nil
 	},
 }
@@ -189,10 +193,6 @@ func (sc *ShootCoordinate) getFullyQualifiedName() string {
 	trimmedLandscape := strings.TrimPrefix(sc.Landscape, "sap-landscape-")
 	return fmt.Sprintf("%s:%s:%s", trimmedLandscape, sc.Project, sc.Shoot)
 }
-
-// ---------------------------------------------------------------------------------
-// Shoot Access
-// ---------------------------------------------------------------------------------
 
 func createShootAccess(ctx context.Context) (*access, error) {
 	clientScheme := objutil.ScalingAdvisorScheme
@@ -277,7 +277,7 @@ func getViewerKubeconfig(ctx context.Context, landscapeClient client.Client, sho
 	}
 	viewerKcfgReq := &gardenerauthv1alpha1.ViewerKubeconfigRequest{
 		Spec: gardenerauthv1alpha1.ViewerKubeconfigRequestSpec{
-			ExpirationSeconds: ptr.To[int64](600),
+			ExpirationSeconds: new(int64(600)),
 		},
 	}
 
@@ -416,8 +416,8 @@ func (a *access) GetCSINodeSpecs(ctx context.Context) (map[string]storagev1.CSIN
 	return csiNodeSpecs, nil
 }
 
-func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstraint, a *access) (planner.ClusterSnapshot, error) {
-	var snap planner.ClusterSnapshot
+func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstraint, nts *sacorev1alpha1.NodeTemplateSet, a *access) (plannerapi.ClusterSnapshot, error) {
+	var snap plannerapi.ClusterSnapshot
 
 	nodes, err := a.ListNodes(ctx, minkapi.MatchCriteria{})
 	if err != nil {
@@ -427,7 +427,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	slices.SortFunc(nodes, func(nodeA, nodeB corev1.Node) int {
 		return nodeB.CreationTimestamp.Compare(nodeA.CreationTimestamp.Time)
 	})
-	snap.Nodes = make([]planner.NodeInfo, 0, len(nodes))
+	snap.Nodes = make([]plannerapi.NodeInfo, 0, len(nodes))
 	csiNodeSpecs, err := a.GetCSINodeSpecs(ctx)
 	if err != nil {
 		return snap, fmt.Errorf("failed to obtain csiNodeSpecs: %w", err)
@@ -436,13 +436,13 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	if err != nil {
 		return snap, fmt.Errorf("failed to list pods: %w", err)
 	}
-	snap.Pods = make([]planner.PodInfo, 0, len(pods))
+	snap.Pods = make([]plannerapi.PodInfo, 0, len(pods))
 	for _, pod := range pods {
 		sanitizePod(&pod)
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
-	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec)
+	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec, &nts.Spec)
 
 	for _, node := range nodes {
 		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]
@@ -465,9 +465,9 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		if cns, ok := csiNodeSpecs[ni.Name]; ok {
 			ni.CSINodeSpec = &cns
 		}
-		ni.Labels[commonconstants.LabelNodePoolName] = poolName
+		ni.Labels[apicommon.LabelNodePoolName] = poolName
 		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
-		ni.Labels[commonconstants.LabelNodeTemplateName] = matchingNodeTemplateName
+		ni.Labels[apicommon.LabelNodeTemplateName] = matchingNodeTemplateName
 		if err = ni.ValidateLabels(); err != nil {
 			return snap, err
 		}
@@ -498,7 +498,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 // of the snapshot without a few of the most recent scaled nodes and
 // unbinds the pods scheduled on those nodes. This is useful to compare
 // the removed nodes with the nodes scaled up by autoscaling component.
-func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
+func genSnapshotVariants(snap plannerapi.ClusterSnapshot, dir string) error {
 	formattedTime := time.Now().UTC().Format("20060102T150405Z")
 	baseSnapshotFileName := path.Join(dir, "cluster-snapshot-"+formattedTime+"-baseline.json")
 	if err := saveDataToFile(snap, baseSnapshotFileName); err != nil {
@@ -523,7 +523,7 @@ func genSnapshotVariants(snap planner.ClusterSnapshot, dir string) error {
 	return nil
 }
 
-func removeNodesFromSnapshot(snap planner.ClusterSnapshot, count int) planner.ClusterSnapshot {
+func removeNodesFromSnapshot(snap plannerapi.ClusterSnapshot, count int) plannerapi.ClusterSnapshot {
 	newSnap := snap
 
 	newSnap.Nodes = snap.Nodes[count:]
@@ -574,11 +574,12 @@ func constructInstanceRequirementsMap(instances []gardenercorev1beta1.MachineTyp
 	return
 }
 
-func (a *access) createScalingConstraint() (csc *sacorev1alpha1.ScalingConstraint) {
+func (a *access) createScalingConstraint() (csc *sacorev1alpha1.ScalingConstraint, nts *sacorev1alpha1.NodeTemplateSet) {
 	nodePools, nodeTemplates := a.createNodePoolsAndNodeTemplates()
 	csc = &sacorev1alpha1.ScalingConstraint{}
 	csc.Spec.NodePools = nodePools
-	csc.Spec.NodeTemplates = nodeTemplates
+	nts = &sacorev1alpha1.NodeTemplateSet{}
+	nts.Spec.Templates = nodeTemplates
 	// TODO csc.Spec.ConsumerID = "abcd", backoffpolicy, scaleinpolicy
 	return
 }
@@ -607,9 +608,8 @@ func (a *access) createNodePoolsAndNodeTemplates() (nodePools []sacorev1alpha1.N
 		}
 		nodePool.AvailabilityZones = worker.Zones
 
-		nodePool.Requirements = buildNodePoolRequirements(worker)
-
-		// TODO nP.Quota, nP.ScaleInPolicy, nP.BackoffPolicy
+		nodeTemplate = a.constructNodeTemplate(worker)
+		nodePool.NodeTemplateRefs = []sacorev1alpha1.NodeTemplateRef{{Name: nodeTemplate.Name}}
 
 		nodePools = append(nodePools, nodePool)
 
@@ -619,70 +619,12 @@ func (a *access) createNodePoolsAndNodeTemplates() (nodePools []sacorev1alpha1.N
 	return
 }
 
-func buildNodePoolRequirements(worker gardenercorev1beta1.Worker) []sacorev1alpha1.NodePoolRequirement {
-	reqs := []sacorev1alpha1.NodePoolRequirement{
-		{
-			Key:      corev1.LabelInstanceTypeStable,
-			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
-			Values:   []string{worker.Machine.Type},
-		},
-	}
-
-	if arch := ptr.Deref(worker.Machine.Architecture, ""); arch != "" {
-		reqs = append(reqs, sacorev1alpha1.NodePoolRequirement{
-			Key:      corev1.LabelArchStable,
-			Operator: sacorev1alpha1.NodePoolRequirementOpIn,
-			Values:   []string{arch},
-		})
-	}
-
-	return reqs
-}
-
 func (a *access) constructNodeTemplate(worker gardenercorev1beta1.Worker) sacorev1alpha1.NodeTemplate {
 	return sacorev1alpha1.NodeTemplate{
-		Name:         worker.Name,
-		Architecture: ptr.Deref(worker.Machine.Architecture, ""),
-		InstanceType: worker.Machine.Type,
-		// TODO: add pool.NodeTemplate.VirtualCapacity
-		Capacity:     a.constructNodeTemplateCapacity(worker.ProviderConfig, worker.Machine.Type),
-		KubeReserved: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),
-		// SystemReserved is not part of gardener shoots from k8s v1.31, these reservations are part of KubeReserved
-		// TODO:
-		// MaxVolumes:     0,
+		Name:              worker.Name,
+		InstanceType:      worker.Machine.Type,
+		ReservedResources: kubernetesConfigToResourceList(a.shoot.Spec.Kubernetes),
 	}
-}
-
-func (a *access) constructNodeTemplateCapacity(providerConfig *runtime.RawExtension, machineType string) (capacity corev1.ResourceList) {
-	capacity = a.instanceTypeToCapacity[machineType]
-	var (
-		providerConfigData map[string]any
-		virtualCapacity    corev1.ResourceList
-	)
-	if err := stdjson.Unmarshal(providerConfig.Raw, &providerConfigData); err != nil {
-		// Fallback to instanceCapacity if providerConfig can't be decoded
-		return
-	}
-	nodeTemplate, _, err := unstructured.NestedMap(providerConfigData, "nodeTemplate")
-	if err != nil {
-		return
-	}
-
-	virtualCapacityData, _, err := unstructured.NestedMap(nodeTemplate, "virtualCapacity")
-	if err != nil {
-		return
-	}
-
-	virtualCapacityBytes, err := stdjson.Marshal(virtualCapacityData)
-	if err != nil {
-		return
-	}
-	if err = stdjson.Unmarshal(virtualCapacityBytes, &virtualCapacity); err != nil {
-		return
-	}
-
-	maps.Copy(capacity, virtualCapacity)
-	return
 }
 
 func kubernetesConfigToResourceList(kubernetesConfig gardenercorev1beta1.Kubernetes) corev1.ResourceList {

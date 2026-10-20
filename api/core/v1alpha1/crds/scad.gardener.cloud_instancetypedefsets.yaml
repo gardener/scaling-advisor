@@ -72,12 +72,6 @@ spec:
                       description: BaseResources specifies the base, natively-available
                         resources for this instance type as offered by the cloud provider.
                       type: object
-                    maxVolumes:
-                      description: MaxVolumes is the maximum number of block volumes
-                        supported by this instance type.
-                      format: int32
-                      minimum: 0
-                      type: integer
                     name:
                       description: 'Name is the name of the cloud provider''s instance
                         type. (Ex: m5.xlarge, etc). This should be unique within a
@@ -87,7 +81,6 @@ spec:
                   required:
                   - architecture
                   - baseResources
-                  - maxVolumes
                   - name
                   type: object
                 minItems: 1

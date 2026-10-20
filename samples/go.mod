@@ -1,10 +1,11 @@
 module github.com/gardener/scaling-advisor/samples
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/common v0.0.0
+	github.com/gardener/scaling-advisor/planner/api v0.0.0
 	github.com/google/go-cmp v0.7.0
 	k8s.io/api v0.34.3
 	k8s.io/apimachinery v0.34.3
@@ -55,6 +56,7 @@ require (
 replace (
 	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/common => ../common
+	github.com/gardener/scaling-advisor/planner/api => ../planner/api
 )
 
 replace (

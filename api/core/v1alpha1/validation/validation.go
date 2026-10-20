@@ -173,9 +173,6 @@ func ValidateInstanceTypeDef(d *v1alpha1.InstanceTypeDef, fldPath *field.Path) (
 	if len(d.BaseResources) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("baseResources"), "baseResources must not be empty"))
 	}
-	if d.MaxVolumes < 0 {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("maxVolumes"), d.MaxVolumes, "maxVolumes must be non-negative"))
-	}
 	return
 }
 
