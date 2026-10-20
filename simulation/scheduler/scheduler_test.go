@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	svcapi "github.com/gardener/scaling-advisor/api/planner"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
@@ -25,13 +25,13 @@ import (
 type suiteState struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
-	app             *mkapi.App
+	app             *minkapi.App
 	nodeA           corev1.Node
 	podA            corev1.Pod
-	baseView        mkapi.View
-	wamView         mkapi.View
-	bamView         mkapi.View
-	schedulerHandle svcapi.SchedulerHandle
+	baseView        minkapi.View
+	wamView         minkapi.View
+	bamView         minkapi.View
+	schedulerHandle simulationapi.SchedulerHandle
 }
 
 var log = klog.NewKlogr()
@@ -46,7 +46,7 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	clientFacades, err := suite.baseView.GetClientFacades(ctx, commontypes.ClientAccessModeInMemory)
+	clientFacades, err := suite.baseView.GetClientFacades(ctx, minkapi.ClientAccessModeInMemory)
 	if err != nil {
 		t.Fatalf("failed to get client facades: %v", err)
 		return
@@ -94,7 +94,7 @@ func TestSingleSchedulerPodNodeAssignment(t *testing.T) {
 
 func initSuite(ctx context.Context) (suite suiteState, err error) {
 	ctx = logr.NewContext(ctx, log)
-	ctx = context.WithValue(ctx, commontypes.VerbosityCtxKey, 1)
+	ctx = context.WithValue(ctx, apicommon.VerbosityCtxKey, 1)
 	app, _, err := cli.LaunchApp(ctx)
 	if err != nil {
 		return
@@ -136,11 +136,11 @@ func initSuite(ctx context.Context) (suite suiteState, err error) {
 	if err != nil {
 		return
 	}
-	clientFacades, err := suite.baseView.GetClientFacades(suite.ctx, commontypes.ClientAccessModeInMemory)
+	clientFacades, err := suite.baseView.GetClientFacades(suite.ctx, minkapi.ClientAccessModeInMemory)
 	if err != nil {
 		return
 	}
-	suite.schedulerHandle, err = launcher.Launch(suite.ctx, &svcapi.SchedulerLaunchParams{
+	suite.schedulerHandle, err = launcher.Launch(suite.ctx, &simulationapi.SchedulerLaunchParams{
 		ClientFacades: clientFacades,
 		EventSink:     app.Server.GetBaseView().GetEventSink(),
 	})

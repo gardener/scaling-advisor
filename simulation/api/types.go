@@ -13,6 +13,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
 )
@@ -37,6 +38,8 @@ type SimulationArgs struct {
 	Strategy apicommon.SimulatorStrategy
 	// NodeTemplates is a slice of [ScaleOutNodeTemplate] representing information needed to create scale-out simulated nodes.
 	NodeTemplates []ScaleOutNodeTemplate
+	// FallbackCSINodeSpecs provides CSINodeSpec data for nodes that do not have an associated CSINode object. Keyed by instanceType.
+	FallbackCSINodeSpecs map[string]storagev1.CSINodeSpec `json:"fallbackCSINodeSpecs,omitempty"`
 	// Config is the simulation configuration.
 	Config SimulationConfig
 }
