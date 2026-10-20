@@ -9,10 +9,10 @@ import (
 
 	"github.com/gardener/scaling-advisor/common/objutil"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -54,11 +54,10 @@ func AsNode(info plannerapi.NodeInfo) *corev1.Node {
 	}
 }
 
-// BuildAllocatable builds the allocatable resources of a node given its capacity, system reserved and kube reserved resources.
-func BuildAllocatable(capacity, systemReserved, kubeReserved corev1.ResourceList) corev1.ResourceList {
+// BuildAllocatable builds the allocatable resources of a node given its capacity and reserved resources.
+func BuildAllocatable(capacity, reservedResources corev1.ResourceList) corev1.ResourceList {
 	allocatable := capacity.DeepCopy()
-	objutil.SubtractResources(allocatable, systemReserved)
-	objutil.SubtractResources(allocatable, kubeReserved)
+	objutil.SubtractResources(allocatable, reservedResources)
 	if _, ok := allocatable[corev1.ResourcePods]; !ok {
 		allocatable[corev1.ResourcePods] = resource.MustParse("110")
 	}
@@ -84,8 +83,8 @@ func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, p
 	nodeLabels[corev1.LabelTopologyRegion] = placement.Region
 	nodeLabels[corev1.LabelOSStable] = string(corev1.Linux)
 	nodeLabels[corev1.LabelHostname] = hostName
-	nodeLabels[commonconstants.LabelNodePoolName] = placement.PoolName
-	nodeLabels[commonconstants.LabelNodeTemplateName] = placement.TemplateName
+	nodeLabels[apicommon.LabelNodePoolName] = placement.PoolName
+	nodeLabels[apicommon.LabelNodeTemplateName] = placement.TemplateName
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec
@@ -96,7 +95,7 @@ func NewCSINode(nodeName string, nodeUID types.UID, csiNodeSpec storagev1.CSINod
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: storagev1.SchemeGroupVersion.Version,
-					Kind:       typeinfo.CSINodeDescriptor.GetKind(),
+					Kind:       minkapi.CSINodeDescriptor.GetKind(),
 					Name:       nodeName,
 					UID:        nodeUID,
 				},

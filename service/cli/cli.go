@@ -13,40 +13,33 @@ import (
 
 	"github.com/gardener/scaling-advisor/service/internal/core"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	"github.com/gardener/scaling-advisor/common/cliutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	mkcli "github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/gardener/scaling-advisor/planner"
-	"github.com/gardener/scaling-advisor/pricing"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 )
 
 // App represents an application process `scaling-planner` that wraps a ScalingPlannerService, an application context
-// and application cancel func. `main` entry-point functions that embed ScalingPlannerService are expected to launch a new App
-// instance via cli.LaunchApp and shutdown the instance via cli.ShutdownApp.
+// and application cancel func.
 type App struct {
-	// Service is the scaling planner service.
 	Service plannerapi.ScalingPlannerService
-	// Ctx is the application context.
-	Ctx context.Context
-	// Cancel is the context cancellation function.
-	Cancel context.CancelFunc
+	Ctx     context.Context
+	Cancel  context.CancelFunc
 }
 
 // Opts is a struct that encapsulates target fields for CLI options parsing.
 type Opts struct {
-	InstancePricingPath string
-	// CloudProvider is the cloud provider for which the scaling advisor planner is initialized.
 	CloudProvider    string
 	TraceDir         string
-	ServerConfig     commontypes.ServerConfig
-	ClientConfig     commontypes.QPSBurst
-	WatchConfig      minkapi.WatchConfig
+	ServerConfig     apicomponent.ServerConfig
 	SimulationConfig plannerapi.SimulatorConfig
+	ClientConfig     apicomponent.QPSBurst
+	WatchConfig      minkapi.WatchConfig
 }
 
 // ParseProgramFlags parses the command line arguments and returns Opts.
@@ -63,13 +56,7 @@ func ParseProgramFlags(args []string) (*Opts, error) {
 	return opts, nil
 }
 
-// LaunchApp is a helper function used to parse cli args, construct, and start the ScalingAdvisorService,
-// embed the planner inside an App representing the binary process along with an application context and application cancel func.
-//
-// On success, returns an initialized App which holds the ScalingAdvisorService, the App Context (set up for SIGINT and SIGTERM cancellation and holds a logger),
-// and the Cancel func which callers are expected to defer in their main routines.
-//
-// On error, it will log the error to standard error and return the exitCode that callers are expected to exit the process with.
+// LaunchApp parses CLI args, constructs and starts the ScalingPlannerService, and embeds it in an App.
 func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 	defer func() {
 		if errors.Is(err, pflag.ErrHelp) {
@@ -89,16 +76,11 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 	cliutil.PrintVersion(plannerapi.ServiceName)
 	embeddedMinKAPIKubeConfigPath := path.Join(os.TempDir(), "embedded-minkapi.yaml")
 	log.Info("embedded minkapi-kube cfg path", "kubeConfigPath", embeddedMinKAPIKubeConfigPath)
-	cloudProvider, err := commontypes.AsCloudProvider(cliOpts.CloudProvider)
-	if err != nil {
-		exitCode = cliutil.ExitErrParseOpts
-		return
-	}
 	cfg := plannerapi.ScalingPlannerServiceConfig{
 		ServerConfig: cliOpts.ServerConfig,
 		MinKAPIConfig: minkapi.Config{
 			BasePrefix: minkapi.DefaultBasePrefix,
-			ServerConfig: commontypes.ServerConfig{
+			ServerConfig: apicomponent.ServerConfig{
 				BindAddress:             cliOpts.ServerConfig.BindAddress,
 				KubeConfigPath:          embeddedMinKAPIKubeConfigPath,
 				ProfilingEnabled:        cliOpts.ServerConfig.ProfilingEnabled,
@@ -107,16 +89,11 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 			WatchConfig: cliOpts.WatchConfig,
 		},
 		ClientConfig:    cliOpts.ClientConfig,
-		CloudProvider:   cloudProvider,
+		CloudProvider:   apicommon.CloudProvider(cliOpts.CloudProvider),
 		SimulatorConfig: cliOpts.SimulationConfig,
 		TraceDir:        cliOpts.TraceDir,
 	}
-	pricingAccess, err := pricing.GetInstancePricingAccess(cloudProvider, cliOpts.InstancePricingPath)
-	if err != nil {
-		exitCode = cliutil.ExitErrStart
-		return
-	}
-	app.Service, err = core.NewService(app.Ctx, cfg, pricingAccess, planner.NewFactories())
+	app.Service, err = core.NewService(app.Ctx, cfg, planner.NewFactories())
 	if err != nil {
 		exitCode = cliutil.ExitErrStart
 		return
@@ -133,17 +110,17 @@ func LaunchApp(ctx context.Context) (app App, exitCode int, err error) {
 	return
 }
 
-// ShutdownApp gracefully stops the App process wrapping the ScalingAdvisorService and returns an exit code.
+// ShutdownApp gracefully stops the App.
 func ShutdownApp(app *App) (exitCode int) {
 	log := logr.FromContextOrDiscard(app.Ctx)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := app.Service.Stop(ctx); err != nil {
-		log.Error(err, fmt.Sprintf(" %s shutdown failed", minkapi.ProgramName))
+		log.Error(err, fmt.Sprintf("%s shutdown failed", plannerapi.ServiceName))
 		exitCode = cliutil.ExitErrShutdown
 		return
 	}
-	log.Info(fmt.Sprintf("%s shutdown gracefully.", minkapi.ProgramName))
+	log.Info(fmt.Sprintf("%s shutdown gracefully.", plannerapi.ServiceName))
 	exitCode = cliutil.ExitSuccess
 	return
 }
@@ -151,27 +128,8 @@ func ShutdownApp(app *App) (exitCode int) {
 func (o Opts) validate() error {
 	var errs []error
 	errs = append(errs, cliutil.ValidateServerConfigFlags(o.ServerConfig))
-	if len(o.InstancePricingPath) == 0 {
-		errs = append(errs, fmt.Errorf("%w: --pricing", commonerrors.ErrMissingOpt))
-	}
-	_, err := commontypes.AsCloudProvider(o.CloudProvider)
-	if err != nil {
+	if _, err := apicommon.AsCloudProvider(o.CloudProvider); err != nil {
 		errs = append(errs, err)
-	}
-	if len(o.InstancePricingPath) > 0 {
-		fInfo, err := os.Stat(o.InstancePricingPath)
-		if err != nil {
-			err = fmt.Errorf("%w: --pricing/-p should exist and be readable: %w", commonerrors.ErrInvalidOptVal, err)
-			errs = append(errs, err)
-		}
-		if fInfo.IsDir() {
-			err = fmt.Errorf("%w: --pricing/-p should be a file", commonerrors.ErrInvalidOptVal)
-			errs = append(errs, err)
-		}
-		if fInfo.Size() == 0 {
-			err = fmt.Errorf("%w: --pricing/-p should not be empty", commonerrors.ErrInvalidOptVal)
-			errs = append(errs, err)
-		}
 	}
 	return errors.Join(errs...)
 }
@@ -182,11 +140,10 @@ func setupFlagsToOpts() (*pflag.FlagSet, *Opts) {
 	cliutil.MapServerConfigFlags(flagSet, &opts.ServerConfig)
 	cliutil.MapQPSBurstFlags(flagSet, &opts.ClientConfig)
 	mkcli.MapWatchConfigFlags(flagSet, &opts.WatchConfig)
-	flagSet.StringVar(&opts.InstancePricingPath, "instance-info", "", "path to instance info file (contains prices)")
-	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(commontypes.CloudProviderAWS), "cloud provider")
+	flagSet.StringVarP(&opts.CloudProvider, "cloud-provider", "c", string(apicommon.CloudProviderAWS), "cloud provider")
 	flagSet.IntVarP(&opts.SimulationConfig.MaxParallelSimulations, "max-parallel-simulations", "m", plannerapi.DefaultMaxParallelSimulations, "maximum number of parallel simulations")
-	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", plannerapi.DefaultTrackPollInterval, "poll interval for tracking pod scheduling in the view of the simulator")
-	flagSet.StringVar(&opts.TraceDir, "trace-dir", os.TempDir(), "directory for traces ")
-	flagSet.StringVarP(&opts.InstancePricingPath, "pricing", "p", "", "path to instance pricing file")
+	flagSet.DurationVar(&opts.SimulationConfig.TrackPollInterval, "track-poll-interval", plannerapi.DefaultTrackPollInterval, "poll interval for tracking pod scheduling")
+	flagSet.IntVar(&opts.SimulationConfig.MaxUnchangedTrackAttempts, "max-unchanged-track-attempts", plannerapi.DefaultMaxUnchangedTrackAttempts, "maximum unchanged simulation track attempts before stopping")
+	flagSet.StringVar(&opts.TraceDir, "trace-dir", os.TempDir(), "directory for traces")
 	return flagSet, &opts
 }

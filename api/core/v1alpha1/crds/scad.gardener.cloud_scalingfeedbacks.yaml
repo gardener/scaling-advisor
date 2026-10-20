@@ -1,0 +1,132 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: scalingfeedbacks.scad.gardener.cloud
+spec:
+  group: scad.gardener.cloud
+  names:
+    kind: ScalingFeedback
+    listKind: ScalingFeedbackList
+    plural: scalingfeedbacks
+    shortNames:
+    - sfb
+    singular: scalingfeedback
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.acknowledgedAt
+      name: Acknowledged
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ScalingFeedback is written by the lifecycle manager in response to a [ScalingAdvice].
+          It is owned by the corresponding [ScalingAdvice] via an owner reference and is
+          garbage-collected when the [ScalingAdvice] is deleted.
+
+          Field manager ownership:
+            - The lifecycle manager owns all fields in [ScalingFeedbackSpec].
+            - The scaling-advisor must not write to this resource.
+
+          Linking convention: a ScalingFeedback shares the same name and namespace as its
+          owning [ScalingAdvice], making lookup a direct Get rather than a List+filter.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ScalingFeedbackSpec contains the feedback from the lifecycle
+              manager regarding a [ScalingAdvice].
+            properties:
+              acknowledgedAt:
+                description: |-
+                  AcknowledgedAt is set by the lifecycle manager to the time at which it observed this
+                  [ScalingAdvice] and committed to executing the full scale-out/scale-in plan.
+                  The scaling-advisor will not produce a subsequent [ScalingAdvice] until this field is set.
+                format: date-time
+                type: string
+              scaleIn:
+                description: ScaleIn is the scale-in feedback from the lifecycle manager
+                  when applying [ScaleInPlan].
+                properties:
+                  acceptedNodeNames:
+                    description: |-
+                      AcceptedNodeNames holds the node names accepted for scale-in by the lifecycle controller.
+                      This field must be non-empty whenever [ScaleInFeedback] is present.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - acceptedNodeNames
+                type: object
+              scaleOut:
+                description: ScaleOut is the scale-out feedback from the lifecycle
+                  manager when applying [ScaleOutPlan].
+                properties:
+                  items:
+                    description: |-
+                      Items contains item feedback corresponding to each [ScaleOutItem]. This field must be non-empty
+                      whenever [ScaleOutFeedback] is present.
+                    items:
+                      description: ScaleOutItemFeedback is the feedback from the lifecycle
+                        manager when applying an individual [ScaleOutItem].
+                      properties:
+                        backoffUntil:
+                          description: |-
+                            BackoffUntil if populated, represents the time until the scaling-advisor will not consider the
+                            corresponding [ScaleOutItem]'s [NodePlacement] when running simulations and generating subsequent
+                            [ScaleOutPlan]'s.
+                          format: date-time
+                          type: string
+                        failCount:
+                          description: |-
+                            FailCount is the number of nodes that have failed creation. The scaling-advisor uses this to
+                            decide whether to retain or discard upcoming [NodePlacement]s for this item.
+                          format: int32
+                          type: integer
+                        message:
+                          description: Message is a human-readable log message from
+                            the lifecycle manager regarding this scale-out item.
+                          type: string
+                        name:
+                          description: Name is the name of the corresponding [ScaleOutItem]
+                            in [ScaleOutPlan.Items].
+                          type: string
+                      required:
+                      - failCount
+                      - name
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - items
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

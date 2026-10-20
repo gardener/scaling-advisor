@@ -7,7 +7,7 @@ package controller
 import (
 	"github.com/gardener/scaling-advisor/operator/internal/controller/scalingconstraints"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	corev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/go-logr/logr"
@@ -43,7 +43,7 @@ func createManagerOptions(log logr.Logger, saCfg *configv1alpha1.OperatorConfig)
 	}
 	opts := ctrl.Options{
 		Scheme:                  scheme,
-		GracefulShutdownTimeout: ptr.To(commonconstants.DefaultGracefulShutdownTimeout),
+		GracefulShutdownTimeout: ptr.To(apicommon.DefaultGracefulShutdownTimeout),
 		Logger:                  log,
 		Metrics: ctrlmetricsserver.Options{
 			BindAddress: saCfg.Server.MetricsBindAddress,

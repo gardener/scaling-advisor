@@ -5,14 +5,13 @@
 package resourceaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type resourceClaimAccess struct {
 }
 
 // NewResourceClaimAccess creates a new access facade for managing ResourceClaim resources within a specific namespace using the given minkapi View.
-func NewResourceClaimAccess(view minkapi.View, namespace string) clientresourcev1.ResourceClaimInterface {
+func NewResourceClaimAccess(view api.View, namespace string) clientresourcev1.ResourceClaimInterface {
 	return &resourceClaimAccess{
 		access.GenericResourceAccess[*resourcev1.ResourceClaim, *resourcev1.ResourceClaimList]{
 			View:      view,
-			GVK:       typeinfo.ResourceClaimDescriptor.GVK,
+			GVK:       api.ResourceClaimDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -77,9 +76,9 @@ func (a *resourceClaimAccess) Patch(ctx context.Context, name string, pt types.P
 }
 
 func (a *resourceClaimAccess) Apply(_ context.Context, _ *v1.ResourceClaimApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *resourceClaimAccess) ApplyStatus(_ context.Context, _ *v1.ResourceClaimApplyConfiguration, _ metav1.ApplyOptions) (result *resourcev1.ResourceClaim, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

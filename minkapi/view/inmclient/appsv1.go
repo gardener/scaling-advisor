@@ -5,10 +5,10 @@
 package inmclient
 
 import (
+	"errors"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/appaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,23 +18,23 @@ var (
 )
 
 type appsV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (a *appsV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented) //TODO: provide a common implementation of rest.Interface for any resource
+	panic(errors.ErrUnsupported) //TODO: provide a common implementation of rest.Interface for any resource
 }
 
 func (a *appsV1Impl) ControllerRevisions(_ string) appsv1.ControllerRevisionInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) DaemonSets(_ string) appsv1.DaemonSetInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) Deployments(_ string) appsv1.DeploymentInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *appsV1Impl) ReplicaSets(namespace string) appsv1.ReplicaSetInterface {

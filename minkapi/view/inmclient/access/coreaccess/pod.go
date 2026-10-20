@@ -5,14 +5,13 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
@@ -34,11 +33,11 @@ type podAccess struct {
 }
 
 // NewPodAccess creates a new access facade for managing Pod resources within a specific namespace using the given minkapi View.
-func NewPodAccess(view minkapi.View, namespace string) clientcorev1.PodInterface {
+func NewPodAccess(view api.View, namespace string) clientcorev1.PodInterface {
 	return &podAccess{
 		access.GenericResourceAccess[*corev1.Pod, *corev1.PodList]{
 			View:      view,
-			GVK:       typeinfo.PodsDescriptor.GVK,
+			GVK:       api.PodsDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -81,11 +80,11 @@ func (a *podAccess) Patch(ctx context.Context, name string, pt types.PatchType, 
 }
 
 func (a *podAccess) Apply(_ context.Context, _ *applyconfigv1.PodApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Pod, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) ApplyStatus(_ context.Context, _ *applyconfigv1.PodApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Pod, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) UpdateEphemeralContainers(ctx context.Context, podName string, pod *corev1.Pod, opts metav1.UpdateOptions) (*corev1.Pod, error) {
@@ -99,7 +98,7 @@ func (a *podAccess) UpdateEphemeralContainers(ctx context.Context, podName strin
 }
 
 func (a *podAccess) UpdateResize(_ context.Context, _ string, _ *corev1.Pod, _ metav1.UpdateOptions) (*corev1.Pod, error) {
-	return nil, fmt.Errorf("%w: UpdateResize of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: UpdateResize of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) Bind(ctx context.Context, binding *corev1.Binding, _ metav1.CreateOptions) error {
@@ -109,21 +108,21 @@ func (a *podAccess) Bind(ctx context.Context, binding *corev1.Binding, _ metav1.
 }
 
 func (a *podAccess) Evict(_ context.Context, _ *policyv1beta1.Eviction) error {
-	return fmt.Errorf("%w: Evict of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return fmt.Errorf("%w: Evict of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) EvictV1(_ context.Context, _ *policyv1.Eviction) error {
-	return fmt.Errorf("%w: EvictV1 of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return fmt.Errorf("%w: EvictV1 of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) EvictV1beta1(_ context.Context, _ *policyv1beta1.Eviction) error {
-	return fmt.Errorf("%w: EvictV1beta1 of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return fmt.Errorf("%w: EvictV1beta1 of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podAccess) GetLogs(_ string, _ *corev1.PodLogOptions) *rest.Request {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (a *podAccess) ProxyGet(_, _, _, _ string, _ map[string]string) rest.ResponseWrapper {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }

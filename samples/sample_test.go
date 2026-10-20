@@ -7,7 +7,7 @@ package samples
 import (
 	"testing"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ func TestGeneratePVCs(t *testing.T) {
 		Storage:    wantStorage,
 		AccessMode: wantAccessMode,
 		PVCNames:   wantNames,
-		Provider:   commontypes.CloudProviderAWS,
+		Provider:   apicommon.CloudProviderAWS,
 		ClaimPhase: corev1.ClaimBound,
 	}
 	out, err := GeneratePersistentVolumeClaims(testGenDir, vg)
@@ -76,7 +76,7 @@ func TestGeneratePVs(t *testing.T) {
 		Storage:    wantStorage,
 		AccessMode: wantAccessMode,
 		PVCNames:   pvcNames,
-		Provider:   commontypes.CloudProviderAWS,
+		Provider:   apicommon.CloudProviderAWS,
 		PVZones:    []string{wantZone},
 		ClaimPhase: corev1.ClaimBound,
 	})
@@ -109,7 +109,7 @@ func TestGenerateStorageClass(t *testing.T) {
 	if !ok {
 		return
 	}
-	sc, _, err := GenerateDefaultStorageClass(testGenDir, commontypes.CloudProviderAWS, wantName, wantVolumeBindingMode)
+	sc, _, err := GenerateDefaultStorageClass(testGenDir, apicommon.CloudProviderAWS, wantName, wantVolumeBindingMode)
 	if err != nil {
 		t.Fatalf("GenerateDefaultStorageClass() failed: %v", err)
 	}

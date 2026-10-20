@@ -11,20 +11,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gardener/scaling-advisor/planner/scheduler"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	"github.com/gardener/scaling-advisor/common/poolutil"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view"
-	pricingtestutil "github.com/gardener/scaling-advisor/pricing/testutil"
 	"github.com/gardener/scaling-advisor/samples"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+	"github.com/gardener/scaling-advisor/simulation/scheduler"
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -42,9 +42,9 @@ type Args struct {
 	Factories                           plannerapi.Factories
 	NumUnscheduledPodsPerResourcePreset map[samples.ResourcePreset]int
 	PoolPreset                          samples.PoolPreset
-	SimulatorStrategy                   commontypes.SimulatorStrategy
-	NodeScoringStrategy                 commontypes.NodeScoringStrategy
-	AdviceGenerationMode                commontypes.ScalingAdviceGenerationMode
+	SimulatorStrategy                   apicommon.SimulatorStrategy
+	NodeScoringStrategy                 apicommon.NodeScoringStrategy
+	AdviceGenerationMode                apicommon.ScalingAdviceGenerationMode
 	// PoolZones specifies the availability zones for each pool given in order for the NodePools of the PoolPreset.
 	// If nil, defaults to the PoolPreset zone.
 	PoolZones   [][]string
@@ -80,7 +80,10 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 		t.Fatalf("failed to generate constraints: %v", err)
 		return
 	}
-	testData.Request.Constraint = &constraintGenOutput.Constraint
+	testData.Request.ScalingConstraint = &constraintGenOutput.Constraint.Spec
+	testData.Request.ScalingConstraint.ScoringStrategy = cmp.Or(args.NodeScoringStrategy, apicommon.NodeScoringStrategyLeastCost)
+	testData.Request.ScalingConstraint.SimulatorStrategy = cmp.Or(args.SimulatorStrategy, apicommon.SimulatorStrategySingleNodeMultiSim)
+	testData.Request.NodeTemplates = constraintGenOutput.NodeTemplates
 	for category, num := range args.NumUnscheduledPodsPerResourcePreset {
 		podGenOutput, err = samples.GenerateSimplePodsForResourcePreset(category, num, samples.PodGenInput{
 			GenDir:        testData.GenDir,
@@ -92,18 +95,18 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			t.Fatalf("failed to generate simple pods for resource category %s: %v", category, err)
 			return
 		}
-		testData.Request.Snapshot.Pods = append(testData.Request.Snapshot.Pods, podutil.PodInfosFromCoreV1Pods(podGenOutput.Pods)...)
+		testData.Request.ClusterSnapshot.Pods = append(testData.Request.ClusterSnapshot.Pods, podutil.PodInfosFromCoreV1Pods(podGenOutput.Pods)...)
 	}
 	if len(args.VolGenInput.PVCNames) > 0 {
 		if args.VolGenInput.PVZones == nil {
 			// If PVZones is not specified, default to all available zones across all NodePools of the ScalingConstraint
-			args.VolGenInput.PVZones = testData.Request.Constraint.Spec.GetAllAvailabilityZones()
+			args.VolGenInput.PVZones = testData.Request.ScalingConstraint.GetAllAvailabilityZones()
 		}
-		if ok = GenAndFillStorageAndVolumeObjects(t, testData.GenDir, args.VolGenInput, &testData.Request.Snapshot); !ok {
+		if ok = GenAndFillStorageAndVolumeObjects(t, testData.GenDir, args.VolGenInput, &testData.Request.ClusterSnapshot); !ok {
 			return
 		}
 	}
-	testData.NodePlacements = getAllNodePlacements(testData.Request.Constraint.Spec)
+	testData.NodePlacements = getAllNodePlacements(*testData.Request.ScalingConstraint, constraintGenOutput.NodeTemplates)
 	data, err := json.Marshal(testData.Request)
 	if err != nil {
 		t.Fatal("failed to marshal request:", err)
@@ -113,6 +116,23 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 	if err = os.WriteFile(reqJsonPath, data, 0600); err != nil {
 		t.Fatal("failed to write request.json:", err)
 		return
+	}
+	// Fill InstancePrices from samples for top 30 AWS instance types
+	instancePrices, err := samples.GetTop30AWSInstancePrices()
+	if err != nil {
+		t.Fatalf("failed to load top-30 AWS instance prices: %v", err)
+		return
+	}
+	testData.Request.InstancePrices = instancePrices
+	// Fill InstanceTypeDefs from samples for top 30 AWS instance types
+	instanceTypeDefs, err := samples.GetTop30AWSInstanceTypeDefs()
+	if err != nil {
+		t.Fatalf("failed to load top-30 AWS instance type defs: %v", err)
+		return
+	}
+	testData.Request.InstanceTypeDefs = make(map[string]sacorev1alpha1.InstanceTypeDef, len(instanceTypeDefs))
+	for _, itd := range instanceTypeDefs {
+		testData.Request.InstanceTypeDefs[itd.Name] = itd
 	}
 	if testData.RunContext, planner, ok = CreateTestScalingPlanner(t, args, testData.GenDir, testData.Request.DiagnosticVerbosity); !ok {
 		return
@@ -167,10 +187,10 @@ func AssertExactScaleOutPlan(t *testing.T, want, got *sacorev1alpha1.ScaleOutPla
 		return false
 	}
 	slices.SortFunc(want.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
-		return strings.Compare(a.PoolName, b.PoolName)
+		return strings.Compare(a.NodePlacement.PoolName, b.NodePlacement.PoolName)
 	})
 	slices.SortFunc(got.Items, func(a, b sacorev1alpha1.ScaleOutItem) int {
-		return strings.Compare(a.PoolName, b.PoolName)
+		return strings.Compare(a.NodePlacement.PoolName, b.NodePlacement.PoolName)
 	})
 	if diff := gocmp.Diff(want, got); diff != "" {
 		t.Errorf("ScaleOutPlan mismatch (-want +got):\n%s", diff)
@@ -218,7 +238,6 @@ func ObtainPlannerResponse(t *testing.T, planner plannerapi.ScalingPlanner, test
 // CreateTestScalingPlanner creates a ScalingPlanner for unit-tests with the given context timeout for the given provider,
 // using traceDir for traces and object dumps and leveraging the given factories.
 func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosity uint32) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
-	//t *testing.T, timeout time.Duration, provider commontypes.CloudProvider, traceDir string, factories plannerapi.Factories) (runCtx context.Context, planr plannerapi.ScalingPlanner, ok bool) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -235,14 +254,9 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		}
 	}
 	runCtx = commontestutil.NewTestContext(t, args.Timeout, int(verbosity))
-	pricingAccess, err := pricingtestutil.GetInstancePricingAccessForTop20AWSInstanceTypes()
-	if err != nil {
-		t.Fatalf("failed to get instance pricing access: %v", err)
-		return
-	}
 	viewAccess, err := view.NewAccess(runCtx, &minkapi.ViewArgs{
 		Name:   minkapi.DefaultBasePrefix,
-		Scheme: typeinfo.SupportedScheme,
+		Scheme: minkapi.SupportedScheme,
 		WatchConfig: minkapi.WatchConfig{
 			QueueSize: minkapi.DefaultWatchQueueSize,
 			Timeout:   minkapi.DefaultWatchTimeout,
@@ -261,15 +275,19 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 	var simulatorConfig plannerapi.SimulatorConfig
 	if os.Getenv("DEBUG") == "" {
 		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
+			MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+			SimulationConfig: simulationapi.SimulationConfig{
+				TrackPollInterval:         plannerapi.DefaultTrackPollInterval,
+				MaxUnchangedTrackAttempts: plannerapi.DefaultMaxUnchangedTrackAttempts,
+			},
 		}
 	} else { // allow comfortable time for debugging
 		simulatorConfig = plannerapi.SimulatorConfig{
-			MaxParallelSimulations:    plannerapi.DefaultMaxParallelSimulations,
-			TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
-			MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
+			MaxParallelSimulations: plannerapi.DefaultMaxParallelSimulations,
+			SimulationConfig: simulationapi.SimulationConfig{
+				TrackPollInterval:         100 * plannerapi.DefaultTrackPollInterval,
+				MaxUnchangedTrackAttempts: 10 * plannerapi.DefaultMaxUnchangedTrackAttempts,
+			},
 		}
 	}
 	simulatorConfig.BindVolumeClaimsForImmediateMode = true
@@ -278,13 +296,9 @@ func CreateTestScalingPlanner(t *testing.T, args Args, traceDir string, verbosit
 		t.Fatalf("failed to create SchedulerLauncher: %v", err)
 		return
 	}
-	storageMetaAccess := &testStorageMetaAccess{provider: args.VolGenInput.Provider}
 	scalePlannerArgs := plannerapi.ScalingPlannerArgs{
 		ViewAccess:        viewAccess,
-		ResourceWeigher:   args.Factories.ResourceWeigher,
-		PricingAccess:     pricingAccess,
 		SchedulerLauncher: schedulerLauncher,
-		StorageMetaAccess: storageMetaAccess,
 		SimulatorConfig:   simulatorConfig,
 		SimulatorFactory:  args.Factories.Simulator,
 		SimulationFactory: args.Factories.Simulation,
@@ -309,30 +323,17 @@ func (d *Data) validateAndFillDefaults(t *testing.T, args *Args) bool {
 		d.Request.DiagnosticVerbosity = DefaultPlannerTestVerbosity
 	}
 	d.Request.ID = t.Name()
-	d.Request.ScoringStrategy = cmp.Or(args.NodeScoringStrategy, commontypes.NodeScoringStrategyLeastCost)
-	args.VolGenInput.Provider = cmp.Or(args.VolGenInput.Provider, commontypes.CloudProviderAWS)
-	d.Request.SimulatorStrategy = cmp.Or(args.SimulatorStrategy, commontypes.SimulatorStrategySingleNodeMultiSim)
-	d.Request.AdviceGenerationMode = cmp.Or(args.AdviceGenerationMode, commontypes.ScalingAdviceGenerationModeAllAtOnce)
+	args.VolGenInput.Provider = cmp.Or(args.VolGenInput.Provider, apicommon.CloudProviderAWS)
+	d.Request.AdviceGenerationMode = cmp.Or(args.AdviceGenerationMode, apicommon.ScalingAdviceGenerationModeAllAtOnce)
 	return true
 }
 
-var _ plannerapi.StorageMetaAccess = (*testStorageMetaAccess)(nil)
-
-type testStorageMetaAccess struct {
-	provider commontypes.CloudProvider
-}
-
-func (s *testStorageMetaAccess) GetFallbackCSINodeSpec(instanceType string) (csiNodeSpec storagev1.CSINodeSpec, err error) {
-	maxVolumes := samples.GetMaxAllocatableVolumes(s.provider, instanceType)
-	csiNodeSpec.Drivers, err = samples.GetCSINodeDrivers(s.provider, maxVolumes)
-	return
-}
-
 // getAllNodePlacements computes all the possible NodePlacements for the ScalingConstraintSpec.
-func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec) (placements []sacorev1alpha1.NodePlacement) {
+func getAllNodePlacements(c sacorev1alpha1.ScalingConstraintSpec, nodeTemplates map[string]sacorev1alpha1.NodeTemplate) (placements []sacorev1alpha1.NodePlacement) {
 	placements = make([]sacorev1alpha1.NodePlacement, 0, len(c.NodePools)*len(c.GetAllAvailabilityZones()))
+	allNodePlacements := poolutil.GetNodePlacements(sacorev1alpha1.ScalingConstraint{Spec: c}, nodeTemplates)
 	for _, p := range c.NodePools {
-		placements = append(placements, p.GetNodePlacements()...)
+		placements = append(placements, allNodePlacements[p.Name]...)
 	}
 	return placements
 }

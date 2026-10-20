@@ -2,33 +2,38 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package awsprice provides utilities to fetch and parse AWS EC2 instance
-// pricing information from the AWS public price list JSON.
-//
-// It extracts OnDemand hourly prices for EC2 instance types, filtered by
-// operating system, region, and tenancy. Results are returned as
-// plannerapi.InstanceTypeInfo values suitable for consumption in higher-level
-// tools.
-
+// Package awsprice provides types for parsing the AWS EC2 public price list JSON.
 package awsprice
 
+// InstanceTypeInfo holds the parsed attributes and on-demand hourly price for
+// a single EC2 instance type in a given region. It is the internal
+// representation produced by ParseRegionPrices and consumed by the
+// geninstancetypedef command to build InstanceTypeDefSet and InstancePriceSet CRs.
+type InstanceTypeInfo struct {
+	InstanceType string
+	Region       string
+	OS           string
+	// Memory is in bytes.
+	Memory int64
+	// GPUMemory is in bytes; 0 if no GPU.
+	GPUMemory   int64
+	HourlyPrice float64
+	VCPU        int32
+	GPU         int32
+}
+
 // PriceList represents the root of the AWS pricing JSON document.
-// It contains both the product metadata (instance attributes) and
-// the pricing terms (OnDemand, Reserved).
 type PriceList struct {
 	Products map[string]Product `json:"products"`
 	Terms    Terms              `json:"terms"`
 }
 
-// Product holds metadata for a single product SKU (e.g., an EC2 instance type
-// under a specific OS, tenancy, and license model).
+// Product holds metadata for a single product SKU.
 type Product struct {
 	Attributes Attributes `json:"attributes"`
 }
 
 // Attributes describes the key attributes of an EC2 instance SKU.
-// Not all attributes are relevant for pricing; we keep only the fields
-// required for building [plannerapi.InstanceTypeInfo] records.
 type Attributes struct {
 	InstanceType string `json:"instanceType"`
 	VCPU         string `json:"vcpu"`
@@ -40,13 +45,11 @@ type Attributes struct {
 }
 
 // Terms contains the pricing terms for products.
-// We are primarily interested in OnDemand pricing.
 type Terms struct {
 	OnDemand map[string]map[string]OfferTerm `json:"OnDemand"`
 }
 
 // OfferTerm groups one or more price dimensions for a given product offer.
-// Each dimension may differ in billing granularity (hourly, per-second).
 type OfferTerm struct {
 	PriceDimensions map[string]PriceDimension `json:"priceDimensions"`
 }

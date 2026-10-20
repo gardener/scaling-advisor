@@ -11,13 +11,16 @@ import (
 	"path"
 	"path/filepath"
 
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/gardener/scaling-advisor/planner/scorer"
+	"github.com/gardener/scaling-advisor/planner/simulator"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/viewutil"
+	"github.com/gardener/scaling-advisor/common/volutil"
 	"github.com/go-logr/logr"
 )
 
@@ -62,24 +65,42 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err = validateRequest(req); err != nil {
 		return err
 	}
-	nodeScorer, err := scorer.GetNodeScorer(req.ScoringStrategy, p.args.PricingAccess, p.args.ResourceWeigher)
+	nodeScorer, err := scorer.GetNodeScorer(req.ScalingConstraint.ScoringStrategy)
 	if err != nil {
 		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 	}
 	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
-		Strategy:          req.SimulatorStrategy,
+		Strategy:          req.ScalingConstraint.SimulatorStrategy,
 		ViewAccess:        p.args.ViewAccess,
 		SchedulerLauncher: p.args.SchedulerLauncher,
-		StorageMetaAccess: p.args.StorageMetaAccess,
 		NodeScorer:        nodeScorer,
 		TraceDir:          p.args.TraceDir,
+		Request:           req,
 	})
 	if err != nil {
 		return err
 	}
 	defer ioutil.CloseQuietly(scaleOutSimulator)
-	planResultCh := scaleOutSimulator.Simulate(planCtx, req, p.args.SimulationFactory)
+
+	// Build and populate the request view, then pass it to Simulate.
+	requestView, err := p.args.ViewAccess.GetSandboxViewOverDelegate(planCtx, "Request-"+req.ID, p.args.ViewAccess.GetBaseView())
+	if err != nil {
+		return fmt.Errorf("%w: failed to create request view: %w", plannerapi.ErrPopulateRequestView, err)
+	}
+	if err = simulator.PopulateView(planCtx, requestView, &req.ClusterSnapshot); err != nil {
+		return fmt.Errorf("%w: %w", plannerapi.ErrPopulateRequestView, err)
+	}
+	if p.args.SimulatorConfig.BindVolumeClaimsForImmediateMode {
+		if _, err = volutil.BindClaimsForImmediateMode(planCtx, requestView); err != nil {
+			return fmt.Errorf("%w: failed to bind volume claims for immediate mode: %w", plannerapi.ErrPopulateRequestView, err)
+		}
+	}
+	if err = viewutil.LogObjects(planCtx, "requestView", requestView); err != nil {
+		logr.FromContextOrDiscard(planCtx).Info("failed to dump requestView objects", "error", err)
+	}
+
+	planResultCh := scaleOutSimulator.Simulate(planCtx, p.args.SimulationFactory, requestView)
 	for {
 		select {
 		case <-ctx.Done():
@@ -105,7 +126,7 @@ func validateRequest(req *plannerapi.Request) error {
 	if req.CreationTime.IsZero() {
 		return fmt.Errorf("%w: createdTime not set", plannerapi.ErrInvalidRequest)
 	}
-	if !commontypes.SupportedAdviceGenerationModes.Has(req.AdviceGenerationMode) {
+	if !apicommon.SupportedAdviceGenerationModes.Has(req.AdviceGenerationMode) {
 		return fmt.Errorf("%w: unsupported advice generation mode %q", plannerapi.ErrInvalidRequest, req.AdviceGenerationMode)
 	}
 	return nil
@@ -113,13 +134,13 @@ func validateRequest(req *plannerapi.Request) error {
 
 func wrapPlanContext(ctx context.Context, traceDir string, req *plannerapi.Request) (genCtx context.Context, logCloser io.Closer, err error) {
 	genCtx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues("requestID", req.ID, "correlationID", req.CorrelationID))
-	genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
+	genCtx = context.WithValue(genCtx, apicommon.VerbosityCtxKey, req.DiagnosticVerbosity)
 	if req.DiagnosticVerbosity > 1 {
 		if traceDir == "" {
 			traceDir = ioutil.GetTempDir()
 		}
-		genCtx = context.WithValue(genCtx, commontypes.TraceDirCtxKey, traceDir)
-		genCtx = context.WithValue(genCtx, commontypes.VerbosityCtxKey, req.DiagnosticVerbosity)
+		genCtx = context.WithValue(genCtx, apicommon.TraceDirCtxKey, traceDir)
+		genCtx = context.WithValue(genCtx, apicommon.VerbosityCtxKey, req.DiagnosticVerbosity)
 		filepath.Clean(traceDir)
 		logPath := path.Join(traceDir, logutil.GetCleanLogFileName(fmt.Sprintf("%s.log", req.ID)))
 		genCtx, logCloser, err = logutil.WrapContextWithFileLogger(genCtx, req.CorrelationID, logPath)
@@ -130,20 +151,11 @@ func wrapPlanContext(ctx context.Context, traceDir string, req *plannerapi.Reque
 }
 
 func validateArgs(args *plannerapi.ScalingPlannerArgs) error {
-	if args.ResourceWeigher == nil {
-		return fmt.Errorf("%w: resourceWeigher must be set", plannerapi.ErrCreatePlanner)
-	}
 	if args.ViewAccess == nil {
 		return fmt.Errorf("%w: viewAccess must be set", plannerapi.ErrCreatePlanner)
 	}
-	if args.PricingAccess == nil {
-		return fmt.Errorf("%w: pricingAccess must be set", plannerapi.ErrCreatePlanner)
-	}
 	if args.SchedulerLauncher == nil {
 		return fmt.Errorf("%w: schedulerLauncher must be set", plannerapi.ErrCreatePlanner)
-	}
-	if args.StorageMetaAccess == nil {
-		return fmt.Errorf("%w: storageMetaAccess must be set", plannerapi.ErrCreatePlanner)
 	}
 	if args.SimulatorFactory == nil {
 		return fmt.Errorf("%w: simulatorFactory must be set", plannerapi.ErrCreatePlanner)

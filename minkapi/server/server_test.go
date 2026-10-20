@@ -13,10 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
@@ -29,10 +28,10 @@ import (
 var state suiteState
 
 type suiteState struct {
-	app           minkapi.App
+	app           api.App
 	nodeA         corev1.Node
 	podA          corev1.Pod
-	clientFacades commontypes.ClientFacades
+	clientFacades api.ClientFacades
 }
 
 // TestMain sets up the MinKAPI server once for all tests in this package, runs tests and then shutdown.
@@ -104,18 +103,24 @@ func TestWatchPods(t *testing.T) {
 	defer watcher.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		listObjects(ctx, t, watcher.ResultChan(), h.Add)
 	}()
 
 	createdPod, err := client.CoreV1().Pods("").Create(ctx, &state.podA, metav1.CreateOptions{})
 	if err != nil {
+		cancel()
+		wg.Wait()
 		t.Fatalf("failed to create podA: %v", err)
 		return
 	}
 	t.Logf("Created podA with name %q", createdPod.Name)
 	<-time.After(2 * time.Second)
 	cancel()
+	wg.Wait()
 
 	events := h.Events()
 	t.Logf("got numEvents: %d", len(events))
@@ -185,7 +190,7 @@ func initSuite(ctx context.Context) (exitCode int) {
 	}
 	<-time.After(1 * time.Second) // give minimal time for startup
 
-	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, commontypes.ClientAccessModeNetwork)
+	state.clientFacades, err = state.app.Server.GetBaseView().GetClientFacades(ctx, api.ClientAccessModeNetwork)
 	if err != nil {
 		return
 	}
