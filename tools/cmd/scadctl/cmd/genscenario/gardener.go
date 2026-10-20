@@ -442,7 +442,11 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
 	}
 
-	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec, &nts.Spec)
+	nodeTemplatesByName := make(map[string]sacorev1alpha1.NodeTemplate, len(nts.Spec.Templates))
+	for _, t := range nts.Spec.Templates {
+		nodeTemplatesByName[t.Name] = t
+	}
+	nodeToNodeTemplateMap := scalingconstraintutil.NodePoolToNodeTemplates(&sc.Spec, nodeTemplatesByName)
 
 	for _, node := range nodes {
 		poolName := node.Labels[gardenerconstantsv1beta1.LabelWorkerPool]

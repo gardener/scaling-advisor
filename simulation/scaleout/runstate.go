@@ -230,6 +230,10 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate simulationapi.ScaleOutNodeT
 	nodeLabels[apicommon.LabelSimulationRunNum] = fmt.Sprintf("%d", r.runNum)
 	nodeutil.AddNodeLabels(nodeLabels, nodeTemplate.Architecture, scaleOutNodeName, nodeTemplate.NodePlacement)
 	nodeLabels["topology.ebs.csi.aws.com/zone"] = nodeTemplate.AvailabilityZone // TODO: need this for edge cases
+	capacity := nodeTemplate.BaseResources.DeepCopy()
+	for k, v := range nodeTemplate.ExtendedResources {
+		capacity[k] = v
+	}
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   scaleOutNodeName,
@@ -240,8 +244,8 @@ func (r *RunState) buildScaleOutSimNode(nodeTemplate simulationapi.ScaleOutNodeT
 			Taints:     nodeTaints,
 		},
 		Status: corev1.NodeStatus{
-			Capacity:    nodeTemplate.Capacity,
-			Allocatable: nodeutil.BuildAllocatable(nodeTemplate.Capacity, nodeTemplate.SystemReserved, nodeTemplate.KubeReserved),
+			Capacity:    capacity,
+			Allocatable: nodeutil.BuildAllocatable(capacity, nodeTemplate.ReservedResources),
 			Conditions:  nodeutil.BuildReadyConditions(time.Now()),
 		},
 	}

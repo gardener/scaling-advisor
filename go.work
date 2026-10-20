@@ -2,17 +2,16 @@ go 1.26.3
 
 use (
 	./api
-	./minkapi/api
-	//./pricing/api
-	./simulation/api
-	./planner/api
 	./common
 	./minkapi
+	./minkapi/api
+	./planner
+	./planner/api
 	./samples
 	./simulation
-//./tools
-	//./planner
+	./simulation/api
+	./tools
+//./service
 //./operator
 //./pricing
-//./service
 )

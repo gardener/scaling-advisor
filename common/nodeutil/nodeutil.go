@@ -54,11 +54,10 @@ func AsNode(info plannerapi.NodeInfo) *corev1.Node {
 	}
 }
 
-// BuildAllocatable builds the allocatable resources of a node given its capacity, system reserved and kube reserved resources.
-func BuildAllocatable(capacity, systemReserved, kubeReserved corev1.ResourceList) corev1.ResourceList {
+// BuildAllocatable builds the allocatable resources of a node given its capacity and reserved resources.
+func BuildAllocatable(capacity, reservedResources corev1.ResourceList) corev1.ResourceList {
 	allocatable := capacity.DeepCopy()
-	objutil.SubtractResources(allocatable, systemReserved)
-	objutil.SubtractResources(allocatable, kubeReserved)
+	objutil.SubtractResources(allocatable, reservedResources)
 	if _, ok := allocatable[corev1.ResourcePods]; !ok {
 		allocatable[corev1.ResourcePods] = resource.MustParse("110")
 	}

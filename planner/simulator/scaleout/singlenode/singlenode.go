@@ -10,14 +10,15 @@ import (
 	"context"
 	"fmt"
 
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/gardener/scaling-advisor/planner/simulator/scaleout"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/go-logr/logr"
 )
 
@@ -28,9 +29,9 @@ var (
 // simulatorMultiSim is a Simulator that implements ScaleOutSimulator for the SimulatorStrategySingleNodeMultiSim.
 type simulatorMultiSim struct {
 	viewAccess        minkapi.ViewAccess
-	schedulerLauncher plannerapi.SchedulerLauncher
-	storageMetaAccess plannerapi.StorageMetaAccess
+	schedulerLauncher simulationapi.SchedulerLauncher
 	nodeScorer        plannerapi.NodeScorer
+	request           *plannerapi.Request
 	state             *scaleout.SimulatorState
 	simulatorConfig   plannerapi.SimulatorConfig
 }
@@ -44,32 +45,37 @@ func New(args plannerapi.SimulatorArgs) (plannerapi.ScaleOutSimulator, error) {
 		simulatorConfig:   args.Config,
 		viewAccess:        args.ViewAccess,
 		schedulerLauncher: args.SchedulerLauncher,
-		storageMetaAccess: args.StorageMetaAccess,
 		nodeScorer:        args.NodeScorer,
+		request:           args.Request,
 	}, nil
 }
 
-// Simulate constructs multiple ScaleOutSimulation's, groups them into ScaleOutSimGroup's, orders the groups and runs
-// passes where each group is taken in order and simulations run concurrently to get ScaleOutSimResult's. The NodeScorer
+// Simulate constructs multiple Simulation's, groups them into SimulationGroup's, orders the groups and runs
+// passes where each group is taken in order and simulations run concurrently to get SimulationResult's. The NodeScorer
 // is used to get ScaleOutSimGroupPassScores; the winner NodeScore determines the simulation View for the next pass,
-// until there are no more passes possible for the ScaleOutSimGroup. Then the ScaleOutSimGroupCycleResult is produced.
+// until there are no more passes possible for the SimulationGroup. Then the ScaleOutSimGroupCycleResult is produced.
 // If the ScalingAdviceGenerationMode is Incremental, a ScaleOutPlanResult is produced from this one-cycle result and
 // sent on the planResultCh, otherwise the cycle result is stored until all cycles are finished. Following which, a
 // cumulative ScaleOutPlanResult is determined from all ScaleOutSimGroupCycleResult's obtained so far and sent on the planResultCh.
-func (s *simulatorMultiSim) Simulate(ctx context.Context, request *plannerapi.Request, simulationFactory plannerapi.SimulationFactory) <-chan plannerapi.ScaleOutPlanResult {
-	s.state = scaleout.NewSimulatorState(request, s.simulatorConfig, simulationFactory, s.viewAccess)
+func (s *simulatorMultiSim) Simulate(ctx context.Context, simulationFactory simulationapi.SimulationFactory, simulationView minkapi.View) <-chan plannerapi.ScaleOutPlanResult {
+	s.state = scaleout.NewSimulatorState(s.request, s.simulatorConfig, simulationFactory, s.viewAccess)
 	go func() {
 		defer close(s.state.ResultCh)
-		if err := s.doSimulate(ctx); err != nil {
-			scaleout.SendPlanError(s.state.ResultCh, request.GetRef(), err)
+		if err := s.doSimulate(ctx, simulationView); err != nil {
+			scaleout.SendPlanError(s.state.ResultCh, s.request.GetRef(), err)
 		}
 	}()
 	return s.state.ResultCh
 }
 
-func (s *simulatorMultiSim) doSimulate(ctx context.Context) (err error) {
-	if err = s.state.InitializeRequestView(ctx); err != nil {
-		return
+func (s *simulatorMultiSim) doSimulate(ctx context.Context, simulationView minkapi.View) (err error) {
+	if simulationView != nil {
+		// Use the pre-built view passed in (view was already populated by the planner)
+		s.state.SetRequestView(simulationView)
+	} else {
+		if err = s.state.InitializeRequestView(ctx); err != nil {
+			return
+		}
 	}
 	s.state.SimulationGroups, err = s.createAndGroupSimulations()
 	if err != nil {
@@ -80,28 +86,28 @@ func (s *simulatorMultiSim) doSimulate(ctx context.Context) (err error) {
 }
 
 // Close closes all the resources of this simulator's state: all simulation minkapi views, resets simulation run counters,
-// clears any ScaleOutSimGroup's, clears the planner Request, etc.
+// clears any SimulationGroup's, clears the planner Request, etc.
 func (s *simulatorMultiSim) Close() error {
 	return s.state.Reset()
 }
 
-func (s *simulatorMultiSim) createAndGroupSimulations() ([]plannerapi.ScaleOutSimGroup, error) {
+func (s *simulatorMultiSim) createAndGroupSimulations() ([]simulationapi.SimulationGroup, error) {
 	var (
-		allScaleOutNodeTemplates = scaleout.CreateAllNodeTemplates(s.state.Request.Constraint)
-		allSimulations           = make([]plannerapi.ScaleOutSimulation, 0, len(allScaleOutNodeTemplates))
+		allScaleOutNodeTemplates = scaleout.CreateAllNodeTemplates(s.state.Request)
+		allSimulations           = make([]simulationapi.Simulation, 0, len(allScaleOutNodeTemplates))
 	)
 	for i, snt := range allScaleOutNodeTemplates {
 		simulationName := fmt.Sprintf("sim-%d_%s_%s_%s", i, snt.PoolName, snt.TemplateName, snt.AvailabilityZone)
-		simArgs := plannerapi.ScaleOutSimArgs{
-			Name:              simulationName,
-			RunCounter:        s.state.SimRunCounter,
-			SchedulerLauncher: s.schedulerLauncher,
-			StorageMetaAccess: s.storageMetaAccess,
-			Config:            s.simulatorConfig,
-			NodeTemplates:     []plannerapi.ScaleOutNodeTemplate{snt},
-			Strategy:          commontypes.SimulatorStrategySingleNodeMultiSim,
+		simArgs := simulationapi.SimulationArgs{
+			Name:                 simulationName,
+			RunCounter:           s.state.SimRunCounter,
+			SchedulerLauncher:    s.schedulerLauncher,
+			FallbackCSINodeSpecs: s.state.Request.ClusterSnapshot.FallbackCSINodeSpecs,
+			Config:               s.simulatorConfig.SimulationConfig,
+			NodeTemplates:        []simulationapi.ScaleOutNodeTemplate{snt},
+			Strategy:             apicommon.SimulatorStrategySingleNodeMultiSim,
 		}
-		sim, err := s.state.SimulationFactory.NewScaleOut(simArgs)
+		sim, err := s.state.SimulationFactory.New(simArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +177,7 @@ func (s *simulatorMultiSim) runStabilizationCyclesForAllGroups(ctx context.Conte
 //   - the simulation group has stabilized with no scheduled pods for all its child simulations.
 //   - there is no winner node score after running a pass for the group
 //   - the context is done.
-func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.ScaleOutSimGroup) (cycleResult plannerapi.ScaleOutSimGroupCycleResult, err error) {
+func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, groupPassView minkapi.View, group simulationapi.SimulationGroup) (cycleResult plannerapi.ScaleOutSimGroupCycleResult, err error) {
 	var winningNodeScore *plannerapi.NodeScore
 	cycleResult.NextGroupPassView = groupPassView
 	cycleResult.PassNum = 0
@@ -213,22 +219,22 @@ func (s *simulatorMultiSim) runStabilizationCycleForGroup(ctx context.Context, g
 }
 
 // runPassForGroup runs all simulations in the given simulation group once over the provided passView, obtains the SimulationGroupRunResult,
-// invokes the NodeScorer for each valid ScaleOutSimResult to compute the NodeScore and aggregates scores into the ScaleOutSimGroupPassScores - which includes the WinnerScore if any.
+// invokes the NodeScorer for each valid SimulationResult to compute the NodeScore and aggregates scores into the ScaleOutSimGroupPassScores - which includes the WinnerScore if any.
 // If there is a WinnerScore among the SimulationRunResults, within the SimulationGroupRunResult, it is returned along with the nextGroupView.
 // If there is no WinnerScore then return nil for both winnerNodeScore and the nextPassView.
-func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView minkapi.View, group plannerapi.ScaleOutSimGroup) (nextGroupPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
+func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView minkapi.View, group simulationapi.SimulationGroup) (nextGroupPassView minkapi.View, winnerNodeScore *plannerapi.NodeScore, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	var (
 		groupScores plannerapi.ScaleOutSimGroupPassScores
 		winnerView  minkapi.View
 	)
-	scaleOutSimResults, err := group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
+	simResults, err := group.Run(ctx, func(ctx context.Context, name string) (minkapi.View, error) {
 		return s.state.CreateSandboxView(ctx, name, groupPassView)
 	})
 	if err != nil {
 		return
 	}
-	groupScores, winnerView, err = s.processScaleOutSimResults(ctx, group.Name(), scaleOutSimResults)
+	groupScores, winnerView, err = s.processSimulationResults(ctx, group.Name(), simResults)
 	if err != nil {
 		return
 	}
@@ -246,15 +252,15 @@ func (s *simulatorMultiSim) runPassForGroup(ctx context.Context, groupPassView m
 	return
 }
 
-func (s *simulatorMultiSim) processScaleOutSimResults(ctx context.Context, simulationGroupName string, scaleOutSimResults []plannerapi.ScaleOutSimResult) (simGroupPassScores plannerapi.ScaleOutSimGroupPassScores, winningView minkapi.View, err error) {
+func (s *simulatorMultiSim) processSimulationResults(ctx context.Context, simulationGroupName string, simResults []simulationapi.SimulationResult) (simGroupPassScores plannerapi.ScaleOutSimGroupPassScores, winningView minkapi.View, err error) {
 	var nodeScore plannerapi.NodeScore
 	log := logr.FromContextOrDiscard(ctx)
-	for _, sr := range scaleOutSimResults {
+	for _, sr := range simResults {
 		if len(sr.NodePodAssignments) == 0 {
 			log.V(2).Info("No NodePodAssignments for simulation, skipping NodeScoring", "simulationName", sr.Name)
 			continue
 		}
-		nodeScore, err = s.nodeScorer.Compute(ctx, mapSimulationResultToNodeScoreArgs(sr))
+		nodeScore, err = s.nodeScorer.Score(ctx, mapSimulationResultToNodeScoreArgs(sr))
 		if err != nil {
 			err = fmt.Errorf("%w: node scoring failed for simulation %q of group %q: %w", plannerapi.ErrComputeNodeScore, sr.Name, simulationGroupName, err)
 			return
@@ -271,7 +277,7 @@ func (s *simulatorMultiSim) processScaleOutSimResults(ctx context.Context, simul
 	if simGroupPassScores.WinnerScore == nil {
 		return
 	}
-	for _, sr := range scaleOutSimResults {
+	for _, sr := range simResults {
 		if sr.Name == simGroupPassScores.WinnerScore.Name {
 			winningView = sr.View
 			break
@@ -285,10 +291,10 @@ func (s *simulatorMultiSim) processScaleOutSimResults(ctx context.Context, simul
 	return
 }
 
-func mapSimulationResultToNodeScoreArgs(simResult plannerapi.ScaleOutSimResult) plannerapi.NodeScorerArgs {
+func mapSimulationResultToNodeScoreArgs(simResult simulationapi.SimulationResult) plannerapi.NodeScorerArgs {
 	return plannerapi.NodeScorerArgs{
 		ID:                      simResult.Name,
-		ScaledNodePlacement:     simResult.Items[0].NodePlacement,
+		ScaledNodePlacement:     simResult.ScaleOutItems[0].NodePlacement,
 		ScaledNodePodAssignment: &simResult.NodePodAssignments[0],
 		OtherNodePodAssignments: simResult.OtherNodePodAssignments,
 		LeftOverUnscheduledPods: simResult.LeftoverUnscheduledPods,
@@ -305,8 +311,8 @@ func validateSimulatorArgs(args plannerapi.SimulatorArgs) error {
 	if args.SchedulerLauncher == nil {
 		return fmt.Errorf("%w: scheduler launcher is required", plannerapi.ErrCreateSimulator)
 	}
-	if args.StorageMetaAccess == nil {
-		return fmt.Errorf("%w: storage meta access is required", plannerapi.ErrCreateSimulator)
+	if args.Request == nil {
+		return fmt.Errorf("%w: request is required", plannerapi.ErrCreateSimulator)
 	}
 	return nil
 }

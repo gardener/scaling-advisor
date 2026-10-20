@@ -42,6 +42,9 @@ type Request struct {
 	// NodeTemplates is a map of template name to [sacorev1alpha1.NodeTemplate], covering all templates
 	// referenced by node pools in [Request.ScalingConstraint].
 	NodeTemplates map[string]sacorev1alpha1.NodeTemplate `json:"nodeTemplates,omitempty"`
+	// InstanceTypeDefs is a map of instance type name to [sacorev1alpha1.InstanceTypeDef], covering all
+	// instance types referenced by [Request.NodeTemplates].
+	InstanceTypeDefs map[string]sacorev1alpha1.InstanceTypeDef `json:"instanceTypeDefs,omitempty"`
 	// InstancePrices lists pricing data for all instance types declared in [Request.NodeTemplates].
 	// Used by [apicommon.NodeScoringStrategyLeastCost] in the [NodeScorer].
 	InstancePrices []sacorev1alpha1.InstancePrice `json:"instancePrices,omitempty"`
@@ -292,6 +295,10 @@ type NodeScore struct {
 	// Name uniquely identifies this NodeScore
 	Name            string                     `json:"name"`
 	UnscheduledPods []apicommon.NamespacedName `json:"unscheduledPods,omitempty"`
+	// InstancePrices carries the pricing data from the request for use in cost-aware Select tie-breaking.
+	InstancePrices []sacorev1alpha1.InstancePrice `json:"instancePrices,omitempty"`
+	// ResourceWeights carries per-resource weights from the request for use in weight-aware Select tie-breaking.
+	ResourceWeights map[corev1.ResourceName]float64 `json:"resourceWeights,omitempty"`
 	// Value is the score value for this Node.
 	Value int `json:"value"`
 }
@@ -382,6 +389,8 @@ type SimulatorArgs struct {
 	TraceDir string
 	// Config holds the static simulator config parameters
 	Config SimulatorConfig
+	// Request is the planner request to be satisfied by this simulator.
+	Request *Request
 }
 
 // ScaleOutSimulator is a facade that executes [simulationapi.Simulation]'s to generate one or more [ScaleOutPlanResult]'s sent

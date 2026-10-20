@@ -148,18 +148,18 @@ type ScaleOutNodeTemplate struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
 	Annotations map[string]string `json:"annotations,omitempty"`
-	// Quota defines the resource quota for the node pool.
-	Quota corev1.ResourceList `json:"quota,omitempty"`
-	// Capacity defines the capacity for node resources that are available for the node's instance type.
-	Capacity corev1.ResourceList `json:"capacity"`
-	// KubeReserved defines the capacity for kube reserved resources.
-	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#kube-reserved for additional information.
-	KubeReserved corev1.ResourceList `json:"kubeReservedCapacity,omitempty"`
-	// SystemReserved defines the capacity for system reserved resources.
-	// See https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#system-reserved for additional information.
-	SystemReserved               corev1.ResourceList `json:"systemReservedCapacity,omitempty"`
+	// Quota defines optional resource limits for this node template within its parent node pool.
+	Quota *sacorev1alpha1.ResourceLimits `json:"quota,omitempty"`
+	// BaseResources is the base capacity of the node's instance type, taken from [sacorev1alpha1.InstanceTypeDef.BaseResources].
+	BaseResources corev1.ResourceList `json:"baseResources"`
+	// ExtendedResources specifies Kubernetes extended resources advertised by nodes created from this template,
+	// over and above [BaseResources]. Taken from [sacorev1alpha1.NodeTemplate.ExtendedResources].
+	ExtendedResources corev1.ResourceList `json:"extendedResources,omitempty"`
+	// ReservedResources specifies resources reserved for OS, Kubernetes components, and node-level services.
+	// Taken from [sacorev1alpha1.NodeTemplate.ReservedResources].
+	ReservedResources            corev1.ResourceList `json:"reservedResources"`
 	sacorev1alpha1.NodePlacement `json:",inline"`
-	// Architecture is the CPU architecture of the node's instance type.
+	// Architecture is the CPU architecture of the node's instance type, taken from [sacorev1alpha1.InstanceTypeDef.Architecture].
 	Architecture string `json:"architecture"`
 	// Taints is a list of taints applied to all the nodes in this node pool.
 	Taints []corev1.Taint `json:"taints,omitempty"`
