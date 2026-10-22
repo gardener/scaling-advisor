@@ -1,0 +1,98 @@
+---
+title: ScalingPlanner - Invocation Types
+---
+classDiagram
+    class ScalingPlanner {
+        <<interface>>
+        +Plan(ctx, Request) chan Response
+    }
+    class Request {
+        +RequestRef
+        +CreationTime time.Time
+        +Memento Memento
+        +ScalingConstraint ScalingConstraintSpec
+        +NodeTemplates map~string,NodeTemplate~
+        +InstanceTypeDefs map~string,InstanceTypeDef~
+        +InstancePrices []InstancePrice
+        +ResourceWeights map~ResourceName,float64~
+        +AdviceGenerationMode ScalingAdviceGenerationMode
+        +ClusterSnapshot ClusterSnapshot
+        +AdviceGenerationTimeout time.Duration
+        +DiagnosticVerbosity uint32
+    }
+    class RequestRef {
+        +ID string
+        +CorrelationID string
+    }
+    class Response {
+        +RequestRef
+        +ID string
+        +ScaleOutPlan ScaleOutPlan
+        +ScaleInPlan ScaleInPlan
+        +Labels map~string,string~
+        +Error error
+    }
+    class ClusterSnapshot {
+        +Nodes []NodeInfo
+        +Pods []PodInfo
+        +PVs []PVInfo
+        +PVCs []PVCInfo
+        +StorageClasses []StorageClass
+        +PriorityClasses []PriorityClass
+        +RuntimeClasses []RuntimeClass
+        +FallbackCSINodeSpecs map~string,CSINodeSpec~
+    }
+    class Memento {
+        +ScaleIn ScaleInMemento
+        +ScaleOut ScaleOutMemento
+    }
+    class ScaleInMemento {
+        +LastIdentifiedUnneededNodes map~string,Time~
+        +LastUnderutilizedSinceNodes map~string,Time~
+    }
+    class ScaleOutMemento {
+        +UpcomingNodePlacements map~NodePlacement,int~
+    }
+    class ScalingConstraintSpec {
+        +NodePools []NodePool
+        +PlannerStrategy PlannerStrategy
+        +SimulatorStrategy SimulatorStrategy
+        +ScoringStrategy NodeScoringStrategy
+    }
+    class PlannerStrategy {
+        <<enumeration>>
+        ScaleInThenScaleOut
+        ScaleOutThenScaleIn
+        ConsolidatedScaleOut
+        OnlyScaleOut
+        OnlyScaleIn
+    }
+    class SimulatorStrategy {
+        <<enumeration>>
+        SingleNodeMultiSim
+        MultiNodeSingleSim
+    }
+    class NodeScoringStrategy {
+        <<enumeration>>
+        LeastWaste
+        LeastCost
+    }
+    class ScalingAdviceGenerationMode {
+        <<enumeration>>
+        Incremental
+        AllAtOnce
+    }
+
+    ScalingPlanner ..> Request : consumes
+    ScalingPlanner ..> Response : produces
+    Request *-- RequestRef
+    Request *-- ClusterSnapshot
+    Request *-- Memento
+    Request *-- ScalingConstraintSpec
+    Request ..> ScalingAdviceGenerationMode : adviceGenerationMode
+    Response *-- RequestRef
+    Memento *-- ScaleInMemento
+    Memento *-- ScaleOutMemento
+    ScalingConstraintSpec ..> PlannerStrategy
+    ScalingConstraintSpec ..> SimulatorStrategy
+    ScalingConstraintSpec ..> NodeScoringStrategy

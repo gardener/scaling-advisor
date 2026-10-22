@@ -1,59 +1,104 @@
 # Force neutral theme and override the text color token (N1 -> black)
 vars: {
   d2-config: {
-    theme-id: 103
-    theme-overrides: {
-       N2: "#000000"
-    }
+    layout-engine: elk
+    theme-id: 1
   }
 }
+
 api: {
-  label: API
-  shape: package
-  icon: https://icons.terrastruct.com/azure%2FWeb%20Service%20Color%2FAPI%20Connections.svg
+  label: "api\n(/api/go.mod)"
+  common {
+    label: "api/common"
+    shape: package
+  }
+  config {
+    label: "api/config/v1alpha1"
+    shape: package
+  }
+  core {
+    label: "api/core/v1alpha1"
+    shape: package
+  }
 }
 
 common: {
-  label: Common Module
-  shape: package
-  icon: "box.svg"
+  label: "common\n(/common/go.mod)"
+  ioutil { shape: package }
+  nodeutil { shape: package }
+  objutil { shape: package }
+  podutil { shape: package }
+  volutil { shape: package }
 }
 
+minkapi-api: {
+  label: "minkapi/api\n(/minkapi/api/go.mod)"
+  "minkapi/api" { shape: package }
+}
 
 minkapi: {
-  label: MinKAPI Module
-  shape: package
-  icon: "log-in.svg"
-  icon: "kube.svg"
+  label: "minkapi\n(/minkapi/go.mod)"
+  "minkapi" { shape: package }
 }
 
-service: {
-  label: Service Module
-  shape: package
-  icon: "map.svg"
-}
-
-operator: {
-  label: Operator Module
-  shape: package
-  icon: "repeat.svg"
-}
-
-tools: {
-  label: Tools Module
-  shape: package
-  icon: https://icons.terrastruct.com/aws%2F_General%2FToolkit_light-bg.svg
-}
-
-generator: {
-  label: "Generator Pkg"
-  shape: page
-  icon: "engine-belt.svg"
+simulation-api: {
+  label: "simulation/api\n(/simulation/api/go.mod)"
+  "simulation/api" { shape: package }
 }
 
 simulation: {
-  label: "Simulation Pkg"
-  shape: page
-  icon: "sandbox.svg"
+  label: "simulation\n(/simulation/go.mod)"
+  "simulation" { shape: package }
+  "simulation/simvolume" { shape: package }
 }
 
+planner-api: {
+  label: "planner/api\n(/planner/api/go.mod)"
+  "planner/api" { shape: package }
+  "planner/api/helper" { shape: package }
+}
+
+samples: {
+  label: "samples\n(/samples/go.mod)"
+  "samples" { shape: package }
+}
+
+planner: {
+  label: "planner\n(/planner/go.mod)"
+  "planner" { shape: package }
+}
+
+tools: {
+  label: "tools\n(/tools/go.mod)"
+  icon: "sliders.svg"
+}
+
+service: {
+  label: "service\n(/service/go.mod)"
+  icon: "server.svg"
+}
+
+operator: {
+  label: "operator\n(/operator/go.mod)"
+  icon: "repeat.svg"
+}
+
+# dependency edges (direct, transitive edges pruned; own api->impl always shown)
+minkapi-api -> api
+common -> minkapi-api
+minkapi -> minkapi-api
+minkapi -> common
+simulation-api -> minkapi-api
+simulation -> simulation-api
+simulation -> minkapi
+simulation -> samples
+planner-api -> simulation-api
+samples -> common
+samples -> planner-api
+planner -> planner-api
+planner -> simulation
+tools -> common
+tools -> planner-api
+service -> planner
+operator -> common
+operator -> service
