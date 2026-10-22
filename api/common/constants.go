@@ -41,6 +41,10 @@ const (
 	// On a node object this means that the node must not be scaled-in. On a Pod object, this means the Pod cannot be moved
 	// to another node.
 	AnnotationDoNotDisrupt = "scad.gardener.cloud/do-not-disrupt"
+
+	// AnnotationScaleInCandidate is the annotation key for a node that is a candidate for scale-in. Its value is the
+	// order in which the scale-in should be attempted.
+	AnnotationScaleInCandidate = "scad.gardener.cloud/scale-in-candidate"
 )
 
 const (

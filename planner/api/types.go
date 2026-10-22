@@ -252,11 +252,6 @@ type NodeScore struct {
 
 // SimulatorConfig holds the configuration for the internal simulator used by the scaling advisor planner.
 type SimulatorConfig struct {
-	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
-	// a candidate for scale-in.
-	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
-	// utilization thresholds expressed as fractions from 0 to 1.
-	UtilizationThresholds map[corev1.ResourceName]float64 `json:"utilizationThresholds,omitempty"`
 	simulationapi.SimulationConfig
 	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
 	// considered a candidate for scale-in.
@@ -388,36 +383,51 @@ type ScaleOutSimulator interface {
 // on a result channel.
 type ScaleInSimulator interface {
 	io.Closer
-	// Simulate is the high level activity that runs [Simulation]'s created from given [SimulationFactory] with the given
-	// planner [Request] against the given simulationView and delivers [ScaleInPlanResult]'s on the planResult channel.
+	// Simulate runs scale-in simulations against the given view and delivers a single [ScaleInPlanResult] on the returned channel.
+	//
+	// The caller must annotate candidate nodes in simulationView with [apicommon.AnnotationScaleInCandidate] (value = zero-based
+	// index) before calling Simulate. The simulator processes candidates sequentially in index order: for each candidate it
+	// creates a sandbox view, runs a [simulationapi.Simulation] to verify the candidate's pods can be rescheduled onto
+	// remaining nodes, and either promotes the sandbox as the new base view (success) or discards it (failure).
+	// Once no further candidates can be successfully simulated, a single [ScaleInPlanResult] is delivered on the channel
+	// containing the accumulated [sacorev1alpha1.ScaleInPlan] and the final promoted view for use by a subsequent [ScaleOutSimulator].
+	//
+	// The channel is closed after delivering the result, or immediately on a terminal error. The caller must drain
+	// the channel until it is closed to avoid leaking goroutines.
 	Simulate(ctx context.Context, simulationFactory simulationapi.SimulationFactory, simulationView minkapi.View) <-chan ScaleInPlanResult
 }
 
 // ScaleInCandidateSelector is the facade for selection of all scale-in candidate nodes while honoring constraints.
 type ScaleInCandidateSelector interface {
-	// Select returns all scale-in candidate nodes in [ScaleInCandidateSelectorArgs.View] as a slice of [corev1.Node]
+	// Select returns all scale-in candidate nodes in the given view as a slice of [corev1.Node]
 	// while honoring [ScaleInCandidateSelectorArgs.UtilizationThresholds]'s and [PodDisruptionBudgets].
 	//
 	// [PodDisruptionBudgets]: https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/
-	Select(ctx context.Context, args ScaleInCandidateSelectorArgs) ([]corev1.Node, error)
+	Select(ctx context.Context, view minkapi.View, args ScaleInCandidateSelectorArgs) ([]corev1.Node, error)
 }
 
-// ScaleInCandidateSelectorArgs encapsulates the input for the [ScaleInCandidateSelector].
-type ScaleInCandidateSelectorArgs struct {
-	// View is the minkapi cluster view
-	View minkapi.View
-	// UtilizationThresholds is the resource utilization thresholds below which a node is considered underutilized and thus
-	// a candidate for scale-in. The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the
-	// corresponding utilization thresholds expressed as fractions from 0 to 1.
+// NodePoolScaleInConfig holds per-pool configuration used by the [ScaleInCandidateSelector].
+type NodePoolScaleInConfig struct {
+	// UtilizationThresholds is the resource utilization thresholds below which a node in this pool is considered
+	// underutilized and thus a candidate for scale-in. Keys are resource names (e.g. cpu, memory) and values are
+	// fractions from 0 to 1. Should be populated from [sacorev1alpha1.NodePool.ScalingParams.UtilizationThresholds].
 	UtilizationThresholds map[corev1.ResourceName]float64
-	// PoolMinLimits carries the NodePool min resource limits by pool name. Nodes should not be scaled-in if it would violate the
-	// pool minimum limits.
-	// (This should be taken from [sacorev1alpha1.ResourceLimits.Min] taken from [sacorev1alpha1.NodeTemplateRef.Quota]
-	// within [sacorev1alpha1.NodePool.NodeTemplateRefs]).
-	PoolMinLimits map[string]corev1.ResourceList
-	// PoolPriorities carries the pool priority by pool name. Lower priority valued nodes should be preferenced for scale-in
-	// over higher-priority valued nodes.
-	PoolPriorities map[string]int32
+	// MinLimits is the minimum total allocatable resources for this pool. A candidate node is rejected if its
+	// removal would drop the pool's total allocatable resources below these limits.
+	// Should be populated from [sacorev1alpha1.ResourceLimits.Min] in [sacorev1alpha1.NodeTemplateRef.Quota].
+	MinLimits corev1.ResourceList
+	// TemplatePriorities maps node template name to its priority within this pool. Lower priority templates are
+	// preferred for scale-in. Should be populated from [sacorev1alpha1.NodeTemplateRef.Priority].
+	TemplatePriorities map[string]int32
+	// Priority is the pool-level scale-in preference. Lower priority pools are preferred for scale-in.
+	// Should be populated from [sacorev1alpha1.NodePool.Priority].
+	Priority int32
+}
+
+// ScaleInCandidateSelectorArgs encapsulates the pure data input for the [ScaleInCandidateSelector].
+type ScaleInCandidateSelectorArgs struct {
+	// PoolConfigs holds per-pool scale-in configuration keyed by pool name.
+	PoolConfigs map[string]NodePoolScaleInConfig
 }
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
@@ -509,12 +519,12 @@ type ScalingPlannerServiceConfig struct {
 	CloudProvider apicommon.CloudProvider `json:"cloudProvider"`
 	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
 	TraceDir string `json:"traceDir,omitempty"`
-	// SimulatorConfig holds the configuration used by the internal simulator.
-	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ServerConfig holds the server configuration for the scaling advisor planner.
 	ServerConfig apicomponent.ServerConfig `json:"serverConfig"`
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.
 	MinKAPIConfig minkapi.Config `json:"minkAPIConfig"`
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
 	ClientConfig apicomponent.QPSBurst `json:"clientConfig"`
 }
