@@ -18,8 +18,6 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// ── Node helpers ─────────────────────────────────────────────────────────────
-
 // AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
 func AsNodeInfo(node corev1.Node) plannerapi.NodeInfo {
 	return plannerapi.NodeInfo{
@@ -77,8 +75,6 @@ func GetNodeCountByPlacement(nodes []plannerapi.NodeInfo) (map[sacorev1alpha1.No
 	}
 	return nodeCountByPlacement, nil
 }
-
-// ── Pod helpers ──────────────────────────────────────────────────────────────
 
 // AsPodInfo converts a corev1.Pod to a plannerapi.PodInfo object.
 func AsPodInfo(pod corev1.Pod) plannerapi.PodInfo {
@@ -204,8 +200,6 @@ func GetObjectNamesFromPodResourceInfos(pods []simulationapi.PodResourceInfo) []
 	}
 	return objectNames
 }
-
-// ── Volume helpers ───────────────────────────────────────────────────────────
 
 // AsPVInfo converts the given corev1.PersistentVolume to a lean plannerapi.PVInfo.
 func AsPVInfo(pv corev1.PersistentVolume) plannerapi.PVInfo {
