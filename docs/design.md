@@ -59,6 +59,7 @@ config:
 sequenceDiagram
     participant op as Operator
     participant sp as ScalingPlanner
+    participant lm as LifecycleManager
 
     op->>op: watch ctl cluster: ScalingConstraint, ScalingFeedback, NodeTemplateSet
     op->>op: watch tgt cluster: Nodes, Pods, PVs, PVCs, StorageClasses
@@ -68,6 +69,8 @@ sequenceDiagram
     end
     sp-->>-op: close channel
     op->>op: write ScalingAdvice to ctl cluster
+    lm->>lm: watch ScalingAdvice, provision/decommission instances
+    lm->>op: write ScalingFeedback to ctl cluster
 ```
 
 #### Types
@@ -224,8 +227,6 @@ sequenceDiagram
     participant sp as ScalingPlanner
     participant selector as ScaleInCandidateSelector
     participant sos as ScaleOutSimulator
-    participant simf as SimulationFactory
-    participant sim as Simulation
 
     op->>+sp: Plan(request)
     sp->>sp: view = PopulateView(request)
@@ -235,16 +236,7 @@ sequenceDiagram
     note right of sp: deletes nodes, unschedules pods,<br/>clears PV claimRefs, resets PVCs to Pending
     sp->>sp: scaleInPlan = BuildScaleInPlan(candidates)
     sp->>+sos: Simulate(ctx, simf, view)
-
-    loop 1..N - details depend on SimulatorStrategy
-        sos->>sos: simView = view.CreateSandbox()
-        sos->>+simf: CreateScaleOutSimulation
-        simf-->>-sos: Simulation
-        sos->>+sim: Run(simView)
-        sim-->>-sos: SimulationResult
-        sos->>sos: score nodes, pick winner
-    end
-
+    note right of sos: internal behavior depends on SimulatorStrategy
     sos-->>-sp: ScaleOutPlanResult (ScaleOutPlan)
     sp->>sp: BuildResponse(scaleInPlan, ScaleOutPlan)
     sp-->>-op: deliver Response
@@ -284,8 +276,6 @@ sequenceDiagram
     participant selector as ScaleInCandidateSelector
     participant sis as ScaleInSimulator
     participant sos as ScaleOutSimulator
-    participant simf as SimulationFactory
-    participant sim as Simulation
 
     op->>+sp: Plan(request)
     sp->>sp: view = PopulateView(request)
@@ -293,18 +283,7 @@ sequenceDiagram
     selector-->>-sp: candidates []Node
     sp->>sp: annotate candidates in view with AnnotationScaleInCandidate=index
     sp->>+sis: Simulate(ctx, simf, view)
-
-    loop for each candidate in index order
-        sis->>sis: simView = view.CreateSandbox()
-        sis->>+sim: Run(simView)
-        sim-->>-sis: SimulationResult
-        alt ScaleInSuccess
-            sis->>sis: view = simView (promote sandbox)
-        else ScaleInFailure
-            sis->>sis: discard simView
-        end
-    end
-
+    note right of sis: internal behavior depends on SimulatorStrategy
     sis-->>-sp: ScaleInPlanResult (ScaleInPlan, finalView)
     sp->>sp: BuildResponse(ScaleInPlan)
     opt AdviceGenerationMode == Incremental
@@ -312,14 +291,7 @@ sequenceDiagram
     end
 
     sp->>+sos: Simulate(ctx, simf, view)
-    loop 1..N - details depend on SimulatorStrategy
-        sos->>sos: simView = view.CreateSandbox()
-        sos->>+simf: CreateScaleOutSimulation
-        simf-->>-sos: Simulation
-        sos->>+sim: Run(simView)
-        sim-->>-sos: SimulationResult
-        sos->>sos: score nodes, pick winner
-    end
+    note right of sos: internal behavior depends on SimulatorStrategy
     sos-->>-sp: ScaleOutPlanResult (ScaleOutPlan)
     sp->>sp: BuildResponse(ScaleOutPlan)
     sp-->>-op: deliver Response (ScaleOutPlan)
@@ -578,59 +550,68 @@ config:
 sequenceDiagram
     participant sp as ScalingPlanner
     participant sos as ScaleOutSimulator
+    participant sg as SimulationGroup
     participant va as ViewAccess
     participant ns as NodeScorer
     participant simf as SimulationFactory
     participant sim as Simulation
 
     sp->>+sos: Simulate(ctx, simf, view)
-    sos->>sos: templates = CreateScaleOutNodeTemplates(request)
+    sos->>sos: SetRequestView(view)
+    sos->>sos: templates = CreateAllNodeTemplates(request)
     note right of sos: one (NodePool, NodeTemplate, Zone) triple per template
     loop for each template t
-        sos->>+simf: CreateScaleOutSimulation(t)
+        sos->>+simf: New(SimulationArgs{NodeTemplates: [t]})
         simf-->>-sos: Simulation
     end
-    sos->>sos: simGroups = GroupSimulationsByPriority()
-    note right of sos: grouped by (NodePool.Priority, NodeTemplate.Priority) asc
+    sos->>sos: simGroups = CreateScaleOutSimGroups(simulations)
+    note right of sos: grouped and sorted by (NodePool.Priority, NodeTemplate.Priority) asc
 
+    sos->>sos: groupPassView = RequestView()
     loop for each simGroup g in priority order
-        sos->>sos: groupPassView = view
         loop stabilization - repeat until no winner or no unscheduled pods
-            note right of sos: one pass: run all simulations in g concurrently
-            loop for each simulation s in g
-                sos->>+va: GetSandboxViewOverDelegate(ctx, name, groupPassView)
-                va-->>-sos: simView
-                sos->>+sim: Run(simView)
+            sos->>+sg: Run(ctx, getViewFn)
+            note right of sg: runs all simulations in g concurrently
+            loop for each simulation s in g (concurrent)
+                sg->>+va: GetSandboxViewOverDelegate(ctx, name, groupPassView)
+                va-->>-sg: simView
+                sg->>+sim: Run(ctx, simView)
                 sim->>sim: create virtual node in simView
                 sim->>sim: launch kube-scheduler against simView
                 sim->>sim: track until stable
-                sim-->>-sos: SimulationResult
+                sim-->>-sg: SimulationResult
             end
-            sos->>+ns: Score and Select winner from pass results
-            ns-->>-sos: ScaleOutSimGroupPassScores (winnerScore, allScores)
+            sg-->>-sos: []SimulationResult
+            loop for each SimulationResult with NodePodAssignments
+                sos->>+ns: Score(ctx, NodeScorerArgs)
+                ns-->>-sos: NodeScore
+            end
+            sos->>+ns: Select(ctx, []NodeScore)
+            ns-->>-sos: winnerScore
             alt winner found
-                sos->>sos: groupPassView = winner simView
-                sos->>sos: append winnerScore to cycleResult
+                sos->>sos: groupPassView = winnerScore.View
+                sos->>sos: append winnerScore to cycleResult.WinnerNodeScores
             else no winner
-                sos->>sos: stop stabilization for g
+                sos->>sos: end stabilization for g
             end
         end
-        sos->>sos: record ScaleOutSimGroupCycleResult (winnerNodeScores, leftoverPods, passNum, nextGroupPassView)
-        sos->>sos: view = nextGroupPassView
+        sos->>sos: record ScaleOutSimGroupCycleResult
+        opt AdviceGenerationMode == Incremental
+            sos-->>sp: ScaleOutPlanResult (partial)
+        end
     end
 
-    sos->>sos: ComputeScaleOutPlan(cycleResults)
-    sos-->>-sp: ScaleOutPlanResult (ScaleOutPlan)
+    opt AdviceGenerationMode == AllAtOnce
+        sos->>sos: ComputeScaleOutPlan(allCycleResults)
+        sos-->>-sp: ScaleOutPlanResult
+    end
 ```
 
-## To be Revised
-![Node Pool Simulation](./assets/scaling-advisor-simulator.svg)
+## TODO
 
-- The `ScalingAdvisor` leverages a minimal in-memory KAPI (called `minkapi`) to hold cluster snapshot (k8s objects such as existing nodes, pods, volumes, volume-attachments, etc.) of the real cluster.
-- The base `minkapi` offers *in-memory* k8s client implementations for [kuberentes.Interface](https://pkg.go.dev/k8s.io/client-go/kubernetes#Interface) and [dynamic.Interface](https://pkg.go.dev/k8s.io/client-go/dynamic#Interface) 
-- `minkapi` also supports *sandboxed views* and in-memory clients for the sandboxed views which are consumable by the `kube-scheduler`. 
-  - The sandbox clients *decorate* the base clients and maintain their own internal state. Changes made by a scheduler instance are limited to its own sandbox and are not propagated to the master data.
-- The simulator creates a sandbox, chooses a NodePool and creates virtual Nodes corresponding to the NodePool inside the sandbox. It then runs an embedded scheduler instance that operates against the sandbox.
-- The scheduler assigns pods to the virtual nodes inside the sandbox.
-- Node scores are computed from the pod to the virtual node assignment wrt to configurable strategies. Ex: normalize price of assigned pod resources
-- The node pool with the max score is chosen and cluster scaling advice is generated.
+- Need sub-section describing `minkapi`
+  - The `ScalingAdvisor` leverages a minimal in-memory KAPI (called `minkapi`) to hold cluster snapshot (k8s objects such as existing nodes, pods, volumes, volume-attachments, etc.) of the real cluster.
+  - The base `minkapi` offers *in-memory* k8s client implementations for [kuberentes.Interface](https://pkg.go.dev/k8s.io/client-go/kubernetes#Interface) and [dynamic.Interface](https://pkg.go.dev/k8s.io/client-go/dynamic#Interface) 
+  - `minkapi` also supports *sandboxed views* and in-memory clients for the sandboxed views which are consumable by the `kube-scheduler`. 
+   - The sandbox clients *decorate* the base clients and maintain their own internal state. Changes made by a scheduler instance are limited to its own sandbox and are not propagated to the master data.
+- Need sub-section describing `simulation` module

@@ -1,0 +1,85 @@
+@startuml high-level
+!theme plain
+left to right direction
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam ArrowColor #444444
+skinparam ArrowThickness 1.5
+skinparam nodesep 40
+skinparam ranksep 120
+
+skinparam rectangle {
+  BackgroundColor #DDEEFF
+  BorderColor #3366AA
+  FontStyle bold
+}
+skinparam database {
+  BackgroundColor #FFF8DC
+  BorderColor #B8860B
+  FontStyle plain
+}
+skinparam cloud {
+  BackgroundColor #E8F5E9
+  BorderColor #388E3C
+  FontStyle plain
+}
+
+'─────────────────────────────────────────────────────────────
+' Layout (left to right direction):
+'
+'  Col 0: [cp]
+'         [apiservertgt]
+'
+'  Col 1: [lcm]
+'         [apiserverctl]
+'
+'  Col 2: [scadop]
+'─────────────────────────────────────────────────────────────
+
+together {
+  cloud "Cloud Provider" as cp
+  database "API Server\n(target cluster)\n\nNodes, Pods, PVs,\nPVCs, CSINodes, ..." as apiservertgt
+}
+
+together {
+  rectangle "Instance Lifecycle Controller\n(e.g. Machine Controller Manager)" as lcm
+  database "API Server\n(control cluster)\n\nCRDs: ScalingConstraint,\nScalingFeedback, ScalingAdvice,\nNodeTemplateSet, InstanceTypeDefSet,\nInstancePriceSet" as apiserverctl
+}
+
+rectangle "scaling-advisor\n(advisory controller)" as scadop
+
+'─── hidden spacers ───────────────────────────────────────
+cp           -[hidden]down->   apiservertgt
+lcm          -[hidden]down->   apiserverctl
+apiservertgt -[hidden]right->  apiserverctl
+cp           -[hidden]right->  lcm
+apiserverctl -[hidden]right->  scadop
+
+'─── real arrows ──────────────────────────────────────────
+
+' 5: LCM provisions/removes cloud instances
+lcm --> cp : 5  add/remove instances
+
+' 6: Cloud registers new Nodes on target cluster
+cp --> apiservertgt : 6  register Nodes /\nreport ResourceExhaustion
+
+' 4: LCM watches ScalingAdvice
+apiserverctl --> lcm : 4  watch ScalingAdvice
+
+' 7: LCM writes ScalingFeedback
+lcm --> apiserverctl : 7  write ScalingFeedback\n(AcknowledgedAt,\nScaleOutFeedback,\nScaleInFeedback)
+
+' 2: scaling-advisor watches target cluster objects
+apiservertgt --> scadop : 2  watch Nodes, Pods,\nPVs, PVCs, ... →\nClusterSnapshot
+
+' 1: scaling-advisor watches control cluster CRs
+apiserverctl --> scadop : 1  watch ScalingConstraint,\nNodeTemplateSet,\nInstanceTypeDefSet,\nInstancePriceSet
+
+' 3: scaling-advisor writes ScalingAdvice
+scadop --> apiserverctl : 3  write ScalingAdvice\n(ScaleOutPlan / ScaleInPlan)
+
+' 8: scaling-advisor watches ScalingFeedback (pacing)
+apiserverctl -[#888888,dashed]-> scadop : 8  watch ScalingFeedback\n(paces next advice)
+
+@enduml
