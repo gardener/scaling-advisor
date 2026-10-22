@@ -1,0 +1,232 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: scalingadvices.scad.gardener.cloud
+spec:
+  group: scad.gardener.cloud
+  names:
+    kind: ScalingAdvice
+    listKind: ScalingAdviceList
+    plural: scalingadvices
+    shortNames:
+    - scad
+    singular: scalingadvice
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.constraintRef.name
+      name: Constraint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ScalingAdvice is the top-level object containing scaling advice produced by the scaling-advisor
+          from a [ScalingConstraint] applied against a k8s cluster.
+
+          The lifecycle manager's response is written to a companion [ScalingFeedback] resource that shares
+          the same name and namespace and carries an owner reference back to this object.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of ScalingAdvice.
+            properties:
+              constraintRef:
+                description: ConstraintRef references the [ScalingConstraint] for
+                  which this [ScalingAdvice] was generated.
+                properties:
+                  name:
+                    description: Name is the name of the object.
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the object.
+                    type: string
+                required:
+                - name
+                type: object
+              diagnostic:
+                description: Diagnostic provides diagnostics information for the scaling
+                  advice.
+                properties:
+                  runResultsLogName:
+                    description: RunResultsLogName is the name of the run results
+                      log.  This can be used to fetch the run results log.
+                    type: string
+                  traceLogName:
+                    description: TraceLogName is the name of the trace log. This can
+                      be used to fetch the trace log.
+                    type: string
+                required:
+                - runResultsLogName
+                - traceLogName
+                type: object
+              scaleIn:
+                description: ScaleIn is the plan for scaling in across node pools.
+                properties:
+                  items:
+                    description: Items is the slice of scaling-in advice for a node
+                      pool.
+                    items:
+                      description: ScaleInItem is the unit of scaling-in advice for
+                        a specific node.
+                      properties:
+                        nodeName:
+                          description: NodeName is the name of the node to be scaled
+                            in.
+                          type: string
+                        nodePlacement:
+                          description: NodePlacement identifies the target pool, template,
+                            and cloud location for this scale-in.
+                          type: string
+                      required:
+                      - nodeName
+                      - nodePlacement
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - items
+                type: object
+              scaleOut:
+                description: ScaleOut is the plan for scaling out across node pools.
+                properties:
+                  items:
+                    description: Items is the slice of scaling-out advice for a node
+                      pool.
+                    items:
+                      description: ScaleOutItem is the unit of scaling advice for
+                        a node pool.
+                      properties:
+                        currentReplicas:
+                          description: CurrentReplicas is the current number of replicas
+                            for the NodePlacement.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        delta:
+                          description: Delta is the delta change in the number of
+                            nodes for the NodePlacement.
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        name:
+                          description: |-
+                            Name represents a logical name for this scale-out item. This is generated name unique within this ScalingAdvice.
+                            Ex: of the form: scaleout-<index>
+                          type: string
+                        nodePlacement:
+                          description: NodePlacement identifies the target pool, template,
+                            and cloud location for this scale-out.
+                          type: string
+                      required:
+                      - currentReplicas
+                      - delta
+                      - name
+                      - nodePlacement
+                      type: object
+                    minItems: 1
+                    type: array
+                  unsatisfiedPodNames:
+                    description: |-
+                      UnsatisfiedPodNames contains pod names in "namespace/name" format that could not be scheduled by this scale-out
+                      plan.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - items
+                type: object
+            required:
+            - constraintRef
+            type: object
+          status:
+            description: Status defines the observed state of ScalingAdvice.
+            properties:
+              conditions:
+                description: Conditions contains the [metav1.Condition]'s for this
+                  ScalingAdvice.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,12 +1,16 @@
-apiVersion: sa.gardener.cloud/v1alpha1
+apiVersion: scad.gardener.cloud/v1alpha1
 kind: ScalingConstraint
 metadata:
   name: two-pool
   namespace: default
 spec:
+  plannerStrategy: consolidated-scale-out
   nodePools:
-    - availabilityZones:
+    - name: a
+      region: eu-west-1
+      availabilityZones:
         - eu-west-1a
+      priority: 1
       labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
@@ -15,24 +19,14 @@ spec:
         worker.gardener.cloud/cri-name: containerd
         worker.gardener.cloud/pool: p
         worker.gardener.cloud/system-components: "true"
-      name: a
-      nodeTemplates:
-        - architecture: amd64
-          capacity:
-            cpu: "2"
-            gpu: "0"
-            memory: 8Gi
-          instanceType: m5.large
-          kubeReservedCapacity:
-            cpu: 80m
-            memory: 1Gi
-            pid: 20k
-          name: m5l
+      nodeTemplateRefs:
+        - name: m5l
           priority: 0
-      priority: 1
+    - name: b
       region: eu-west-1
-    - availabilityZones:
+      availabilityZones:
         - eu-west-1a
+      priority: 0
       labels:
         kubernetes.io/arch: amd64
         networking.gardener.cloud/node-local-dns-enabled: "true"
@@ -40,19 +34,6 @@ spec:
         worker.garden.sapcloud.io/group: q
         worker.gardener.cloud/cri-name: containerd
         worker.gardener.cloud/pool: q
-      name: b
-      nodeTemplates:
-        - architecture: amd64
-          capacity:
-            cpu: "4"
-            gpu: "0"
-            memory: 16Gi
-          instanceType: m5.xlarge
-          kubeReservedCapacity:
-            cpu: 80m
-            memory: 1Gi
-            pid: 20k
-          name: m5xl
+      nodeTemplateRefs:
+        - name: m5xl
           priority: 0
-      priority: 0
-      region: eu-west-1

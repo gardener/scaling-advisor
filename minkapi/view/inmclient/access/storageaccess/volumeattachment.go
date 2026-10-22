@@ -5,14 +5,13 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type volumeAttachmentAccess struct {
 }
 
 // NewVolumeAttachmentAccess creates an access facade for managing VolumeAttachmentList resources using the given minkapi View.
-func NewVolumeAttachmentAccess(view minkapi.View) clientstoragev1.VolumeAttachmentInterface {
+func NewVolumeAttachmentAccess(view api.View) clientstoragev1.VolumeAttachmentInterface {
 	return &volumeAttachmentAccess{
 		access.GenericResourceAccess[*storagev1.VolumeAttachment, *storagev1.VolumeAttachmentList]{
 			View:      view,
-			GVK:       typeinfo.VolumeAttachmentDescriptor.GVK,
+			GVK:       api.VolumeAttachmentDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}
@@ -77,9 +76,9 @@ func (a *volumeAttachmentAccess) Patch(ctx context.Context, name string, pt type
 }
 
 func (a *volumeAttachmentAccess) Apply(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *volumeAttachmentAccess) ApplyStatus(_ context.Context, _ *v1.VolumeAttachmentApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttachment, err error) {
-	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

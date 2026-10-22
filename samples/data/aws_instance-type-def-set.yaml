@@ -1,0 +1,163 @@
+apiVersion: scad.gardener.cloud/v1alpha1
+kind: InstanceTypeDefSet
+metadata:
+  name: aws
+  namespace: default
+spec:
+  instanceTypeDefs:
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c5.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 8Gi
+    name: c5.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c6a.large
+  - architecture: arm64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c6g.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c6i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 8Gi
+    name: c6i.xlarge
+  - architecture: arm64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c7g.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 4Gi
+    name: c7i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+      nvidia.com/gpu: "1"
+    name: g4dn.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+      nvidia.com/gpu: "1"
+    name: g5.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+      nvidia.com/gpu: "1"
+    name: g6.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m5.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+    name: m5.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m6a.large
+  - architecture: arm64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m6g.large
+  - architecture: arm64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+    name: m6g.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m6i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 16Gi
+    name: m6i.xlarge
+  - architecture: arm64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m7g.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: m7i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "8"
+      memory: 61Gi
+      nvidia.com/gpu: "1"
+    name: p3.2xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "16"
+      memory: 256Gi
+      nvidia.com/gpu: "1"
+    name: p5.4xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 16Gi
+    name: r5.large
+  - architecture: amd64
+    baseResources:
+      cpu: "4"
+      memory: 32Gi
+    name: r5.xlarge
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 16Gi
+    name: r6a.large
+  - architecture: arm64
+    baseResources:
+      cpu: "2"
+      memory: 16Gi
+    name: r6g.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 16Gi
+    name: r6i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 16Gi
+    name: r7i.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: t3.large
+  - architecture: amd64
+    baseResources:
+      cpu: "2"
+      memory: 8Gi
+    name: t3a.large
+  provider: aws

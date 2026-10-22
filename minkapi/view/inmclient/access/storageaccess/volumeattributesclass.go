@@ -5,14 +5,13 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type volumeAttributesClassAccess struct {
 }
 
 // NewVolumeAttributesClassAccess creates an access facade for managing VolumeAttributesClass resources using the given minkapi View.
-func NewVolumeAttributesClassAccess(view minkapi.View) clientstoragev1.VolumeAttributesClassInterface {
+func NewVolumeAttributesClassAccess(view api.View) clientstoragev1.VolumeAttributesClassInterface {
 	return &volumeAttributesClassAccess{
 		access.GenericResourceAccess[*storagev1.VolumeAttributesClass, *storagev1.VolumeAttributesClassList]{
 			View:      view,
-			GVK:       typeinfo.VolumeAttributesClassDescriptor.GVK,
+			GVK:       api.VolumeAttributesClassDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}
@@ -73,5 +72,5 @@ func (a *volumeAttributesClassAccess) Patch(ctx context.Context, name string, pt
 }
 
 func (a *volumeAttributesClassAccess) Apply(_ context.Context, _ *v1.VolumeAttributesClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.VolumeAttributesClass, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

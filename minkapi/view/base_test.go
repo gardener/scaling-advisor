@@ -9,10 +9,9 @@ import (
 	"slices"
 	"testing"
 
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
 
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/testutil"
 	corev1 "k8s.io/api/core/v1"
@@ -30,19 +29,19 @@ func TestNodeCreation(t *testing.T) {
 	}{
 		"No error": {
 			fileName: viewtestutil.NodeA,
-			gvk:      typeinfo.NodesDescriptor.GVK,
+			gvk:      minkapi.NodesDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   nil,
 		},
 		"Incorrect gvk": {
 			fileName: viewtestutil.NodeA,
-			gvk:      typeinfo.PodsDescriptor.GVK,
+			gvk:      minkapi.PodsDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   fmt.Errorf("does not match expected objGVK"),
 		},
 		"Missing name and generateName in file": {
 			fileName: viewtestutil.NameNodeA,
-			gvk:      typeinfo.NodesDescriptor.GVK,
+			gvk:      minkapi.NodesDescriptor.GVK,
 			opts:     minkapi.ObjectOptions{},
 			retErr:   minkapi.ErrCreateObject,
 		},
@@ -104,7 +103,7 @@ func TestPodListing(t *testing.T) {
 	if !ok {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
-	_, err = baseView.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nodeA, minkapi.ObjectOptions{})
+	_, err = baseView.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nodeA, minkapi.ObjectOptions{})
 	if err != nil {
 		return
 	}
@@ -113,7 +112,7 @@ func TestPodListing(t *testing.T) {
 		if !ok {
 			t.Fatalf("test object %q not found", file)
 		}
-		_, err = baseView.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, obj, minkapi.ObjectOptions{})
+		_, err = baseView.CreateObject(t.Context(), minkapi.PodsDescriptor.GVK, obj, minkapi.ObjectOptions{})
 		if err != nil {
 			return
 		}
@@ -146,38 +145,38 @@ func TestEventDeletion(t *testing.T) {
 	}{
 		"No criteria": {
 			c:      minkapi.MatchCriteria{},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			gvk:    minkapi.EventsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: fmt.Errorf("cannot list events without namespace"),
 		},
 		"test namespace": {
 			c:      minkapi.MatchCriteria{Namespace: "test"},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			gvk:    minkapi.EventsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: nil,
 		},
 		"random namespace": {
 			c:      minkapi.MatchCriteria{Namespace: "mnbvcxz"},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			gvk:    minkapi.EventsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: nil,
 		},
 		"default namespace": {
 			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			gvk:    minkapi.EventsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: nil,
 		},
 		// TODO GVK is only utilized for checking store existence
 		"incorrect gvk when deleting": {
 			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault},
-			gvk:    typeinfo.PodsDescriptor.GVK,
+			gvk:    minkapi.PodsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: nil,
 		},
 		"non-existing name": {
 			c:      minkapi.MatchCriteria{Namespace: metav1.NamespaceDefault, Names: sets.New("bingo")},
-			gvk:    typeinfo.EventsDescriptor.GVK,
+			gvk:    minkapi.EventsDescriptor.GVK,
 			opts:   minkapi.ObjectOptions{},
 			retErr: nil,
 		},
@@ -194,7 +193,7 @@ func TestEventDeletion(t *testing.T) {
 			if !ok {
 				t.Fatalf("test object %q not found", viewtestutil.EventA)
 			}
-			_, err = baseView.CreateObject(t.Context(), typeinfo.EventsDescriptor.GVK, eventA, tc.opts)
+			_, err = baseView.CreateObject(t.Context(), minkapi.EventsDescriptor.GVK, eventA, tc.opts)
 			if err != nil {
 				t.Error(err)
 				return

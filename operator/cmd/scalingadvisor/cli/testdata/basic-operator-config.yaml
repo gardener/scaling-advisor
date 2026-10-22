@@ -1,4 +1,4 @@
-apiVersion: config.sa.gardener.cloud/v1alpha1
+apiVersion: config.scad.gardener.cloud/v1alpha1
 kind: OperatorConfig
 server:
   kubeConfigPath: /tmp/kube-config.yaml

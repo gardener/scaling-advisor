@@ -5,14 +5,13 @@
 package appaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,11 +31,11 @@ type replicaSetAccess struct {
 }
 
 // NewReplicaSetAccess creates a new access facade for managing ReplicaSet resources within a specific namespace using the given minkapi View.
-func NewReplicaSetAccess(view minkapi.View, namespace string) clientappsv1.ReplicaSetInterface {
+func NewReplicaSetAccess(view api.View, namespace string) clientappsv1.ReplicaSetInterface {
 	return &replicaSetAccess{
 		access.GenericResourceAccess[*appsv1.ReplicaSet, *appsv1.ReplicaSetList]{
 			View:      view,
-			GVK:       typeinfo.ReplicaSetDescriptor.GVK,
+			GVK:       api.ReplicaSetDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -79,21 +78,21 @@ func (a *replicaSetAccess) Patch(ctx context.Context, name string, pt types.Patc
 }
 
 func (a *replicaSetAccess) Apply(_ context.Context, _ *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, _ metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) ApplyStatus(_ context.Context, _ *clientapplyconfigurationsappsv1.ReplicaSetApplyConfiguration, _ metav1.ApplyOptions) (result *appsv1.ReplicaSet, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) GetScale(_ context.Context, _ string, _ metav1.GetOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: GetScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) UpdateScale(_ context.Context, _ string, _ *autoscalingv1.Scale, _ metav1.UpdateOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: UpdateScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *replicaSetAccess) ApplyScale(_ context.Context, _ string, _ *clientapplyconfigurationsautoscalingv1.ScaleApplyConfiguration, _ metav1.ApplyOptions) (*autoscalingv1.Scale, error) {
-	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyScale of %q is not implemented", errors.ErrUnsupported, a.GVK.Kind)
 }

@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	viewtestutil "github.com/gardener/scaling-advisor/minkapi/view/testutil"
 
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	gocmp "github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
@@ -36,7 +35,7 @@ func TestStoreGetNode(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
@@ -59,7 +58,7 @@ func TestStoreGetNode(t *testing.T) {
 	baseChangeCount = b.GetObjectChangeCount()
 	nB := *nA.DeepCopy()
 	nB.GenerateName = "b-"
-	_, err = s.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nB, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, &nB, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", s.GetName(), err)
 		return
@@ -82,7 +81,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
@@ -103,7 +102,7 @@ func TestStoreNodeInBaseUpdateInSandbox(t *testing.T) {
 		},
 	}
 	nAWithCondChange.Status.Conditions = conditions
-	err = s.UpdateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nAWithCondChange, mkapi.ObjectOptions{})
+	err = s.UpdateObject(t.Context(), minkapi.NodesDescriptor.GVK, &nAWithCondChange, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to update node: %v", s.GetName(), err)
 		return
@@ -141,7 +140,7 @@ func TestSandboxPodSandboxNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = s.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", s.GetName(), err)
 		return
@@ -151,7 +150,7 @@ func TestSandboxPodSandboxNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.PodA)
 	}
 	pA := pAObj.(*corev1.Pod)
-	_, err = s.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, pA, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.PodsDescriptor.GVK, pA, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store pod: %v", s.GetName(), err)
 		return
@@ -199,7 +198,7 @@ func TestSandboxPodBaseNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
@@ -210,7 +209,7 @@ func TestSandboxPodBaseNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.PodA)
 	}
 	pA := pAObj.(*corev1.Pod)
-	_, err = s.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, pA, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.PodsDescriptor.GVK, pA, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store pod: %v", s.GetName(), err)
 		return
@@ -263,7 +262,7 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = s.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", s.GetName(), err)
 		return
@@ -273,7 +272,7 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.PodA)
 	}
 	pA := pAObj.(*corev1.Pod)
-	_, err = b.CreateObject(t.Context(), typeinfo.PodsDescriptor.GVK, pA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.PodsDescriptor.GVK, pA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store pod: %v", b.GetName(), err)
 		return
@@ -314,7 +313,7 @@ func TestBasePodSandboxNodeBinding(t *testing.T) {
 	}
 }
 
-func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
+func setup(t *testing.T) (b minkapi.View, s minkapi.View, err error) {
 	t.Helper()
 	b, err = NewBase(&viewtestutil.DefaultBaseViewArgs)
 	if err != nil {
@@ -339,7 +338,7 @@ func setup(t *testing.T) (b mkapi.View, s mkapi.View, err error) {
 	return
 }
 
-func updateBinding(t *testing.T, v mkapi.View, p *corev1.Pod, n *corev1.Node) (*corev1.Pod, error) {
+func updateBinding(t *testing.T, v minkapi.View, p *corev1.Pod, n *corev1.Node) (*corev1.Pod, error) {
 	t.Helper()
 	binding := corev1.Binding{
 		TypeMeta: metav1.TypeMeta{
@@ -364,9 +363,9 @@ func updateBinding(t *testing.T, v mkapi.View, p *corev1.Pod, n *corev1.Node) (*
 	return pMod, nil
 }
 
-func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error) {
+func getNode(t *testing.T, v minkapi.View, name string) (n *corev1.Node, err error) {
 	t.Helper()
-	o, err := v.GetObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", name))
+	o, err := v.GetObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", name))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, err
@@ -382,9 +381,9 @@ func getNode(t *testing.T, v mkapi.View, name string) (n *corev1.Node, err error
 	return
 }
 
-func getPod(t *testing.T, v mkapi.View, namespace, name string) (p *corev1.Pod, err error) {
+func getPod(t *testing.T, v minkapi.View, namespace, name string) (p *corev1.Pod, err error) {
 	t.Helper()
-	o, err := v.GetObject(t.Context(), typeinfo.PodsDescriptor.GVK, cache.NewObjectName(namespace, name))
+	o, err := v.GetObject(t.Context(), minkapi.PodsDescriptor.GVK, cache.NewObjectName(namespace, name))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, err
@@ -400,7 +399,7 @@ func getPod(t *testing.T, v mkapi.View, namespace, name string) (p *corev1.Pod, 
 	return
 }
 
-func checkNodeInViewIsSame(t *testing.T, v mkapi.View, n *corev1.Node) {
+func checkNodeInViewIsSame(t *testing.T, v minkapi.View, n *corev1.Node) {
 	t.Helper()
 	nAFromView, err := getNode(t, v, n.GetName())
 	if err != nil {
@@ -429,12 +428,12 @@ func TestTombstone_GetReturnsNotFound(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 	if _, err := getNode(t, s, nA.Name); !apierrors.IsNotFound(err) {
@@ -455,14 +454,14 @@ func TestTombstone_DelegateUntouched(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
 	baseChangeBefore := b.GetObjectChangeCount()
 
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 	if got, err := getNode(t, b, nA.Name); err != nil || got == nil {
@@ -490,18 +489,18 @@ func TestTombstone_ListExcludesTombstoned(t *testing.T) {
 	nB.Name = nA.Name + "-second"
 	nB.ResourceVersion = ""
 	nB.UID = ""
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nB, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, &nB, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
 
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 
@@ -535,12 +534,12 @@ func TestTombstone_RecreateClearsTombstone(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 
@@ -552,7 +551,7 @@ func TestTombstone_RecreateClearsTombstone(t *testing.T) {
 		nFresh.Annotations = map[string]string{}
 	}
 	nFresh.Annotations["recreated"] = "yes"
-	_, err = s.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, &nFresh, mkapi.ObjectOptions{NoBroadcast: true})
+	_, err = s.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, &nFresh, minkapi.ObjectOptions{NoBroadcast: true})
 	if err != nil {
 		t.Fatalf("re-CreateObject failed: %v", err)
 		return
@@ -579,15 +578,15 @@ func TestTombstone_DoubleDeleteReturnsNotFound(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("first DeleteObject failed: %v", err)
 	}
-	err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name))
+	err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name))
 	if !apierrors.IsNotFound(err) {
 		t.Errorf("expected NotFound on second DeleteObject of tombstoned name, got: %v", err)
 	}
@@ -606,7 +605,7 @@ func TestTombstone_WatchObjectsDeliversDeletedThenSilence(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
@@ -620,7 +619,7 @@ func TestTombstone_WatchObjectsDeliversDeletedThenSilence(t *testing.T) {
 		t.Fatalf("expected at least 1 initial-list ADDED event for %q, got %d", nA.Name, got)
 	}
 
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 	expectEvent(t, events, watch.Deleted, nA.Name)
@@ -639,13 +638,13 @@ func TestTombstone_GetWatcherDeliversDeletedThenSilence(t *testing.T) {
 		t.Fatalf("test object %q not found", viewtestutil.NodeA)
 	}
 	nA := nAObj.(*corev1.Node)
-	_, err = b.CreateObject(t.Context(), typeinfo.NodesDescriptor.GVK, nA, mkapi.ObjectOptions{})
+	_, err = b.CreateObject(t.Context(), minkapi.NodesDescriptor.GVK, nA, minkapi.ObjectOptions{})
 	if err != nil {
 		t.Fatalf("in view %q, failed to store node: %v", b.GetName(), err)
 		return
 	}
 
-	w, err := s.GetWatcher(t.Context(), typeinfo.NodesDescriptor.GVK, "", metav1.ListOptions{})
+	w, err := s.GetWatcher(t.Context(), minkapi.NodesDescriptor.GVK, "", metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("GetWatcher failed: %v", err)
 	}
@@ -656,7 +655,7 @@ func TestTombstone_GetWatcherDeliversDeletedThenSilence(t *testing.T) {
 		t.Fatalf("expected at least 1 initial-list ADDED event for %q, got %d", nA.Name, got)
 	}
 
-	if err = s.DeleteObject(t.Context(), typeinfo.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
+	if err = s.DeleteObject(t.Context(), minkapi.NodesDescriptor.GVK, cache.NewObjectName("", nA.Name)); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 	expectEvent(t, events, watch.Deleted, nA.Name)
@@ -697,11 +696,11 @@ func nodeNames(nodes []corev1.Node) []string {
 // startWatchObjects spawns the sandbox view's blocking WatchObjects in a goroutine and returns
 // a channel onto which received events are forwarded. The watch is bound to the test context so
 // it terminates with the test.
-func startWatchObjects(t *testing.T, v mkapi.View) chan watch.Event {
+func startWatchObjects(t *testing.T, v minkapi.View) chan watch.Event {
 	t.Helper()
 	ch := make(chan watch.Event, 16)
 	go func() {
-		_ = v.WatchObjects(t.Context(), typeinfo.NodesDescriptor.GVK, 0, "", labels.Everything(), func(ev watch.Event) error {
+		_ = v.WatchObjects(t.Context(), minkapi.NodesDescriptor.GVK, 0, "", labels.Everything(), func(ev watch.Event) error {
 			ch <- ev
 			return nil
 		})

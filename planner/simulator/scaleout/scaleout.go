@@ -14,43 +14,46 @@ import (
 	"sync/atomic"
 	"time"
 
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/gardener/scaling-advisor/planner/simulator"
 
-	commonconstants "github.com/gardener/scaling-advisor/api/common/constants"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/go-logr/logr"
 )
 
 var (
-	_ commontypes.Resettable = (*SimulatorState)(nil)
+	_ apicomponent.Resettable = (*SimulatorState)(nil)
 )
 
 // SimulatorState holds the internal state of a ScaleOutSimulator when executing simulations
 type SimulatorState struct {
 	viewAccess minkapi.ViewAccess
-	// SimulationFactory is used to create `ScaleOutSimulation`s
-	SimulationFactory plannerapi.SimulationFactory
+	// SimulationFactory is used to create `Simulation`s
+	SimulationFactory simulationapi.SimulationFactory
 	// Request is the planner request being currently satisfied.
 	Request  *plannerapi.Request
 	ResultCh chan plannerapi.ScaleOutPlanResult
 	// SimRunCounter is a run counter for the number of simulation runs
 	SimRunCounter *atomic.Uint32
 	views         []minkapi.View
-	// SimulationGroups is the slice of ScaleOutSimGroup (if any) created for satisfying the current request.
-	SimulationGroups []plannerapi.ScaleOutSimGroup
+	// SimulationGroups is the slice of SimulationGroup (if any) created for satisfying the current request.
+	SimulationGroups []simulationapi.SimulationGroup
 	simConfig        plannerapi.SimulatorConfig
 	mu               sync.Mutex
 }
 
 // NewSimulatorState constructs a fresh [SimulatorState] for the [plannerapi.ScaleOutSimulator] processing the given
 // [plannerapi.Request] with the given parameters
-func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory plannerapi.SimulationFactory, viewAccess minkapi.ViewAccess) *SimulatorState {
+func NewSimulatorState(request *plannerapi.Request, simConfig plannerapi.SimulatorConfig, simulationFactory simulationapi.SimulationFactory, viewAccess minkapi.ViewAccess) *SimulatorState {
 	return &SimulatorState{
 		Request:           request,
 		ResultCh:          make(chan plannerapi.ScaleOutPlanResult),
@@ -71,7 +74,7 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 		return err
 	}
 
-	if err = simulator.PopulateView(ctx, requestView, &s.Request.Snapshot); err != nil {
+	if err = simulator.PopulateView(ctx, requestView, &s.Request.ClusterSnapshot); err != nil {
 		err = fmt.Errorf("%w: %w", plannerapi.ErrPopulateRequestView, err)
 		return err
 	}
@@ -113,6 +116,18 @@ func (s *SimulatorState) RequestView() minkapi.View {
 	}
 }
 
+// SetRequestView sets the given view as the request view in this state (first element of s.views).
+// This is used when the caller has pre-built and pre-populated the request view.
+func (s *SimulatorState) SetRequestView(view minkapi.View) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.views) == 0 {
+		s.views = append(s.views, view)
+	} else {
+		s.views[0] = view
+	}
+}
+
 // Reset clears and resets this SimulatorState
 func (s *SimulatorState) Reset() error {
 	s.mu.Lock()
@@ -145,22 +160,22 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
 	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
-	existingNodeCountByPlacement, err := req.Snapshot.GetNodeCountByPlacement()
+	existingNodeCountByPlacement, err := nodeutil.GetNodeCountByPlacement(req.ClusterSnapshot.Nodes)
 	if err != nil {
 		return err
 	}
 	planGenerateDuration := time.Since(req.CreationTime)
-	numUnscheduledPods := len(req.Snapshot.GetUnscheduledPods())
+	numUnscheduledPods := len(podutil.GetUnscheduledPods(req.ClusterSnapshot.Pods))
 	labels := map[string]string{
-		commonconstants.LabelRequestID:                  req.ID,
-		commonconstants.LabelCorrelationID:              req.CorrelationID,
-		commonconstants.LabelTotalSimulationRuns:        fmt.Sprintf("%d", simulationRunCount),
-		commonconstants.LabelPlanGenerateDuration:       planGenerateDuration.String(),
-		commonconstants.LabelSnapshotNumUnscheduledPods: strconv.Itoa(numUnscheduledPods),
-		commonconstants.LabelConstraintNumPools:         strconv.Itoa(len(req.Constraint.Spec.NodePools)),
+		apicommon.LabelRequestID:                  req.ID,
+		apicommon.LabelCorrelationID:              req.CorrelationID,
+		apicommon.LabelTotalSimulationRuns:        fmt.Sprintf("%d", simulationRunCount),
+		apicommon.LabelPlanGenerateDuration:       planGenerateDuration.String(),
+		apicommon.LabelSnapshotNumUnscheduledPods: strconv.Itoa(numUnscheduledPods),
+		apicommon.LabelConstraintNumPools:         strconv.Itoa(len(req.ScalingConstraint.NodePools)),
 	}
 	var allWinnerNodeScores []plannerapi.NodeScore
-	var leftOverUnscheduledPods []commontypes.NamespacedName
+	var leftOverUnscheduledPods []apicommon.NamespacedName
 	for _, gcr := range groupCycleResults {
 		allWinnerNodeScores = append(allWinnerNodeScores, gcr.WinnerNodeScores...)
 		leftOverUnscheduledPods = gcr.LeftoverUnscheduledPods
@@ -175,59 +190,72 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	return nil
 }
 
-// CreateAllNodeTemplates creates a slice of all possible [plannerapi.ScaleOutNodeTemplate] for the given slice of
-// [sacorev1alpha1.NodePool].
-func CreateAllNodeTemplates(pools []sacorev1alpha1.NodePool) []plannerapi.ScaleOutNodeTemplate {
-	allNodeTemplates := make([]plannerapi.ScaleOutNodeTemplate, 0, len(pools)*2)
-	for _, np := range pools {
-		for _, nt := range np.NodeTemplates {
+// CreateAllNodeTemplates creates and returns a slice of [simulationapi.ScaleOutNodeTemplate] for all possible
+// combinations of NodePools, NodeTemplates and availability zones, resolved from [plannerapi.Request.NodeTemplates]
+// and [plannerapi.Request.InstanceTypeDefs].
+func CreateAllNodeTemplates(req *plannerapi.Request) []simulationapi.ScaleOutNodeTemplate {
+	allNodeTemplates := make([]simulationapi.ScaleOutNodeTemplate, 0)
+	for _, np := range req.ScalingConstraint.NodePools {
+		if len(np.AvailabilityZones) == 0 {
+			continue
+		}
+		for _, ref := range np.NodeTemplateRefs {
+			nt, ok := req.NodeTemplates[ref.Name]
+			if !ok {
+				continue
+			}
+			itd, ok := req.InstanceTypeDefs[nt.InstanceType]
+			if !ok {
+				continue
+			}
 			for _, az := range np.AvailabilityZones {
-				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, nt, az))
+				allNodeTemplates = append(allNodeTemplates, createNodeTemplate(np, ref, nt, itd, az))
 			}
 		}
 	}
 	return allNodeTemplates
 }
 
-// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by PriorityKey to slice of
-// [plannerapi.ScaleOutNodeTemplate]
-func GroupScaleOutNodeTemplatesByPriority(templates []plannerapi.ScaleOutNodeTemplate) map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate {
-	templatesByPriority := make(map[commontypes.PriorityKey][]plannerapi.ScaleOutNodeTemplate)
+// GroupScaleOutNodeTemplatesByPriority does just exactly that and returns a map keyed by GroupKey to slice of
+// [simulationapi.ScaleOutNodeTemplate]
+func GroupScaleOutNodeTemplatesByPriority(templates []simulationapi.ScaleOutNodeTemplate) map[simulationapi.GroupKey][]simulationapi.ScaleOutNodeTemplate {
+	templatesByPriority := make(map[simulationapi.GroupKey][]simulationapi.ScaleOutNodeTemplate)
 	for _, t := range templates {
-		pk := t.PriorityKey
+		pk := t.GroupKey
 		group, ok := templatesByPriority[pk]
 		if !ok {
-			group = []plannerapi.ScaleOutNodeTemplate{t}
+			group = []simulationapi.ScaleOutNodeTemplate{t}
+		} else {
+			group = append(group, t)
 		}
-		group = append(group, t)
 		templatesByPriority[pk] = group
 	}
 	return templatesByPriority
 }
 
-// createNodeTemplate creates a [plannerapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
-// [sacorev1alpha1.NodeTemplate] and availability zone.
-func createNodeTemplate(pool sacorev1alpha1.NodePool, template sacorev1alpha1.NodeTemplate, zone string) plannerapi.ScaleOutNodeTemplate {
-	return plannerapi.ScaleOutNodeTemplate{
+// createNodeTemplate creates a [simulationapi.ScaleOutNodeTemplate] for the given [sacorev1alpha1.NodePool],
+// [sacorev1alpha1.NodeTemplateRef], [sacorev1alpha1.NodeTemplate], [sacorev1alpha1.InstanceTypeDef] and availability zone.
+func createNodeTemplate(pool sacorev1alpha1.NodePool, ref sacorev1alpha1.NodeTemplateRef, nt sacorev1alpha1.NodeTemplate, itd sacorev1alpha1.InstanceTypeDef, zone string) simulationapi.ScaleOutNodeTemplate {
+	return simulationapi.ScaleOutNodeTemplate{
 		NodePlacement: sacorev1alpha1.NodePlacement{
 			PoolName:         pool.Name,
-			TemplateName:     template.Name,
-			InstanceType:     template.InstanceType,
+			TemplateName:     nt.Name,
+			InstanceType:     nt.InstanceType,
 			Region:           pool.Region,
 			AvailabilityZone: zone,
 		},
-		Labels:      pool.Labels,
-		Annotations: pool.Annotations,
-		Quota:       pool.Quota,
-		Taints:      pool.Taints,
-		PriorityKey: commontypes.PriorityKey{
-			First:  pool.Priority,
-			Second: template.Priority,
+		Labels:            pool.Labels,
+		Annotations:       pool.Annotations,
+		Quota:             ref.Quota,
+		Taints:            pool.Taints,
+		BaseResources:     itd.BaseResources,
+		ExtendedResources: nt.ExtendedResources,
+		ReservedResources: nt.ReservedResources,
+		Architecture:      itd.Architecture,
+		GroupKey: simulationapi.GroupKey{
+			NodePoolPriority:     pool.Priority,
+			NodeTemplatePriority: ref.Priority,
 		},
-		Capacity:       template.Capacity,
-		KubeReserved:   template.KubeReserved,
-		SystemReserved: template.SystemReserved,
-		Architecture:   template.Architecture,
 	}
 }
 
@@ -241,7 +269,7 @@ func (s *SimulatorState) createRequestView(ctx context.Context, viewAccess minka
 }
 
 // createScaleOutPlan creates a ScaleOutPlan based on the given winningNodeScores, existingNodeCountByPlacement and leftoverUnscheduledPods.
-func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []commontypes.NamespacedName) sacorev1alpha1.ScaleOutPlan {
+func createScaleOutPlan(winningNodeScores []plannerapi.NodeScore, existingNodeCountByPlacement map[sacorev1alpha1.NodePlacement]int32, leftoverUnscheduledPods []apicommon.NamespacedName) sacorev1alpha1.ScaleOutPlan {
 	scaleItems := make([]sacorev1alpha1.ScaleOutItem, 0, len(winningNodeScores))
 	nodeScoresByPlacement := groupNodeScoresByNodePlacement(winningNodeScores)
 	for placement, nodeScores := range nodeScoresByPlacement {

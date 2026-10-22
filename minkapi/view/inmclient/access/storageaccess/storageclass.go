@@ -5,14 +5,13 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type storageClassAccess struct {
 }
 
 // NewStorageClassAccess creates an access facade for managing StorageClass resources using the given minkapi View.
-func NewStorageClassAccess(view minkapi.View) clientstoragev1.StorageClassInterface {
+func NewStorageClassAccess(view api.View) clientstoragev1.StorageClassInterface {
 	return &storageClassAccess{
 		access.GenericResourceAccess[*storagev1.StorageClass, *storagev1.StorageClassList]{
 			View:      view,
-			GVK:       typeinfo.StorageClassDescriptor.GVK,
+			GVK:       api.StorageClassDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}
@@ -73,9 +72,9 @@ func (a *storageClassAccess) Patch(ctx context.Context, name string, pt types.Pa
 }
 
 func (a *storageClassAccess) Apply(_ context.Context, _ *clientconfigstoragev1.StorageClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *storageClassAccess) ApplyStatus(_ context.Context, _ *clientconfigstoragev1.StorageClassApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.StorageClass, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

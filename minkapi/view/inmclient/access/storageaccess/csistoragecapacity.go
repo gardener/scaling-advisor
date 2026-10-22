@@ -8,11 +8,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type csiStorageCapacityAccess struct {
 }
 
 // NewCSIStorageCapacityAccess creates a new access facade for managing CSIStorageCapacity resources within a specific namespace using the given minkapi View.
-func NewCSIStorageCapacityAccess(view minkapi.View, namespace string) clientstoragev1.CSIStorageCapacityInterface {
+func NewCSIStorageCapacityAccess(view api.View, namespace string) clientstoragev1.CSIStorageCapacityInterface {
 	return &csiStorageCapacityAccess{
 		access.GenericResourceAccess[*storagev1.CSIStorageCapacity, *storagev1.CSIStorageCapacityList]{
 			View:      view,
-			GVK:       typeinfo.CSIStorageCapacityDescriptor.GVK,
+			GVK:       api.CSIStorageCapacityDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -57,11 +56,11 @@ func (a *csiStorageCapacityAccess) Update(ctx context.Context, csiStorageCapacit
 }
 
 func (a *csiStorageCapacityAccess) UpdateWithCsiStorageCapacityNamespaceWithContext(_ context.Context, _ *storagev1.CSIStorageCapacity) (*storagev1.CSIStorageCapacity, error) {
-	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
+	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", apicommon.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) UpdateWithCsiStorageCapacityNamespace(_ *storagev1.CSIStorageCapacity) (*storagev1.CSIStorageCapacity, error) {
-	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
+	return nil, fmt.Errorf("%w: update of csiStorageCapacitys is not supported", apicommon.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
@@ -89,13 +88,13 @@ func (a *csiStorageCapacityAccess) Patch(ctx context.Context, name string, pt ty
 }
 
 func (a *csiStorageCapacityAccess) PatchWithCsiStorageCapacityNamespace(_ *storagev1.CSIStorageCapacity, _ []byte) (*storagev1.CSIStorageCapacity, error) {
-	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
+	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", apicommon.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) PatchWithCsiStorageCapacityNamespaceWithContext(_ context.Context, _ *storagev1.CSIStorageCapacity, _ []byte) (*storagev1.CSIStorageCapacity, error) {
-	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
+	return nil, fmt.Errorf("%w: patch of csiStorageCapacitys is not supported", apicommon.ErrInvalidOptVal)
 }
 
 func (a *csiStorageCapacityAccess) Apply(_ context.Context, _ *v1.CSIStorageCapacityApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSIStorageCapacity, err error) {
-	return nil, fmt.Errorf("%w: apply of csiStorageCapacitys is not supported", commonerrors.ErrInvalidOptVal)
+	return nil, fmt.Errorf("%w: apply of csiStorageCapacitys is not supported", apicommon.ErrInvalidOptVal)
 }

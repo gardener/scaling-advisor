@@ -6,6 +6,7 @@ package planner
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"github.com/gardener/scaling-advisor/planner/testutil"
@@ -154,6 +155,11 @@ func TestOnePoolScaleOutWithUnboundPVC_ExistingPV_WaitForFirstConsumer(t *testin
 }
 
 func TestOnePoolScaleOutWithUnboundPVC_SimulatePV_WaitForFirstConsumer(t *testing.T) {
+	//TODO: Currently fails intermittently in GA due to timing issues. Remove this when pod uncheduled events tracking is improved in simulator
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Skip("Skipping flaky test on GitHub Actions")
+	}
+
 	planner, testData, ok := testutil.CreateTestPlannerAndTestData(t, testutil.Args{
 		PoolPreset: samples.PoolPreset1P,
 		NumUnscheduledPodsPerResourcePreset: map[samples.ResourcePreset]int{

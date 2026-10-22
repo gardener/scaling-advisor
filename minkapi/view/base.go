@@ -13,13 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/view/store"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -58,7 +57,7 @@ type baseView struct {
 // NewBase creates and initializes a new "base" instance of View, configured with the provided logger and ViewArgs.
 func NewBase(args *minkapi.ViewArgs) (minkapi.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
-	for _, d := range typeinfo.SupportedDescriptors {
+	for _, d := range minkapi.SupportedDescriptors {
 		versionCounter := &atomic.Int64{}
 		stores[d.GVK] = createInMemStore(d, versionCounter, args)
 	}
@@ -107,7 +106,7 @@ func (v *baseView) SetKubeConfigPath(path string) {
 	v.kubeConfigReady.Broadcast()
 }
 
-func (v *baseView) GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
+func (v *baseView) GetClientFacades(ctx context.Context, accessMode minkapi.ClientAccessMode) (clientFacades minkapi.ClientFacades, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 
 	defer func() {
@@ -116,13 +115,13 @@ func (v *baseView) GetClientFacades(ctx context.Context, accessMode commontypes.
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessModeNetwork:
+	case minkapi.ClientAccessModeNetwork:
 		if v.GetKubeConfigPath() == "" {
 			err = errors.New("kubeconfig path not specified for network client")
 			return
 		}
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessModeInMemory:
+	case minkapi.ClientAccessModeInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
@@ -166,7 +165,7 @@ func (v *baseView) UpdatePodNodeBinding(ctx context.Context, podName cache.Objec
 	if podName.Name == "" {
 		return nil, fmt.Errorf("%w: podName must not be empty", minkapi.ErrUpdateObject)
 	}
-	obj, err := v.GetObject(ctx, typeinfo.PodsDescriptor.GVK, podName)
+	obj, err := v.GetObject(ctx, minkapi.PodsDescriptor.GVK, podName)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +239,7 @@ func (v *baseView) ListNodes(ctx context.Context, matchingNodeNames ...string) (
 }
 
 func (v *baseView) ListPods(ctx context.Context, c minkapi.MatchCriteria) ([]corev1.Pod, error) {
-	gvk := typeinfo.PodsDescriptor.GVK
+	gvk := minkapi.PodsDescriptor.GVK
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return nil, err
@@ -263,7 +262,7 @@ func (v *baseView) ListEvents(ctx context.Context, namespace string) ([]eventsv1
 	c := minkapi.MatchCriteria{
 		Namespace: namespace,
 	}
-	gvk := typeinfo.EventsDescriptor.GVK
+	gvk := minkapi.EventsDescriptor.GVK
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return nil, err
@@ -345,7 +344,7 @@ func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, 
 		Type:   corev1.PodScheduled,
 		Status: corev1.ConditionTrue,
 	})
-	existingObj, err := v.GetObject(ctx, typeinfo.PodsDescriptor.GVK, objutil.CacheName(pod))
+	existingObj, err := v.GetObject(ctx, minkapi.PodsDescriptor.GVK, objutil.CacheName(pod))
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +354,7 @@ func updatePodNodeBinding(ctx context.Context, v minkapi.View, pod *corev1.Pod, 
 		log.Error(err, "pod already bound", "podName", pod.Name, "existingNodeName", existingPod.Spec.NodeName, "newNodeName", pod.Spec.NodeName)
 		return nil, err
 	}
-	err = v.UpdateObject(ctx, typeinfo.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{})
+	err = v.UpdateObject(ctx, minkapi.PodsDescriptor.GVK, pod, minkapi.ObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +464,7 @@ func listNodes(ctx context.Context, v minkapi.View, matchingNodeNames []string) 
 	c := minkapi.MatchCriteria{
 		Names: nodeNamesSet,
 	}
-	gvk := typeinfo.NodesDescriptor.GVK
+	gvk := minkapi.NodesDescriptor.GVK
 	s, err := v.GetResourceStore(gvk)
 	if err != nil {
 		return
@@ -556,12 +555,12 @@ func combinePrimarySecondary(primary []metav1.Object, secondary []metav1.Object)
 	return
 }
 
-func createInMemStore(d typeinfo.Descriptor, versionCounter *atomic.Int64, args *minkapi.ViewArgs) *store.InMemResourceStore {
+func createInMemStore(d minkapi.Descriptor, versionCounter *atomic.Int64, args *minkapi.ViewArgs) *store.InMemResourceStore {
 	return store.NewInMemResourceStore(&minkapi.ResourceStoreArgs{
 		Name:           d.GVR.Resource,
 		ObjectGVK:      d.GVK,
 		ObjectListGVK:  d.ListGVK,
-		Scheme:         typeinfo.SupportedScheme,
+		Scheme:         minkapi.SupportedScheme,
 		VersionCounter: versionCounter,
 		WatchConfig:    args.WatchConfig,
 	})
@@ -575,8 +574,8 @@ func closeStores(stores map[schema.GroupVersionKind]*store.InMemResourceStore) e
 	return errors.Join(errs...)
 }
 
-func asResettable(stores map[schema.GroupVersionKind]*store.InMemResourceStore) []commontypes.Resettable {
-	resettable := make([]commontypes.Resettable, 0, len(stores))
+func asResettable(stores map[schema.GroupVersionKind]*store.InMemResourceStore) []apicomponent.Resettable {
+	resettable := make([]apicomponent.Resettable, 0, len(stores))
 	for _, s := range stores {
 		resettable = append(resettable, s)
 	}

@@ -5,24 +5,22 @@
 package v1alpha1
 
 import (
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// OperatorConfig defines the configuration for the scalingadvisor operator.
+// OperatorConfig defines the configuration for the scaling-advisor operator.
 //
 //nolint:govet // fieldalignment: intentional layout for k8s CRD / wire compatibility
 type OperatorConfig struct {
 	metav1.TypeMeta `json:",inline"`
 	// Server is basic server configuration for the scaling advisor.
 	Server ScalingAdvisorServerConfig `json:"server"`
-	// AdviceGeneration contains configuration for scaling advice generation.
-	AdviceGeneration ScalingAdviceGenerationConfig
 	// CloudProvider specifies the cloud provider for which the scaling advisor is configured.
-	CloudProvider commontypes.CloudProvider `json:"cloudProvider"`
+	CloudProvider apicommon.CloudProvider `json:"cloudProvider"`
 	// ClientConnection defines the configuration for constructing a kube client.
 	ClientConnection ClientConnectionConfig `json:"clientConnection"`
 	// LeaderElection defines the configuration for leader election.
@@ -91,16 +89,6 @@ type ScalingAdvisorServerConfig struct {
 	ProfilingBindAddress string `json:"profilingBindAddress,omitempty"`
 	// ProfilingEnable indicates whether profiling is enabled.
 	ProfilingEnabled bool `json:"profilingEnabled"`
-}
-
-// ScalingAdviceGenerationConfig contains configuration for scaling advice generation.
-type ScalingAdviceGenerationConfig struct {
-	// Mode defines the mode in which scaling advice is generated.
-	Mode commontypes.ScalingAdviceGenerationMode `json:"mode"`
-	// SimulatorStrategy defines the simulator strategy used by the ScaleOutSimulator implementation.
-	SimulatorStrategy commontypes.SimulatorStrategy `json:"simulatorStrategy"`
-	// ScoringStrategy defines the node scoring strategy to use for scaling decisions.
-	ScoringStrategy commontypes.NodeScoringStrategy `json:"scoringStrategy"`
 }
 
 // ControllersConfig defines the configuration for controllers that are run as part of the scaling-advisor.

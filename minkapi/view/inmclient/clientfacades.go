@@ -5,22 +5,22 @@
 package inmclient
 
 import (
+	"errors"
 	"time"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
+	"github.com/gardener/scaling-advisor/minkapi/api"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 )
 
 // NewInMemClientFacades returns ClientFacades populated with in-memory client and informer facades.
-func NewInMemClientFacades(view minkapi.View, resyncPeriod time.Duration) commontypes.ClientFacades {
+func NewInMemClientFacades(view api.View, resyncPeriod time.Duration) api.ClientFacades {
 	client := &inMemClient{view: view}
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
-	return commontypes.ClientFacades{
-		Mode:               commontypes.ClientAccessModeInMemory,
+	return api.ClientFacades{
+		Mode:               api.ClientAccessModeInMemory,
 		Client:             client,
 		DynClient:          nil, // TODO: develop this
 		InformerFactory:    informerFactory,
@@ -41,7 +41,7 @@ func (i *inMemDummyDynInformerFactory) Start(_ <-chan struct{}) {
 
 // ForResource is not implemented and panics.
 func (i *inMemDummyDynInformerFactory) ForResource(_ schema.GroupVersionResource) informers.GenericInformer {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 // WaitForCacheSync is a no-op implementation that returns an empty map.

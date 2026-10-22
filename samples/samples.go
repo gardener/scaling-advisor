@@ -15,11 +15,12 @@ import (
 	"strings"
 	"text/template"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/planner"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -28,17 +29,48 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// GenScalingConstraints generates a ScalingConstraint encapsulated in ConstraintGenOutput given the ConstraintGenInput.
+// GetTop30AWSInstanceTypeDefs returns a sample slice of InstanceTypeDef loaded from the embedded
+// aws_instance-type-def-set.yaml data file. Intended for use in unit tests.
+func GetTop30AWSInstanceTypeDefs() ([]sacorev1alpha1.InstanceTypeDef, error) {
+	var its sacorev1alpha1.InstanceTypeDefSet
+	if err := objutil.LoadIntoRuntimeObj(dataFS, "data/aws_instance-type-def-set.yaml", &its); err != nil {
+		return nil, err
+	}
+	return its.Spec.InstanceTypeDefs, nil
+}
+
+// GetTop30AWSInstancePrices returns a sample slice of InstancePrice loaded from the embedded
+// aws_instance-price-set.yaml data file. Intended for use in unit tests.
+func GetTop30AWSInstancePrices() ([]sacorev1alpha1.InstancePrice, error) {
+	var ips sacorev1alpha1.InstancePriceSet
+	if err := objutil.LoadIntoRuntimeObj(dataFS, "data/aws_instance-price-set.yaml", &ips); err != nil {
+		return nil, err
+	}
+	return ips.Spec.Prices, nil
+}
+
+// GenScalingConstraints generates a ScalingConstraint and its associated NodeTemplates encapsulated in
+// ConstraintGenOutput given the ConstraintGenInput.
 func GenScalingConstraints(in ConstraintGenInput) (out ConstraintGenOutput, err error) {
 	presetPath := fmt.Sprintf("data/scaling-constraints/%s.yaml", in.PoolPreset)
+	ntsPresetPath := fmt.Sprintf("data/scaling-constraints/%s-nts.yaml", in.PoolPreset)
 	switch in.PoolPreset {
 	case PoolPreset1P, PoolPreset2P:
 		if err = objutil.LoadIntoRuntimeObj(dataFS, presetPath, &out.Constraint); err != nil {
 			err = fmt.Errorf("failed to load scaling constraints for PoolPreset %q: %v", in.PoolPreset, err)
 			return
 		}
+		var nts sacorev1alpha1.NodeTemplateSet
+		if err = objutil.LoadIntoRuntimeObj(dataFS, ntsPresetPath, &nts); err != nil {
+			err = fmt.Errorf("failed to load node template set for PoolPreset %q: %v", in.PoolPreset, err)
+			return
+		}
+		out.NodeTemplates = make(map[string]sacorev1alpha1.NodeTemplate, len(nts.Spec.Templates))
+		for _, t := range nts.Spec.Templates {
+			out.NodeTemplates[t.Name] = t
+		}
 	default:
-		err = fmt.Errorf("%w: unsupported %q", commonerrors.ErrUnimplemented, in.PoolPreset)
+		err = fmt.Errorf("%w: unsupported %q", errors.ErrUnsupported, in.PoolPreset)
 		return
 	}
 	if len(in.PoolZones) > len(out.Constraint.Spec.NodePools) {
@@ -50,14 +82,26 @@ func GenScalingConstraints(in ConstraintGenInput) (out ConstraintGenOutput, err 
 	}
 	if in.GenDir != "" {
 		out.GenYAMLPath, err = objutil.SaveRuntimeObjAsYAMLToPath(&out.Constraint, in.GenDir, "constraint.yaml")
+		if err != nil {
+			return
+		}
+		nodeTemplateSet := sacorev1alpha1.NodeTemplateSet{
+			TypeMeta:   out.Constraint.TypeMeta,
+			ObjectMeta: out.Constraint.ObjectMeta,
+		}
+		nodeTemplateSet.Kind = "NodeTemplateSet"
+		for _, t := range out.NodeTemplates {
+			nodeTemplateSet.Spec.Templates = append(nodeTemplateSet.Spec.Templates, t)
+		}
+		out.NodeTemplateSetYAMLPath, err = objutil.SaveRuntimeObjAsYAMLToPath(&nodeTemplateSet, in.GenDir, "node-template-set.yaml")
 	}
 	return
 }
 
 // IncreaseUnscheduledWorkLoad replicates each unscheduled pod by delta inside the given cluster snapshot
-func IncreaseUnscheduledWorkLoad(snapshot *planner.ClusterSnapshot, amount int) error {
-	var extra []planner.PodInfo
-	for _, upod := range snapshot.GetUnscheduledPods() {
+func IncreaseUnscheduledWorkLoad(snapshot *plannerapi.ClusterSnapshot, amount int) error {
+	var extra []plannerapi.PodInfo
+	for _, upod := range podutil.GetUnscheduledPods(snapshot.Pods) {
 		lastCharOfName := upod.Name[len(upod.Name)-1:]
 		endsWithDigit := strings.ContainsAny(lastCharOfName, "0123456789")
 		existingBase := 0
@@ -98,7 +142,7 @@ func GenerateSimplePodsWithTemplateData(num int, podTmplData PodTemplateData) (o
 		return
 	}
 	output.Pods = make([]corev1.Pod, 0, num)
-	output.YAMLPaths = make(map[commontypes.NamespacedName]string, num)
+	output.YAMLPaths = make(map[apicommon.NamespacedName]string, num)
 	for i := 1; i <= num; i++ {
 		var pod corev1.Pod
 		tmplData := fillPodTemplateDataDefaults(podTmplData)
@@ -137,7 +181,7 @@ func GeneratePersistentVolumeClaims(genDir string, vi VolGenInput) (output VolGe
 	if err = vi.ValidateAndFillDefaults(); err != nil {
 		return
 	}
-	output.YAMLPaths = make(map[commontypes.NamespacedName]string, len(vi.PVCNames))
+	output.YAMLPaths = make(map[apicommon.NamespacedName]string, len(vi.PVCNames))
 	output.PVCs = make([]corev1.PersistentVolumeClaim, 0, len(vi.PVCNames))
 	for _, pvcName := range vi.PVCNames {
 		var (
@@ -187,7 +231,7 @@ func GeneratePersistentVolumeClaims(genDir string, vi VolGenInput) (output VolGe
 // and have their phase set to `corev1.VolumeAvailable`. Otherwise, their phase is set to `corev1.VolumeBound` with
 // their `claimRef` referring to the PVC.
 func GeneratePersistentVolumes(genDir string, vi VolGenInput) (output VolGenOutput, err error) {
-	// provider commontypes.CloudProvider, namespace string, storage resource.Quantity,
+	// provider apicommon.CloudProvider, namespace string, storage resource.Quantity,
 	//	accessMode corev1.PersistentVolumeAccessMode, zone string, pvcNames []string)
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/simple-pv-template.yaml")
 	if err != nil {
@@ -206,7 +250,7 @@ func GeneratePersistentVolumes(genDir string, vi VolGenInput) (output VolGenOutp
 	}
 	numPVs := len(vi.PVCNames) * len(vi.PVZones)
 	output.PVCs = make([]corev1.PersistentVolumeClaim, 0, numPVs)
-	output.YAMLPaths = make(map[commontypes.NamespacedName]string, numPVs)
+	output.YAMLPaths = make(map[apicommon.NamespacedName]string, numPVs)
 	for _, pvcName := range vi.PVCNames {
 		var (
 			pv          corev1.PersistentVolume
@@ -258,7 +302,7 @@ func GeneratePersistentVolumes(genDir string, vi VolGenInput) (output VolGenOutp
 }
 
 // GetCSINodeDrivers gets a slice of sample CSINodeDrivers for the given provider using hard-coded defaults.
-func GetCSINodeDrivers(provider commontypes.CloudProvider, maxAllocatableVolumes int32) ([]storagev1.CSINodeDriver, error) {
+func GetCSINodeDrivers(provider apicommon.CloudProvider, maxAllocatableVolumes int32) ([]storagev1.CSINodeDriver, error) {
 	csiDefaults, err := GetCSIDefaults(provider)
 	if err != nil {
 		return nil, err
@@ -276,7 +320,7 @@ func GetCSINodeDrivers(provider commontypes.CloudProvider, maxAllocatableVolumes
 
 // GenerateDefaultStorageClass generates a StorageClass suitable for the given provider for the specified VolumeBindingMode.
 // The generated storage class has the annotation `storageclass.kubernetes.io/is-default-class` set to `true`.
-func GenerateDefaultStorageClass(genDir string, provider commontypes.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
+func GenerateDefaultStorageClass(genDir string, provider apicommon.CloudProvider, name string, volumeBindingMode storagev1.VolumeBindingMode) (storageClass storagev1.StorageClass, outYAMLPath string, err error) {
 	tmpl, err := ioutil.LoadEmbeddedTextTemplate(dataFS, "data/sc-template.yaml")
 	if err != nil {
 		return
@@ -311,27 +355,27 @@ func GenerateAndLoad[P any, O runtime.Object](tmpl *template.Template, params P,
 	var buf bytes.Buffer
 	err := tmpl.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, err)
+		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", apicommon.ErrExecuteTemplate, tmpl.Name(), params, err)
 	}
 	err = os.WriteFile(outPath, buf.Bytes(), 0600)
 	if err != nil {
-		return fmt.Errorf("%w: failed to write output of %q template with params %v to path %q: %w", commonerrors.ErrExecuteTemplate, tmpl.Name(), params, outPath, err)
+		return fmt.Errorf("%w: failed to write output of %q template with params %v to path %q: %w", apicommon.ErrExecuteTemplate, tmpl.Name(), params, outPath, err)
 	}
 	root, err := os.OpenRoot("/")
 	if err != nil {
-		return fmt.Errorf("%w: failed to open root FS: %w", commonerrors.ErrExecuteTemplate, err)
+		return fmt.Errorf("%w: failed to open root FS: %w", apicommon.ErrExecuteTemplate, err)
 	}
 	return objutil.LoadIntoRuntimeObj(root.FS(), strings.TrimPrefix(outPath, "/"), obj)
 }
 
 // GetMaxAllocatableVolumes returns a reasonable default value for the max number of allocatable volumes for a node of the given instanceType.
-func GetMaxAllocatableVolumes(provider commontypes.CloudProvider, instanceType string) int32 {
+func GetMaxAllocatableVolumes(provider apicommon.CloudProvider, instanceType string) int32 {
 	maxAllocatable, ok := maxAllocatableVolumesByInstanceType[instanceType]
 	if ok {
 		return maxAllocatable
 	}
 	switch provider {
-	case commontypes.CloudProviderAWS:
+	case apicommon.CloudProviderAWS:
 		maxAllocatable = maxAllocatableVolumesByInstanceType["m5.large"]
 	default:
 		maxAllocatable = 16 // safe, conservative fallback
@@ -340,7 +384,7 @@ func GetMaxAllocatableVolumes(provider commontypes.CloudProvider, instanceType s
 }
 
 // GetCSIDefaults returns an instance of CSIDefaults populated with reasonable values for the given provider.
-func GetCSIDefaults(provider commontypes.CloudProvider) (defaults CSIDefaults, err error) {
+func GetCSIDefaults(provider apicommon.CloudProvider) (defaults CSIDefaults, err error) {
 	defaults, ok := providerToCSIDefaults[provider]
 	if !ok {
 		err = fmt.Errorf("no CSIDefaults found for provider %s", provider)
@@ -390,8 +434,8 @@ var (
 
 	simplePodTemplatePath = "data/simple-pod-template.yaml"
 
-	providerToCSIDefaults = map[commontypes.CloudProvider]CSIDefaults{
-		commontypes.CloudProviderAWS: {
+	providerToCSIDefaults = map[apicommon.CloudProvider]CSIDefaults{
+		apicommon.CloudProviderAWS: {
 			DriverName: "ebs.csi.aws.com",
 			TopologyKeys: []string{
 				"topology.ebs.csi.aws.com/zone",
