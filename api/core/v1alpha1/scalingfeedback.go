@@ -82,7 +82,7 @@ type ScaleOutItemFeedback struct {
 	// +required
 	Name string `json:"name"`
 	// FailCount is the number of nodes that have failed creation. The scaling-advisor uses this to
-	// decide whether to retain or discard upcoming [NodePlacement]s for this item.
+	// decide whether to retain or discard [NodePlacement]'s for this item.
 	// +required
 	FailCount int32 `json:"failCount"`
 }

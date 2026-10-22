@@ -78,6 +78,11 @@ func (c *ScalingConstraintSpec) GetAllAvailabilityZones() []string {
 	return zones
 }
 
+// ConditionTypeAccepted is the condition type set on a [ScalingConstraint] by the reconciler
+// to indicate whether the constraint has been successfully validated and accepted as input.
+// Follows the convention established by Gateway API (GatewayConditionAccepted, RouteConditionAccepted).
+const ConditionTypeAccepted = "Accepted"
+
 // ScalingConstraintStatus reports validation and processing status for a [ScalingConstraint].
 type ScalingConstraintStatus struct {
 	// Conditions contains the conditions for the ScalingConstraint.
