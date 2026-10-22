@@ -9,10 +9,9 @@ import (
 	"context"
 
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
 
 	"github.com/gardener/scaling-advisor/common/nodeutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 )
 
@@ -37,7 +36,7 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 		}
 	}
 	for _, nodeInfo := range cs.Nodes {
-		createdObj, err := view.CreateObject(ctx, minkapi.NodesDescriptor.GVK, nodeutil.AsNode(nodeInfo), minkapi.ObjectOptions{})
+		createdObj, err := view.CreateObject(ctx, minkapi.NodesDescriptor.GVK, plannerhelper.AsNode(nodeInfo), minkapi.ObjectOptions{})
 		if err != nil {
 			return err
 		}
@@ -50,17 +49,17 @@ func PopulateView(ctx context.Context, view minkapi.View, cs *plannerapi.Cluster
 		}
 	}
 	for _, pvc := range cs.PVCs {
-		if _, err := view.CreateObject(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, volutil.AsPVC(pvc), minkapi.ObjectOptions{}); err != nil {
+		if _, err := view.CreateObject(ctx, minkapi.PersistentVolumeClaimsDescriptor.GVK, plannerhelper.AsPVC(pvc), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, pv := range cs.PVs {
-		if _, err := view.CreateObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, volutil.AsPV(pv), minkapi.ObjectOptions{}); err != nil {
+		if _, err := view.CreateObject(ctx, minkapi.PersistentVolumesDescriptor.GVK, plannerhelper.AsPV(pv), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}
 	for _, pod := range cs.Pods {
-		if _, err := view.CreateObject(ctx, minkapi.PodsDescriptor.GVK, podutil.AsPod(pod), minkapi.ObjectOptions{}); err != nil {
+		if _, err := view.CreateObject(ctx, minkapi.PodsDescriptor.GVK, plannerhelper.AsPod(pod), minkapi.ObjectOptions{}); err != nil {
 			return err
 		}
 	}

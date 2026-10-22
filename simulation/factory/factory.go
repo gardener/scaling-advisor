@@ -6,8 +6,8 @@
 package factory
 
 import (
-	"github.com/gardener/scaling-advisor/simulation/scaleout"
 	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+	"github.com/gardener/scaling-advisor/simulation/scaleout"
 )
 
 var _ simulationapi.SimulationFactory = (*defaultFactory)(nil)

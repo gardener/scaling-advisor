@@ -6,6 +6,7 @@ package inmclient
 
 import (
 	"errors"
+
 	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/appaccess"
 

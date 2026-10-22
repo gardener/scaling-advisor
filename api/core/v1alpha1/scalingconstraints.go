@@ -105,9 +105,10 @@ type NodePool struct {
 	// +listType=map
 	// +listMapKey=name
 	NodeTemplateRefs []NodeTemplateRef `json:"nodeTemplateRefs"`
-	// Priority defines the preference for this NodePool when selecting a scale-out candidate.
+	// Priority defines the preference for this NodePool when selecting a scale-out candidate or scale-in candidate.
 	//
-	// If omitted, the default implicit priority is zero. Higher values are preferred.
+	// If omitted, the default implicit priority is zero. Higher values are preferred for scale-out. Lower values are
+	// preferred for scale-in.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Priority int32 `json:"priority,omitempty"`

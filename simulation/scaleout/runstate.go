@@ -12,14 +12,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
-	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
-	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/podutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
@@ -33,11 +35,11 @@ type RunState struct {
 	err                         error
 	ctx                         context.Context
 	view                        minkapi.View
-	scaleOutNodes               map[string]*corev1.Node                                      // map of node names to scale-out nodes
-	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int32                       // map of NodePlacement's to counts
-	unscheduledPods             map[apicommon.NamespacedName]simulationapi.PodResourceInfo   // map of unscheduled Pod namespacedName to PodResourceInfo
-	scheduledPodNamesByNodeName map[string]sets.Set[apicommon.NamespacedName]                // map of node names to a set of scheduled pod names
-	leftoverUnscheduledPodNames sets.Set[apicommon.NamespacedName]                           // represents a set of pod names scheduled during simulation run
+	scaleOutNodes               map[string]*corev1.Node                                    // map of node names to scale-out nodes
+	scaleOutPlacements          map[sacorev1alpha1.NodePlacement]int32                     // map of NodePlacement's to counts
+	unscheduledPods             map[apicommon.NamespacedName]simulationapi.PodResourceInfo // map of unscheduled Pod namespacedName to PodResourceInfo
+	scheduledPodNamesByNodeName map[string]sets.Set[apicommon.NamespacedName]              // map of node names to a set of scheduled pod names
+	leftoverUnscheduledPodNames sets.Set[apicommon.NamespacedName]                         // represents a set of pod names scheduled during simulation run
 	status                      simulationapi.ActivityStatus
 	name                        string
 	traceDir                    string
@@ -355,7 +357,7 @@ func getUnscheduledPodsMap(ctx context.Context, v minkapi.View) (unscheduled map
 	for _, p := range pods {
 		if podutil.IsUnscheduledPod(&p) {
 			log.V(5).Info("found unscheduled pod", "pod", p)
-			unscheduled[objutil.NamespacedName(&p)] = podutil.PodResourceInfoFromCoreV1Pod(&p)
+			unscheduled[objutil.NamespacedName(&p)] = plannerhelper.PodResourceInfoFromCoreV1Pod(&p)
 		}
 	}
 	return

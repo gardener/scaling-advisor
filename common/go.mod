@@ -5,8 +5,6 @@ go 1.26.0
 require (
 	github.com/gardener/scaling-advisor/api v0.0.0
 	github.com/gardener/scaling-advisor/minkapi/api v0.0.0
-	github.com/gardener/scaling-advisor/planner/api v0.0.0
-	github.com/gardener/scaling-advisor/simulation/api v0.0.0
 )
 
 require (
@@ -18,7 +16,6 @@ require (
 	k8s.io/api v0.34.3
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3
-	k8s.io/component-helpers v0.34.3
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubernetes v1.34.3
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
@@ -63,12 +60,9 @@ require (
 replace (
 	github.com/gardener/scaling-advisor/api => ../api
 	github.com/gardener/scaling-advisor/minkapi/api => ../minkapi/api
-	github.com/gardener/scaling-advisor/planner/api => ../planner/api
-	github.com/gardener/scaling-advisor/simulation/api => ../simulation/api
 )
 
 // NOTE: Primarily needed for Goland/Intelij Go plugin to work correctly, not for the gopls or go compiler
-// If one moves volutil out of common module, this replace will not be necessary.
 replace (
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.34.3
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.34.3

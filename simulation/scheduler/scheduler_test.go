@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
-	apicommon "github.com/gardener/scaling-advisor/api/common"
-	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/testutil"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"

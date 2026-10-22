@@ -15,6 +15,7 @@ import (
 	"time"
 
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
 	"github.com/gardener/scaling-advisor/planner/simulator"
 
 	apicommon "github.com/gardener/scaling-advisor/api/common"
@@ -22,9 +23,9 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+	simvolume "github.com/gardener/scaling-advisor/simulation/simvolume"
 	"github.com/go-logr/logr"
 )
 
@@ -80,7 +81,7 @@ func (s *SimulatorState) InitializeRequestView(ctx context.Context) error {
 	if s.simConfig.BindVolumeClaimsForImmediateMode {
 		// Run static PVC<->PV Binding for Immediate VolumeBinding mode. Can be done just once for in the requestView
 		// for all simulations
-		if _, err = volutil.BindClaimsForImmediateMode(ctx, requestView); err != nil {
+		if _, err = simvolume.BindVolumeClaimsForImmediateMode(ctx, requestView); err != nil {
 			return err
 		}
 	}
@@ -158,12 +159,12 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
 	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
-	existingNodeCountByPlacement, err := req.ClusterSnapshot.GetNodeCountByPlacement()
+	existingNodeCountByPlacement, err := plannerhelper.GetNodeCountByPlacement(req.ClusterSnapshot.Nodes)
 	if err != nil {
 		return err
 	}
 	planGenerateDuration := time.Since(req.CreationTime)
-	numUnscheduledPods := len(req.ClusterSnapshot.GetUnscheduledPods())
+	numUnscheduledPods := len(plannerhelper.GetUnscheduledPods(req.ClusterSnapshot.Pods))
 	labels := map[string]string{
 		apicommon.LabelRequestID:                  req.ID,
 		apicommon.LabelCorrelationID:              req.CorrelationID,
