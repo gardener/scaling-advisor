@@ -134,9 +134,10 @@ spec:
                       x-kubernetes-list-type: map
                     priority:
                       description: |-
-                        Priority defines the preference for this NodePool when selecting a scale-out candidate.
+                        Priority defines the preference for this NodePool when selecting a scale-out candidate or scale-in candidate.
 
-                        If omitted, the default implicit priority is zero. Higher values are preferred.
+                        If omitted, the default implicit priority is zero. Higher values are preferred for scale-out. Lower values are
+                        preferred for scale-in.
                       format: int32
                       minimum: 0
                       type: integer
