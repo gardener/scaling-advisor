@@ -519,12 +519,12 @@ type ScalingPlannerServiceConfig struct {
 	CloudProvider apicommon.CloudProvider `json:"cloudProvider"`
 	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
 	TraceDir string `json:"traceDir,omitempty"`
-	// SimulatorConfig holds the configuration used by the internal simulator.
-	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ServerConfig holds the server configuration for the scaling advisor planner.
 	ServerConfig apicomponent.ServerConfig `json:"serverConfig"`
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.
 	MinKAPIConfig minkapi.Config `json:"minkAPIConfig"`
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
 	ClientConfig apicomponent.QPSBurst `json:"clientConfig"`
 }

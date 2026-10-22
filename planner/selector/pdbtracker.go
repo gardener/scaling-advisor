@@ -20,16 +20,16 @@ type pdbInfo struct {
 	disruptionsLeft int32
 }
 
-// pdbTracker tracks remaining PDB disruption budgets and allows callers to check and consume
+// PDBTracker tracks remaining PDB disruption budgets and allows callers to check and consume
 // disruption allowances as scale-in candidates are accepted one by one.
-type pdbTracker struct {
+type PDBTracker struct {
 	infos []pdbInfo
 }
 
-// newPDBTracker returns a new pdbTracker pre-loaded with the given PDBs.
+// newPDBTracker returns a new PDBTracker pre-loaded with the given PDBs.
 // Returns an error if any PDB has a selector that cannot be compiled.
-func newPDBTracker(pdbs []policyv1.PodDisruptionBudget) (*pdbTracker, error) {
-	t := &pdbTracker{infos: make([]pdbInfo, 0, len(pdbs))}
+func newPDBTracker(pdbs []policyv1.PodDisruptionBudget) (*PDBTracker, error) {
+	t := &PDBTracker{infos: make([]pdbInfo, 0, len(pdbs))}
 	for _, pdb := range pdbs {
 		sel, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
 		if err != nil {
@@ -49,7 +49,7 @@ func newPDBTracker(pdbs []policyv1.PodDisruptionBudget) (*pdbTracker, error) {
 //
 // Pods are matched against each PDB by namespace and label selector. The check is non-destructive:
 // it does not modify the tracker state. Use ConsumePods to actually deduct the budget.
-func (t *pdbTracker) CanRemovePods(pods []corev1.Pod) (ok bool, blockingPod string) {
+func (t *PDBTracker) CanRemovePods(pods []corev1.Pod) (ok bool, blockingPod string) {
 	for i := range t.infos {
 		info := &t.infos[i]
 		remaining := info.disruptionsLeft
@@ -71,7 +71,7 @@ func (t *pdbTracker) CanRemovePods(pods []corev1.Pod) (ok bool, blockingPod stri
 
 // ConsumePods deducts the disruption budget consumed by removing the given pods.
 // Must only be called after CanRemovePods returns true for the same pod set.
-func (t *pdbTracker) ConsumePods(pods []corev1.Pod) {
+func (t *PDBTracker) ConsumePods(pods []corev1.Pod) {
 	for i := range t.infos {
 		info := &t.infos[i]
 		for _, pod := range pods {

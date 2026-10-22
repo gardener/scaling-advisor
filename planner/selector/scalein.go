@@ -34,15 +34,15 @@ type DefaultScaleInCandidateSelector struct {
 //
 // It returns all nodes that are both underutilized (all configured thresholds satisfied) and whose
 // removal would not violate any [PodDisruptionBudgets].
-// Candidates are first sorted by least pool priority then by highest underutilization, and are
+// Candidates are sorted by pool priority asc, then template priority asc, then utilization asc, and are
 // accepted greedily in that order: each accepted node's pods consume PDB budget before the next
 // candidate is evaluated.
 //
 // [PodDisruptionBudgets]: https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/
-func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plannerapi.ScaleInCandidateSelectorArgs) ([]corev1.Node, error) {
+func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, view minkapi.View, args plannerapi.ScaleInCandidateSelectorArgs) ([]corev1.Node, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
-	nodes, err := args.View.ListNodes(ctx)
+	nodes, err := view.ListNodes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -50,12 +50,12 @@ func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plann
 		return nil, nil
 	}
 
-	allPods, err := args.View.ListPods(ctx, minkapi.MatchAllCriteria)
+	allPods, err := view.ListPods(ctx, minkapi.MatchAllCriteria)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	pdbs, err := listPDBs(ctx, args.View)
+	pdbs, err := listPDBs(ctx, view)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list PodDisruptionBudgets: %w", err)
 	}
@@ -69,13 +69,14 @@ func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plann
 		}
 	}
 
-	// identify underutilized nodes and compute their utilization score
+	// identify underutilized nodes and compute their sort keys
 	type candidate struct {
-		node     corev1.Node
-		poolName string
-		priority int32
+		node             corev1.Node
+		poolName         string
+		poolPriority     int32
+		templatePriority int32
 		// maxUtil is the highest utilization ratio across all configured threshold resources;
-		// lower maxUtil means more underutilized — preferred for scale-in.
+		// lower maxUtil means more underutilized - preferred for scale-in.
 		maxUtil float64
 	}
 
@@ -86,10 +87,12 @@ func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plann
 			continue
 		}
 		poolName := node.Labels[apicommon.LabelNodePoolName]
+		templateName := node.Labels[apicommon.LabelNodeTemplateName]
+		poolCfg := args.PoolConfigs[poolName]
 
 		// check pool min resource limits: skip if removing this node would drop the pool below its min
-		if minLimits, ok := args.PoolMinLimits[poolName]; ok {
-			if wouldViolatePoolMin(node, nodes, podsByNode, minLimits) {
+		if len(poolCfg.MinLimits) > 0 {
+			if wouldViolatePoolMin(node, nodes, podsByNode, poolCfg.MinLimits) {
 				log.V(4).Info("Skipping node: removal would violate pool min resource limits", "node", node.Name, "pool", poolName)
 				continue
 			}
@@ -97,26 +100,25 @@ func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plann
 
 		utilization := nodeutil.GetNodeUtilization(node, podsByNode[node.Name])
 
-		if !isUnderutilized(utilization, args.UtilizationThresholds) {
+		if !isUnderutilized(utilization, poolCfg.UtilizationThresholds) {
 			log.V(5).Info("Skipping node: not underutilized", "node", node.Name, "utilization", utilization)
 			continue
 		}
 
-		priority := args.PoolPriorities[poolName]
-
 		// maxUtil across threshold resources as the sort key (lower = more underutilized)
 		maxUtil := 0.0
-		for res := range args.UtilizationThresholds {
+		for res := range poolCfg.UtilizationThresholds {
 			if u := utilization[res]; u > maxUtil {
 				maxUtil = u
 			}
 		}
 
 		candidates = append(candidates, candidate{
-			node:     node,
-			poolName: poolName,
-			priority: priority,
-			maxUtil:  maxUtil,
+			node:             node,
+			poolName:         poolName,
+			poolPriority:     poolCfg.Priority,
+			templatePriority: poolCfg.TemplatePriorities[templateName],
+			maxUtil:          maxUtil,
 		})
 	}
 
@@ -124,9 +126,12 @@ func (s *DefaultScaleInCandidateSelector) Select(ctx context.Context, args plann
 		return nil, nil
 	}
 
-	// sort: least priority first, then most underutilized (lowest maxUtil) first
+	// sort: pool priority asc, then template priority asc, then most underutilized (lowest maxUtil) first
 	slices.SortFunc(candidates, func(a, b candidate) int {
-		if c := cmp.Compare(a.priority, b.priority); c != 0 {
+		if c := cmp.Compare(a.poolPriority, b.poolPriority); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.templatePriority, b.templatePriority); c != 0 {
 			return c
 		}
 		return cmp.Compare(a.maxUtil, b.maxUtil)
