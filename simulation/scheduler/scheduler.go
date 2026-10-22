@@ -12,8 +12,9 @@ import (
 	"time"
 
 	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
-	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+
 	"github.com/gardener/scaling-advisor/common/logutil"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

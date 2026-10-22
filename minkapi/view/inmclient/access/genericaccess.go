@@ -5,8 +5,8 @@
 package access
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"

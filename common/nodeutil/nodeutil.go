@@ -12,7 +12,6 @@ import (
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
-	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -23,35 +22,6 @@ import (
 // GetInstanceType returns the instance-type of the given node from the label present on it.
 func GetInstanceType(node *corev1.Node) string {
 	return node.Labels[corev1.LabelInstanceTypeStable]
-}
-
-// AsNodeInfo converts a corev1.Node into a plannerapi.NodeInfo object.
-func AsNodeInfo(node corev1.Node) plannerapi.NodeInfo {
-	return plannerapi.NodeInfo{
-		ObjectMeta:    node.ObjectMeta,
-		InstanceType:  node.Labels[corev1.LabelInstanceTypeStable],
-		Unschedulable: node.Spec.Unschedulable,
-		Taints:        node.Spec.Taints,
-		Capacity:      node.Status.Capacity,
-		Allocatable:   node.Status.Allocatable,
-		Conditions:    node.Status.Conditions,
-	}
-}
-
-// AsNode converts a plannerapi.NodeInfo to a corev1.Node object.
-func AsNode(info plannerapi.NodeInfo) *corev1.Node {
-	return &corev1.Node{
-		ObjectMeta: info.ObjectMeta,
-		Spec: corev1.NodeSpec{
-			Taints:        info.Taints,
-			Unschedulable: info.Unschedulable,
-		},
-		Status: corev1.NodeStatus{
-			Capacity:    info.Capacity,
-			Allocatable: info.Allocatable,
-			Conditions:  info.Conditions,
-		},
-	}
 }
 
 // BuildAllocatable builds the allocatable resources of a node given its capacity and reserved resources.
@@ -85,6 +55,43 @@ func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, p
 	nodeLabels[corev1.LabelHostname] = hostName
 	nodeLabels[apicommon.LabelNodePoolName] = placement.PoolName
 	nodeLabels[apicommon.LabelNodeTemplateName] = placement.TemplateName
+}
+
+// GetNodeUtilization returns the utilization ratio per resource for the given node based on the total
+// requests of the pods running on it. Each value is computed as sum(pod requests) / node.Allocatable
+// and is clamped to [0, 1]. Resources not present in the node's Allocatable are omitted.
+func GetNodeUtilization(node corev1.Node, pods []corev1.Pod) map[corev1.ResourceName]float64 {
+	totalRequests := corev1.ResourceList{}
+	for i := range pods {
+		for _, c := range pods[i].Spec.InitContainers {
+			for res, qty := range c.Resources.Requests {
+				sum := totalRequests[res]
+				sum.Add(qty)
+				totalRequests[res] = sum
+			}
+		}
+		for _, c := range pods[i].Spec.Containers {
+			for res, qty := range c.Resources.Requests {
+				sum := totalRequests[res]
+				sum.Add(qty)
+				totalRequests[res] = sum
+			}
+		}
+	}
+	utilization := make(map[corev1.ResourceName]float64, len(node.Status.Allocatable))
+	for res, allocatable := range node.Status.Allocatable {
+		allocMillis := allocatable.MilliValue()
+		if allocMillis <= 0 {
+			continue
+		}
+		used := totalRequests[res]
+		ratio := float64(used.MilliValue()) / float64(allocMillis)
+		if ratio > 1 {
+			ratio = 1
+		}
+		utilization[res] = ratio
+	}
+	return utilization
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec

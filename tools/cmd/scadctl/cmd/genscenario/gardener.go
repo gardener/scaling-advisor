@@ -23,12 +23,12 @@ import (
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/common/ioutil"
-	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/poolutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
+	"github.com/gardener/scaling-advisor/planner/api/validation"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -440,7 +440,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 	snap.Pods = make([]plannerapi.PodInfo, 0, len(pods))
 	for _, pod := range pods {
 		sanitizePod(&pod)
-		snap.Pods = append(snap.Pods, podutil.AsPodInfo(pod))
+		snap.Pods = append(snap.Pods, plannerhelper.AsPodInfo(pod))
 	}
 
 	nodeTemplatesByName := make(map[string]sacorev1alpha1.NodeTemplate, len(nts.Spec.Templates))
@@ -466,14 +466,14 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 			return snap, fmt.Errorf("failed to find matching node template for pool %q and instance-type %q", poolName, instanceType)
 		}
 		sanitizeNode(&node)
-		ni := nodeutil.AsNodeInfo(node)
+		ni := plannerhelper.AsNodeInfo(node)
 		if cns, ok := csiNodeSpecs[ni.Name]; ok {
 			ni.CSINodeSpec = &cns
 		}
 		ni.Labels[apicommon.LabelNodePoolName] = poolName
 		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
 		ni.Labels[apicommon.LabelNodeTemplateName] = matchingNodeTemplateName
-		if err = ni.ValidateLabels(); err != nil {
+		if err = validation.ValidateNodeLabels(ni.Labels); err != nil {
 			return snap, err
 		}
 		snap.Nodes = append(snap.Nodes, ni)

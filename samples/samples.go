@@ -20,6 +20,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -100,7 +101,7 @@ func GenScalingConstraints(in ConstraintGenInput) (out ConstraintGenOutput, err 
 // IncreaseUnscheduledWorkLoad replicates each unscheduled pod by delta inside the given cluster snapshot
 func IncreaseUnscheduledWorkLoad(snapshot *plannerapi.ClusterSnapshot, amount int) error {
 	var extra []plannerapi.PodInfo
-	for _, upod := range snapshot.GetUnscheduledPods() {
+	for _, upod := range plannerhelper.GetUnscheduledPods(snapshot.Pods) {
 		lastCharOfName := upod.Name[len(upod.Name)-1:]
 		endsWithDigit := strings.ContainsAny(lastCharOfName, "0123456789")
 		existingBase := 0

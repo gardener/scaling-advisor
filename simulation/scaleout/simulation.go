@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+	simvolume "github.com/gardener/scaling-advisor/simulation/simvolume"
+
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
-	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/go-logr/logr"
 )
 
@@ -144,21 +145,21 @@ func (s *defaultSimulation) workAndTrackUntilStabilized(ctx context.Context, vie
 func (s *defaultSimulation) doWork(ctx context.Context, view minkapi.View) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.V(3).Info("Invoked doWork", "viewName", view.GetName())
-	provisionedPvs, err := volutil.ProvisionAndBindVolumesFoSelectedClaimsInWFFC(ctx, view)
+	provisionedPvs, err := simvolume.ProvisionAndBindVolumesForWFFC(ctx, view)
 	if err != nil {
 		return err
 	}
 	if len(provisionedPvs) > 0 {
-		log.V(3).Info("ProvisionAndBindVolumesFoSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ",
+		log.V(3).Info("ProvisionAndBindVolumesForWFFC performed work - reset RunState.numUnchangedTrackAttempts since ",
 			"numProvisionedPvs", len(provisionedPvs))
 		s.state.numUnchangedTrackAttempts = 0
 	}
-	numBound, err := volutil.FinalizeStaticBindingsForSelectedClaimsInWFFC(ctx, view)
+	numBound, err := simvolume.FinalizeStaticVolumeBindingsForWFFC(ctx, view)
 	if err != nil {
 		return err
 	}
 	if numBound > 0 {
-		log.V(3).Info("FinalizeStaticBindingsForSelectedClaimsInWFFC performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
+		log.V(3).Info("FinalizeStaticVolumeBindingsForWFFC performed work - reset RunState.numUnchangedTrackAttempts since ", "numBound", numBound)
 		s.state.numUnchangedTrackAttempts = 0
 	}
 	if s.args.Strategy.IsMultiNode() {

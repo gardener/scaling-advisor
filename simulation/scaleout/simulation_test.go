@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
+	"github.com/gardener/scaling-advisor/simulation/scaleout"
+	"github.com/gardener/scaling-advisor/simulation/scheduler"
+
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
@@ -17,9 +21,6 @@ import (
 	"github.com/gardener/scaling-advisor/minkapi/cli"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/gardener/scaling-advisor/samples"
-	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
-	"github.com/gardener/scaling-advisor/simulation/scaleout"
-	"github.com/gardener/scaling-advisor/simulation/scheduler"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -221,8 +222,8 @@ func scaleOutNodeTemplate() simulationapi.ScaleOutNodeTemplate {
 			AvailabilityZone: testZone,
 			InstanceType:     testInstanceType,
 		},
-		Architecture: "amd64",
+		Architecture:  "amd64",
 		BaseResources: capacity,
-		GroupKey:     simulationapi.GroupKey{NodePoolPriority: 1, NodeTemplatePriority: 1},
+		GroupKey:      simulationapi.GroupKey{NodePoolPriority: 1, NodeTemplatePriority: 1},
 	}
 }

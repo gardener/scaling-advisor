@@ -20,7 +20,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/logutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
+	simvolume "github.com/gardener/scaling-advisor/simulation/simvolume"
 	"github.com/go-logr/logr"
 )
 
@@ -69,7 +69,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err != nil {
 		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 	}
-	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
+	simArgs := plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
 		Strategy:          req.ScalingConstraint.SimulatorStrategy,
 		ViewAccess:        p.args.ViewAccess,
@@ -77,7 +77,8 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		NodeScorer:        nodeScorer,
 		TraceDir:          p.args.TraceDir,
 		Request:           req,
-	})
+	}
+	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(simArgs)
 	if err != nil {
 		return err
 	}
@@ -92,7 +93,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		return fmt.Errorf("%w: %w", plannerapi.ErrPopulateRequestView, err)
 	}
 	if p.args.SimulatorConfig.BindVolumeClaimsForImmediateMode {
-		if _, err = volutil.BindClaimsForImmediateMode(planCtx, requestView); err != nil {
+		if _, err = simvolume.BindVolumeClaimsForImmediateMode(planCtx, requestView); err != nil {
 			return fmt.Errorf("%w: failed to bind volume claims for immediate mode: %w", plannerapi.ErrPopulateRequestView, err)
 		}
 	}

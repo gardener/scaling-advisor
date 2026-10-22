@@ -5,8 +5,8 @@
 package resourceaccess
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/gardener/scaling-advisor/minkapi/api"

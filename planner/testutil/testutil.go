@@ -12,14 +12,13 @@ import (
 	"time"
 
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerhelper "github.com/gardener/scaling-advisor/planner/api/helper"
 
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	"github.com/gardener/scaling-advisor/common/ioutil"
-	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/poolutil"
 	commontestutil "github.com/gardener/scaling-advisor/common/testutil"
-	"github.com/gardener/scaling-advisor/common/volutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view"
 	"github.com/gardener/scaling-advisor/samples"
@@ -95,7 +94,7 @@ func CreateTestPlannerAndTestData(t *testing.T, args Args) (planner plannerapi.S
 			t.Fatalf("failed to generate simple pods for resource category %s: %v", category, err)
 			return
 		}
-		testData.Request.ClusterSnapshot.Pods = append(testData.Request.ClusterSnapshot.Pods, podutil.PodInfosFromCoreV1Pods(podGenOutput.Pods)...)
+		testData.Request.ClusterSnapshot.Pods = append(testData.Request.ClusterSnapshot.Pods, plannerhelper.PodInfosFromCoreV1Pods(podGenOutput.Pods)...)
 	}
 	if len(args.VolGenInput.PVCNames) > 0 {
 		if args.VolGenInput.PVZones == nil {
@@ -165,7 +164,7 @@ func GenAndFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenIn
 		return
 	}
 	for _, pvc = range volGenOut.PVCs {
-		snap.PVCs = append(snap.PVCs, volutil.AsPVCInfo(pvc))
+		snap.PVCs = append(snap.PVCs, plannerhelper.AsPVCInfo(pvc))
 	}
 
 	if volGenInput.GeneratePV {
@@ -173,7 +172,7 @@ func GenAndFillStorageAndVolumeObjects(t *testing.T, testGenDir string, volGenIn
 			return
 		}
 		for _, pv = range volGenOut.PVs {
-			snap.PVs = append(snap.PVs, volutil.AsPVInfo(pv))
+			snap.PVs = append(snap.PVs, plannerhelper.AsPVInfo(pv))
 		}
 	}
 	ok = true
