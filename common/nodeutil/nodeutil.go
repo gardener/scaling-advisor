@@ -13,6 +13,7 @@ import (
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	plannerapivalidation "github.com/gardener/scaling-advisor/planner/api/validation"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -85,6 +86,35 @@ func AddNodeLabels(nodeLabels map[string]string, arch string, hostName string, p
 	nodeLabels[corev1.LabelHostname] = hostName
 	nodeLabels[apicommon.LabelNodePoolName] = placement.PoolName
 	nodeLabels[apicommon.LabelNodeTemplateName] = placement.TemplateName
+}
+
+// GetNodePlacement extracts the [sacorev1alpha1.NodePlacement] from a [plannerapi.NodeInfo].
+// Returns an error if any required node label is missing.
+func GetNodePlacement(n plannerapi.NodeInfo) (sacorev1alpha1.NodePlacement, error) {
+	if err := plannerapivalidation.ValidateNodeLabels(n.Labels); err != nil {
+		return sacorev1alpha1.NodePlacement{}, err
+	}
+	return sacorev1alpha1.NodePlacement{
+		PoolName:         n.Labels[apicommon.LabelNodePoolName],
+		TemplateName:     n.Labels[apicommon.LabelNodeTemplateName],
+		InstanceType:     n.InstanceType,
+		Region:           n.Labels[corev1.LabelTopologyRegion],
+		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],
+	}, nil
+}
+
+// GetNodeCountByPlacement returns a map from [sacorev1alpha1.NodePlacement] to node count for the given nodes.
+// Returns an error if any node is missing required labels.
+func GetNodeCountByPlacement(nodes []plannerapi.NodeInfo) (map[sacorev1alpha1.NodePlacement]int32, error) {
+	nodeCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
+	for _, nodeInfo := range nodes {
+		p, err := GetNodePlacement(nodeInfo)
+		if err != nil {
+			return nil, err
+		}
+		nodeCountByPlacement[p]++
+	}
+	return nodeCountByPlacement, nil
 }
 
 // NewCSINode returns a fresh CSINode object referring to the node with given name and uid and populated with the given CSISpec

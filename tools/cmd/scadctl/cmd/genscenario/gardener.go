@@ -29,6 +29,7 @@ import (
 	"github.com/gardener/scaling-advisor/common/poolutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+	"github.com/gardener/scaling-advisor/planner/api/validation"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -473,7 +474,7 @@ func createClusterSnapshot(ctx context.Context, sc *sacorev1alpha1.ScalingConstr
 		ni.Labels[apicommon.LabelNodePoolName] = poolName
 		ni.Labels[corev1.LabelInstanceTypeStable] = instanceType
 		ni.Labels[apicommon.LabelNodeTemplateName] = matchingNodeTemplateName
-		if err = ni.ValidateLabels(); err != nil {
+		if err = validation.ValidateNodeLabels(ni.Labels); err != nil {
 			return snap, err
 		}
 		snap.Nodes = append(snap.Nodes, ni)

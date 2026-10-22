@@ -20,7 +20,9 @@ import (
 	apicommon "github.com/gardener/scaling-advisor/api/common"
 	apicomponent "github.com/gardener/scaling-advisor/api/common/component"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	"github.com/gardener/scaling-advisor/common/nodeutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
+	"github.com/gardener/scaling-advisor/common/podutil"
 	"github.com/gardener/scaling-advisor/common/viewutil"
 	"github.com/gardener/scaling-advisor/common/volutil"
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
@@ -158,12 +160,12 @@ func SendPlanResult(ctx context.Context, resultCh chan<- plannerapi.ScaleOutPlan
 	req *plannerapi.Request, simulationRunCount uint32, // TODO: introduce a plannerapi.Metrics.
 	groupCycleResults []plannerapi.ScaleOutSimGroupCycleResult) error {
 	log := logr.FromContextOrDiscard(ctx)
-	existingNodeCountByPlacement, err := req.ClusterSnapshot.GetNodeCountByPlacement()
+	existingNodeCountByPlacement, err := nodeutil.GetNodeCountByPlacement(req.ClusterSnapshot.Nodes)
 	if err != nil {
 		return err
 	}
 	planGenerateDuration := time.Since(req.CreationTime)
-	numUnscheduledPods := len(req.ClusterSnapshot.GetUnscheduledPods())
+	numUnscheduledPods := len(podutil.GetUnscheduledPods(req.ClusterSnapshot.Pods))
 	labels := map[string]string{
 		apicommon.LabelRequestID:                  req.ID,
 		apicommon.LabelCorrelationID:              req.CorrelationID,

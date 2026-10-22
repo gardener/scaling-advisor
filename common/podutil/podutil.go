@@ -202,3 +202,14 @@ func CountUnscheduledPods(pods []corev1.Pod) (count int) {
 func IsUnscheduledPod(pod *corev1.Pod) bool {
 	return pod.Spec.NodeName == ""
 }
+
+// GetUnscheduledPods returns all pods in the given slice that are not scheduled to any node.
+func GetUnscheduledPods(pods []plannerapi.PodInfo) []plannerapi.PodInfo {
+	var unscheduled []plannerapi.PodInfo
+	for _, pod := range pods {
+		if pod.NodeName == "" {
+			unscheduled = append(unscheduled, pod)
+		}
+	}
+	return unscheduled
+}

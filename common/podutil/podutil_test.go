@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -139,6 +140,52 @@ func TestUpdatePodCondition(t *testing.T) {
 				}
 			} else {
 				t.Logf("No pod condition change as expected")
+			}
+		})
+	}
+}
+
+func TestGetUnscheduledPods(t *testing.T) {
+	tests := []struct {
+		name     string
+		pods     []plannerapi.PodInfo
+		expected int
+	}{
+		{
+			name: "all pods scheduled",
+			pods: []plannerapi.PodInfo{
+				{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, NodeName: "node-1"},
+				{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, NodeName: "node-2"},
+			},
+			expected: 0,
+		},
+		{
+			name:     "all pods unscheduled",
+			pods:     []plannerapi.PodInfo{{}, {}},
+			expected: 2,
+		},
+		{
+			name: "mixed scheduled and unscheduled",
+			pods: []plannerapi.PodInfo{
+				{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, NodeName: "node-1"},
+				{},
+				{ObjectMeta: metav1.ObjectMeta{Name: "p3"}, NodeName: "node-2"},
+				{},
+			},
+			expected: 2,
+		},
+		{
+			name:     "empty",
+			pods:     []plannerapi.PodInfo{},
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetUnscheduledPods(tt.pods)
+			if len(result) != tt.expected {
+				t.Errorf("expected %d unscheduled pods, got %d", tt.expected, len(result))
 			}
 		})
 	}
