@@ -1,0 +1,64 @@
+@startuml
+skinparam monochrome true
+
+title SimulatorStrategySingleNodeMultiSim SimulatorStrategy = "single-node-multi-sim"
+participant ScalingPlanner as sp
+participant ScaleOutSimulator as sos
+participant NodeScorer as ns
+participant SimulationFactory as sf
+participant SimulationGroup as sg
+participant Simulation as sim
+sp->sos:Simulate(req, view)
+sos->sos:templates=CreateScaleOutNodeTemplates(req)
+note left
+for NodePool p in  req.ScalingConstraint.NodePools
+for NodeTemplate nt in p.NodeTemplateRefs
+for Zone z in p.AvailabilityZone
+ templates.add ScaleOutNodeTemplate(p, nt, z)
+for
+end note
+loop t in templates
+sos->sf:simulations=CreateAndAddSimulation(t)
+end
+sos->sos:simGroups=GroupSimulationsByPriority
+note left
+Simulations are grouped by Node Pool priority
+and NodeTemplate Priority
+end note
+sos->sos:cycleResults=runStabilizationCyclesForAllGroups(view)
+activate sos
+loop g in simGroups
+    sos->sos:cycleResult=runStabilizationCycleForGroup(g)
+    activate sos
+    loop repeat group passes
+        sos->sos:runPassForGroup(g, groupPassView)
+        activate sos
+        sos->sg:Run(groupPassView)
+        activate sg
+        loop simulations in group
+            sg->sg:simView=createSandboxView(groupPassView)
+            sg->sim:Run
+            activate sim
+            sim->sim:createSimNode(simView)
+            sim->sim:launchScheduler(simView)
+            sim->sim:trackTillStable(simView)
+            sim->sg:SimulationResult
+            deactivate sim
+            sg->sos:GroupResults
+            deactivate sg
+        end loop
+        sos->ns:winner=ScoreAndComputeWinner(GroupResults)
+        alt has group winner
+         sos->sos:addToCycleResult(winner)
+         sos->sos:groupPassView=winner simView
+         else
+         deactivate sos
+    end loop
+end loop
+    sos->sos:return cycleResults
+deactivate sos
+deactivate sos
+    sos->sos:ComputeScaleOutPlan(cycleResults)
+    sos->sp:ScaleOoutPlan
+
+@enduml
