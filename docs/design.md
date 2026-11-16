@@ -300,10 +300,10 @@ etc.) changes.
 
 | Type | Purpose |
 |---|---|
-| [`ScalingPlanner`](../planner/api/types.go#L280) | Interface; entry point: `Plan` returns a channel on which one or more `Response`s are delivered. |
+| [`ScalingPlanner`](../planner/api/types.go#L280) | Interface; entry point: `Prepare` decides whether planning should proceed (batch window / scale-in detection); `Plan` returns a channel on which one or more `Response`s are delivered. |
 | [`Request`](../planner/api/types.go#L34) | Everything the planner needs: cluster state, constraints, pricing, and cross-invocation memento. |
 | [`RequestRef`](../planner/api/types.go#L25) | Stable identity (`ID` + `CorrelationID`) embedded in both `Request` and `Response` for correlation. |
-| [`Response`](../planner/api/types.go#L74) | Single delivery on the result channel; carries a partial or final `ScaleOutPlan`/`ScaleInPlan` or a terminal `Error`. |
+| [`Response`](../planner/api/types.go#L74) | One of one or more deliveries on the result channel from `Plan`; carries a partial or final `ScaleOutPlan`/`ScaleInPlan`, updated `Memento`, or a terminal `Error`. |
 | [`ClusterSnapshot`](../planner/api/types.go#L93) | Scheduling-relevant cluster state at request time: nodes, pods, volumes, storage/priority/runtime classes. `Nodes` contains all registered nodes excluding those tainted with any of `NodePool.startupTaintKeys` (nodes still starting up are not yet schedulable and must not be counted as available capacity). |
 | [`Memento`](../planner/api/types.go#L480) | Cross-invocation state passed back into the next `Request` to enable incremental planning. |
 | [`ScaleInMemento`](../planner/api/types.go#L489) | Tracks per-node under-utilization timestamps so scale-in is only recommended after sustained under-use. |
@@ -510,8 +510,8 @@ Simulators are facades that orchestrate one or more `Simulation` runs against sa
 | [`SimulatorArgs`](../planner/api/types.go#L321) | Constructor input for simulators: view access, scheduler launcher, node scorer, request, strategy, and config. |
 | [`ScaleOutSimulator`](../planner/api/types.go#L374) | Runs scale-out simulations against a sandboxed `View` and streams `ScaleOutPlanResult`s on a channel. |
 | [`ScaleInSimulator`](../planner/api/types.go#L384) | Runs scale-in simulations against a sandboxed `View` and streams `ScaleInPlanResult`s on a channel. |
-| [`ScaleOutPlanResult`](../planner/api/types.go#L434) | Single delivery from `ScaleOutSimulator.Simulate`; contains a `ScaleOutPlan` or a terminal `Error`. |
-| [`ScaleInPlanResult`](../planner/api/types.go#L442) | Single delivery from `ScaleInSimulator.Simulate`; contains a `ScaleInPlan`, updated `ScaleInMemento`, and the post-simulation `View`. |
+| [`ScaleOutPlanResult`](../planner/api/types.go#L434) | One of one or more deliveries from `ScaleOutSimulator.Simulate`; contains a `ScaleOutPlan` or a terminal `Error`. |
+| [`ScaleInPlanResult`](../planner/api/types.go#L442) | One of one or more deliveries from `ScaleInSimulator.Simulate`; contains a `ScaleInPlan`, updated `ScaleInMemento`, and the post-simulation `View`. |
 | [`NodeScorer`](../planner/api/types.go#L208) | Scores and selects the winning simulated node; strategy is determined by `NodeScoringStrategy` in the request. |
 | [`NodeScorerArgs`](../planner/api/types.go#L217) | Input to `NodeScorer.Score`: placement, pod assignments, leftover unscheduled pods, pricing, and resource weights. |
 | [`NodeScore`](../planner/api/types.go#L238) | Output of `NodeScorer.Score`: numeric score, placement, scaled node resource info, and unscheduled pods. |

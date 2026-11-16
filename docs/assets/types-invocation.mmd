@@ -4,6 +4,7 @@ title: ScalingPlanner - Invocation Types
 classDiagram
     class ScalingPlanner {
         <<interface>>
+        +Prepare(ctx, Request, batchWindowStart) (bool, Request, time.Time)
         +Plan(ctx, Request) chan Response
     }
     class Request {
@@ -27,6 +28,7 @@ classDiagram
     class Response {
         +RequestRef
         +ID string
+        +Memento Memento
         +ScaleOutPlan ScaleOutPlan
         +ScaleInPlan ScaleInPlan
         +Labels map~string,string~
@@ -94,12 +96,13 @@ classDiagram
     ScalingPlanner ..> Response : produces
     Request *-- RequestRef
     Request *-- ClusterSnapshot
-    Request *-- Memento
+    Request o-- Memento
     Request *-- ScalingConstraintSpec
     Request ..> ScalingAdviceGenerationMode : adviceGenerationMode
     Response *-- RequestRef
     Response *-- ScaleOutPlan
     Response *-- ScaleInPlan
+    Response o-- Memento
     Memento *-- ScaleInMemento
     Memento *-- ScaleOutMemento
     ScalingConstraintSpec ..> PlannerStrategy
