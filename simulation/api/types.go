@@ -148,8 +148,8 @@ type ScaleOutNodeTemplate struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// Annotations is a map of key/value pairs for annotations applied to all the nodes in this node pool.
 	Annotations map[string]string `json:"annotations,omitempty"`
-	// Quota defines optional resource limits for this node template within its parent node pool.
-	Quota *sacorev1alpha1.ResourceLimits `json:"quota,omitempty"`
+	// ResourceLimits defines optional resource limits for the node pool this template belongs to.
+	ResourceLimits *sacorev1alpha1.ResourceLimits `json:"resourceLimits,omitempty"`
 	// BaseResources is the base capacity of the node's instance type, taken from [sacorev1alpha1.InstanceTypeDef.BaseResources].
 	BaseResources corev1.ResourceList `json:"baseResources"`
 	// ExtendedResources specifies Kubernetes extended resources advertised by nodes created from this template,

@@ -244,7 +244,7 @@ func createNodeTemplate(pool sacorev1alpha1.NodePool, ref sacorev1alpha1.NodeTem
 		},
 		Labels:            pool.Labels,
 		Annotations:       pool.Annotations,
-		Quota:             pool.ResourceLimits,
+		ResourceLimits:    pool.ResourceLimits,
 		Taints:            pool.Taints,
 		BaseResources:     itd.BaseResources,
 		ExtendedResources: nt.ExtendedResources,
