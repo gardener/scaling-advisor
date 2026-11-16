@@ -516,7 +516,7 @@ Simulators are facades that orchestrate one or more `Simulation` runs against sa
 | [`NodeScorerArgs`](../planner/api/types.go#L217) | Input to `NodeScorer.Score`: placement, pod assignments, leftover unscheduled pods, pricing, and resource weights. |
 | [`NodeScore`](../planner/api/types.go#L238) | Output of `NodeScorer.Score`: numeric score, placement, scaled node resource info, and unscheduled pods. |
 | [`SimulatorConfig`](../planner/api/types.go#L254) | Static config: under-utilization duration and max parallel simulations. |
-| [`ScaleOutNodeTemplate`](../simulation/api/types.go#L146) | Encapsulates all data needed to virtually scale out one node: embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`), full capacity (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional ``, and `GroupKey`. Depending on SimulatorStrategy, either multiple simulations are created per `ScaleOutNodeTemplate` or multiple nodes in one simulation. |
+| [`ScaleOutNodeTemplate`](../simulation/api/types.go#L146) | Encapsulates all data needed to virtually scale out one node: embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`), full capacity (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional `ResourceLimits`, and `GroupKey`. Depending on SimulatorStrategy, either multiple simulations are created per `ScaleOutNodeTemplate` or multiple nodes in one simulation. |
 | [`GroupKey`](../simulation/api/types.go#L117) | Composite sort key `(NodePoolPriority, NodeTemplatePriority)` used to group and order simulation groups. |
 | [`SimulationGroup`](../simulation/api/types.go#L193) | A group of `Simulation`s sharing the same `GroupKey`; runs them concurrently and returns all `SimulationResult`s. |
 | [`ScaleOutSimGroupPassScores`](../planner/api/types.go#L453) | Scored results of one pass within a group: winner `NodeScore`, winner `Node`, and all scores. |
@@ -530,7 +530,7 @@ Simulators are facades that orchestrate one or more `Simulation` runs against sa
 
 Key concepts:
 
-- **`ScaleOutNodeTemplate`**: encapsulates all data needed to virtually scale out one node. Embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`) plus full capacity info (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional `Quota`, and `GroupKey`. One simulation is created per `ScaleOutNodeTemplate`.
+- **`ScaleOutNodeTemplate`**: encapsulates all data needed to virtually scale out one node. Embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`) plus full capacity info (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional `ResourceLimits`, and `GroupKey`. One simulation is created per `ScaleOutNodeTemplate`.
 - **`SimulationGroup`**: simulations are grouped by `(NodePool.Priority, NodeTemplate.Priority)`. Lower priority value is preferred: groups are processed in ascending priority order.
 - **Pass**: one execution of all simulations in a group; each simulation runs concurrently against a sandbox of the current `groupPassView`.
 - **Stabilization cycle**: repeated passes of a group until either no unscheduled pods remain or no winner emerges. The winner's sandbox view becomes the `groupPassView` for the next pass.
@@ -545,11 +545,246 @@ Key concepts:
 
 This section will be filled up when the PR for this feature is raised in the future. 
 
-## TODO
+### MinKAPI
 
-- Need sub-section describing `minkapi`
-  - The `ScalingAdvisor` leverages a minimal in-memory KAPI (called `minkapi`) to hold cluster snapshot (k8s objects such as existing nodes, pods, volumes, volume-attachments, etc.) of the real cluster.
-  - The base `minkapi` offers *in-memory* k8s client implementations for [kuberentes.Interface](https://pkg.go.dev/k8s.io/client-go/kubernetes#Interface) and [dynamic.Interface](https://pkg.go.dev/k8s.io/client-go/dynamic#Interface) 
-  - `minkapi` also supports *sandboxed views* and in-memory clients for the sandboxed views which are consumable by the `kube-scheduler`. 
-   - The sandbox clients *decorate* the base clients and maintain their own internal state. Changes made by a scheduler instance are limited to its own sandbox and are not propagated to the master data.
-- Need sub-section describing `simulation` module
+`minkapi` is a minimal in-memory Kubernetes API layer used by the `ScalingAdvisor` that holds the scheduling-relevant state of a cluster such that simulations can be run against it, all without touching the real cluster.
+
+#### Design
+
+The central abstraction is a [`View`](../minkapi/api/types.go): a named, typed store of Kubernetes objects (Nodes, Pods, PVs, PVCs, StorageClasses, Events, and more) that exposes the full CRUD + Watch surface the `kube-scheduler` expects. There are two `ViewType`s:
+
+- **Base view**: a persistent, initially empty view created once at startup by `ViewAccess`. The base view itself does not hold cluster snapshot data directly. Instead, for each planning request, the planner creates a sandbox *request view* over the base view and populates it with the current `ClusterSnapshot` (nodes, pods, PVs, PVCs, etc.). The base view survives across planning requests and can be used to hold static unchanging objects.
+- **Sandbox view**: a private overlay created on top of any delegate view (the base, or another sandbox). All mutations (creates, updates, deletes) are confined to the sandbox's own in-memory stores; reads fall through to the delegate when the object is not present locally. Deletions are implemented via tombstones so the delegate's copy is never touched. Sandbox views are short-lived: one is created per simulation run and discarded afterwards.
+
+`ViewAccess` is the top-level MinkAPI facade to manages view lifecycle: `GetBaseView()` returns the singleton base view; `GetSandboxView(ctx, name)` creates or returns a named sandbox over the base; `GetSandboxViewOverDelegate(ctx, name, delegate)` creates a sandbox over an arbitrary delegate view (used to layer simulation passes on top of each other).
+
+```go
+type ViewAccess interface {
+	io.Closer
+	GetBaseView() View
+	GetSandboxView(ctx context.Context, name string) (View, error)
+	GetSandboxViewOverDelegate(ctx context.Context, name string, delegateView View) (View, error)
+}
+
+```
+#### Key Types
+
+```mermaid
+classDiagram
+    class View {
+        <<interface>>
+        +GetName() string
+        +GetType() ViewType
+        +GetClientFacades(ctx, mode) ClientFacades
+        +GetResourceStore(gvk) ResourceStore
+        +GetEventSink() EventSink
+        +CreateObject(ctx, gvk, obj, opts) Object
+        +GetObject(ctx, gvk, name) Object
+        +UpdateObject(ctx, gvk, obj, opts)
+        +UpdatePodNodeBinding(ctx, name, binding) Pod
+        +DeleteObject(ctx, gvk, name)
+        +ListNodes(ctx, names) []Node
+        +ListPods(ctx, criteria) []Pod
+        +WatchObjects(ctx, gvk, ..., cb)
+        +GetObjectChangeCount() int64
+    }
+    class ViewAccess {
+        <<interface>>
+        +GetBaseView() View
+        +GetSandboxView(ctx, name) View
+        +GetSandboxViewOverDelegate(ctx, name, delegate) View
+        +Close()
+    }
+    class Server {
+        <<interface>>
+        +Start(ctx)
+        +Stop(ctx)
+        +GetBaseView() View
+        +GetSandboxView(ctx, name) View
+    }
+    class ResourceStore {
+        <<interface>>
+        +Add(ctx, obj, opts)
+        +Get(ctx, name) Object
+        +Update(ctx, obj, opts)
+        +Delete(ctx, name, opts)
+        +List(ctx, criteria) ObjectList
+        +Watch(ctx, version, ns, sel, cb)
+        +GetVersionCounter() *atomic.Int64
+    }
+    class EventSink {
+        <<interface>>
+        +List() []Event
+        +Reset()
+    }
+    class ClientFacades {
+        +Client kubernetes.Interface
+        +DynClient dynamic.Interface
+        +InformerFactory SharedInformerFactory
+        +Mode ClientAccessMode
+    }
+    class ViewType {
+        <<enumeration>>
+        ViewTypeBase
+        ViewTypeSandbox
+    }
+    class MatchCriteria {
+        +Namespace string
+        +Names Set~string~
+        +ExcludeNames Set~string~
+        +LabelSelector labels.Selector
+    }
+
+    ViewAccess --> View : manages
+    Server --|> ViewAccess : extends
+    View --> ResourceStore : per-GVK store
+    View --> EventSink : scheduler events
+    View --> ClientFacades : vends
+    View --> ViewType : has type
+```
+
+| Type | Purpose |
+|---|---|
+| [`View`](../minkapi/api/types.go) | Named, typed in-memory store; exposes CRUD + Watch per GVK plus typed helpers (`ListNodes`, `ListPods`, `UpdatePodNodeBinding`). |
+| [`ViewAccess`](../minkapi/api/types.go) | Lifecycle manager for views; creates base and sandbox views and provides `GetSandboxViewOverDelegate`. |
+| [`ResourceStore`](../minkapi/api/types.go) | Per-GVK store backing a `View`; supports versioned watch, tombstones, and label-selector filtering. |
+| [`EventSink`](../minkapi/api/types.go) | Collects `events.v1` events emitted by the `kube-scheduler`; used by `RunState.Track` to detect pod bindings. |
+| [`ClientFacades`](../minkapi/api/types.go) | Bundle of `kubernetes.Interface` and `dynamic.Interface` backed by a `View`. |
+| [`Server`](../minkapi/api/types.go) | HTTP server interface; `InMemServer` implements it via `Start`/`Stop`/`GetSandboxView`. |
+
+---
+
+#### In-memory Kubernetes Clients
+
+Each `View` exposes a [`ClientFacades`](../minkapi/api/types.go) bundle - the `kubernetes.Interface` and `dynamic.Interface` that the `kube-scheduler` talks to - in two modes:
+
+- `ClientAccessModeInMemory`: all calls are handled inside the same process, backed directly by the view's stores. No TCP stack involved.
+- `ClientAccessModeNetwork`: calls go over HTTP to the embedded [`InMemServer`](../minkapi/server/server.go) (see below). Used when the scheduler binary must connect via kubeconfig.
+
+In the `SingleNodeMultiSim` strategy the scheduler is always launched in-process via `ClientAccessModeInMemory`, which avoids the overhead of the HTTP server. The HTTP server is optional and used mainly for standalone testing or integration with out-of-process schedulers.
+
+#### HTTP Server (`InMemServer`)
+
+[`InMemServer`](../minkapi/server/server.go) wraps a `ViewAccess` with a standard Go `net/http` server that speaks a subset of the Kubernetes API (`core/v1`, `storage`, `events`). Each `View` - base and sandbox - gets its own route prefix and `http.ServeMux`, all registered under the root mux. The server generates a kubeconfig and a kube-scheduler config pointing at the correct URL so external processes can connect without further configuration.
+
+
+### Simulation
+
+The `simulation` module is responsible for running individual scheduling simulations against `minkapi` views. A `Simulation` creates virtual scale-out nodes in a sandbox view, launches an embedded `kube-scheduler` against that view, and tracks scheduler events until all pending pods are placed or the run stabilizes.
+
+#### Design
+
+[`Simulation`](../simulation/api/types.go) is the core interface. The default implementation ([`defaultSimulation`](../simulation/scaleout/simulation.go)) performs three steps inside `Run(ctx, view)`:
+
+1. **`CreateSimulationNodes`**: materializes one or more `ScaleOutSimNode` objects (and associated `CSINode`s) into the sandbox view. Node names encode the run number, pool, template, and availability zone for traceability.
+2. **`launchSchedulerForSimulation`**: obtains in-memory `ClientFacades` from the view and calls `SchedulerLauncher.Launch`. The scheduler runs concurrently against the same sandbox view.
+3. **`workAndTrackUntilStabilized`**: polls the view's `EventSink` in a tight loop via `RunState.Track`. Each iteration also does volume work (`ProvisionAndBindVolumesFoSelectedClaimsInWFFC`, `FinalizeStaticBindingsForSelectedClaimsInWFFC`) to unblock storage-bound pods. The loop ends when no new scheduler events have arrived for `MaxUnchangedTrackAttempts` consecutive polls, all pending pods are scheduled, or the context is cancelled.
+
+[`RunState`](../simulation/scaleout/runstate.go) holds all mutable tracking state for one simulation run: the set of unscheduled pods, the set of scale-out nodes created, pod-to-node assignments, and counters for track attempts.
+
+#### SimulationFactory
+
+[`SimulationFactory`](../simulation/api/types.go) is a simple factory interface with a single `New(SimulationArgs)` method. The default implementation ([`factory.New()`](../simulation/factory/factory.go)) always produces a `defaultSimulation`. The interface exists so callers (the `ScaleOutSimulator`) can swap in alternative implementations (e.g. a SAT/MIP solver) without code changes.
+
+#### Key Types
+
+```mermaid
+classDiagram
+    class Simulation {
+        <<interface>>
+        +Name() string
+        +Status() ActivityStatus
+        +GroupKey() GroupKey
+        +Run(ctx, view) SimulationResult
+        +Reset()
+    }
+    class SimulationFactory {
+        <<interface>>
+        +New(args SimulationArgs) Simulation
+    }
+    class SimulationArgs {
+        +Name string
+        +NodeTemplates []ScaleOutNodeTemplate
+        +Config SimulationConfig
+        +SchedulerLauncher SchedulerLauncher
+        +RunCounter *atomic.Uint32
+        +FallbackCSINodeSpecs map~string~CSINodeSpec
+        +Strategy SimulatorStrategy
+        +TraceDir string
+    }
+    class SimulationConfig {
+        +TrackPollInterval Duration
+        +MaxUnchangedTrackAttempts int
+        +BindVolumeClaimsForImmediateMode bool
+    }
+    class SimulationResult {
+        +Name string
+        +View minkapi.View
+        +ScaleOutItems []ScaleOutItem
+        +NodePodAssignments []NodePodAssignment
+        +OtherNodePodAssignments []NodePodAssignment
+        +LeftoverUnscheduledPods []NamespacedName
+    }
+    class ScaleOutNodeTemplate {
+        +NodePlacement (inline)
+        +BaseResources ResourceList
+        +ExtendedResources ResourceList
+        +ReservedResources ResourceList
+        +ResourceLimits *ResourceLimits
+        +Labels map~string~string
+        +Taints []Taint
+        +Architecture string
+        +GroupKey GroupKey
+    }
+    class GroupKey {
+        +NodePoolPriority int32
+        +NodeTemplatePriority int32
+    }
+    class SimulationGroup {
+        <<interface>>
+        +Name() string
+        +Key() GroupKey
+        +GetSimulations() []Simulation
+        +AddSimulation(sim)
+        +Run(ctx, getViewFn) []SimulationResult
+    }
+    class SchedulerLauncher {
+        <<interface>>
+        +Launch(ctx, params) SchedulerHandle
+    }
+    class SchedulerLaunchParams {
+        +ClientFacades
+        +EventSink
+    }
+    class ActivityStatus {
+        <<enumeration>>
+        Pending
+        Running
+        Success
+        Failure
+    }
+
+    SimulationFactory ..> Simulation : creates
+    Simulation --> GroupKey : has
+    Simulation --> ActivityStatus : has status
+    Simulation --> SimulationResult : returns
+    SimulationGroup --> Simulation : groups
+    SimulationGroup --> GroupKey : keyed by
+    SimulationArgs --> ScaleOutNodeTemplate : contains
+    SimulationArgs --> SimulationConfig : contains
+    SimulationArgs --> SchedulerLauncher : uses
+    ScaleOutNodeTemplate --> GroupKey : has
+    SimulationResult --> ScaleOutNodeTemplate : references via View
+    SchedulerLauncher ..> SchedulerLaunchParams : takes
+```
+
+| Type | Purpose |
+|---|---|
+| [`Simulation`](../simulation/api/types.go) | Core interface: `Run(ctx, view)` executes a simulation to completion and returns `SimulationResult`. |
+| [`SimulationFactory`](../simulation/api/types.go) | Factory for `Simulation` instances; `New(SimulationArgs)` is the only method. |
+| [`SimulationArgs`](../simulation/api/types.go) | Constructor arguments: `NodeTemplates`, `Config`, `SchedulerLauncher`, `RunCounter`, `FallbackCSINodeSpecs`, and `Strategy`. |
+| [`SimulationConfig`](../simulation/api/types.go) | Per-simulation config: `TrackPollInterval`, `MaxUnchangedTrackAttempts`, `BindVolumeClaimsForImmediateMode`. |
+| [`SimulationResult`](../simulation/api/types.go) | Output of a completed run: `ScaleOutItems` (placements + deltas), `NodePodAssignments` (scale-out nodes), `OtherNodePodAssignments` (existing nodes that also absorbed pods), `LeftoverUnscheduledPods`, and the `View` the run was performed against. |
+| [`RunState`](../simulation/scaleout/runstate.go) | Internal per-run mutable state: unscheduled pod map, scale-out node map, placement counts, pod-to-node assignments, and stabilization counters. |
+| [`SchedulerLauncher`](../simulation/api/types.go) | Launches an embedded `kube-scheduler` instance; returns a `SchedulerHandle` (`io.Closer`) for lifecycle management. |
+| [`SchedulerLaunchParams`](../simulation/api/types.go) | Input to `Launch`: `ClientFacades` and `EventSink` from the simulation's sandbox view. |
