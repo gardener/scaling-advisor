@@ -70,8 +70,8 @@ The following diagram illustrates the custom resources and their associated type
 | [`ScalingAdviceStatus`](../api/core/v1alpha1/scalingadvice.go#L71) | Operator-set conditions on the `ScalingAdvice` (e.g. `Expired`). |
 | [`ScaleOutPlan`](../api/core/v1alpha1/scalingadvice.go#L80) | List of scale-out items plus any pod names that could not be satisfied. |
 | [`ScaleInPlan`](../api/core/v1alpha1/scalingadvice.go#L91) | List of specific nodes recommended for removal. |
-| [`ScaleOutItem`](../api/core/v1alpha1/scalingadvice.go#L109) | Recommendation to add `delta` nodes at a given `NodePlacement`, with the current replica count. |
-| [`ScaleInItem`](../api/core/v1alpha1/scalingadvice.go#L99) | Recommendation to remove a specific node identified by name and placement. |
+| [`ScaleOutItem`](../api/core/v1alpha1/scalingadvice.go#L109) | Recommendation to add `delta` nodes at a given `NodePlacement`, with the current replica count and priority. |
+| [`ScaleInItem`](../api/core/v1alpha1/scalingadvice.go#L99) | Recommendation to remove a specific node identified by name, placement, and priority. |
 | [`NodePlacement`](../api/core/v1alpha1/scalingadvice.go#L132) | Identifies the target pool, template, instance type, region, and zone for a scaling operation. |
 | [`ScalingAdviceDiagnostic`](../api/core/v1alpha1/scalingadvice.go#L173) | References to trace and run-results logs for debugging a `ScalingAdvice`. |
 | [`ScalingFeedback`](../api/core/v1alpha1/scalingfeedback.go#L29) | CRD (control cluster): written by the lifecycle manager in response to a `ScalingAdvice`; shares its name/namespace and is owned by it. |

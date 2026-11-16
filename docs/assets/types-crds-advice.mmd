@@ -29,10 +29,12 @@ classDiagram
         +string name
         +int32 currentReplicas
         +int32 delta
+        +int32 priority
     }
     class ScaleInItem {
         +NodePlacement nodePlacement
         +string nodeName
+        +int32 priority
     }
     class NodePlacement {
         +string poolName
