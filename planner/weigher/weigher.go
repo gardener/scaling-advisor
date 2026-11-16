@@ -5,14 +5,11 @@
 package weigher
 
 import (
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
 	corev1 "k8s.io/api/core/v1"
 )
 
-var _ plannerapi.ResourceWeigher = (*defaultResourceWeigher)(nil)
-
-// New returns the default instance of ResourceWeigher.
-func New() plannerapi.ResourceWeigher {
+// New returns the default instance of the resource weigher.
+func New() *defaultResourceWeigher {
 	return &defaultResourceWeigher{
 		weights: createDefaultWeights(),
 	}

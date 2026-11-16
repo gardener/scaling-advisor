@@ -6,15 +6,14 @@ package coreaccess
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,11 +32,11 @@ type eventAccess struct {
 }
 
 // NewEventAccess creates a new access facade for managing ReplicaSet resources within a specific namespace using the given minkapi View.
-func NewEventAccess(view minkapi.View, namespace string) clientcorev1.EventInterface {
+func NewEventAccess(view api.View, namespace string) clientcorev1.EventInterface {
 	return &eventAccess{
 		access.GenericResourceAccess[*corev1.Event, *corev1.EventList]{
 			View:      view,
-			GVK:       typeinfo.EventsDescriptor.GVK,
+			GVK:       api.EventsDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -72,7 +71,7 @@ func (a *eventAccess) UpdateWithEventNamespaceWithContext(ctx context.Context, e
 	}
 	if event.ResourceVersion != "" && event.ResourceVersion != e.ResourceVersion {
 		// TODO: I need to make a generic function for this check.
-		return nil, errors.NewConflict(
+		return nil, apierrors.NewConflict(
 			corev1.Resource("events"),
 			event.Name,
 			fmt.Errorf("requested ResourceVersion %s does not match current %s", event.ResourceVersion, e.ResourceVersion),
@@ -126,15 +125,15 @@ func (a *eventAccess) PatchWithEventNamespaceWithContext(ctx context.Context, ev
 }
 
 func (a *eventAccess) Apply(_ context.Context, _ *v1.EventApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Event, err error) {
-	return nil, fmt.Errorf("%w: apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *eventAccess) Search(_ *runtime.Scheme, _ runtime.Object) (*corev1.EventList, error) {
-	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: search of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *eventAccess) SearchWithContext(_ context.Context, _ *runtime.Scheme, _ runtime.Object) (*corev1.EventList, error) {
-	return nil, fmt.Errorf("%w: search of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: search of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *eventAccess) GetFieldSelector(involvedObjectName, involvedObjectNamespace, involvedObjectKind, involvedObjectUID *string) fields.Selector {

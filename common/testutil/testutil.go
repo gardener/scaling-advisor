@@ -18,6 +18,9 @@ import (
 	"time"
 
 	"github.com/gardener/scaling-advisor/common/ioutil"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -103,6 +106,34 @@ func LoadTestPods() (pods []corev1.Pod, err error) {
 	}
 	pods = append(pods, podA)
 	return
+}
+
+// NewTestPod returns an unscheduled pod with a single container requesting the given CPU and
+// memory. schedulerName selects the scheduler that should bind the pod (e.g. "bin-packing-scheduler").
+// TerminationGracePeriodSeconds is set to zero so tests don't wait for a grace period on cleanup.
+func NewTestPod(name, schedulerName, cpu, memory string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: corev1.PodSpec{
+			SchedulerName:                 schedulerName,
+			TerminationGracePeriodSeconds: ptr.To[int64](0),
+			Containers: []corev1.Container{
+				{
+					Name:  "pause",
+					Image: "registry.k8s.io/pause:3.5",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse(cpu),
+							corev1.ResourceMemory: resource.MustParse(memory),
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // NewTestContext wraps the test context with a deadline, a ktesting.Logger and with signal-cancelling support

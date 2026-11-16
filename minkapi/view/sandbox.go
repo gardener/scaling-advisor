@@ -11,13 +11,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/eventsink"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient"
 	"github.com/gardener/scaling-advisor/minkapi/view/store"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	"github.com/gardener/scaling-advisor/common/clientutil"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 	"github.com/gardener/scaling-advisor/common/objutil"
@@ -52,7 +50,7 @@ type sandboxView struct {
 // otherwise delegating to the delegate View.
 func NewSandbox(delegateView minkapi.View, args *minkapi.ViewArgs) (minkapi.View, error) {
 	stores := map[schema.GroupVersionKind]*store.InMemResourceStore{}
-	for _, d := range typeinfo.SupportedDescriptors {
+	for _, d := range minkapi.SupportedDescriptors {
 		baseStore, err := delegateView.GetResourceStore(d.GVK)
 		if err != nil {
 			return nil, err
@@ -100,7 +98,7 @@ func (v *sandboxView) SetKubeConfigPath(path string) {
 	v.args.KubeConfigPath = path
 }
 
-func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontypes.ClientAccessMode) (clientFacades commontypes.ClientFacades, err error) {
+func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode minkapi.ClientAccessMode) (clientFacades minkapi.ClientFacades, err error) {
 	log := logr.FromContextOrDiscard(ctx)
 	defer func() {
 		if err != nil {
@@ -108,9 +106,9 @@ func (v *sandboxView) GetClientFacades(ctx context.Context, accessMode commontyp
 		}
 	}()
 	switch accessMode {
-	case commontypes.ClientAccessModeNetwork:
+	case minkapi.ClientAccessModeNetwork:
 		clientFacades, err = clientutil.CreateNetworkClientFacades(log, v.GetKubeConfigPath(), v.args.WatchConfig.Timeout)
-	case commontypes.ClientAccessModeInMemory:
+	case minkapi.ClientAccessModeInMemory:
 		clientFacades = inmclient.NewInMemClientFacades(v, v.args.WatchConfig.Timeout)
 	default:
 		err = fmt.Errorf("invalid access mode %q", accessMode)
@@ -173,7 +171,7 @@ func (v *sandboxView) UpdateObject(ctx context.Context, gvk schema.GroupVersionK
 }
 
 func (v *sandboxView) UpdatePodNodeBinding(ctx context.Context, podName cache.ObjectName, binding corev1.Binding) (pod *corev1.Pod, err error) {
-	gvk := typeinfo.PodsDescriptor.GVK
+	gvk := minkapi.PodsDescriptor.GVK
 	obj, err := v.getSandboxObject(ctx, gvk, podName) // get pod from sandbox first.
 	if err != nil && (errors.Is(err, minkapi.ErrObjectDeleted) || !apierrors.IsNotFound(err)) {
 		return
@@ -369,7 +367,7 @@ func (v *sandboxView) DeleteObjects(ctx context.Context, gvk schema.GroupVersion
 }
 
 func (v *sandboxView) ListNodes(ctx context.Context, matchingNodeNames ...string) (nodes []corev1.Node, err error) {
-	gvk := typeinfo.NodesDescriptor.GVK
+	gvk := minkapi.NodesDescriptor.GVK
 	metaObjs, _, err := v.ListMetaObjects(ctx, gvk, minkapi.MatchCriteria{
 		Names: sets.New(matchingNodeNames...),
 	})
@@ -381,7 +379,7 @@ func (v *sandboxView) ListNodes(ctx context.Context, matchingNodeNames ...string
 }
 
 func (v *sandboxView) ListPods(ctx context.Context, c minkapi.MatchCriteria) (pods []corev1.Pod, err error) {
-	gvk := typeinfo.PodsDescriptor.GVK
+	gvk := minkapi.PodsDescriptor.GVK
 	metaObjs, _, err := v.ListMetaObjects(ctx, gvk, c)
 	if err != nil {
 		return
@@ -391,7 +389,7 @@ func (v *sandboxView) ListPods(ctx context.Context, c minkapi.MatchCriteria) (po
 }
 
 func (v *sandboxView) ListEvents(ctx context.Context, namespace string) (events []eventsv1.Event, err error) {
-	metaObjs, _, err := v.ListMetaObjects(ctx, typeinfo.EventsDescriptor.GVK, minkapi.MatchCriteria{
+	metaObjs, _, err := v.ListMetaObjects(ctx, minkapi.EventsDescriptor.GVK, minkapi.MatchCriteria{
 		Namespace: namespace,
 	})
 	if err != nil {

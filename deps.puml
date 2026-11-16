@@ -1,0 +1,43 @@
+@startuml
+
+frame "api"  {
+  [common-api] as C
+  [planner-api] as PA
+  [pricing-api] as PRA
+  PA --> C
+  [config/v1alpha] as APICFG
+  [core/v1alpha] as APICORE
+  [minkapi] as M
+  APICFG --> C
+  APICORE --> C
+  M --> C
+  PRA --> C
+}
+
+frame "planner" {
+[scheduler]
+[scorer]
+[simulation]
+[simulator]
+[planner-core] as PC
+[weigher]
+
+PC --> PA
+PC --> scheduler
+PC --> simulation
+PC --> simulator
+PC --> scorer
+PC --> weigher
+PC --> PRA
+
+simulation --> PA
+scheduler --> PA
+scorer --> PA
+simulator --> PA
+}
+
+frame "simulation-api" {
+}
+frame "simulation-core" {
+}
+@enduml

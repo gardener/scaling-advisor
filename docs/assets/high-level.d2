@@ -42,13 +42,13 @@ astarget: {
 cp: Cloud Provider
 cp.shape: cloud
 
-astarget --> mcm: 8. Derive ClusterScalingFeedback
-astarget --> scadop: 3. Derive ClusterSnapshot \n (Nodes, Pods, etc)
-mcm --> ascontrol: 1. Provide ClusterScalingConstraint \n and ClusterScalingFeedback 
-ascontrol --> scadop: 2. Consume  ClusterScalingConstraint \n and ClusterScalingFeedback 
+astarget --> mcm: 8. Derive ScalingFeedback
+astarget --> scadop: 3. Derive ClusterSnapshot \n (Nodes, Pods, PV, PVCs, etc)
+mcm --> ascontrol: 1. Provide ScalingConstraint \n and ScalingFeedback
+ascontrol --> scadop: 2. Consume  ScalingConstraint \n and ScalingFeedback
 scadop --> ascontrol: 4. Provide ScalingAdvice
 
 
 ascontrol --> mcm: 5. Consume ScalingAdvice
-mcm --> cp: 6. Follow ScalingAdvice \n and Add/Remove Instances
-cp --> astarget: 7. Register New Nodes \n and/or ResourceExhaustion for Instances
+mcm --> cp: 6. Apply ScalingAdvice \n and Add/Remove Instances
+cp --> astarget: 7. Register New Nodes \n or report ResourceExhaustion for Instances

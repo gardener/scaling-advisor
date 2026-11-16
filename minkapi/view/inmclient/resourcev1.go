@@ -5,10 +5,11 @@
 package inmclient
 
 import (
+	"errors"
+
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/resourceaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	clientresourcev1 "k8s.io/client-go/kubernetes/typed/resource/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,11 +19,11 @@ var (
 )
 
 type resourceV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (r *resourceV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (r *resourceV1Impl) DeviceClasses() clientresourcev1.DeviceClassInterface {
@@ -34,7 +35,7 @@ func (r *resourceV1Impl) ResourceClaims(namespace string) clientresourcev1.Resou
 }
 
 func (r *resourceV1Impl) ResourceClaimTemplates(_ string) clientresourcev1.ResourceClaimTemplateInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (r *resourceV1Impl) ResourceSlices() clientresourcev1.ResourceSliceInterface {

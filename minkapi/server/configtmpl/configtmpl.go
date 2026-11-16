@@ -12,7 +12,7 @@ import (
 	"sync"
 	"text/template"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	"github.com/gardener/scaling-advisor/common/ioutil"
 )
 
@@ -50,11 +50,11 @@ func GenKubeConfig(params KubeConfigParams) error {
 	var buf bytes.Buffer
 	err = configTemplates.kubeConfigTemplate.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: cannot render %q template with params %q: %w", commonerrors.ErrExecuteTemplate, configTemplates.kubeConfigTemplate.Name(), params, err)
+		return fmt.Errorf("%w: cannot render %q template with params %q: %w", apicommon.ErrExecuteTemplate, configTemplates.kubeConfigTemplate.Name(), params, err)
 	}
 	err = os.WriteFile(params.KubeConfigPath, buf.Bytes(), 0600)
 	if err != nil {
-		return fmt.Errorf("%w: cannot write kubeconfig to %q: %w", commonerrors.ErrExecuteTemplate, params.KubeConfigPath, err)
+		return fmt.Errorf("%w: cannot write kubeconfig to %q: %w", apicommon.ErrExecuteTemplate, params.KubeConfigPath, err)
 	}
 	return nil
 }
@@ -68,11 +68,11 @@ func GenKubeSchedulerConfig(params KubeSchedulerTmplParams) error {
 	var buf bytes.Buffer
 	err = configTemplates.kubeSchedulerConfigTemplate.Execute(&buf, params)
 	if err != nil {
-		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", commonerrors.ErrExecuteTemplate, configTemplates.kubeSchedulerConfigTemplate.Name(), params, err)
+		return fmt.Errorf("%w: execution of %q template failed with params %v: %w", apicommon.ErrExecuteTemplate, configTemplates.kubeSchedulerConfigTemplate.Name(), params, err)
 	}
 	err = os.WriteFile(params.KubeSchedulerConfigPath, buf.Bytes(), 0600)
 	if err != nil {
-		return fmt.Errorf("%w: cannot write scheduler config to %q: %w", commonerrors.ErrExecuteTemplate, params.KubeSchedulerConfigPath, err)
+		return fmt.Errorf("%w: cannot write scheduler config to %q: %w", apicommon.ErrExecuteTemplate, params.KubeSchedulerConfigPath, err)
 	}
 	return nil
 }

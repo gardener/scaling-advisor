@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	configv1alpha1validation "github.com/gardener/scaling-advisor/api/config/v1alpha1/validation"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
@@ -18,7 +18,7 @@ import (
 )
 
 // ErrLoadOperatorConfig is a sentinel error representing a problem loading the scaling-advisor operator configuration
-var ErrLoadOperatorConfig = fmt.Errorf("cannot load %q operator config", constants.OperatorName)
+var ErrLoadOperatorConfig = fmt.Errorf("cannot load %q operator config", apicommon.OperatorName)
 
 // LaunchOptions defines options for launching the operator, including the operator config file path and version flag.
 type LaunchOptions struct {
@@ -29,7 +29,7 @@ type LaunchOptions struct {
 // ParseLaunchOptions parses the CLI arguments for the scaling-advisor operator.
 func ParseLaunchOptions(cliArgs []string) (*LaunchOptions, error) {
 	launchOpts := &LaunchOptions{}
-	flagSet := pflag.NewFlagSet(constants.OperatorName, pflag.ContinueOnError)
+	flagSet := pflag.NewFlagSet(apicommon.OperatorName, pflag.ContinueOnError)
 	launchOpts.mapFlags(flagSet)
 	err := flagSet.Parse(cliArgs)
 	if err != nil {

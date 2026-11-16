@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gardener/scaling-advisor/api/planner"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -38,7 +38,7 @@ func sanitizeDeleteFunc(k, _ string) bool {
 	return false
 }
 
-func obfuscateMetadata(snap *planner.ClusterSnapshot) {
+func obfuscateMetadata(snap *plannerapi.ClusterSnapshot) {
 	// Collect all label keys referenced by scheduling constraints
 	// (NodeSelector, Affinity, TopologySpreadConstraints, Tolerations).
 	schedulingKeys := collectSchedulingRelevantKeys(snap)
@@ -117,7 +117,7 @@ func obfuscateMetadata(snap *planner.ClusterSnapshot) {
 // collectSchedulingRelevantKeys scans all pods and returns a set of label keys
 // that are referenced by scheduling constraints. Removing or renaming these
 // keys without updating every reference would break scheduling.
-func collectSchedulingRelevantKeys(snap *planner.ClusterSnapshot) sets.Set[string] {
+func collectSchedulingRelevantKeys(snap *plannerapi.ClusterSnapshot) sets.Set[string] {
 	keys := sets.New[string]()
 	for _, pod := range snap.Pods {
 		keys.Insert(slices.Collect(maps.Keys(pod.NodeSelector))...)

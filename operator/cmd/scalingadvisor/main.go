@@ -10,7 +10,7 @@ import (
 	"github.com/gardener/scaling-advisor/operator/cmd/scalingadvisor/cli"
 	"github.com/gardener/scaling-advisor/operator/internal/controller"
 
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	commoncli "github.com/gardener/scaling-advisor/common/cliutil"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,7 +25,7 @@ func main() {
 		commoncli.HandleErrorAndExit(err)
 	}
 	if launchOpts.Version {
-		commoncli.PrintVersion(constants.OperatorName)
+		commoncli.PrintVersion(apicommon.OperatorName)
 		os.Exit(commoncli.ExitSuccess)
 	}
 

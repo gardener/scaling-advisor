@@ -12,10 +12,13 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
-	plannerapi "github.com/gardener/scaling-advisor/api/planner"
-	pricingapi "github.com/gardener/scaling-advisor/api/pricing"
+	plannerapi "github.com/gardener/scaling-advisor/planner/api"
+
+	apicommon "github.com/gardener/scaling-advisor/api/common"
+	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
+	simulationapi "github.com/gardener/scaling-advisor/simulation/api"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -23,14 +26,14 @@ import (
 var _ plannerapi.GetNodeScorer = GetNodeScorer
 
 // GetNodeScorer returns the NodeScorer based on the NodeScoringStrategy
-func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instancePricingAccess pricingapi.InstancePricingAccess, resourceWeigher plannerapi.ResourceWeigher) (plannerapi.NodeScorer, error) {
+func GetNodeScorer(scoringStrategy apicommon.NodeScoringStrategy) (plannerapi.NodeScorer, error) {
 	switch scoringStrategy {
 	case "":
 		return nil, fmt.Errorf("%w: scoring strategy must be specified", plannerapi.ErrCreateNodeScorer)
-	case commontypes.NodeScoringStrategyLeastCost:
-		return &LeastCost{pricingAccess: instancePricingAccess, resourceWeigher: resourceWeigher}, nil
-	case commontypes.NodeScoringStrategyLeastWaste:
-		return &LeastWaste{pricingAccess: instancePricingAccess, resourceWeigher: resourceWeigher}, nil
+	case apicommon.NodeScoringStrategyLeastCost:
+		return &LeastCost{}, nil
+	case apicommon.NodeScoringStrategyLeastWaste:
+		return &LeastWaste{}, nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported %q", plannerapi.ErrCreateNodeScorer, scoringStrategy)
 	}
@@ -39,17 +42,14 @@ func GetNodeScorer(scoringStrategy commontypes.NodeScoringStrategy, instancePric
 var _ plannerapi.NodeScorer = (*LeastCost)(nil)
 
 // LeastCost contains information required by the least-cost node scoring strategy
-type LeastCost struct {
-	pricingAccess   pricingapi.InstancePricingAccess
-	resourceWeigher plannerapi.ResourceWeigher
-}
+type LeastCost struct{}
 
-// Compute uses the least-cost strategy to generate a score representing the number of normalized resource units (NRU) scheduled per unit cost.
+// Score uses the least-cost strategy to generate a score representing the number of normalized resource units (NRU) scheduled per unit cost.
 // Here, NRU is an abstraction used to represent and operate upon multiple heterogeneous
 // resource requests.
 // Resource quantities of different resource types are reduced to a representation in terms of NRU
 // based on pre-configured weights.
-func (l LeastCost) Compute(ctx context.Context, args plannerapi.NodeScorerArgs) (score plannerapi.NodeScore, err error) {
+func (l LeastCost) Score(ctx context.Context, args plannerapi.NodeScorerArgs) (score plannerapi.NodeScore, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: least-cost node scoring failed for simulation %q: %v", plannerapi.ErrComputeNodeScore, args.ID, err)
@@ -59,27 +59,22 @@ func (l LeastCost) Compute(ctx context.Context, args plannerapi.NodeScorerArgs) 
 	//add resources required by pods scheduled on scaled candidate node and existing nodes
 	aggregatedPodsResources := getAggregatedScheduledPodsResources(args.ScaledNodePodAssignment, args.OtherNodePodAssignments)
 	//calculate total scheduledResources in terms of normalized resource units using weights
-	weights, err := l.resourceWeigher.GetWeights(args.ScaledNodePlacement.InstanceType)
-	if err != nil {
-		return
-	}
+	weights := resolveWeights(args.ResourceWeights, args.ScaledNodePlacement.InstanceType)
 	totalNormalizedResourceUnits := getNormalizedAggregate(aggregatedPodsResources, weights)
-	info, err := l.pricingAccess.GetInfo(args.ScaledNodePlacement.Region, args.ScaledNodePlacement.InstanceType)
-	if err != nil {
-		return
-	}
+	hourlyPrice := lookupHourlyPrice(args.InstancePrices, args.ScaledNodePlacement.Region, args.ScaledNodePlacement.InstanceType)
 	score = plannerapi.NodeScore{
 		Name:               args.ID,
 		Placement:          args.ScaledNodePlacement,
 		ScaledNodeResource: args.ScaledNodePodAssignment.NodeResources,
 		UnscheduledPods:    args.LeftOverUnscheduledPods,
+		InstancePrices:     args.InstancePrices,
+		ResourceWeights:    args.ResourceWeights,
 	}
-	hourlyPrice := info.HourlyPrice
 	if hourlyPrice == 0 {
 		log.V(2).Info("Instance hourly price is 0, setting score to -1 to avoid division by zero", "templateName", args.ScaledNodePlacement.TemplateName, "instanceType", args.ScaledNodePlacement.InstanceType)
 		score.Value = -1
 	} else {
-		score.Value = int(math.Round(totalNormalizedResourceUnits * 100 / info.HourlyPrice))
+		score.Value = int(math.Round(totalNormalizedResourceUnits * 100 / hourlyPrice))
 	}
 	log.V(5).Info("Node score", "value", score.Value, "templateName", args.ScaledNodePlacement.TemplateName, "instanceType", args.ScaledNodePlacement.InstanceType)
 	return
@@ -111,10 +106,7 @@ func (l LeastCost) Select(ctx context.Context, nodeScores []plannerapi.NodeScore
 		if nodeScores[i].Value != nodeScores[0].Value { // since max is at index 0
 			break
 		}
-		weights, err := l.resourceWeigher.GetWeights(nodeScores[i].Placement.InstanceType)
-		if err != nil {
-			return nil, err
-		}
+		weights := resolveWeights(nodeScores[i].ResourceWeights, nodeScores[i].Placement.InstanceType)
 		weightsCache[nodeScores[i].Placement.InstanceType] = weights
 	}
 
@@ -145,12 +137,9 @@ func (l LeastCost) Select(ctx context.Context, nodeScores []plannerapi.NodeScore
 var _ plannerapi.NodeScorer = (*LeastWaste)(nil)
 
 // LeastWaste contains information required by the least-waste node scoring strategy
-type LeastWaste struct {
-	pricingAccess   pricingapi.InstancePricingAccess
-	resourceWeigher plannerapi.ResourceWeigher
-}
+type LeastWaste struct{}
 
-// Compute returns the NodeScore for the least-waste strategy. Instead of calculating absolute wastage across the cluster,
+// Score returns the NodeScore for the least-waste strategy. Instead of calculating absolute wastage across the cluster,
 // we look at delta wastage as a score.
 // Delta wastage can be calculated by summing the wastage on the scaled candidate node
 // and the "negative" waste created as a result of unscheduled pods being scheduled on to existing nodes.
@@ -176,7 +165,7 @@ type LeastWaste struct {
 // Pod C: 3 GB --> N3
 //
 // Waste = 4 - (1+2+3) = -2
-func (l LeastWaste) Compute(ctx context.Context, args plannerapi.NodeScorerArgs) (nodeScore plannerapi.NodeScore, err error) {
+func (l LeastWaste) Score(ctx context.Context, args plannerapi.NodeScorerArgs) (nodeScore plannerapi.NodeScore, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: least-waste node scoring failed for simulation %q: %v", plannerapi.ErrComputeNodeScore, args.ID, err)
@@ -197,10 +186,7 @@ func (l LeastWaste) Compute(ctx context.Context, args plannerapi.NodeScorerArgs)
 		}
 	}
 	//calculate single score from wastage using weights
-	weights, err := l.resourceWeigher.GetWeights(args.ScaledNodePlacement.InstanceType)
-	if err != nil {
-		return
-	}
+	weights := resolveWeights(args.ResourceWeights, args.ScaledNodePlacement.InstanceType)
 	totalNormalizedResourceUnits := getNormalizedAggregate(wastage, weights)
 	nodeScore = plannerapi.NodeScore{
 		Name:               args.ID,
@@ -208,6 +194,8 @@ func (l LeastWaste) Compute(ctx context.Context, args plannerapi.NodeScorerArgs)
 		UnscheduledPods:    args.LeftOverUnscheduledPods,
 		Value:              int(totalNormalizedResourceUnits * 100),
 		ScaledNodeResource: args.ScaledNodePodAssignment.NodeResources,
+		InstancePrices:     args.InstancePrices,
+		ResourceWeights:    args.ResourceWeights,
 	}
 	log.V(5).Info("Node score", "value", nodeScore.Value, "templateName", args.ScaledNodePlacement.TemplateName, "instanceType", args.ScaledNodePlacement.InstanceType)
 	return
@@ -236,11 +224,8 @@ func (l LeastWaste) Select(ctx context.Context, nodeScores []plannerapi.NodeScor
 		if nodeScore.Value != nodeScores[0].Value {
 			break
 		}
-		info, err := l.pricingAccess.GetInfo(nodeScore.Placement.Region, nodeScore.Placement.InstanceType)
-		if err != nil {
-			return nil, err
-		}
-		cachedPrices = append(cachedPrices, info.HourlyPrice)
+		price := lookupHourlyPrice(nodeScore.InstancePrices, nodeScore.Placement.Region, nodeScore.Placement.InstanceType)
+		cachedPrices = append(cachedPrices, price)
 	}
 	// find min price among nodeScores[:i]
 	minPrice := slices.Min(cachedPrices)
@@ -260,6 +245,39 @@ func (l LeastWaste) Select(ctx context.Context, nodeScores []plannerapi.NodeScor
 	return &winner, nil
 }
 
+// lookupHourlyPrice finds the hourly price for the given region and instanceType from the prices slice.
+// Returns 0 if not found or if the price string cannot be parsed.
+func lookupHourlyPrice(prices []sacorev1alpha1.InstancePrice, region, instanceType string) float64 {
+	for _, p := range prices {
+		if p.Region == region && p.InstanceType == instanceType {
+			price, err := strconv.ParseFloat(p.Price, 64)
+			if err != nil {
+				return 0
+			}
+			return price
+		}
+	}
+	return 0
+}
+
+// resolveWeights returns the resource weights to use. If weights is nil, returns built-in defaults.
+// instanceType is reserved for future per-instance-family weight customization.
+func resolveWeights(weights map[corev1.ResourceName]float64, _ string) map[corev1.ResourceName]float64 {
+	if weights != nil {
+		return weights
+	}
+	return defaultWeights()
+}
+
+// defaultWeights returns the default resource weights.
+func defaultWeights() map[corev1.ResourceName]float64 {
+	return map[corev1.ResourceName]float64{
+		corev1.ResourceMemory: 1,
+		corev1.ResourceCPU:    9,
+		"nvidia.com/gpu":      20,
+	}
+}
+
 // getNormalizedAggregate returns the aggregated sum of the resources in terms of normalized resource units
 func getNormalizedAggregate(resources corev1.ResourceList, weights map[corev1.ResourceName]float64) float64 {
 	nru := 0.0
@@ -275,7 +293,7 @@ func getNormalizedAggregate(resources corev1.ResourceList, weights map[corev1.Re
 
 // getAggregatedScheduledPodsResources returns the sum of the resources requested by pods scheduled due to node scale up. It returns a
 // map containing the sums for each resource type
-func getAggregatedScheduledPodsResources(scaledNodeAssignments *plannerapi.NodePodAssignment, otherAssignments []plannerapi.NodePodAssignment) corev1.ResourceList {
+func getAggregatedScheduledPodsResources(scaledNodeAssignments *simulationapi.NodePodAssignment, otherAssignments []simulationapi.NodePodAssignment) corev1.ResourceList {
 	var scheduledResources = make(corev1.ResourceList)
 	if scaledNodeAssignments != nil {
 		//add resources required by pods scheduled on scaled candidate node

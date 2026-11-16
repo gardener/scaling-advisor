@@ -7,7 +7,7 @@ package samples
 import (
 	"fmt"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	sacorev1alpha1 "github.com/gardener/scaling-advisor/api/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -77,9 +77,14 @@ type ConstraintGenInput struct {
 
 // ConstraintGenOutput holds the generated output data after generating NodePools.
 type ConstraintGenOutput struct {
+	// NodeTemplates is a map of template name to NodeTemplate, covering all templates referenced by the Constraint's node pools.
+	// Matches the shape of [plannerapi.Request.NodeTemplates] for direct use in planner unit tests.
+	NodeTemplates map[string]sacorev1alpha1.NodeTemplate
 	// GenYAMLPath provides the generated YAML path of ScalingConstraint
 	GenYAMLPath string
-	Constraint  sacorev1alpha1.ScalingConstraint
+	// NodeTemplateSetYAMLPath provides the generated YAML path of the NodeTemplateSet
+	NodeTemplateSetYAMLPath string
+	Constraint              sacorev1alpha1.ScalingConstraint
 }
 
 // PodGenInput holds the input data for generating simple pods.
@@ -95,13 +100,13 @@ type PodGenInput struct {
 
 // PodGenOutput is the output container for generated pod data.
 type PodGenOutput struct {
-	YAMLPaths map[commontypes.NamespacedName]string
+	YAMLPaths map[apicommon.NamespacedName]string
 	Pods      []corev1.Pod
 }
 
 // VolGenInput represents bag of input parameters to generate PVC's and PV's.
 type VolGenInput struct {
-	Provider commontypes.CloudProvider
+	Provider apicommon.CloudProvider
 	// Namespace represents the PVC nameespace.
 	Namespace string
 	// Storage is used to set the corev1.ResourceStorage quantity in generated PVC.Spec.Resoures.Requests
@@ -162,7 +167,7 @@ func (v *VolGenInput) ValidateAndFillDefaults() error {
 
 // VolGenOutput is the output container for generated volume data.
 type VolGenOutput struct {
-	YAMLPaths map[commontypes.NamespacedName]string
+	YAMLPaths map[apicommon.NamespacedName]string
 	PVs       []corev1.PersistentVolume
 	PVCs      []corev1.PersistentVolumeClaim
 }

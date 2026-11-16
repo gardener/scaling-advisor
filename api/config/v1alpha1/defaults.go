@@ -8,16 +8,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	defaultLeaderElectionResourceLock = "leases"
-	defaultLeaderElectionResourceName = "scalingadvisor-operator-leader-election"
-	defaultConcurrentSyncs            = 2
+	defaultLeaderElectionResourceLock      = "leases"
+	defaultLeaderElectionResourceName      = "scalingadvisor-leader-election"
+	defaultLeaderElectionResourceNamespace = "kube-system"
+	defaultConcurrentSyncs                 = 2
 )
+
+// SetDefaults_OperatorConfig sets defaults for all fields of the OperatorConfig.
+func SetDefaults_OperatorConfig(config *OperatorConfig) {
+	SetDefaults_ScalingAdvisorServerConfiguration(&config.Server)
+	SetDefaults_ClientConnectionConfiguration(&config.ClientConnection)
+	SetDefaults_LeaderElectionConfiguration(&config.LeaderElection)
+	SetDefaults_ScalingConstraintsControllerConfiguration(&config.Controllers.ScalingConstraints)
+}
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
 func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfig) {
@@ -41,6 +50,9 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectio
 	if leaderElectionConfig.RetryPeriod == zero {
 		leaderElectionConfig.RetryPeriod = metav1.Duration{Duration: 2 * time.Second}
 	}
+	if leaderElectionConfig.ResourceNamespace == "" {
+		leaderElectionConfig.ResourceNamespace = defaultLeaderElectionResourceNamespace
+	}
 	if leaderElectionConfig.ResourceLock == "" {
 		leaderElectionConfig.ResourceLock = defaultLeaderElectionResourceLock
 	}
@@ -52,14 +64,14 @@ func SetDefaults_LeaderElectionConfiguration(leaderElectionConfig *LeaderElectio
 // SetDefaults_ScalingAdvisorServerConfiguration sets defaults for ScalingAdvisorServerConfig.
 func SetDefaults_ScalingAdvisorServerConfiguration(serverConfig *ScalingAdvisorServerConfig) {
 	if strings.TrimSpace(serverConfig.HealthProbeBindAddress) == "" {
-		serverConfig.HealthProbeBindAddress = constants.DefaultOperatorHealthProbeBindAddress
+		serverConfig.HealthProbeBindAddress = apicommon.DefaultOperatorHealthProbeBindAddress
 	}
 	if strings.TrimSpace(serverConfig.MetricsBindAddress) == "" {
-		serverConfig.MetricsBindAddress = constants.DefaultOperatorMetricsBindAddress
+		serverConfig.MetricsBindAddress = apicommon.DefaultOperatorMetricsBindAddress
 	}
 	if serverConfig.ProfilingEnabled {
 		if strings.TrimSpace(serverConfig.ProfilingBindAddress) == "" {
-			serverConfig.ProfilingBindAddress = constants.DefaultOperatorProfilingBindAddress
+			serverConfig.ProfilingBindAddress = apicommon.DefaultOperatorProfilingBindAddress
 		}
 	}
 }

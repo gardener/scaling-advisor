@@ -5,10 +5,10 @@
 package inmclient
 
 import (
+	"errors"
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access/coreaccess"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 )
@@ -18,15 +18,15 @@ var (
 )
 
 type coreV1Impl struct {
-	view minkapi.View
+	view api.View
 }
 
 func (c *coreV1Impl) RESTClient() rest.Interface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) ComponentStatuses() clientcorev1.ComponentStatusInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) ConfigMaps(namespace string) clientcorev1.ConfigMapInterface {
@@ -34,7 +34,7 @@ func (c *coreV1Impl) ConfigMaps(namespace string) clientcorev1.ConfigMapInterfac
 }
 
 func (c *coreV1Impl) Endpoints(_ string) clientcorev1.EndpointsInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
@@ -42,7 +42,7 @@ func (c *coreV1Impl) Events(namespace string) clientcorev1.EventInterface {
 }
 
 func (c *coreV1Impl) LimitRanges(_ string) clientcorev1.LimitRangeInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) Namespaces() clientcorev1.NamespaceInterface {
@@ -66,7 +66,7 @@ func (c *coreV1Impl) Pods(namespace string) clientcorev1.PodInterface {
 }
 
 func (c *coreV1Impl) PodTemplates(_ string) clientcorev1.PodTemplateInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) ReplicationControllers(namespace string) clientcorev1.ReplicationControllerInterface {
@@ -79,7 +79,7 @@ func (c *coreV1Impl) ResourceQuotas(_ string) clientcorev1.ResourceQuotaInterfac
 }
 
 func (c *coreV1Impl) Secrets(_ string) clientcorev1.SecretInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }
 
 func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
@@ -87,5 +87,5 @@ func (c *coreV1Impl) Services(namespace string) clientcorev1.ServiceInterface {
 }
 
 func (c *coreV1Impl) ServiceAccounts(_ string) clientcorev1.ServiceAccountInterface {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }

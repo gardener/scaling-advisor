@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	mkapi "github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
@@ -45,30 +45,30 @@ const (
 
 var (
 	// DefaultBaseViewArgs holds the default ViewArgs used in tests for the base view.
-	DefaultBaseViewArgs = mkapi.ViewArgs{
-		Name:           mkapi.DefaultBasePrefix,
+	DefaultBaseViewArgs = minkapi.ViewArgs{
+		Name:           minkapi.DefaultBasePrefix,
 		KubeConfigPath: "/tmp/minkapi-base-test.yaml",
-		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: mkapi.WatchConfig{
-			QueueSize: mkapi.DefaultWatchQueueSize,
-			Timeout:   mkapi.DefaultWatchTimeout,
+		Scheme:         minkapi.SupportedScheme,
+		WatchConfig: minkapi.WatchConfig{
+			QueueSize: minkapi.DefaultWatchQueueSize,
+			Timeout:   minkapi.DefaultWatchTimeout,
 		},
 	}
 	// DefaultSandboxViewArgs holds the default ViewArgs used in tests for the sandbox view.
-	DefaultSandboxViewArgs = mkapi.ViewArgs{
+	DefaultSandboxViewArgs = minkapi.ViewArgs{
 		Name:           "sandbox",
 		KubeConfigPath: "/tmp/minkapi-sandbox-test.yaml",
-		Scheme:         typeinfo.SupportedScheme,
-		WatchConfig: mkapi.WatchConfig{
-			QueueSize: mkapi.DefaultWatchQueueSize,
-			Timeout:   mkapi.DefaultWatchTimeout,
+		Scheme:         minkapi.SupportedScheme,
+		WatchConfig: minkapi.WatchConfig{
+			QueueSize: minkapi.DefaultWatchQueueSize,
+			Timeout:   minkapi.DefaultWatchTimeout,
 		},
 	}
 	testObjects map[string]metav1.Object
 )
 
 func init() {
-	decoder := serializer.NewCodecFactory(typeinfo.SupportedScheme).UniversalDeserializer()
+	decoder := serializer.NewCodecFactory(minkapi.SupportedScheme).UniversalDeserializer()
 	entries, err := os.ReadDir(testdataPath)
 	if err != nil {
 		return

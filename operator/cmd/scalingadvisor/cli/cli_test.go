@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gardener/scaling-advisor/api/common/constants"
+	apicommon "github.com/gardener/scaling-advisor/api/common"
 	configv1alpha1 "github.com/gardener/scaling-advisor/api/config/v1alpha1"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -78,9 +78,9 @@ func TestLaunchOptions_ValidateAndLoadOperatorConfig(t *testing.T) {
 }
 
 func updateOperatorConfigWithDefaults(operatorConfig *configv1alpha1.OperatorConfig) *configv1alpha1.OperatorConfig {
-	configv1alpha1.SetDefaults_ScalingAdvisorServerConfiguration(&operatorConfig.Server)
+	configv1alpha1.SetDefaults_OperatorConfig(operatorConfig)
 	operatorConfig.TypeMeta = metav1.TypeMeta{
-		Kind:       constants.KindOperatorConfig,
+		Kind:       apicommon.KindOperatorConfig,
 		APIVersion: configv1alpha1.SchemeGroupVersion.String(),
 	}
 	return operatorConfig

@@ -5,14 +5,13 @@
 package coreaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,11 +30,11 @@ type serviceAccess struct {
 }
 
 // NewServiceAccess creates a new access facade for managing Service resources within a specific namespace using the given minkapi View.
-func NewServiceAccess(view minkapi.View, namespace string) clientcorev1.ServiceInterface {
+func NewServiceAccess(view api.View, namespace string) clientcorev1.ServiceInterface {
 	return &serviceAccess{
 		access.GenericResourceAccess[*corev1.Service, *corev1.ServiceList]{
 			View:      view,
-			GVK:       typeinfo.ServicesDescriptor.GVK,
+			GVK:       api.ServicesDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -74,13 +73,13 @@ func (a *serviceAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *serviceAccess) Apply(_ context.Context, _ *v1.ServiceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Service, err error) {
-	return nil, fmt.Errorf("%w: Apply of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *serviceAccess) ApplyStatus(_ context.Context, _ *v1.ServiceApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Service, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus of %q is not supported", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *serviceAccess) ProxyGet(_, _, _, _ string, _ map[string]string) rest.ResponseWrapper {
-	panic(commonerrors.ErrUnimplemented)
+	panic(errors.ErrUnsupported)
 }

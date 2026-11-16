@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
+
 	"github.com/gardener/scaling-advisor/common/objutil"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -240,10 +240,10 @@ func (s *InMemResourceStore) List(ctx context.Context, c minkapi.MatchCriteria) 
 	log := logr.FromContextOrDiscard(ctx)
 	items := filterOutTombstones(s.cache.List())
 	currVersionStr := fmt.Sprintf("%d", s.CurrentResourceVersion())
-	typesMap := typeinfo.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
+	typesMap := minkapi.SupportedScheme.KnownTypes(s.args.ObjectGVK.GroupVersion())
 	listType, ok := typesMap[s.args.ObjectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
-		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), s.args.ObjectListGVK)
+		return nil, runtime.NewNotRegisteredErrForKind(minkapi.SupportedScheme.Name(), s.args.ObjectListGVK)
 	}
 	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
 	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList
@@ -609,10 +609,10 @@ func (s *InMemResourceStore) nextResourceVersion() int64 {
 // Returns the constructed runtime.Object or an error if the operation fails.
 func WrapMetaObjectsIntoRuntimeListObject(resourceVersion int64, objectGVK schema.GroupVersionKind, objectListGVK schema.GroupVersionKind, items []metav1.Object) (listObj runtime.Object, err error) {
 	resourceVersionStr := strconv.FormatInt(resourceVersion, 10)
-	typesMap := typeinfo.SupportedScheme.KnownTypes(objectGVK.GroupVersion())
+	typesMap := minkapi.SupportedScheme.KnownTypes(objectGVK.GroupVersion())
 	listType, ok := typesMap[objectListGVK.Kind] // Ex: Get Go reflect.type for the PodList
 	if !ok {
-		return nil, runtime.NewNotRegisteredErrForKind(typeinfo.SupportedScheme.Name(), objectListGVK)
+		return nil, runtime.NewNotRegisteredErrForKind(minkapi.SupportedScheme.Name(), objectListGVK)
 	}
 	listObjPtr := reflect.New(listType) // Ex: reflect.Value wrapper of *PodList
 	listObjVal := listObjPtr.Elem()     // Ex: reflect.Elem wrapper of PodList

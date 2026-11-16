@@ -1,0 +1,136 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: instancepricesets.scad.gardener.cloud
+spec:
+  group: scad.gardener.cloud
+  names:
+    kind: InstancePriceSet
+    listKind: InstancePriceSetList
+    plural: instancepricesets
+    shortNames:
+    - ips
+    singular: instancepriceset
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provider
+      name: Provider
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InstancePriceSet defines a top-level object with a [InstancePriceSetSpec] consisting of all the [InstancePrice]'s.
+          Any instance type referenced by a [NodeTemplate] should have a corresponding [InstancePrice].
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the specification of this InstancePriceSet
+            properties:
+              prices:
+                description: |-
+                  Prices is a slice of [InstancePrice]'s uniquely keyed on the composite
+                  ([InstancePrice.InstanceType], [InstancePrice.Region], [InstancePrice.CapacityType]) tuple.
+                  Duplicate composite keys are rejected by admission validation.
+                items:
+                  description: InstancePrice describes pricing information along with
+                    an [InstancePriceKey].
+                  properties:
+                    capacityType:
+                      description: CapacityType represents procurement model of compute
+                        capacity.
+                      enum:
+                      - on-demand
+                      - spot
+                      type: string
+                    instanceType:
+                      description: InstanceType is the name of the cloud provider's
+                        instance type.
+                      type: string
+                    price:
+                      type: string
+                    region:
+                      description: Region is the cloud provider region.
+                      type: string
+                    resourceUnitPrice:
+                      items:
+                        description: ResourceUnitPrice is the unit price for a resource.
+                        properties:
+                          name:
+                            description: ResourceName is the name identifying various
+                              resources in a ResourceList.
+                            type: string
+                          value:
+                            description: |-
+                              Value is the price per unit of this resource in USD, expressed as a positive decimal string.
+                              The value must be greater than zero.
+                              Examples: "0.048", "0.006"
+
+                              Using string rather than float64 follows the convention established by other Kubernetes ecosystem
+                              projects to avoid floating-point representation issues in CRD-serialized fields:
+                                - karpenter NodeOverlaySpec.Price *string (github.com/kubernetes-sigs/karpenter, pkg/apis/v1alpha1/nodeoverlay.go)
+                                - cluster-api-provider-aws SpotMarketOptions.MaxPrice *string (sigs.k8s.io/cluster-api-provider-aws, api/v1beta2/types.go)
+                                - kubecost OTC cloud types Price string (github.com/opencost/opencost, pkg/cloud/otc/types.go)
+                            pattern: ^(0\.[0-9]*[1-9]|[1-9][0-9]*(\.[0-9]+)?)$
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                  required:
+                  - capacityType
+                  - instanceType
+                  - price
+                  - region
+                  type: object
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - instanceType
+                - region
+                - capacityType
+                x-kubernetes-list-type: map
+              provider:
+                description: Provider is the cloud provider for which these prices
+                  apply.
+                enum:
+                - aws
+                - gcp
+                - azure
+                - ali
+                - openstack
+                type: string
+            required:
+            - prices
+            - provider
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

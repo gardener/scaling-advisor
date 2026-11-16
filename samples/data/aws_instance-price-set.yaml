@@ -1,0 +1,232 @@
+apiVersion: scad.gardener.cloud/v1alpha1
+kind: InstancePriceSet
+metadata:
+  name: aws
+  namespace: default
+spec:
+  prices:
+  - capacityType: on-demand
+    instanceType: c5.large
+    price: "0.085"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c5.large
+    price: "0.106"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c5.xlarge
+    price: "0.17"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c5.xlarge
+    price: "0.212"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c6a.large
+    price: "0.0765"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c6a.large
+    price: "0.0954"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c6g.large
+    price: "0.068"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c6g.large
+    price: "0.0848"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c6i.large
+    price: "0.085"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c6i.large
+    price: "0.106"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c6i.xlarge
+    price: "0.17"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c6i.xlarge
+    price: "0.212"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c7g.large
+    price: "0.0725"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c7g.large
+    price: "0.0901"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: c7i.large
+    price: "0.08925"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: c7i.large
+    price: "0.1113"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: g4dn.xlarge
+    price: "0.526"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: g4dn.xlarge
+    price: "0.631"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: g5.xlarge
+    price: "1.006"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: g6.xlarge
+    price: "0.8048"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m5.large
+    price: "0.096"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m5.large
+    price: "0.112"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m5.xlarge
+    price: "0.192"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m5.xlarge
+    price: "0.224"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m6a.large
+    price: "0.0864"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m6a.large
+    price: "0.1008"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m6g.large
+    price: "0.077"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m6g.large
+    price: "0.0896"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m6g.xlarge
+    price: "0.154"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m6g.xlarge
+    price: "0.1792"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m6i.large
+    price: "0.096"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m6i.large
+    price: "0.112"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m6i.xlarge
+    price: "0.192"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m6i.xlarge
+    price: "0.224"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m7g.large
+    price: "0.0816"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m7g.large
+    price: "0.0952"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: m7i.large
+    price: "0.1008"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: m7i.large
+    price: "0.1176"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: p3.2xlarge
+    price: "3.06"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: p5.4xlarge
+    price: "6.88"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r5.large
+    price: "0.126"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r5.large
+    price: "0.14"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: r5.xlarge
+    price: "0.252"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r5.xlarge
+    price: "0.28"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: r6a.large
+    price: "0.1134"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r6a.large
+    price: "0.126"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: r6g.large
+    price: "0.1008"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r6g.large
+    price: "0.112"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: r6i.large
+    price: "0.126"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r6i.large
+    price: "0.14"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: r7i.large
+    price: "0.1323"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: r7i.large
+    price: "0.147"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: t3.large
+    price: "0.0832"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: t3.large
+    price: "0.0992"
+    region: us-west-1
+  - capacityType: on-demand
+    instanceType: t3a.large
+    price: "0.0752"
+    region: us-east-1
+  - capacityType: on-demand
+    instanceType: t3a.large
+    price: "0.0893"
+    region: us-west-1
+  provider: aws

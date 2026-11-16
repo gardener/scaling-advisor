@@ -5,14 +5,13 @@
 package policyaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type podDisruptionBudgetAccess struct {
 }
 
 // NewPodDisruptionBudgetAccess creates a new access facade for managing PodDisruptionBudget resources within a specific namespace using the given minkapi View.
-func NewPodDisruptionBudgetAccess(view minkapi.View, namespace string) clientpolicyv1.PodDisruptionBudgetInterface {
+func NewPodDisruptionBudgetAccess(view api.View, namespace string) clientpolicyv1.PodDisruptionBudgetInterface {
 	return &podDisruptionBudgetAccess{
 		access.GenericResourceAccess[*policyv1.PodDisruptionBudget, *policyv1.PodDisruptionBudgetList]{
 			View:      view,
-			GVK:       typeinfo.PodDisruptionBudgetDescriptor.GVK,
+			GVK:       api.PodDisruptionBudgetDescriptor.GVK,
 			Namespace: namespace,
 		},
 	}
@@ -77,9 +76,9 @@ func (a *podDisruptionBudgetAccess) Patch(ctx context.Context, name string, pt t
 }
 
 func (a *podDisruptionBudgetAccess) Apply(_ context.Context, _ *v1.PodDisruptionBudgetApplyConfiguration, _ metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	return nil, fmt.Errorf("%w: Apply is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: Apply is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }
 
 func (a *podDisruptionBudgetAccess) ApplyStatus(_ context.Context, _ *v1.PodDisruptionBudgetApplyConfiguration, _ metav1.ApplyOptions) (result *policyv1.PodDisruptionBudget, err error) {
-	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", commonerrors.ErrUnimplemented, a.GVK.Kind)
+	return nil, fmt.Errorf("%w: ApplyStatus is not implemented for %q", errors.ErrUnsupported, a.GVK.Kind)
 }

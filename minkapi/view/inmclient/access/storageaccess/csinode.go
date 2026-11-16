@@ -5,14 +5,13 @@
 package storageaccess
 
 import (
+	"errors"
 	"context"
 	"fmt"
 
+	"github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/gardener/scaling-advisor/minkapi/view/inmclient/access"
 
-	commonerrors "github.com/gardener/scaling-advisor/api/common/errors"
-	"github.com/gardener/scaling-advisor/api/minkapi"
-	"github.com/gardener/scaling-advisor/api/minkapi/typeinfo"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,11 +29,11 @@ type csiNodeAccess struct {
 }
 
 // NewCSINodeAccess creates an access facade for managing CSINodeList resources using the given minkapi View.
-func NewCSINodeAccess(view minkapi.View) clientstoragev1.CSINodeInterface {
+func NewCSINodeAccess(view api.View) clientstoragev1.CSINodeInterface {
 	return &csiNodeAccess{
 		access.GenericResourceAccess[*storagev1.CSINode, *storagev1.CSINodeList]{
 			View:      view,
-			GVK:       typeinfo.CSINodeDescriptor.GVK,
+			GVK:       api.CSINodeDescriptor.GVK,
 			Namespace: metav1.NamespaceNone,
 		},
 	}
@@ -73,9 +72,9 @@ func (a *csiNodeAccess) Patch(ctx context.Context, name string, pt types.PatchTy
 }
 
 func (a *csiNodeAccess) Apply(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: apply is not implemented for csiNodes", errors.ErrUnsupported)
 }
 
 func (a *csiNodeAccess) ApplyStatus(_ context.Context, _ *applyconfigstoragev1.CSINodeApplyConfiguration, _ metav1.ApplyOptions) (result *storagev1.CSINode, err error) {
-	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", commonerrors.ErrUnimplemented)
+	return nil, fmt.Errorf("%w: applyStatus is not implemented for csiNodes", errors.ErrUnsupported)
 }

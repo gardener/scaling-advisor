@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	commontypes "github.com/gardener/scaling-advisor/api/common/types"
+	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -52,14 +52,14 @@ func BuildInformerFactories(client kubernetes.Interface, dyncClient dynamic.Inte
 // CreateNetworkClientFacades creates client facades for network access mode.
 // It builds clients and informer factories using the provided kubeconfig path and resync period,
 // then returns a client facade containing all necessary client components for network operations.
-func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPeriod time.Duration) (clientFacades commontypes.ClientFacades, err error) {
+func CreateNetworkClientFacades(log logr.Logger, kubeConfigPath string, resyncPeriod time.Duration) (clientFacades minkapi.ClientFacades, err error) {
 	client, dynClient, err := BuildClients(log, kubeConfigPath)
 	if err != nil {
 		return
 	}
 	informerFactory, dynInformerFactory := BuildInformerFactories(client, dynClient, resyncPeriod)
-	clientFacades = commontypes.ClientFacades{
-		Mode:               commontypes.ClientAccessModeNetwork,
+	clientFacades = minkapi.ClientFacades{
+		Mode:               minkapi.ClientAccessModeNetwork,
 		Client:             client,
 		DynClient:          dynClient,
 		InformerFactory:    informerFactory,

@@ -1,0 +1,19 @@
+apiVersion: scad.gardener.cloud/v1alpha1
+kind: NodeTemplateSet
+metadata:
+  name: two-pool
+  namespace: default
+spec:
+  templates:
+    - name: m5l
+      instanceType: m5.large
+      reservedResources:
+        cpu: 80m
+        memory: 1Gi
+        pid: 20k
+    - name: m5xl
+      instanceType: m5.xlarge
+      reservedResources:
+        cpu: 80m
+        memory: 1Gi
+        pid: 20k

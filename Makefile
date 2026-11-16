@@ -7,9 +7,9 @@ REPO_HACK_DIR       := $(REPO_ROOT)/hack
 
 include $(REPO_HACK_DIR)/tools.mk
 
-# run-in-submodules iterates over all submodules and invokes the passed in make target.
+# run-in-submodules iterates over all submodules listed in go.work and invokes the passed in make target.
 define run-in-submodules
-	@for dir in $$(find . -type f -name go.mod -exec dirname {} \; | sort); do \
+	@for dir in $$(grep -E '^\s+\./' $(REPO_ROOT)/go.work | awk '{print $$1}'); do \
 		echo "Running 'make $(1)' in $$dir"; \
 		$(MAKE) -C $$dir $(1) || exit 1; \
 	done
