@@ -1,0 +1,86 @@
+---
+title: ScaleOutSimulator - SimulatorStrategySingleNodeMultiSim
+config:
+  sequence:
+    mirrorActors: false
+---
+sequenceDiagram
+    participant sp as ScalingPlanner
+    participant sos as ScaleOutSimulator
+    participant ss as SimulatorState
+    participant sg as SimulationGroup
+    participant ns as NodeScorer
+    participant simf as SimulationFactory
+    participant sim as Simulation
+
+    sp->>+sos: Simulate(ctx, simf, requestView)
+    sos->>+ss: NewSimulatorState(request, config, simf, viewAccess)
+    ss-->>-sos: SimulatorState
+    alt requestView != nil
+        sos->>ss: SetRequestView(requestView)
+    else requestView == nil
+        sos->>ss: InitializeRequestView(ctx)
+        note right of ss: creates sandbox over base view
+        note right of ss: populates cluster snapshot
+        note right of ss: binds immediate-mode PVCs
+    end
+
+    sos->>sos: createAndGroupSimulations()
+    note right of sos: CreateAllNodeTemplates
+    note right of sos: one ScaleOutNodeTemplate per (NodePool, NodeTemplate, Zone)
+    loop for each ScaleOutNodeTemplate t
+        sos->>+simf: New(SimulationArgs{Name, NodeTemplates:[t], ...})
+        simf-->>-sos: Simulation
+    end
+    sos->>sos: simGroups = CreateScaleOutSimGroups(simulations)
+    note right of sos: grouped by GroupKey{PoolPriority, TemplatePriority}
+    note right of sos: sorted descending by priority
+
+    sos->>ss: groupPassView = RequestView()
+    loop for each simGroup g in descending priority order
+        loop stabilization - repeat until no winner or no leftover pods
+            sos->>+sg: Run(ctx, getViewFn)
+            note right of sg: runs all simulations in g
+            note right of sg: concurrently via errgroup
+            loop for each simulation s in g (concurrent)
+                sg->>+ss: CreateSandboxView(ctx, name, groupPassView)
+                ss-->>-sg: simView
+                sg->>+sim: Run(ctx, simView)
+                sim->>sim: CreateSimulationNodes(nodeTemplates)
+                sim->>sim: launchSchedulerForSimulation(ctx, simView)
+                sim->>sim: workAndTrackUntilStabilized(ctx, simView)
+                sim-->>-sg: SimulationResult
+            end
+            sg-->>-sos: []SimulationResult
+
+            sos->>sos: processSimulationResults(ctx, simResults)
+            loop for each SimulationResult with NodePodAssignments
+                sos->>+ns: Score(ctx, NodeScorerArgs)
+                ns-->>-sos: NodeScore
+            end
+            sos->>+ns: Select(ctx, allScores)
+            ns-->>-sos: winnerScore
+
+            alt winnerScore != nil
+                sos->>ss: CreateSandboxView(ctx, name, groupPassView)
+                sos->>sos: groupPassView = winnerScore.View
+                sos->>sos: append winnerScore to cycleResult.WinnerNodeScores
+                sos->>sos: cycleResult.LeftoverUnscheduledPods = winnerScore.UnscheduledPods
+            else winnerScore == nil
+                sos->>sos: end stabilization for g
+            end
+        end
+        sos->>sos: append cycleResult to allSimGroupCycleResults
+        opt AdviceGenerationMode == Incremental
+            sos->>sos: SendPlanResult(ctx, resultCh, req, cycleResult)
+            sos-->>sp: ScaleOutPlanResult (partial, via channel)
+        end
+        opt cycleResult.LeftoverUnscheduledPods == 0
+            sos->>sos: break (all pods scheduled)
+        end
+    end
+
+    opt AdviceGenerationMode == AllAtOnce
+        sos->>sos: SendPlanResult(ctx, resultCh, req, allSimGroupCycleResults)
+        sos-->>-sp: ScaleOutPlanResult (via channel)
+    end

@@ -1,0 +1,8 @@
+{
+  "theme": "neutral",
+  "themeVariables": {
+    "noteBkgColor": "#fffde7",
+    "noteTextColor": "#333",
+    "noteBorderColor": "#999"
+  }
+}

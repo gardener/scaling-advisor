@@ -190,7 +190,7 @@ sequenceDiagram
 
 **`Reconcile` flow**:
 
-1. Fetch constraint objects (`ScalingConstraint`, `ScalingFeedback`) from the control cluster, catalog objects (`NodeTemplateSet`, `InstanceTypeDefSet`, `InstancePriceSet`) from the catalog cluster (falling back to the shoot cluster), and scheduling-relevant objects (`Nodes`, `Pods`, `PVs`, etc.) from the target cluster.
+1. Fetch constraint objects (`ScalingConstraint`, `ScalingFeedback`) from the control cluster, catalog objects (`NodeTemplateSet`, `InstanceTypeDefSet`, `InstancePriceSet`) from the catalog cluster (falling back to the target cluster), and scheduling-relevant objects (`Nodes`, `Pods`, `PVs`, etc.) from the target cluster.
 2. Validate constraint and catalog objects. On failure, set `ScalingConstraint.Status.Conditions (Accepted=False)` and return error. On success, set `Accepted=True`.
 3. Build a `Request` from the fetched objects and the latest saved `Memento` (if any).
 4. Invoke `ScalingPlanner.Prepare`:
@@ -516,7 +516,7 @@ Simulators are facades that orchestrate one or more `Simulation` runs against sa
 | [`NodeScorerArgs`](../planner/api/types.go#L217) | Input to `NodeScorer.Score`: placement, pod assignments, leftover unscheduled pods, pricing, and resource weights. |
 | [`NodeScore`](../planner/api/types.go#L238) | Output of `NodeScorer.Score`: numeric score, placement, scaled node resource info, and unscheduled pods. |
 | [`SimulatorConfig`](../planner/api/types.go#L254) | Static config: under-utilization duration and max parallel simulations. |
-| [`ScaleOutNodeTemplate`](../simulation/api/types.go#L146) | Encapsulates all data needed to virtually scale out one node: embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`), full capacity (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional `Quota`, and `GroupKey`. Depending on SimulatorStrategy, either multiple simulations are created per `ScaleOutNodeTemplate` or multiple nodes in one simulation. |
+| [`ScaleOutNodeTemplate`](../simulation/api/types.go#L146) | Encapsulates all data needed to virtually scale out one node: embeds `NodePlacement` (`PoolName`, `TemplateName`, `InstanceType`, `Region`, `Zone`), full capacity (`BaseResources`, `ExtendedResources`, `ReservedResources`), `Labels`, `Taints`, optional ``, and `GroupKey`. Depending on SimulatorStrategy, either multiple simulations are created per `ScaleOutNodeTemplate` or multiple nodes in one simulation. |
 | [`GroupKey`](../simulation/api/types.go#L117) | Composite sort key `(NodePoolPriority, NodeTemplatePriority)` used to group and order simulation groups. |
 | [`SimulationGroup`](../simulation/api/types.go#L193) | A group of `Simulation`s sharing the same `GroupKey`; runs them concurrently and returns all `SimulationResult`s. |
 | [`ScaleOutSimGroupPassScores`](../planner/api/types.go#L453) | Scored results of one pass within a group: winner `NodeScore`, winner `Node`, and all scores. |
@@ -537,78 +537,13 @@ Key concepts:
 - **`ScaleOutSimGroupPassScores`**: the scored results of one pass: winner `NodeScore` plus all scores.
 - **`ScaleOutSimGroupCycleResult`**: accumulated result of all passes for one group: winner node scores, leftover unscheduled pods, pass count, and the `NextGroupPassView` handed to the next group.
 
-```mermaid
----
-title: ScaleOutSimulator - SimulatorStrategySingleNodeMultiSim
-config:
-  sequence:
-    mirrorActors: false
----
-sequenceDiagram
-    participant sp as ScalingPlanner
-    participant sos as ScaleOutSimulator
-    participant sg as SimulationGroup
-    participant va as ViewAccess
-    participant ns as NodeScorer
-    participant simf as SimulationFactory
-    participant sim as Simulation
-
-    sp->>+sos: Simulate(ctx, simf, view)
-    sos->>sos: SetRequestView(view)
-    sos->>sos: templates = CreateAllNodeTemplates(request)
-    note right of sos: one (NodePool, NodeTemplate, Zone) triple per template
-    loop for each template t
-        sos->>+simf: New(SimulationArgs{NodeTemplates: [t]})
-        simf-->>-sos: Simulation
-    end
-    sos->>sos: simGroups = CreateScaleOutSimGroups(simulations)
-    note right of sos: grouped and sorted by (NodePool.Priority, NodeTemplate.Priority) asc
-
-    sos->>sos: groupPassView = RequestView()
-    loop for each simGroup g in priority order
-        loop stabilization - repeat until no winner or no unscheduled pods
-            sos->>+sg: Run(ctx, getViewFn)
-            note right of sg: runs all simulations in g concurrently
-            loop for each simulation s in g (concurrent)
-                sg->>+va: GetSandboxViewOverDelegate(ctx, name, groupPassView)
-                va-->>-sg: simView
-                sg->>+sim: Run(ctx, simView)
-                sim->>sim: create virtual node in simView
-                sim->>sim: launch kube-scheduler against simView
-                sim->>sim: track until stable
-                sim-->>-sg: SimulationResult
-            end
-            sg-->>-sos: []SimulationResult
-            loop for each SimulationResult with NodePodAssignments
-                sos->>+ns: Score(ctx, NodeScorerArgs)
-                ns-->>-sos: NodeScore
-            end
-            sos->>+ns: Select(ctx, []NodeScore)
-            ns-->>-sos: winnerScore
-            alt winner found
-                sos->>sos: groupPassView = winnerScore.View
-                sos->>sos: append winnerScore to cycleResult.WinnerNodeScores
-            else no winner
-                sos->>sos: end stabilization for g
-            end
-        end
-        sos->>sos: record ScaleOutSimGroupCycleResult
-        opt AdviceGenerationMode == Incremental
-            sos-->>sp: ScaleOutPlanResult (partial)
-        end
-    end
-
-    opt AdviceGenerationMode == AllAtOnce
-        sos->>sos: ComputeScaleOutPlan(allCycleResults)
-        sos-->>-sp: ScaleOutPlanResult
-    end
-```
+![ScaleOutSimulator - SimulatorStrategySingleNodeMultiSim](./assets/single-node-multi-sim.svg)
 
 ##### SimulatorStrategyMultiNodeSingleSim (multi-node-single-sim)
 
 `SimulatorStrategyMultiNodeSingleSim` represents a simulator strategy in which the `ScaleOutSimulator` runs a single simulation by scaling multiple nodes for all combinations of NodePool, NodeTemplate and AvailabilityZone, ie for all `ScaleOutNodeTemplate`s
 
-This section is 🚧.
+This section will be filled up when the PR for this feature is raised in the future. 
 
 ## TODO
 
