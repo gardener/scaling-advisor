@@ -2,14 +2,18 @@
 
 ## High Level View
 
-The `scaling-advisor` is an *advisory controller* that operates across two clusters:
+The `scaling-advisor` is an *advisory controller* that operates across the control cluster, the target custer and the catalog cluster.
 
-- **Control cluster**: hosts the custom resources that provide constraints and configuration for scaling.
-- **Target cluster**: the workload cluster for whom scaling advice should be generated.
+- **Control cluster**: hosts the custom resources that provide constraints, configuration, advice and feedback for scaling the target cluster.
+- **Catalog cluster**: the cluster in which common master data - catalog objects are stored. Generally a global cluster meant to hold read-only project data. Read only access.
+- **Target cluster**: the workload cluster for whom scaling advice should be generated. Catalog objects may be defined or overriden here.
 
-The operator watches both clusters and runs a reconcile loop on every relevant change:
+The operator watches clusters and runs a reconcile loop on every relevant change:
 
-1. Reads [ScalingConstraint](../api/core/v1alpha1/scalingconstraints.go#L26) (node pools, strategies), [NodeTemplateSet](../api/core/v1alpha1/nodetemplateset.go#L15) (available node templates), [InstanceTypeDefSet](../api/core/v1alpha1/instancetypedefset.go#L19) (instance capacities), and [InstancePriceSet](../api/core/v1alpha1/instancepriceset.go#L18) (pricing) from the control cluster.
+1. Reads [ScalingConstraint](../api/core/v1alpha1/scalingconstraints.go#L26) (node pools, strategies), [ScalingFeedback](../api/core/v1alpha1/scalingfeedback.go#L29) from the control cluster.
+
+1. Read [NodeTemplateSet](../api/core/v1alpha1/nodetemplateset.go#L15) (available node templates), [InstanceTypeDefSet](../api/core/v1alpha1/instancetypedefset.go#L19) (instance capacities), and [InstancePriceSet](../api/core/v1alpha1/instancepriceset.go#L18) (pricing) from the catalog cluster.
+1. Read custom overrides for the `NodeTemplateSet`, `InstanceTypeDefSet` and `InstancePriceSet` from the target cluster
 2. Reads scheduling-relevant objects (Nodes, Pods, PVs, PVCs, StorageClasses, PriorityClasses, RuntimeClasses, CSINodes) from the target cluster.
 3. Builds a [Request](../planner/api/types.go#L34) and invokes the [ScalingPlanner](../planner/api/types.go#L280), which delivers one or more [Response](../planner/api/types.go#L74)s on a result channel.
 4. Converts each `Response` into a [ScalingAdvice](../api/core/v1alpha1/scalingadvice.go#L30) resource written to the control cluster. `ScalingAdvice.Spec` carries a [ScaleOutPlan](../api/core/v1alpha1/scalingadvice.go#L79) and/or [ScaleInPlan](../api/core/v1alpha1/scalingadvice.go#L90).
@@ -19,7 +23,7 @@ A **Lifecycle Manager** (e.g. [machine-controller-manager](https://github.com/ga
 - Watches `ScalingAdvice` and provisions or decommissions machine instances accordingly.
 - Writes a [ScalingFeedback](../api/core/v1alpha1/scalingfeedback.go#L29) resource (owned by its `ScalingAdvice`, sharing the same name/namespace) with `ScaleOutFeedback`/`ScaleInFeedback` and sets [AcknowledgedAt](../api/core/v1alpha1/scalingfeedback.go#L53) when it has acted on the advice.
 
-The `scaling-advisor` reads `ScalingFeedback` to pace subsequent advice: it will not produce a new `ScalingAdvice` until the lifecycle manager has set `ScalingFeedback.Spec.AcknowledgedAt`.
+The `scaling-advisor` reads `ScalingFeedback` to pace subsequent advice: it will not produce a new `ScalingAdvice` until the lifecycle manager has set `ScalingFeedback.Spec.AcknowledgedAt`, or the current `ScalingAdvice` is determined to be outdated and marked `Expired`.
 
 ![High Level Operational View](./assets/high-level.svg)
 
@@ -63,9 +67,9 @@ The operator accepts the following CLI parameters:
 | `--control-namespace` | Yes | Namespace in the control cluster where `ScalingConstraint`, `ScalingAdvice`, `ScalingFeedback` objects reside. |
 | `--control-kubeconfig` | Yes | Kubeconfig for the control cluster. |
 | `--target-kubeconfig` | Yes | Kubeconfig for the target (workload) cluster. |
-| `--catalog-kubeconfig` | No | Kubeconfig for an optional catalog cluster hosting shared `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` overrides. Falls back to `--shoot-kubeconfig` if absent. |
+| `--catalog-kubeconfig` | No | Kubeconfig for an optional catalog cluster hosting shared `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` overrides. Falls back to `--target-kubeconfig` if absent. |
 
-**Catalog precedence**: when `--catalog-kubeconfig` is provided, the operator reads `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` from the catalog cluster in preference to the shoot cluster. This allows a shared catalog of instance types and pricing to be maintained centrally and consumed by multiple operators.
+**Catalog precedence**: when `--catalog-kubeconfig` is provided, the operator reads `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` from the catalog cluster in preference to the target cluster. This allows a shared catalog of instance types and pricing to be maintained centrally and consumed by multiple operators.
 
 #### Operator Reconciliation
 
@@ -161,7 +165,7 @@ sequenceDiagram
 
 The `Reconciler` writes a [`ScalingAdvice`](../api/core/v1alpha1/scalingadvice.go#L30) to the control cluster after each successful planner invocation. The **Lifecycle Manager** (LM, e.g. [machine-controller-manager](https://github.com/gardener/machine-controller-manager)) watches `ScalingAdvice` and responds by writing a companion [`ScalingFeedback`](../api/core/v1alpha1/scalingfeedback.go#L29) resource (same name and namespace, owner-referenced to the `ScalingAdvice`).
 
-**Pacing rule**: the `Reconciler` will not produce a new `ScalingAdvice` until [`ScalingFeedback.Spec.AcknowledgedAt`](../api/core/v1alpha1/scalingfeedback.go#L53) is set on the current one.
+**Pacing rule**: the `Reconciler` will not produce a new `ScalingAdvice` until [`ScalingFeedback.Spec.AcknowledgedAt`](../api/core/v1alpha1/scalingfeedback.go#L53) is set on the current one or the current `ScalingAdvice` has been determined to be expired by the operator.
 
 ##### LM feedback protocol
 1. On observing a new `ScalingAdvice`, the LM *immediately* sets `ScalingFeedback.Spec.AcknowledgedAt` to signal receipt and commitment to act.
