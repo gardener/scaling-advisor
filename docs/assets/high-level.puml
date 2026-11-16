@@ -1,0 +1,44 @@
+@startuml high-level
+top to bottom direction
+together {
+  rectangle "Instance Lifecycle Manager\n(e.g. Machine Controller Manager)" as lcm
+  rectangle "scaling-advisor\n(advisory controller)" as scadop
+}
+
+together {
+  database "API Server\n(control cluster)\n\nCRDs: ScalingConstraint,\nScalingFeedback, ScalingAdvice" as apiserverctl
+  database "API Server\n(catalog cluster)\n\nNodeTemplateSet,\nInstanceTypeDefSet,\nInstancePriceSet\n\n(falls back to target\ncluster if absent)" as apiservercat
+  database "API Server\n(target cluster)\n\nNodes, Pods, PVs,\nPVCs, CSINodes, ...\n\nOverrides: NodeTemplateSet,\nInstanceTypeDefSet, InstancePriceSet" as apiservertgt
+  apiserverctl -[hidden]right-> apiservercat
+  apiservercat -[hidden]right-> apiservertgt
+}
+
+cloud "Cloud Provider" as cp
+
+'─── real arrows ──────────────────────────────────────────
+
+' 1: scaling-advisor watches control cluster CRs
+apiserverctl --> scadop : 1  watch ScalingConstraint,\nScalingFeedback
+
+' 2: scaling-advisor reads catalog objects
+apiservercat --> scadop : 2  read NodeTemplateSet,\nInstanceTypeDefSet,\nInstancePriceSet
+
+' 3: scaling-advisor watches target cluster objects + overrides
+apiservertgt --> scadop : 3  watch Nodes, Pods,\nPVs, PVCs, ... →\nClusterSnapshot;\ncatalog overrides
+
+' 4: LCM watches ScalingAdvice
+apiserverctl --> lcm : 4  watch ScalingAdvice
+
+' 5: LCM provisions/removes cloud instances
+lcm --> cp : 5  add/remove instances
+
+' 6: Cloud registers new Nodes on target cluster
+cp --> apiservertgt : 6  register Nodes /\nreport ResourceExhaustion
+
+' 7: LCM writes ScalingFeedback
+lcm --> apiserverctl : 7  write ScalingFeedback\n(AcknowledgedAt,\nScaleOutFeedback,\nScaleInFeedback)
+
+' 8: scaling-advisor writes ScalingAdvice
+scadop --> apiserverctl : 8  write ScalingAdvice\n(ScaleOutPlan / ScaleInPlan)
+
+@enduml

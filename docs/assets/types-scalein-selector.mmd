@@ -1,0 +1,20 @@
+---
+title: ScaleInCandidateSelector - Types
+---
+classDiagram
+    class ScaleInCandidateSelector {
+        <<interface>>
+        +Select(ctx, View, ScaleInCandidateSelectorArgs) []Node
+    }
+    class ScaleInCandidateSelectorArgs {
+        +PoolConfigs map~string,NodePoolScaleInConfig~
+    }
+    class NodePoolScaleInConfig {
+        +UtilizationThresholds map~ResourceName,float64~
+        +MinLimits ResourceList
+        +TemplatePriorities map~string,int32~
+        +Priority int32
+    }
+
+    ScaleInCandidateSelector ..> ScaleInCandidateSelectorArgs : uses
+    ScaleInCandidateSelectorArgs *-- NodePoolScaleInConfig : PoolConfigs

@@ -1,0 +1,127 @@
+---
+title: ScalingPlanner - Simulator Types
+---
+classDiagram
+    class ScalingPlannerArgs {
+        +ViewAccess ViewAccess
+        +SchedulerLauncher SchedulerLauncher
+        +SimulatorFactory SimulatorFactory
+        +SimulationFactory SimulationFactory
+        +SimulatorConfig SimulatorConfig
+        +TraceDir string
+    }
+    class SimulatorFactory {
+        <<interface>>
+        +GetScaleOutSimulator(SimulatorArgs) ScaleOutSimulator
+        +GetScaleInSimulator(SimulatorArgs) ScaleInSimulator
+    }
+    class SimulatorArgs {
+        +ViewAccess ViewAccess
+        +SchedulerLauncher SchedulerLauncher
+        +NodeScorer NodeScorer
+        +Request Request
+        +Strategy SimulatorStrategy
+        +Config SimulatorConfig
+        +TraceDir string
+    }
+    class ScaleOutSimulator {
+        <<interface>>
+        +Simulate(ctx, SimulationFactory, View) chan~ScaleOutPlanResult~
+        +Close() error
+    }
+    class ScaleInSimulator {
+        <<interface>>
+        +Simulate(ctx, SimulationFactory, View) chan~ScaleInPlanResult~
+        +Close() error
+    }
+    class ScaleOutPlanResult {
+        +ScaleOutPlan ScaleOutPlan
+        +Labels map~string,string~
+        +Error error
+    }
+    class ScaleInPlanResult {
+        +ScaleInPlan ScaleInPlan
+        +Memento ScaleInMemento
+        +View View
+        +Labels map~string,string~
+        +Error error
+    }
+    class NodeScorer {
+        <<interface>>
+        +Score(ctx, NodeScorerArgs) NodeScore
+        +Select(ctx, []NodeScore) NodeScore
+    }
+    class NodeScorerArgs {
+        +ID string
+        +ResourceWeights map~ResourceName,float64~
+        +InstancePrices []InstancePrice
+        +ScaledNodePlacement NodePlacement
+        +ScaledNodePodAssignment NodePodAssignment
+        +OtherNodePodAssignments []NodePodAssignment
+        +LeftOverUnscheduledPods []NamespacedName
+    }
+    class NodeScore {
+        +Name string
+        +Placement NodePlacement
+        +ScaledNodeResource NodeResourceInfo
+        +Value int
+        +UnscheduledPods []NamespacedName
+        +ResourceWeights map~ResourceName,float64~
+        +InstancePrices []InstancePrice
+    }
+    class SimulatorConfig {
+        +UnderutilizedDuration time.Duration
+        +MaxParallelSimulations int
+    }
+    class ScaleOutNodeTemplate {
+        +GroupKey GroupKey
+        +NodePlacement NodePlacement
+        +BaseResources ResourceList
+        +ExtendedResources ResourceList
+        +ReservedResources ResourceList
+        +Labels map~string,string~
+        +Taints []Taint
+    }
+    class GroupKey {
+        +NodePoolPriority int32
+        +NodeTemplatePriority int32
+    }
+    class SimulationGroup {
+        <<interface>>
+        +Key() GroupKey
+        +GetSimulations() []Simulation
+        +AddSimulation(Simulation)
+        +Run(ctx, GetViewFunc) []SimulationResult
+    }
+    class ScaleOutSimGroupPassScores {
+        +WinnerScore NodeScore
+        +WinnerNode Node
+        +AllScores []NodeScore
+    }
+    class ScaleOutSimGroupCycleResult {
+        +Name string
+        +WinnerNodeScores []NodeScore
+        +LeftoverUnscheduledPods []NamespacedName
+        +PassNum int
+        +NextGroupPassView View
+    }
+
+    ScalingPlannerArgs *-- SimulatorFactory
+    ScalingPlannerArgs *-- SimulatorConfig
+    SimulatorFactory ..> ScaleOutSimulator : creates
+    SimulatorFactory ..> ScaleInSimulator : creates
+    SimulatorFactory ..> SimulatorArgs : accepts
+    ScaleOutSimulator ..> ScaleOutPlanResult : produces
+    ScaleInSimulator ..> ScaleInPlanResult : produces
+    ScaleOutSimulator ..> NodeScorer : uses
+    ScaleInSimulator ..> NodeScorer : uses
+    NodeScorer ..> NodeScorerArgs : accepts
+    NodeScorer ..> NodeScore : produces
+    ScaleOutSimulator ..> ScaleOutNodeTemplate : creates
+    ScaleOutNodeTemplate *-- GroupKey
+    ScaleOutSimulator ..> SimulationGroup : organizes
+    SimulationGroup *-- GroupKey
+    ScaleOutSimulator ..> ScaleOutSimGroupPassScores : produces per pass
+    ScaleOutSimulator ..> ScaleOutSimGroupCycleResult : produces per group
+    ScaleOutSimGroupPassScores *-- NodeScore
+    ScaleOutSimGroupCycleResult *-- NodeScore
