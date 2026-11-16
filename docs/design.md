@@ -28,6 +28,58 @@ The `scaling-advisor` reads `ScalingFeedback` to pace subsequent advice: it will
 ![High Level Operational View](./assets/high-level.svg)
 
 
+## Custom Resources and Types
+
+The following diagram illustrates the custom resources and their associated types within the `/api` module.
+
+### Scaling Constraints and Catalog Resources
+
+![Scaling Constraints and Catalog Resources](./assets/types-crds-constraints.svg)
+
+| Type | Description |
+|---|---|
+| [`ScalingConstraint`](../api/core/v1alpha1/scalingconstraints.go#L26) | CRD (control cluster): defines node pools and strategies used to generate `ScalingAdvice`. |
+| [`ScalingConstraintSpec`](../api/core/v1alpha1/scalingconstraints.go#L49) | Planner and simulator strategy selectors plus the list of `NodePool`s. |
+| [`ScalingConstraintStatus`](../api/core/v1alpha1/scalingconstraints.go#L82) | Validation conditions set by the operator after reconciling a `ScalingConstraint`. |
+| [`NodePool`](../api/core/v1alpha1/scalingconstraints.go#L93) | A scalable node pool: region, zones, template references, priority, and optional resource limits. |
+| [`NodeTemplateRef`](../api/core/v1alpha1/scalingconstraints.go#L120) | References a `NodeTemplate` by name with a relative priority within its parent `NodePool`. |
+| [`ResourceLimits`](../api/core/v1alpha1/scalingconstraints.go#L134) | Min/max aggregate resource bounds for the node pool. |
+| [`ScalingParams`](../api/core/v1alpha1/scalingconstraints.go#L145) | Per-pool scale-in tuning: utilization thresholds and the minimum underutilized duration. |
+| [`ResourceUtilizationThreshold`](../api/core/v1alpha1/scalingconstraints.go#L153) | Pairs a resource name (e.g. `cpu`, `memory`) with its utilization threshold fraction. |
+| [`PlannerStrategy`](../api/common/types.go#L49) | Enumeration: high-level ordering policy (scale-in first, scale-out first, or consolidated). |
+| [`SimulatorStrategy`](../api/common/types.go#L92) | Enumeration: `SingleNodeMultiSim` (one node per simulation) vs `MultiNodeSingleSim` (all nodes in one). |
+| [`NodeScoringStrategy`](../api/common/types.go#L149) | Enumeration: algorithm for ranking scale-out candidates — `LeastWaste` or `LeastCost`. |
+| [`NodeTemplateSet`](../api/core/v1alpha1/nodetemplateset.go#L15) | CRD (catalog cluster): holds all `NodeTemplate`s available to the scaling-advisor. |
+| [`NodeTemplate`](../api/core/v1alpha1/nodetemplateset.go#L49) | Node configuration for one instance type: reserved/extended resources and the instance type name. |
+| [`InstanceTypeDefSet`](../api/core/v1alpha1/instancetypedefset.go#L19) | CRD (catalog cluster): holds all `InstanceTypeDef`s for a given cloud provider. |
+| [`InstanceTypeDef`](../api/core/v1alpha1/instancetypedefset.go#L53) | Base hardware specification for a cloud instance type: CPU architecture and raw resource capacity. |
+| [`InstancePriceSet`](../api/core/v1alpha1/instancepriceset.go#L18) | CRD (catalog cluster): holds pricing data for all instance types of a given cloud provider. |
+| [`InstancePrice`](../api/core/v1alpha1/instancepriceset.go#L76) | Price for one `(instanceType, region, capacityType)` combination, with optional per-resource unit prices. |
+| [`ResourceUnitPrice`](../api/core/v1alpha1/instancepriceset.go#L83) | Unit price for a single resource (e.g. GPU hours) within an `InstancePrice`. |
+| [`CloudProvider`](../api/common/types.go#L167) | Enumeration: cloud provider identity — `aws`, `gcp`, `azure`, `ali`, `openstack`. |
+| [`CapacityType`](../api/common/types.go#L219) | Enumeration: compute capacity procurement model — `on-demand` or `spot`. |
+
+### Scaling Advice and Scaling Feedback
+
+![Scaling Advice and Scaling Feedback](./assets/types-crds-advice.svg)
+
+| Type | Description |
+|---|---|
+| [`ScalingAdvice`](../api/core/v1alpha1/scalingadvice.go#L30) | CRD (control cluster): scaling advice produced by the operator, consumed by the lifecycle manager. |
+| [`ScalingAdviceSpec`](../api/core/v1alpha1/scalingadvice.go#L53) | The generated plan: optional scale-out, scale-in, and surge plans plus a reference to the originating `ScalingConstraint`. |
+| [`ScalingAdviceStatus`](../api/core/v1alpha1/scalingadvice.go#L71) | Operator-set conditions on the `ScalingAdvice` (e.g. `Expired`). |
+| [`ScaleOutPlan`](../api/core/v1alpha1/scalingadvice.go#L80) | List of scale-out items plus any pod names that could not be satisfied. |
+| [`ScaleInPlan`](../api/core/v1alpha1/scalingadvice.go#L91) | List of specific nodes recommended for removal. |
+| [`ScaleOutItem`](../api/core/v1alpha1/scalingadvice.go#L109) | Recommendation to add `delta` nodes at a given `NodePlacement`, with the current replica count. |
+| [`ScaleInItem`](../api/core/v1alpha1/scalingadvice.go#L99) | Recommendation to remove a specific node identified by name and placement. |
+| [`NodePlacement`](../api/core/v1alpha1/scalingadvice.go#L132) | Identifies the target pool, template, instance type, region, and zone for a scaling operation. |
+| [`ScalingAdviceDiagnostic`](../api/core/v1alpha1/scalingadvice.go#L173) | References to trace and run-results logs for debugging a `ScalingAdvice`. |
+| [`ScalingFeedback`](../api/core/v1alpha1/scalingfeedback.go#L29) | CRD (control cluster): written by the lifecycle manager in response to a `ScalingAdvice`; shares its name/namespace and is owned by it. |
+| [`ScalingFeedbackSpec`](../api/core/v1alpha1/scalingfeedback.go#L47) | Lifecycle manager response: acknowledgement timestamp and per-item scale-out/scale-in feedback. |
+| [`ScaleOutFeedback`](../api/core/v1alpha1/scalingfeedback.go#L62) | Feedback on the scale-out plan: one `ScaleOutItemFeedback` per `ScaleOutItem`. |
+| [`ScaleOutItemFeedback`](../api/core/v1alpha1/scalingfeedback.go#L71) | Per-item feedback: fail count, optional backoff deadline, and a human-readable message. |
+| [`ScaleInFeedback`](../api/core/v1alpha1/scalingfeedback.go#L90) | Feedback on the scale-in plan: names of nodes accepted for removal by the lifecycle manager. |
+
 ## Modules
 The scaling-advisor has been structured into several Go modules, some of which are independently reusable.
 
@@ -66,10 +118,9 @@ The operator accepts the following CLI parameters:
 |---|---|---|
 | `--control-namespace` | Yes | Namespace in the control cluster where `ScalingConstraint`, `ScalingAdvice`, `ScalingFeedback` objects reside. |
 | `--control-kubeconfig` | Yes | Kubeconfig for the control cluster. |
-| `--target-kubeconfig` | Yes | Kubeconfig for the target (workload) cluster. |
-| `--catalog-kubeconfig` | No | Kubeconfig for an optional catalog cluster hosting shared `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` overrides. Falls back to `--target-kubeconfig` if absent. |
+| `--catalog-kubeconfig` | No | Kubeconfig for an optional catalog cluster hosting shared `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` objects. Falls back to `--target-kubeconfig` if absent. |
+| `--target-kubeconfig` | Yes | Kubeconfig for the target (workload) cluster. Holds overrides for the catalog resources.|
 
-**Catalog precedence**: when `--catalog-kubeconfig` is provided, the operator reads `NodeTemplateSet`, `InstanceTypeDefSet`, and `InstancePriceSet` from the catalog cluster in preference to the target cluster. This allows a shared catalog of instance types and pricing to be maintained centrally and consumed by multiple operators.
 
 #### Operator Reconciliation
 

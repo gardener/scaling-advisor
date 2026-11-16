@@ -1,0 +1,87 @@
+---
+title: Scaling Advice and Scaling Feedback
+---
+classDiagram
+    class ScalingAdvice {
+        <<CRD shortName=scad>>
+        +ScalingAdviceSpec spec
+        +ScalingAdviceStatus status
+    }
+    class ScalingAdviceSpec {
+        +NamespacedName constraintRef
+        +ScaleOutPlan scaleOut
+        +ScaleInPlan scaleIn
+        +ScaleOutPlan surge
+        +ScalingAdviceDiagnostic diagnostic
+    }
+    class ScalingAdviceStatus {
+        +Condition[] conditions
+    }
+    class ScaleOutPlan {
+        +string[] unsatisfiedPodNames
+        +ScaleOutItem[] items
+    }
+    class ScaleInPlan {
+        +ScaleInItem[] items
+    }
+    class ScaleOutItem {
+        +NodePlacement nodePlacement
+        +string name
+        +int32 currentReplicas
+        +int32 delta
+    }
+    class ScaleInItem {
+        +NodePlacement nodePlacement
+        +string nodeName
+    }
+    class NodePlacement {
+        +string poolName
+        +string templateName
+        +string instanceType
+        +string region
+        +string availabilityZone
+    }
+    class ScalingAdviceDiagnostic {
+        +string traceLogName
+        +string runResultsLogName
+    }
+
+    class ScalingFeedback {
+        <<CRD shortName=sfb>>
+        +ScalingFeedbackSpec spec
+    }
+    class ScalingFeedbackSpec {
+        +Time acknowledgedAt
+        +ScaleOutFeedback scaleOut
+        +ScaleInFeedback scaleIn
+    }
+    class ScaleOutFeedback {
+        +ScaleOutItemFeedback[] items
+    }
+    class ScaleOutItemFeedback {
+        +string name
+        +int32 failCount
+        +Time backoffUntil
+        +string message
+    }
+    class ScaleInFeedback {
+        +string[] acceptedNodeNames
+    }
+
+    %% ── Relationships ─────────────────────────────────────────────────────────
+    ScalingAdvice *-- ScalingAdviceSpec
+    ScalingAdvice *-- ScalingAdviceStatus
+    ScalingAdviceSpec *-- ScaleOutPlan
+    ScalingAdviceSpec *-- ScaleInPlan
+    ScalingAdviceSpec *-- ScalingAdviceDiagnostic
+    ScaleOutPlan *-- ScaleOutItem
+    ScaleInPlan *-- ScaleInItem
+    ScaleOutItem *-- NodePlacement
+    ScaleInItem *-- NodePlacement
+
+    ScalingFeedback *-- ScalingFeedbackSpec
+    ScalingFeedbackSpec *-- ScaleOutFeedback
+    ScalingFeedbackSpec *-- ScaleInFeedback
+    ScaleOutFeedback *-- ScaleOutItemFeedback
+
+    ScalingFeedback ..> ScalingAdvice : owned by

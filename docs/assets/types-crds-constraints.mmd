@@ -1,0 +1,152 @@
+---
+title: Scaling Constraints and Catalog Resources
+---
+classDiagram
+    %% ── Control-cluster CRD ───────────────────────────────────────────────────
+    class ScalingConstraint {
+        <<CRD shortName=scon>>
+        +ScalingConstraintSpec spec
+        +ScalingConstraintStatus status
+    }
+    class ScalingConstraintSpec {
+        +PlannerStrategy plannerStrategy
+        +SimulatorStrategy simulatorStrategy
+        +NodeScoringStrategy scoringStrategy
+        +NodePool[] nodePools
+    }
+    class ScalingConstraintStatus {
+        +Condition[] conditions
+    }
+    class NodePool {
+        +string name
+        +string region
+        +string[] availabilityZones
+        +int32 priority
+        +NodeTemplateRef[] nodeTemplateRefs
+        +ResourceLimits resourceLimits
+        +ScalingParams scalingParams
+        +Taint[] taints
+        +string[] startupTaintKeys
+    }
+    class NodeTemplateRef {
+        +string name
+        +int32 priority
+    }
+    class ResourceLimits {
+        +ResourceList min
+        +ResourceList max
+    }
+    class ScalingParams {
+        +ResourceUtilizationThreshold[] utilizationThresholds
+        +Duration underutilizedDuration
+    }
+    class ResourceUtilizationThreshold {
+        +ResourceName name
+        +string threshold
+    }
+    class PlannerStrategy {
+        <<enumeration>>
+        ScaleInThenScaleOut
+        ScaleOutThenScaleIn
+        ConsolidatedScaleOut
+        OnlyScaleOut
+        OnlyScaleIn
+    }
+    class SimulatorStrategy {
+        <<enumeration>>
+        SingleNodeMultiSim
+        MultiNodeSingleSim
+    }
+    class NodeScoringStrategy {
+        <<enumeration>>
+        LeastWaste
+        LeastCost
+    }
+
+    %% ── Catalog-cluster CRDs ──────────────────────────────────────────────────
+    class NodeTemplateSet {
+        <<CRD shortName=nts>>
+        +NodeTemplateSetSpec spec
+    }
+    class NodeTemplateSetSpec {
+        +NodeTemplate[] templates
+    }
+    class NodeTemplate {
+        +string name
+        +string instanceType
+        +ResourceList reservedResources
+        +ResourceList extendedResources
+    }
+    class InstanceTypeDefSet {
+        <<CRD shortName=ids>>
+        +InstanceTypeDefSetSpec spec
+    }
+    class InstanceTypeDefSetSpec {
+        +CloudProvider provider
+        +InstanceTypeDef[] instanceTypeDefs
+    }
+    class InstanceTypeDef {
+        +string name
+        +string architecture
+        +ResourceList baseResources
+    }
+    class InstancePriceSet {
+        <<CRD shortName=ips>>
+        +InstancePriceSetSpec spec
+    }
+    class InstancePriceSetSpec {
+        +CloudProvider provider
+        +InstancePrice[] prices
+    }
+    class InstancePrice {
+        +string instanceType
+        +string region
+        +CapacityType capacityType
+        +string price
+        +ResourceUnitPrice[] resourceUnitPrice
+    }
+    class ResourceUnitPrice {
+        +ResourceName name
+        +string value
+    }
+    class CloudProvider {
+        <<enumeration>>
+        AWS
+        GCP
+        Azure
+        Ali
+        OpenStack
+    }
+    class CapacityType {
+        <<enumeration>>
+        OnDemand
+        Spot
+    }
+
+    %% ── Relationships ─────────────────────────────────────────────────────────
+    ScalingConstraint *-- ScalingConstraintSpec
+    ScalingConstraint *-- ScalingConstraintStatus
+    ScalingConstraintSpec *-- NodePool
+    ScalingConstraintSpec ..> PlannerStrategy
+    ScalingConstraintSpec ..> SimulatorStrategy
+    ScalingConstraintSpec ..> NodeScoringStrategy
+    NodePool *-- NodeTemplateRef
+    NodePool *-- ResourceLimits
+    NodePool *-- ScalingParams
+    ScalingParams *-- ResourceUtilizationThreshold
+
+    NodeTemplateSet *-- NodeTemplateSetSpec
+    NodeTemplateSetSpec *-- NodeTemplate
+
+    InstanceTypeDefSet *-- InstanceTypeDefSetSpec
+    InstanceTypeDefSetSpec *-- InstanceTypeDef
+    InstanceTypeDefSetSpec ..> CloudProvider
+
+    InstancePriceSet *-- InstancePriceSetSpec
+    InstancePriceSetSpec *-- InstancePrice
+    InstancePriceSetSpec ..> CloudProvider
+    InstancePrice *-- ResourceUnitPrice
+    InstancePrice ..> CapacityType
+
+    NodeTemplateRef ..> NodeTemplate : references
+    NodeTemplate ..> InstanceTypeDef : instanceType
