@@ -238,6 +238,9 @@ func ValidateNodePool(np *v1alpha1.NodePool, availableTemplateNames sets.Set[str
 	if np.ScalingParams != nil {
 		allErrs = append(allErrs, ValidateScalingParams(np.ScalingParams, fldPath.Child("scalingParams"))...)
 	}
+	if np.ResourceLimits != nil {
+		allErrs = append(allErrs, ValidateResourceLimits(np.ResourceLimits, fldPath.Child("resourceLimits"))...)
+	}
 	return
 }
 
@@ -269,9 +272,6 @@ func ValidateScalingParams(sp *v1alpha1.ScalingParams, fldPath *field.Path) (all
 func ValidateNodeTemplateRef(ntr *v1alpha1.NodeTemplateRef, fldPath *field.Path) (allErrs field.ErrorList) {
 	if strings.TrimSpace(ntr.Name) == "" {
 		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "name must not be empty"))
-	}
-	if ntr.Quota != nil {
-		allErrs = append(allErrs, ValidateResourceLimits(ntr.Quota, fldPath.Child("quota"))...)
 	}
 	return
 }

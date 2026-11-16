@@ -65,6 +65,7 @@ type ScalingConstraintSpec struct {
 	// +listMapKey=name
 	// +required
 	NodePools []NodePool `json:"nodePools"`
+	//	InstanceTypeResourceLimit []InstanceTypeResourceLimit
 }
 
 // GetAllAvailabilityZones gets all the availability zones across all node pools as a sorted slice.
@@ -110,21 +111,19 @@ type NodePool struct {
 	// +listType=map
 	// +listMapKey=name
 	NodeTemplateRefs []NodeTemplateRef `json:"nodeTemplateRefs"`
-	// Priority defines the preference for this NodePool when selecting a scale-out candidate or scale-in candidate.
+	// Priority defines the preference for this NodePool when selecting a scale-out candidate.
 	//
-	// If omitted, the default implicit priority is zero. Higher values are preferred for scale-out. Lower values are
-	// preferred for scale-in.
+	// If omitted, the default implicit priority is zero. Higher values are preferred.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Priority int32 `json:"priority,omitempty"`
+	// ResourceLimits specifies optional resource limits for this NodePool.
+	// +optional
+	ResourceLimits *ResourceLimits `json:"resourceLimits,omitempty"`
 }
 
-// NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
-// its relative priority and optional [ResourceLimits].
+// NodeTemplateRef references a [NodeTemplate] and its relative priority within its parent [NodePool].
 type NodeTemplateRef struct {
-	// Quota specifies optional resource limits for the referenced NodeTemplate within the parent NodePool.
-	// +optional
-	Quota *ResourceLimits `json:"quota,omitempty"`
 	// Name is the name of the referenced [NodeTemplate]. The referenced [NodeTemplate] must be defined in a [NodeTemplateSet].
 	// +kubebuilder:validation:MinLength=1
 	// +required

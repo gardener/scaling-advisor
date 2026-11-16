@@ -58,6 +58,8 @@ type ScalingAdviceSpec struct {
 	// ScaleIn is the plan for scaling in across node pools.
 	// +optional
 	ScaleIn *ScaleInPlan `json:"scaleIn,omitempty"`
+	// Surge represents
+	Surge *ScaleOutPlan `json:"surge,omitempty"`
 	// Diagnostic provides diagnostics information for the scaling advice.
 	// +optional
 	Diagnostic *ScalingAdviceDiagnostic `json:"diagnostic,omitempty"`
@@ -102,6 +104,11 @@ type ScaleInItem struct {
 	// NodeName is the name of the node to be scaled in.
 	// +required
 	NodeName string `json:"nodeName"`
+	// Priority indicates the priority of this scale-in item.
+	// If omitted, the default implicit priority is zero. Higher values are preferred.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Priority int32 `json:"priority"`
 }
 
 // ScaleOutItem is the unit of scaling advice for a node pool.
@@ -121,6 +128,11 @@ type ScaleOutItem struct {
 	// +kubebuilder:validation:Minimum=1
 	// +required
 	Delta int32 `json:"delta"`
+	// Priority indicates the priority of this scale-out item.
+	// If omitted, the default implicit priority is zero. Higher values are preferred.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Priority int32 `json:"priority"`
 }
 
 // NodePlacement identifies the target node pool, node template, and cloud location associated with a scaling operation.

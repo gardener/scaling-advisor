@@ -10,6 +10,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"time"
 
 	plannerapi "github.com/gardener/scaling-advisor/planner/api"
 	"github.com/gardener/scaling-advisor/planner/scorer"
@@ -43,6 +44,25 @@ func NewPlanner(args plannerapi.ScalingPlannerArgs) (plannerapi.ScalingPlanner, 
 	}, nil
 }
 
+func (p *defaultPlanner) Prepare(_ context.Context, req plannerapi.Request, batchWindowStart time.Time) (bool, plannerapi.Request, time.Time) {
+	// Scale-in path (bypasses batch window): check if any node has crossed its
+	// underutilization period. Not yet implemented — will be filled in when
+	// ScaleInSimulator is ready.
+
+	// Scale-out path: batch window logic.
+	if len(req.ClusterSnapshot.GetUnscheduledPods()) == 0 {
+		return false, req, time.Time{}
+	}
+	now := time.Now()
+	if batchWindowStart.IsZero() {
+		return false, req, now
+	}
+	if remaining := p.args.BatchWindowDuration - now.Sub(batchWindowStart); remaining > 0 {
+		return false, req, batchWindowStart
+	}
+	return true, req, req.CreationTime
+}
+
 func (p *defaultPlanner) Plan(ctx context.Context, req plannerapi.Request) <-chan plannerapi.Response {
 	var err error
 	responseCh := make(chan plannerapi.Response)
@@ -69,7 +89,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 	if err != nil {
 		return fmt.Errorf("%w: %w", plannerapi.ErrCreateSimulator, err)
 	}
-	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(plannerapi.SimulatorArgs{
+	simArgs := plannerapi.SimulatorArgs{
 		Config:            p.args.SimulatorConfig,
 		Strategy:          req.ScalingConstraint.SimulatorStrategy,
 		ViewAccess:        p.args.ViewAccess,
@@ -77,7 +97,8 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 		NodeScorer:        nodeScorer,
 		TraceDir:          p.args.TraceDir,
 		Request:           req,
-	})
+	}
+	scaleOutSimulator, err := p.args.SimulatorFactory.GetScaleOutSimulator(simArgs)
 	if err != nil {
 		return err
 	}
@@ -115,6 +136,7 @@ func (p *defaultPlanner) doPlan(ctx context.Context, req *plannerapi.Request, re
 				Labels:       planResult.Labels,
 				ScaleOutPlan: planResult.ScaleOutPlan,
 				ScaleInPlan:  nil,
+				Memento:      req.Memento,
 				ID:           objutil.GenerateName("scaling-plan-"),
 			}
 			responseCh <- response

@@ -26,7 +26,9 @@ type OperatorConfig struct {
 	// LeaderElection defines the configuration for leader election.
 	LeaderElection LeaderElectionConfig `json:"leaderElection"`
 	// Controllers defines the configuration for controllers.
-	Controllers ControllersConfig `json:"controllers"`
+	Controllers         ControllersConfig `json:"controllers"`
+	SyncPeriod          metav1.Duration   `json:"syncPeriod"`
+	BatchWindowDuration metav1.Duration   `json:"batchWindowDuration"`
 }
 
 // ClientConnectionConfig contains details for constructing a client.
@@ -101,4 +103,13 @@ type ControllersConfig struct {
 type ScalingConstraintsControllerConfig struct {
 	// ConcurrentSyncs is the maximum number concurrent reconciliations that can be run for this controller.
 	ConcurrentSyncs int `json:"concurrentSyncs"`
+	// BatchWindowDuration is the minimum duration the operator waits after observing the first
+	// unschedulable pod before invoking the ScalingPlanner for scale-out. This allows multiple
+	// unschedulable pods to accumulate into a single planning request.
+	// Defaults to 10s.
+	BatchWindowDuration metav1.Duration `json:"batchWindowDuration,omitempty"`
+	// SyncPeriod is the interval at which the operator re-queues reconciliation even when no
+	// cluster events have occurred (fallback polling period).
+	// Defaults to 10s.
+	SyncPeriod metav1.Duration `json:"syncPeriod,omitempty"`
 }

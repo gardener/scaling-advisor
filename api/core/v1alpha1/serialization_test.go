@@ -174,14 +174,14 @@ func TestScalingConstraintRoundTrip(t *testing.T) {
 					Region:            "eu-west-1",
 					AvailabilityZones: []string{"eu-west-1a", "eu-west-1b"},
 					Priority:          10,
+					ResourceLimits: &v1alpha1.ResourceLimits{
+						Min: corev1.ResourceList{corev1.ResourceCPU: qty("2")},
+						Max: corev1.ResourceList{corev1.ResourceCPU: qty("32")},
+					},
 					NodeTemplateRefs: []v1alpha1.NodeTemplateRef{
 						{
 							Name:     "m5-standard",
 							Priority: 5,
-							Quota: &v1alpha1.ResourceLimits{
-								Min: corev1.ResourceList{corev1.ResourceCPU: qty("2")},
-								Max: corev1.ResourceList{corev1.ResourceCPU: qty("32")},
-							},
 						},
 					},
 				},
@@ -208,12 +208,15 @@ func TestScalingConstraintRoundTrip(t *testing.T) {
 		t.Errorf("AvailabilityZones length: got %d", len(np.AvailabilityZones))
 	}
 	ntr := np.NodeTemplateRefs[0]
-	if ntr.Quota == nil {
-		t.Fatal("NodeTemplateRef.Quota: expected non-nil after round-trip")
+	if ntr.Priority != 5 {
+		t.Errorf("NodeTemplateRef.Priority: got %d", ntr.Priority)
 	}
-	minCPU := ntr.Quota.Min[corev1.ResourceCPU]
+	if np.ResourceLimits == nil {
+		t.Fatal("NodePool.ResourceLimits: expected non-nil after round-trip")
+	}
+	minCPU := np.ResourceLimits.Min[corev1.ResourceCPU]
 	if minCPU.Cmp(qty("2")) != 0 {
-		t.Errorf("Quota.Min[cpu]: got %v", minCPU)
+		t.Errorf("ResourceLimits.Min[cpu]: got %v", minCPU)
 	}
 
 	// ScoringStrategy was not set - omitempty must produce empty string, not an enum error

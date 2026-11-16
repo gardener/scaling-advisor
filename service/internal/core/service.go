@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	minkapi "github.com/gardener/scaling-advisor/minkapi/api"
 	mkcore "github.com/gardener/scaling-advisor/minkapi/server"
@@ -93,6 +94,10 @@ func (d *defaultPlannerService) Stop(ctx context.Context) (err error) {
 		err = errors.Join(errs...)
 	}
 	return
+}
+
+func (p *defaultPlannerService) Prepare(ctx context.Context, req plannerapi.Request, batchWindowStart time.Time) (bool, plannerapi.Request, time.Time) {
+	return p.planner.Prepare(ctx, req, batchWindowStart)
 }
 
 func (p *defaultPlannerService) Plan(ctx context.Context, request plannerapi.Request) <-chan plannerapi.Response {

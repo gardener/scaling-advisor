@@ -100,6 +100,13 @@ spec:
                           description: NodePlacement identifies the target pool, template,
                             and cloud location for this scale-in.
                           type: string
+                        priority:
+                          description: |-
+                            Priority indicates the priority of this scale-in item.
+                            If omitted, the default implicit priority is zero. Higher values are preferred.
+                          format: int32
+                          minimum: 0
+                          type: integer
                       required:
                       - nodeName
                       - nodePlacement
@@ -140,6 +147,69 @@ spec:
                           description: NodePlacement identifies the target pool, template,
                             and cloud location for this scale-out.
                           type: string
+                        priority:
+                          description: |-
+                            Priority indicates the priority of this scale-out item.
+                            If omitted, the default implicit priority is zero. Higher values are preferred.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                      required:
+                      - currentReplicas
+                      - delta
+                      - name
+                      - nodePlacement
+                      type: object
+                    minItems: 1
+                    type: array
+                  unsatisfiedPodNames:
+                    description: |-
+                      UnsatisfiedPodNames contains pod names in "namespace/name" format that could not be scheduled by this scale-out
+                      plan.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - items
+                type: object
+              surge:
+                description: Surge represents
+                properties:
+                  items:
+                    description: Items is the slice of scaling-out advice for a node
+                      pool.
+                    items:
+                      description: ScaleOutItem is the unit of scaling advice for
+                        a node pool.
+                      properties:
+                        currentReplicas:
+                          description: CurrentReplicas is the current number of replicas
+                            for the NodePlacement.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        delta:
+                          description: Delta is the delta change in the number of
+                            nodes for the NodePlacement.
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        name:
+                          description: |-
+                            Name represents a logical name for this scale-out item. This is generated name unique within this ScalingAdvice.
+                            Ex: of the form: scaleout-<index>
+                          type: string
+                        nodePlacement:
+                          description: NodePlacement identifies the target pool, template,
+                            and cloud location for this scale-out.
+                          type: string
+                        priority:
+                          description: |-
+                            Priority indicates the priority of this scale-out item.
+                            If omitted, the default implicit priority is zero. Higher values are preferred.
+                          format: int32
+                          minimum: 0
+                          type: integer
                       required:
                       - currentReplicas
                       - delta

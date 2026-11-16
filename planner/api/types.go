@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -72,8 +73,10 @@ func (r *Request) GetRef() RequestRef {
 
 // Response represents the response from the scaling planner.
 type Response struct {
-	// RequestRef encapsulates the unique reference to a request for which this response is produced.
-	RequestRef RequestRef `json:"requestRef"`
+	// Memento carries updated cross-invocation planner state after this response.
+	// The operator must persist this and pass it into the next Request so the planner
+	// can perform incremental planning (e.g. track upcoming node placements).
+	Memento Memento `json:"memento,omitempty"`
 	// Error is any error encountered during plan generation. Represents a terminal error that occurred during plan generation.
 	// No further responses will be sent by the [ScalingPlanner] for the associated request.
 	Error error `json:"error,omitempty"`
@@ -83,6 +86,8 @@ type Response struct {
 	ScaleOutPlan *sacorev1alpha1.ScaleOutPlan `json:"scaleOutPlan,omitempty"`
 	// ScaleInPlan is the generated scale-in plan.
 	ScaleInPlan *sacorev1alpha1.ScaleInPlan `json:"scaleInPlan,omitempty"`
+	// RequestRef encapsulates the unique reference to a request for which this response is produced.
+	RequestRef RequestRef `json:"requestRef"`
 	// ID is the identified for this response
 	ID string `json:"id,omitempty"`
 }
@@ -107,6 +112,30 @@ type ClusterSnapshot struct {
 	PriorityClasses []schedulingv1.PriorityClass `json:"priorityClasses,omitempty"`
 	// RuntimeClasses are the runtime classes present in the cluster.
 	RuntimeClasses []nodev1.RuntimeClass `json:"runtimeClasses,omitempty"`
+}
+
+// GetUnscheduledPods returns all pods in the cluster snapshot that are not scheduled to any node.
+func (c *ClusterSnapshot) GetUnscheduledPods() []PodInfo {
+	var unscheduledPods []PodInfo
+	for _, pod := range c.Pods {
+		if pod.NodeName == "" {
+			unscheduledPods = append(unscheduledPods, pod)
+		}
+	}
+	return unscheduledPods
+}
+
+// GetNodeCountByPlacement returns a map of node placements to their respective node counts in the cluster.
+func (c *ClusterSnapshot) GetNodeCountByPlacement() (map[sacorev1alpha1.NodePlacement]int32, error) {
+	nodeCountByPlacement := make(map[sacorev1alpha1.NodePlacement]int32)
+	for _, nodeInfo := range c.Nodes {
+		p, err := nodeInfo.GetNodePlacement()
+		if err != nil {
+			return nil, err
+		}
+		nodeCountByPlacement[p]++
+	}
+	return nodeCountByPlacement, nil
 }
 
 // PodInfo encapsulates only the necessary information about corev1.Pod that is required by the kube-scheduler.
@@ -182,6 +211,34 @@ func (n *NodeInfo) GetResourceInfo() simulationapi.NodeResourceInfo {
 	}
 }
 
+// ValidateLabels validates that all required node labels are minimally present on this node info or returns an error wrapping the sentinel error
+// apicommon.ErrMissingRequiredLabel
+func (n *NodeInfo) ValidateLabels() error {
+	for _, labelName := range RequiredNodeLabelNames.UnsortedList() {
+		_, found := n.Labels[labelName]
+		if !found {
+			return fmt.Errorf("%w: missing %q in node %q", apicommon.ErrMissingRequiredLabel, labelName, n.Name)
+		}
+	}
+	return nil
+}
+
+// GetNodePlacement extracts the node placement information from this NodeInfo.
+func (n *NodeInfo) GetNodePlacement() (placement sacorev1alpha1.NodePlacement, err error) {
+	err = n.ValidateLabels()
+	if err != nil {
+		return
+	}
+	placement = sacorev1alpha1.NodePlacement{
+		PoolName:         n.Labels[apicommon.LabelNodePoolName],
+		TemplateName:     n.Labels[apicommon.LabelNodeTemplateName],
+		InstanceType:     n.InstanceType,
+		Region:           n.Labels[corev1.LabelTopologyRegion],
+		AvailabilityZone: n.Labels[corev1.LabelTopologyZone],
+	}
+	return
+}
+
 // PVCInfo encapsulates the minimal set of scheduling relevant information about the k8s PersistentVolumeClaim.
 type PVCInfo struct {
 	corev1.PersistentVolumeClaimSpec `json:",inline"`
@@ -252,6 +309,11 @@ type NodeScore struct {
 
 // SimulatorConfig holds the configuration for the internal simulator used by the scaling advisor planner.
 type SimulatorConfig struct {
+	// UtilizationThresholds is the resource utilization thresholds for a node to be considered underutilized and thus
+	// a candidate for scale-in.
+	// The keys are the resource names such as `cpu`/`memory`/`gpu`/etc. and the values are the corresponding
+	// utilization thresholds expressed as fractions from 0 to 1.
+	UtilizationThresholds map[corev1.ResourceName]float64 `json:"utilizationThresholds,omitempty"`
 	simulationapi.SimulationConfig
 	// UnderutilizedDuration is the duration for which a node should be under the utilization thresholds to be
 	// considered a candidate for scale-in.
@@ -274,10 +336,25 @@ type ScalingPlannerArgs struct {
 	TraceDir string
 	// SimulatorConfig holds the configuration for the internal simulator.
 	SimulatorConfig SimulatorConfig
+	// BatchWindowDuration is the minimum time to wait after observing the first unschedulable pod
+	// before Prepare recommends invoking Plan for scale-out. Passed in from
+	// OperatorConfig.Controllers.ScalingConstraints.BatchWindowDuration.
+	BatchWindowDuration time.Duration
 }
 
 // ScalingPlanner defines the interface for computing scaling plans.
 type ScalingPlanner interface {
+	// Prepare updates req.Memento with the latest observed state and decides whether
+	// Plan should be called. It is stateless: batchWindowStart (zero if no window is
+	// active) is passed in and returned (possibly updated) so the caller is responsible
+	// for persisting it between invocations. preparedReq is always returned with an
+	// up-to-date Memento and the caller must persist it regardless of shouldPlan.
+	//
+	// shouldPlan is true when:
+	//   - Any node has crossed its configured underutilization period (scale-in, bypasses batch window), or
+	//   - Unschedulable pods are present AND the batch window has expired (scale-out).
+	Prepare(ctx context.Context, req Request, batchWindowStart time.Time) (shouldPlan bool, preparedReq Request, nextBatchWindowStart time.Time)
+
 	// Plan begins generation of scaling plans accepting a Request and returning a response channel
 	// on which one or more planner Response is delivered.
 	//
@@ -383,51 +460,33 @@ type ScaleOutSimulator interface {
 // on a result channel.
 type ScaleInSimulator interface {
 	io.Closer
-	// Simulate runs scale-in simulations against the given view and delivers a single [ScaleInPlanResult] on the returned channel.
-	//
-	// The caller must annotate candidate nodes in simulationView with [apicommon.AnnotationScaleInCandidate] (value = zero-based
-	// index) before calling Simulate. The simulator processes candidates sequentially in index order: for each candidate it
-	// creates a sandbox view, runs a [simulationapi.Simulation] to verify the candidate's pods can be rescheduled onto
-	// remaining nodes, and either promotes the sandbox as the new base view (success) or discards it (failure).
-	// Once no further candidates can be successfully simulated, a single [ScaleInPlanResult] is delivered on the channel
-	// containing the accumulated [sacorev1alpha1.ScaleInPlan] and the final promoted view for use by a subsequent [ScaleOutSimulator].
-	//
-	// The channel is closed after delivering the result, or immediately on a terminal error. The caller must drain
-	// the channel until it is closed to avoid leaking goroutines.
+	// Simulate is the high level activity that runs [Simulation]'s created from given [SimulationFactory] with the given
+	// planner [Request] against the given simulationView and delivers [ScaleInPlanResult]'s on the planResult channel.
 	Simulate(ctx context.Context, simulationFactory simulationapi.SimulationFactory, simulationView minkapi.View) <-chan ScaleInPlanResult
 }
 
-// ScaleInCandidateSelector is the facade for selection of all scale-in candidate nodes while honoring constraints.
+// ScaleInCandidateSelector identifies candidate nodes for scale-in without running scheduler simulations.
+// It considers node annotations, PodDisruptionBudgets, utilization thresholds, pool minimum limits,
+// pool priorities, and NodeTemplateRef priorities.
 type ScaleInCandidateSelector interface {
-	// Select returns all scale-in candidate nodes in the given view as a slice of [corev1.Node]
-	// while honoring [ScaleInCandidateSelectorArgs.UtilizationThresholds]'s and [PodDisruptionBudgets].
-	//
-	// [PodDisruptionBudgets]: https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/
+	// Select returns the ordered list of nodes that are candidates for scale-in from the given view,
+	// according to the per-pool configuration in args.
 	Select(ctx context.Context, view minkapi.View, args ScaleInCandidateSelectorArgs) ([]corev1.Node, error)
 }
 
-// NodePoolScaleInConfig holds per-pool configuration used by the [ScaleInCandidateSelector].
+// NodePoolScaleInConfig holds the scale-in configuration for a single node pool.
 type NodePoolScaleInConfig struct {
-	// UtilizationThresholds is the resource utilization thresholds below which a node in this pool is considered
-	// underutilized and thus a candidate for scale-in. Keys are resource names (e.g. cpu, memory) and values are
-	// fractions from 0 to 1. Should be populated from [sacorev1alpha1.NodePool.ScalingParams.UtilizationThresholds].
-	UtilizationThresholds map[corev1.ResourceName]float64
-	// MinLimits is the minimum total allocatable resources for this pool. A candidate node is rejected if its
-	// removal would drop the pool's total allocatable resources below these limits.
-	// Should be populated from [sacorev1alpha1.ResourceLimits.Min] in [sacorev1alpha1.NodeTemplateRef.Quota].
-	MinLimits corev1.ResourceList
-	// TemplatePriorities maps node template name to its priority within this pool. Lower priority templates are
-	// preferred for scale-in. Should be populated from [sacorev1alpha1.NodeTemplateRef.Priority].
-	TemplatePriorities map[string]int32
-	// Priority is the pool-level scale-in preference. Lower priority pools are preferred for scale-in.
-	// Should be populated from [sacorev1alpha1.NodePool.Priority].
-	Priority int32
-}
-
-// ScaleInCandidateSelectorArgs encapsulates the pure data input for the [ScaleInCandidateSelector].
-type ScaleInCandidateSelectorArgs struct {
-	// PoolConfigs holds per-pool scale-in configuration keyed by pool name.
-	PoolConfigs map[string]NodePoolScaleInConfig
+	// UtilizationThresholds maps resource name to a fraction in [0,1]. A node is considered
+	// underutilized only if every configured resource is below its threshold.
+	UtilizationThresholds map[corev1.ResourceName]float64 `json:"utilizationThresholds,omitempty"`
+	// MinLimits is the minimum total allocatable resources the pool must retain. A candidate
+	// node is rejected if its removal would drop the pool below this limit.
+	MinLimits corev1.ResourceList `json:"minLimits,omitempty"`
+	// TemplatePriorities maps node template name to a priority within the pool.
+	// Lower value is preferred for scale-in.
+	TemplatePriorities map[string]int32 `json:"templatePriorities,omitempty"`
+	// Priority is the pool-level scale-in priority. Lower value is preferred over higher-priority pools.
+	Priority int32 `json:"priority,omitempty"`
 }
 
 // ScaleOutPlanResult represents a result from the ScaleOutSimulator.Simulate
@@ -497,6 +556,15 @@ type ScaleInMemento struct {
 	LastUnderutilizedSinceNodes map[string]time.Time `json:"lastUnderutilizedSinceNodes,omitempty"`
 }
 
+// ScaleInCandidateSelectorArgs holds the per-pool configuration for [ScaleInCandidateSelector.Select].
+type ScaleInCandidateSelectorArgs struct {
+	// Memento carries cross-invocation underutilization timestamps used to determine whether a node
+	// has been underutilized long enough to be a scale-in candidate.
+	Memento ScaleInMemento `json:"memento,omitempty"`
+	// PoolConfigs maps node pool name to its scale-in configuration.
+	PoolConfigs map[string]NodePoolScaleInConfig `json:"poolConfigs,omitempty"`
+}
+
 // ScaleOutMemento encapsulates partial details from previous [sacorev1alpha1.ScaleOutPlan] that can be used by the
 // [ScalingPlanner] in its next invocation.
 type ScaleOutMemento struct {
@@ -519,12 +587,12 @@ type ScalingPlannerServiceConfig struct {
 	CloudProvider apicommon.CloudProvider `json:"cloudProvider"`
 	// TraceDir is the base directory for storing trace files produced by the scaling advisor planner.
 	TraceDir string `json:"traceDir,omitempty"`
+	// SimulatorConfig holds the configuration used by the internal simulator.
+	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ServerConfig holds the server configuration for the scaling advisor planner.
 	ServerConfig apicomponent.ServerConfig `json:"serverConfig"`
 	// MinKAPIConfig holds the configuration for the MinKAPI server used by the scaling advisor planner.
 	MinKAPIConfig minkapi.Config `json:"minkAPIConfig"`
-	// SimulatorConfig holds the configuration used by the internal simulator.
-	SimulatorConfig SimulatorConfig `json:"simulatorConfig"`
 	// ClientConfig holds the client QPS and Burst settings for the scaling advisor planner.
 	ClientConfig apicomponent.QPSBurst `json:"clientConfig"`
 }

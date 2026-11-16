@@ -82,9 +82,8 @@ spec:
                       description: NodeTemplateRefs is the list of node templates
                         that may be used to provision nodes in this pool.
                       items:
-                        description: |-
-                          NodeTemplateRef references a [NodeTemplate] and specifies how it may be used within its parent [NodePool], including
-                          its relative priority and optional [ResourceLimits].
+                        description: NodeTemplateRef references a [NodeTemplate] and
+                          its relative priority within its parent [NodePool].
                         properties:
                           name:
                             description: Name is the name of the referenced [NodeTemplate].
@@ -99,31 +98,6 @@ spec:
                             format: int32
                             minimum: 0
                             type: integer
-                          quota:
-                            description: Quota specifies optional resource limits
-                              for the referenced NodeTemplate within the parent NodePool.
-                            properties:
-                              max:
-                                additionalProperties:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                  x-kubernetes-int-or-string: true
-                                description: Max specifies the maximum aggregate resources
-                                  that may be provisioned.
-                                type: object
-                              min:
-                                additionalProperties:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                  x-kubernetes-int-or-string: true
-                                description: Min specifies the minimum aggregate resources
-                                  that may be provisioned.
-                                type: object
-                            type: object
                         required:
                         - name
                         type: object
@@ -134,15 +108,39 @@ spec:
                       x-kubernetes-list-type: map
                     priority:
                       description: |-
-                        Priority defines the preference for this NodePool when selecting a scale-out candidate or scale-in candidate.
+                        Priority defines the preference for this NodePool when selecting a scale-out candidate.
 
-                        If omitted, the default implicit priority is zero. Higher values are preferred for scale-out. Lower values are
-                        preferred for scale-in.
+                        If omitted, the default implicit priority is zero. Higher values are preferred.
                       format: int32
                       minimum: 0
                       type: integer
                     region:
                       type: string
+                    resourceLimits:
+                      description: ResourceLimits specifies optional resource limits
+                        for this NodePool.
+                      properties:
+                        max:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Max specifies the maximum aggregate resources
+                            that may be provisioned.
+                          type: object
+                        min:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Min specifies the minimum aggregate resources
+                            that may be provisioned.
+                          type: object
+                      type: object
                     scalingParams:
                       description: ScalingParams specifies the scaling parameters
                         to be used when scaling a node pool.
